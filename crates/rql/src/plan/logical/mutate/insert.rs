@@ -3,11 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::error::CatalogError;
-use reifydb_core::{
-	expression::{AliasExpression, Expression, IdentExpression},
-	interface::catalog::view::ViewStorageKind,
-};
+use reifydb_core::expression::{AliasExpression, Expression, IdentExpression};
 use reifydb_rql_frontend::{
 	ast::{
 		ast::{Ast, AstFrom, AstInsert, AstInsertWith},
@@ -25,9 +21,12 @@ use reifydb_value::{error::ValueError, fragment::Fragment};
 use crate::{
 	error::{IdentifierError, RqlError},
 	expression::ExpressionCompiler,
-	plan::logical::{
-		Compiler, InlineDataNode, InsertDictionaryNode, InsertQueueNode, InsertRingBufferNode,
-		InsertSeriesNode, InsertTableNode, LogicalPlan, mutate::compile_returning_clause,
+	plan::{
+		logical::{
+			Compiler, InlineDataNode, InsertDictionaryNode, InsertQueueNode, InsertRingBufferNode,
+			InsertSeriesNode, InsertTableNode, LogicalPlan, mutate::compile_returning_clause,
+		},
+		view_not_writable,
 	},
 };
 
@@ -81,7 +80,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace = unresolved_target.namespace;
 		let ns_segments: Vec<&str> = namespace.iter().map(|n| n.text()).collect();
 
-		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_segments(tx, &ns_segments)? {
+		let ns = if let Some(ns) = self.catalog.find_namespace_by_segments(tx, &ns_segments)? {
 			if let Some(address) = ns.address() {
 				let refusal = IdentifierError::RemoteNamespace {
 					namespace: ns_segments.join("::"),
@@ -92,7 +91,7 @@ impl<'bump> Compiler<'bump> {
 				self.remote_target.set(Some(ns));
 				return Err(refusal.into());
 			}
-			ns.id()
+			ns
 		} else {
 			if with_options.is_some() {
 				return Err(RqlError::InsertWithOnlyForQueues {
@@ -111,7 +110,14 @@ impl<'bump> Compiler<'bump> {
 			}));
 		};
 
+		let namespace_id = ns.id();
+
 		if with_options.is_some() && self.catalog.find_queue_by_name(tx, namespace_id, target_name)?.is_none() {
+			if let Some(refusal) =
+				view_not_writable(&self.catalog, tx, &ns, target_name, "INSERT", name.to_owned())?
+			{
+				return Err(refusal);
+			}
 			return Err(RqlError::InsertWithOnlyForQueues {
 				fragment: name.to_owned(),
 			}
@@ -131,16 +137,10 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		if self.catalog.find_queue_by_name(tx, namespace_id, target_name)?.is_some() {
-			if let Some(view) = self.catalog.find_view_by_name(tx, namespace_id, target_name)?
-				&& view.storage_kind() == ViewStorageKind::Queue
+			if let Some(refusal) =
+				view_not_writable(&self.catalog, tx, &ns, target_name, "INSERT", name.to_owned())?
 			{
-				return Err(CatalogError::QueueOwnedByView {
-					name: target_name.to_string(),
-					operation: "INSERT",
-					help: "its flow writes every item: insert into the source the view reads instead",
-					fragment: name.to_owned(),
-				}
-				.into());
+				return Err(refusal);
 			}
 			let mut target = MaybeQualifiedQueueIdentifier::new(name);
 			if !namespace.is_empty() {
@@ -216,6 +216,18 @@ impl<'bump> Compiler<'bump> {
 			let tuple_len = tuple.nodes.len();
 
 			if tuple_len != column_names.len() {
+				if column_names.is_empty()
+					&& let Some(ns) = self.catalog.find_namespace_by_segments(tx, &ns_segments)?
+					&& let Some(refusal) = view_not_writable(
+						&self.catalog,
+						tx,
+						&ns,
+						target_name,
+						"INSERT",
+						target.name.to_owned(),
+					)? {
+					return Err(refusal);
+				}
 				return Err(RqlError::InsertPositionalWrongLength {
 					fragment: tuple.token.fragment.to_owned(),
 					expected: column_names.len(),

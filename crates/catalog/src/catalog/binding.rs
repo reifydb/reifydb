@@ -15,8 +15,8 @@ use tracing::instrument;
 
 use crate::{
 	CatalogStore,
-	catalog::Catalog,
-	error::{CatalogError, CatalogObjectKind},
+	catalog::{Catalog, name::NameAllowed},
+	error::{CatalogError, CatalogObjectKind, NameKind},
 	store::binding::create::BindingToCreate as StoreBindingToCreate,
 };
 
@@ -200,13 +200,61 @@ impl Catalog {
 		}
 	}
 
+	pub fn find_binding_by_protocol(
+		&self,
+		txn: &mut AdminTransaction,
+		protocol: &BindingProtocol,
+	) -> Result<Option<Binding>, ValueError> {
+		let bindings = CatalogStore::list_bindings_all(&mut Transaction::Admin(&mut *txn))?;
+		Ok(bindings.into_iter().find(|binding| match (&binding.protocol, protocol) {
+			(
+				BindingProtocol::Http {
+					method,
+					path,
+				},
+				BindingProtocol::Http {
+					method: wanted_method,
+					path: wanted_path,
+				},
+			) => method.as_str() == wanted_method.as_str() && path == wanted_path,
+			(
+				BindingProtocol::Grpc {
+					name,
+				},
+				BindingProtocol::Grpc {
+					name: wanted,
+				},
+			) => name == wanted,
+			(
+				BindingProtocol::Ws {
+					name,
+				},
+				BindingProtocol::Ws {
+					name: wanted,
+				},
+			) => name == wanted,
+			_ => false,
+		}))
+	}
+
 	#[instrument(name = "catalog::binding::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_binding(
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: BindingToCreate,
 	) -> Result<Binding, ValueError> {
-		if let Some(existing) = self.cache.find_binding_by_name(to_create.namespace, &to_create.name) {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&Fragment::internal(&to_create.name),
+			NameKind::Binding,
+			NameAllowed::default(),
+		)?;
+		if let Some(existing) = self.find_binding_by_name(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+		)? {
 			let _ = existing;
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Binding,
@@ -222,7 +270,7 @@ impl Catalog {
 				method,
 				path,
 			} => {
-				if self.cache.find_http_binding_by_method_path(method.as_str(), path).is_some() {
+				if self.find_binding_by_protocol(txn, &to_create.protocol)?.is_some() {
 					return Err(CatalogError::AlreadyExists {
 						kind: CatalogObjectKind::Binding,
 						namespace: to_create.namespace.to_string(),
@@ -235,7 +283,7 @@ impl Catalog {
 			BindingProtocol::Grpc {
 				name,
 			} => {
-				if self.cache.find_grpc_binding_by_name(name).is_some() {
+				if self.find_binding_by_protocol(txn, &to_create.protocol)?.is_some() {
 					return Err(CatalogError::AlreadyExists {
 						kind: CatalogObjectKind::Binding,
 						namespace: to_create.namespace.to_string(),
@@ -248,7 +296,7 @@ impl Catalog {
 			BindingProtocol::Ws {
 				name,
 			} => {
-				if self.cache.find_ws_binding_by_name(name).is_some() {
+				if self.find_binding_by_protocol(txn, &to_create.protocol)?.is_some() {
 					return Err(CatalogError::AlreadyExists {
 						kind: CatalogObjectKind::Binding,
 						namespace: to_create.namespace.to_string(),

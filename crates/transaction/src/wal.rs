@@ -13,7 +13,7 @@ use reifydb_codec::log::{
 };
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
-	default::wal::SEGMENT_BYTES,
+	default::{query::ORACLE_LSN_STEP, wal::SEGMENT_BYTES},
 	interface::{
 		catalog::flow::OperatorId,
 		commit::{CommitEntry, CommitFloor, CommitLog, FlowWal, Loaded},
@@ -457,7 +457,7 @@ pub fn replay(
 		last = last.max(version);
 		if version > saved_through {
 			store.set(version, classify_deltas(&CowVec::new(record.deltas)).batches);
-			note_lsn(&mut lsns, version, replayed.lsn);
+			note_lsn(&mut lsns, version, replayed.lsn, ORACLE_LSN_STEP);
 		}
 	}
 	Recovery {

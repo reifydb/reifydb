@@ -13,7 +13,12 @@ use reifydb_transaction::{
 use reifydb_value::{error::ValueError, fragment::Fragment, value::sumtype::SumTypeId};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, catalog::Catalog, store::sumtype::create::SumTypeToCreate as StoreSumTypeToCreate};
+use crate::{
+	CatalogStore,
+	catalog::{Catalog, name::NameAllowed},
+	error::NameKind,
+	store::sumtype::create::SumTypeToCreate as StoreSumTypeToCreate,
+};
 
 #[derive(Debug, Clone)]
 pub struct SumTypeToCreate {
@@ -220,6 +225,13 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: SumTypeToCreate,
 	) -> Result<SumType, ValueError> {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::EnumOrEvent,
+			NameAllowed::default(),
+		)?;
 		let def = CatalogStore::create_sumtype(txn, to_create.into())?;
 		txn.track_sumtype_created(def.clone())?;
 		Ok(def)

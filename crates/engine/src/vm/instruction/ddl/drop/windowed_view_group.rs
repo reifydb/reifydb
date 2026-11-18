@@ -7,11 +7,11 @@ use reifydb_core::{
 	flow::operator::{LookupObject, OperatorDef},
 	value::batch::single_row,
 };
-use reifydb_rql::nodes::DropWindowedViewGroupNode;
+use reifydb_rql::nodes::{DropNamespaceNode, DropWindowedViewGroupNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{error::ValueError, value::Value};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::Value};
 
-use super::dependent::find_flow_dependents;
+use super::{dependent::find_flow_dependents, namespace::drop_namespace};
 use crate::vm::services::Services;
 
 pub(crate) fn drop_windowed_view_group(
@@ -62,6 +62,22 @@ pub(crate) fn drop_windowed_view_group(
 		.into());
 	}
 
+	let own_name = format!("{}::{}", plan.namespace.name(), plan.group.text());
+	let own = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &own_name)?;
+	if let Some(ns) = &own
+		&& let Some((holds, name)) =
+			services.catalog.find_namespace_leftover(&mut Transaction::Admin(txn), ns.id())?
+	{
+		return Err(CatalogError::WindowedViewGroupNamespaceNotEmpty {
+			group: own_name.clone(),
+			namespace: own_name.clone(),
+			holds,
+			name,
+			fragment: plan.group.clone(),
+		}
+		.into());
+	}
+
 	for view_id in &group.members {
 		let view = services.catalog.get_view(&mut Transaction::Admin(txn), *view_id)?;
 		services.catalog.drop_view(txn, view)?;
@@ -71,6 +87,18 @@ pub(crate) fn drop_windowed_view_group(
 	}
 	let group_id = group.id;
 	services.catalog.drop_windowed_view_group(txn, group)?;
+	if let Some(ns) = own {
+		drop_namespace(
+			services,
+			txn,
+			DropNamespaceNode {
+				namespace_name: Fragment::internal(&own_name),
+				namespace_id: Some(ns.id()),
+				if_exists: false,
+				cascade: false,
+			},
+		)?;
+	}
 
 	single_row([
 		("id", Value::Uint8(group_id.0)),

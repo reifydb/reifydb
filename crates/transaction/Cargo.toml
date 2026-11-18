@@ -15,7 +15,7 @@ default = ["test-stress"]
 test-stress = []
 worker_pool = []
 chaos = []
-testing = []
+testing = ["reifydb-store-multi/testing"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }

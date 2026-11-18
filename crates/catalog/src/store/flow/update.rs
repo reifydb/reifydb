@@ -11,27 +11,6 @@ use reifydb_value::error::ValueError;
 use crate::{CatalogStore, store::flow::shape::flow};
 
 impl CatalogStore {
-	pub(crate) fn update_flow_name(
-		txn: &mut AdminTransaction,
-		flow_id: FlowId,
-		new_name: String,
-	) -> Result<(), ValueError> {
-		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
-
-		let mut row = flow::allocate();
-		flow::set_id(&mut row, flow_id.0);
-		flow::set_namespace(&mut row, flow.namespace.0);
-		flow::set_name(&mut row, &new_name);
-		flow::set_status(&mut row, flow.status.to_u8());
-		if let Some(reason) = flow.status.reason() {
-			flow::set_reason(&mut row, reason);
-		}
-
-		txn.set(vec![(FlowKey::new(flow_id).into(), row.freeze().into())])?;
-
-		Ok(())
-	}
-
 	pub(crate) fn poison_flow(
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,
@@ -70,19 +49,6 @@ pub mod tests {
 
 	use super::*;
 	use crate::test_utils::ensure_test_flow;
-
-	#[test]
-	fn test_update_flow_name() {
-		let mut txn = create_test_admin_transaction();
-		let flow = ensure_test_flow(&mut txn);
-
-		CatalogStore::update_flow_name(&mut txn, flow.id, "new_flow_name".to_string()).unwrap();
-
-		let updated = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
-		assert_eq!(updated.name, "new_flow_name");
-		assert_eq!(updated.namespace, flow.namespace);
-		assert_eq!(updated.status, flow.status);
-	}
 
 	#[test]
 	fn test_poison_flow() {

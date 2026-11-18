@@ -23,7 +23,7 @@ use reifydb_core::{
 	},
 	key::any::TaggedKey,
 	util::bloom::hash_item,
-	wal::{CommitLayer, CommitRecord},
+	wal::CommitRecord,
 };
 use reifydb_runtime::{
 	actor::system::ActorSpawner,
@@ -44,7 +44,6 @@ use smallvec::SmallVec;
 use tracing::{Span, field, instrument};
 
 use crate::{
-	delta::{finalize_layers, persistent_layers},
 	error::TransactionError,
 	multi::{
 		conflict::{ConflictManager, PartitionMember},
@@ -88,7 +87,6 @@ pub(crate) type OracleLock = RwLock<OracleState>;
 
 const WINDOW_KEY_CAPACITY: usize = 500;
 
-const LSN_STEP: u64 = 4096;
 const WINDOW_KEY_CAPACITY_MAX: usize = 1 << 22;
 
 pub(crate) struct ModifiedKeyIndex {
@@ -343,12 +341,10 @@ where
 		conflicts: ConflictManager,
 		deltas: CowVec<Delta>,
 		prepared: Option<Prepared>,
-		source: Option<SourceVersion>,
-		section: OperatorSection,
-		layers: Vec<CommitLayer>,
 	) -> Result<(CreateCommitResult, CowVec<Delta>), ValueError> {
 		let window_size = self.shared.config.get_config_uint8(ConfigKey::OracleWindowSize);
-		self.shared.commit(version, conflicts, deltas, None, prepared, source, section, layers, window_size)
+		let lsn_step = self.shared.config.get_config_uint8(ConfigKey::OracleLsnStep);
+		self.shared.commit(version, conflicts, deltas, None, prepared, window_size, lsn_step)
 	}
 
 	#[instrument(name = "transaction::oracle::new_commit_rebased", level = "debug", skip(self, conflicts, deltas, rebase, prepared), fields(
@@ -370,22 +366,10 @@ where
 		deltas: CowVec<Delta>,
 		rebase: CommitRebase,
 		prepared: Option<Prepared>,
-		source: Option<SourceVersion>,
-		section: OperatorSection,
-		layers: Vec<CommitLayer>,
 	) -> Result<(CreateCommitResult, CowVec<Delta>), ValueError> {
 		let window_size = self.shared.config.get_config_uint8(ConfigKey::OracleWindowSize);
-		self.shared.commit(
-			version,
-			conflicts,
-			deltas,
-			Some(rebase),
-			prepared,
-			source,
-			section,
-			layers,
-			window_size,
-		)
+		let lsn_step = self.shared.config.get_config_uint8(ConfigKey::OracleLsnStep);
+		self.shared.commit(version, conflicts, deltas, Some(rebase), prepared, window_size, lsn_step)
 	}
 	pub(crate) fn bootstrapping_completed(&self) {
 		let mut inner = self.inner.write();
@@ -432,32 +416,17 @@ where
 
 	pub(crate) fn advance_unchecked(
 		&self,
-		version: CommitVersion,
 		mut deltas: CowVec<Delta>,
 		rebase: Option<CommitRebase>,
-		source: Option<SourceVersion>,
-		section: OperatorSection,
-		layers: Vec<CommitLayer>,
 	) -> Result<(CreateCommitResult, CowVec<Delta>), ValueError> {
+		let lsn_step = self.config.get_config_uint8(ConfigKey::OracleLsnStep);
 		let mut inner = self.inner.write();
-		if version < inner.evicted_up_through {
-			return Ok((CreateCommitResult::TooOld, deltas));
-		}
-
 		if let Some(rebase) = rebase {
 			rebase(&mut deltas, self.versions.current()?)?;
 		}
-		let (version, lsn, at) = self.allocate_commit_version(
-			&inner,
-			SpanTiming::current(),
-			&mut deltas,
-			None,
-			source,
-			&section,
-			&layers,
-			false,
-		)?;
-		inner.note_lsn(version, lsn);
+		let (version, lsn, at) =
+			self.allocate_commit_version(&inner, SpanTiming::current(), &mut deltas, None, None, false)?;
+		inner.note_lsn(version, lsn, lsn_step);
 		inner.last_unchecked = version;
 		drop(inner);
 
@@ -469,6 +438,40 @@ where
 			},
 			deltas,
 		))
+	}
+
+	pub(crate) fn commit_deferred_flow(
+		&self,
+		mut deltas: CowVec<Delta>,
+		encoded: Option<Vec<u8>>,
+		source: Option<SourceVersion>,
+	) -> Result<(CommitVersion, Lsn, DateTime, CowVec<Delta>), ValueError> {
+		reifydb_assertions! {
+			assert!(
+				!deltas.iter().any(|delta| matches!(delta, Delta::Set { pre: SetPre::Unknown, .. })),
+				"commit_deferred_flow got a set with an unresolved pre: its old value would be read under the commit lock while every user commit waits"
+			);
+			assert!(
+				encoded.is_some() || self.wal.mode() == WalMode::Off,
+				"commit_deferred_flow got no encoded record while the WAL is on: the record would be encoded under the commit lock while every user commit waits"
+			);
+		}
+		let lsn_step = self.config.get_config_uint8(ConfigKey::OracleLsnStep);
+		let mut inner = self.inner.write();
+		let (version, lsn, at) = self.allocate_commit_version(
+			&inner,
+			SpanTiming::current(),
+			&mut deltas,
+			Some(Prepared {
+				snapshot_keys: Vec::new(),
+				buf: encoded,
+			}),
+			source,
+			true,
+		)?;
+		inner.note_lsn(version, lsn, lsn_step);
+		drop(inner);
+		Ok((version, lsn, at, deltas))
 	}
 }
 
@@ -484,10 +487,8 @@ where
 		deltas: &mut CowVec<Delta>,
 		rebase: Option<CommitRebase>,
 		prepared: Option<Prepared>,
-		source: Option<SourceVersion>,
-		section: OperatorSection,
-		layers: Vec<CommitLayer>,
 		window_size: u64,
+		lsn_step: u64,
 		timing: SpanTiming,
 		evicted: &mut Vec<CommittedWindow>,
 	) -> Result<CreateCommitResult, ValueError> {
@@ -504,9 +505,9 @@ where
 		}
 
 		let fresh = state.last_unchecked <= version;
-		let (commit_version, lsn, at) = self
-			.allocate_commit_version(state, timing, deltas, prepared, source, &section, &layers, fresh)?;
-		state.note_lsn(commit_version, lsn);
+		let (commit_version, lsn, at) =
+			self.allocate_commit_version(state, timing, deltas, prepared, None, fresh)?;
+		state.note_lsn(commit_version, lsn, lsn_step);
 
 		let add_start = timing.mark(&self.clock);
 		state.add_committed_transaction(commit_version, conflicts, window_size);
@@ -608,8 +609,6 @@ where
 		deltas: &mut CowVec<Delta>,
 		prepared: Option<Prepared>,
 		source: Option<SourceVersion>,
-		section: &OperatorSection,
-		layers: &[CommitLayer],
 		fresh: bool,
 	) -> Result<(CommitVersion, Lsn, DateTime), ValueError> {
 		if state.frozen {
@@ -639,16 +638,13 @@ where
 				self.resolve_unknown_pres(deltas, commit_version)?;
 				let persistent: Vec<&Delta> =
 					deltas.iter().filter(|delta| self.store.is_persistent(delta.key())).collect();
-				let layers = persistent_layers(&finalize_layers(layers, deltas), |key| {
-					self.store.is_persistent(key)
-				});
 				let mut encoded = Vec::new();
 				CommitRecord::encode_refs(
 					commit_version,
 					source,
 					&persistent,
-					section,
-					&layers,
+					&OperatorSection::default(),
+					&[],
 					&mut encoded,
 				);
 				check_record_size(&self.wal, &encoded)?;
@@ -765,15 +761,15 @@ where
 	}
 }
 
-pub(crate) fn note_lsn(lsns: &mut VecDeque<(CommitVersion, Lsn)>, version: CommitVersion, lsn: Lsn) {
-	if lsns.back().is_none_or(|(last, _)| last.0 / LSN_STEP < version.0 / LSN_STEP) {
+pub(crate) fn note_lsn(lsns: &mut VecDeque<(CommitVersion, Lsn)>, version: CommitVersion, lsn: Lsn, step: u64) {
+	if lsns.back().is_none_or(|(last, _)| last.0 / step < version.0 / step) {
 		lsns.push_back((version, lsn));
 	}
 }
 
 impl OracleState {
-	fn note_lsn(&mut self, version: CommitVersion, lsn: Lsn) {
-		note_lsn(&mut self.lsns, version, lsn);
+	fn note_lsn(&mut self, version: CommitVersion, lsn: Lsn, step: u64) {
+		note_lsn(&mut self.lsns, version, lsn, step);
 	}
 
 	pub(crate) fn lsn_through(&mut self, version: CommitVersion) -> Option<Lsn> {
@@ -826,7 +822,7 @@ mod tests {
 	};
 
 	use reifydb_codec::row::bytes::EncodedBytes;
-	use reifydb_core::{interface::store::MultiVersionGet, testing::ProfileConfig};
+	use reifydb_core::{default, interface::store::MultiVersionGet, testing::ProfileConfig, wal::WalRecord};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::MockClock};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_value::{
@@ -851,6 +847,10 @@ mod tests {
 				current: Arc::new(AtomicU64::new(start.into().0)),
 			}
 		}
+
+		fn advance_to(&self, version: CommitVersion) {
+			self.current.fetch_max(version.0, Ordering::Relaxed);
+		}
 	}
 
 	impl VersionProvider for MockVersionProvider {
@@ -868,10 +868,6 @@ mod tests {
 
 		fn current(&self) -> Result<CommitVersion, ValueError> {
 			Ok(CommitVersion(self.current.load(Ordering::Relaxed)))
-		}
-
-		fn advance_to(&self, version: CommitVersion) {
-			self.current.fetch_max(version.0, Ordering::Relaxed);
 		}
 	}
 
@@ -924,6 +920,22 @@ mod tests {
 		}
 	}
 
+	struct SmallStepConfig;
+
+	impl GetConfig for SmallStepConfig {
+		fn get_config(&self, key: ConfigKey) -> Value {
+			// the step must be far below the number of commits the test makes
+			match key {
+				ConfigKey::OracleLsnStep => Value::Uint8(8),
+				other => other.default_value(),
+			}
+		}
+
+		fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
+			self.get_config(key)
+		}
+	}
+
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
 		build_oracle(start, Arc::new(ProfileConfig))
 	}
@@ -966,17 +978,7 @@ mod tests {
 		conflicts.mark_write(&key1);
 		conflicts.mark_write(&key2);
 
-		let (result, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				conflicts,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (result, _) = oracle.new_commit(CommitVersion(1), conflicts, no_deltas(), None).unwrap();
 
 		match result {
 			CreateCommitResult::Success {
@@ -1015,17 +1017,7 @@ mod tests {
 			}
 
 			let version_start = CommitVersion(i as u64 * 500 + 1);
-			let (result, _) = oracle
-				.new_commit(
-					version_start,
-					conflicts,
-					no_deltas(),
-					None,
-					None,
-					OperatorSection::default(),
-					Vec::new(),
-				)
-				.unwrap();
+			let (result, _) = oracle.new_commit(version_start, conflicts, no_deltas(), None).unwrap();
 			assert!(matches!(result, CreateCommitResult::Success { .. }));
 		}
 
@@ -1048,17 +1040,7 @@ mod tests {
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&key1);
 
-		let (result1, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				conflicts1,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (result1, _) = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas(), None).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success { .. }));
 
 		let mut conflicts2 = ConflictManager::new();
@@ -1066,17 +1048,7 @@ mod tests {
 		conflicts2.mark_range(range);
 		conflicts2.mark_write(&create_test_key("other_key"));
 
-		let (result2, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				conflicts2,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (result2, _) = oracle.new_commit(CommitVersion(1), conflicts2, no_deltas(), None).unwrap();
 
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
@@ -1092,17 +1064,7 @@ mod tests {
 
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&key_k);
-		let (r1, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				conflicts1,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (r1, _) = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas(), None).unwrap();
 		let commit_v1 = match r1 {
 			CreateCommitResult::Success {
 				version: v,
@@ -1125,17 +1087,7 @@ mod tests {
 		// Read version 510 sits inside T1's window but before T1's commit, so the conflict is real.
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_range(create_test_range("a", "z"));
-		let (r2, _) = oracle
-			.new_commit(
-				CommitVersion(510),
-				conflicts2,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (r2, _) = oracle.new_commit(CommitVersion(510), conflicts2, no_deltas(), None).unwrap();
 
 		assert!(
 			matches!(r2, CreateCommitResult::Conflict(_)),
@@ -1157,17 +1109,7 @@ mod tests {
 
 		let mut conflicts_b = ConflictManager::new();
 		conflicts_b.mark_write(&key_beta);
-		let (r_b, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				conflicts_b,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (r_b, _) = oracle.new_commit(CommitVersion(1), conflicts_b, no_deltas(), None).unwrap();
 		let commit_v_b = match r_b {
 			CreateCommitResult::Success {
 				version: v,
@@ -1182,17 +1124,7 @@ mod tests {
 
 		let mut conflicts_a = ConflictManager::new();
 		conflicts_a.mark_write(&key_alpha);
-		let (r_a, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				conflicts_a,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (r_a, _) = oracle.new_commit(CommitVersion(1), conflicts_a, no_deltas(), None).unwrap();
 		let commit_v_a = match r_a {
 			CreateCommitResult::Success {
 				version: v,
@@ -1221,17 +1153,7 @@ mod tests {
 		let mut conflicts_3 = ConflictManager::new();
 		conflicts_3.mark_write(&key_beta);
 		conflicts_3.mark_range(create_test_range("a", "z"));
-		let (r_3, _) = oracle
-			.new_commit(
-				CommitVersion(100),
-				conflicts_3,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (r_3, _) = oracle.new_commit(CommitVersion(100), conflicts_3, no_deltas(), None).unwrap();
 
 		assert!(
 			matches!(r_3, CreateCommitResult::Conflict(_)),
@@ -1247,17 +1169,7 @@ mod tests {
 
 		let conflicts = ConflictManager::new();
 
-		let (result, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				conflicts,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (result, _) = oracle.new_commit(CommitVersion(1), conflicts, no_deltas(), None).unwrap();
 
 		match result {
 			CreateCommitResult::Success {
@@ -1284,33 +1196,13 @@ mod tests {
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&shared_key);
 
-		let (result1, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				conflicts1,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (result1, _) = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas(), None).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success { .. }));
 
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_write(&shared_key);
 
-		let (result2, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				conflicts2,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (result2, _) = oracle.new_commit(CommitVersion(1), conflicts2, no_deltas(), None).unwrap();
 
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
@@ -1324,33 +1216,13 @@ mod tests {
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&shared_key);
 
-		let (result1, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				conflicts1,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (result1, _) = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas(), None).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success { .. }));
 
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_read(&shared_key);
 
-		let (result2, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				conflicts2,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (result2, _) = oracle.new_commit(CommitVersion(1), conflicts2, no_deltas(), None).unwrap();
 
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
@@ -1376,15 +1248,7 @@ mod tests {
 					conflicts.mark_write(&key);
 
 					let (result, _) = oracle_clone
-						.new_commit(
-							CommitVersion(1),
-							conflicts,
-							no_deltas(),
-							None,
-							None,
-							OperatorSection::default(),
-							Vec::new(),
-						)
+						.new_commit(CommitVersion(1), conflicts, no_deltas(), None)
 						.unwrap();
 
 					match result {
@@ -1458,15 +1322,7 @@ mod tests {
 				conflicts.mark_write(&key);
 
 				let (result, _) = oracle_clone
-					.new_commit(
-						CommitVersion(1),
-						conflicts,
-						no_deltas(),
-						None,
-						None,
-						OperatorSection::default(),
-						Vec::new(),
-					)
+					.new_commit(CommitVersion(1), conflicts, no_deltas(), None)
 					.unwrap();
 
 				if let CreateCommitResult::Success {
@@ -1534,15 +1390,7 @@ mod tests {
 					let mut conflicts = ConflictManager::new();
 					conflicts.mark_write(&key);
 					match oracle
-						.new_commit(
-							CommitVersion(1),
-							conflicts,
-							no_deltas(),
-							None,
-							None,
-							OperatorSection::default(),
-							Vec::new(),
-						)
+						.new_commit(CommitVersion(1), conflicts, no_deltas(), None)
 						.unwrap()
 						.0
 					{
@@ -1587,17 +1435,7 @@ mod tests {
 
 		let mut conflicts = ConflictManager::new();
 		conflicts.mark_write(&create_test_key("pre_stop"));
-		let (result, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				conflicts,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (result, _) = oracle.new_commit(CommitVersion(1), conflicts, no_deltas(), None).unwrap();
 		assert!(matches!(result, CreateCommitResult::Success { .. }));
 
 		oracle.stop();
@@ -1622,19 +1460,7 @@ mod tests {
 			 an empty window for this transaction"
 		);
 
-		let v1 = match oracle
-			.new_commit(
-				CommitVersion(1),
-				cm1,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap()
-			.0
-		{
+		let v1 = match oracle.new_commit(CommitVersion(1), cm1, no_deltas(), None).unwrap().0 {
 			CreateCommitResult::Success {
 				version: v,
 				..
@@ -1647,17 +1473,7 @@ mod tests {
 		let mut cm2 = ConflictManager::new();
 		cm2.mark_read(&key);
 		cm2.mark_write(&key);
-		let (r2, _) = oracle
-			.new_commit(
-				CommitVersion(1),
-				cm2,
-				no_deltas(),
-				None,
-				None,
-				OperatorSection::default(),
-				Vec::new(),
-			)
-			.unwrap();
+		let (r2, _) = oracle.new_commit(CommitVersion(1), cm2, no_deltas(), None).unwrap();
 
 		assert!(
 			matches!(r2, CreateCommitResult::Conflict(_)),
@@ -1678,7 +1494,7 @@ mod tests {
 			lsns: VecDeque::new(),
 		};
 		for (version, lsn) in [(5u64, 1u64), (4096, 7), (4100, 8), (8192, 12)] {
-			state.note_lsn(CommitVersion(version), Lsn::new(lsn));
+			state.note_lsn(CommitVersion(version), Lsn::new(lsn), default::query::ORACLE_LSN_STEP);
 		}
 		assert_eq!(
 			state.lsns.iter().map(|(v, _)| v.0).collect::<Vec<_>>(),
@@ -1695,6 +1511,42 @@ mod tests {
 		assert_eq!(state.lsn_through(CommitVersion(8191)), Some(Lsn::new(7)), "a repeat lookup is stable");
 		assert_eq!(state.lsn_through(CommitVersion(u64::MAX)), Some(Lsn::new(12)));
 		assert_eq!(state.lsns.len(), 1, "every entry before the answer is pruned");
+	}
+
+	#[test]
+	fn a_smaller_step_keeps_one_entry_per_step_and_still_errs_low() {
+		// a note_lsn that ignores its step keeps one entry for all four versions
+		let mut state = OracleState {
+			time_windows: BTreeMap::new(),
+			evicted_up_through: CommitVersion(0),
+			frozen: false,
+			last_unchecked: CommitVersion(0),
+			lsns: VecDeque::new(),
+		};
+		for (version, lsn) in [(5u64, 1u64), (8, 2), (9, 3), (16, 4)] {
+			state.note_lsn(CommitVersion(version), Lsn::new(lsn), 8);
+		}
+		assert_eq!(
+			state.lsns.iter().map(|(v, _)| v.0).collect::<Vec<_>>(),
+			vec![5, 8, 16],
+			"exactly one entry per step of 8, the first commit of each"
+		);
+		assert_eq!(state.lsn_through(CommitVersion(15)), Some(Lsn::new(2)), "the last entry at or below wins");
+	}
+
+	#[test]
+	fn a_commit_notes_its_lsn_at_the_configured_step() {
+		// a commit site that passes the default step keeps one entry for all 17 commits
+		let oracle = build_oracle(0, Arc::new(SmallStepConfig));
+		for _ in 0..17 {
+			oracle.new_commit(CommitVersion(1), ConflictManager::new(), no_deltas(), None).unwrap();
+		}
+		let noted: Vec<u64> = oracle.inner.read().lsns.iter().map(|(version, _)| version.0).collect();
+		assert!(noted.len() >= 2, "17 commits cross at least two steps of 8, got {noted:?}");
+		assert!(
+			noted.windows(2).all(|pair| pair[0] / 8 < pair[1] / 8),
+			"exactly one entry per step of 8, got {noted:?}"
+		);
 	}
 
 	#[test]
@@ -1780,7 +1632,7 @@ mod tests {
 		}]);
 
 		let (result, _) = oracle
-			.advance_unchecked(CommitVersion(0), deltas, None, None, OperatorSection::default(), Vec::new())
+			.advance_unchecked(deltas, None)
 			.expect("a wal off commit must never be rejected for a record the log does not keep");
 		let CreateCommitResult::Success {
 			version,
@@ -1798,5 +1650,161 @@ mod tests {
 			Some(bytes),
 			"the row must be installed at the commit version even though no record was built"
 		);
+	}
+
+	#[test]
+	fn an_unchecked_commit_marks_the_oracle_and_a_flow_commit_does_not() {
+		// a flow commit must not move the mark, otherwise every later checked commit reads its old values again
+		let oracle = Oracle::new(
+			MockVersionProvider::new(0),
+			ActorSystem::testing(Clock::Real).spawner(),
+			MultiStore::testing_memory(),
+			Clock::Mock(MockClock::from_millis(1000)),
+			VersionEpoch::new(),
+			Rng::seeded(42),
+			Arc::new(ProfileConfig),
+			nop_wal(ByteSize::from_bytes(4096)).unwrap(),
+			VecDeque::new(),
+		);
+		let set = |name: &str| {
+			CowVec::new(vec![Delta::Set {
+				key: create_test_key(name),
+				bytes: EncodedBytes(CowVec::new(vec![1])),
+				pre: SetPre::Absent,
+			}])
+		};
+
+		let (result, _) = oracle.advance_unchecked(set("unchecked"), None).expect("the unchecked commit lands");
+		let CreateCommitResult::Success {
+			version: unchecked,
+			..
+		} = result
+		else {
+			panic!("an unchecked commit must succeed");
+		};
+		assert_eq!(
+			oracle.inner.read().last_unchecked,
+			unchecked,
+			"an unchecked commit must mark the oracle, otherwise a checked commit trusts a stale old value"
+		);
+
+		let (flow, _lsn, _at, _deltas) =
+			oracle.commit_deferred_flow(set("flow"), None, None).expect("the flow commit lands");
+		assert!(flow > unchecked, "precondition: the flow commit is the later one");
+		assert_eq!(
+			oracle.inner.read().last_unchecked,
+			unchecked,
+			"a flow commit must leave the mark where the unchecked commit put it"
+		);
+	}
+
+	fn deferred_flow_record(deltas: &CowVec<Delta>) -> Vec<u8> {
+		let refs: Vec<&Delta> = deltas.iter().collect();
+		let mut buf = Vec::new();
+		CommitRecord::encode_refs(
+			CommitVersion(0),
+			SourceVersion(0),
+			&refs,
+			&OperatorSection::default(),
+			&[],
+			&mut buf,
+		);
+		buf
+	}
+
+	#[test]
+	fn a_deferred_flow_commit_older_than_the_evicted_window_still_commits() {
+		// A flow commit has no read set to validate, so a TooOld check would only fail it for nothing.
+		let oracle = create_test_oracle(0);
+		let (seeded, _) = oracle
+			.new_commit(CommitVersion(0), ConflictManager::new(), no_deltas(), None)
+			.expect("the seed commit lands");
+		assert!(matches!(seeded, CreateCommitResult::Success { .. }), "the seed commit must land");
+		let current = oracle.versions.current().expect("the current version is readable");
+		oracle.inner.write().evicted_up_through = CommitVersion(current.0 + 1);
+		let (stale, _) = oracle
+			.new_commit(CommitVersion(0), ConflictManager::new(), no_deltas(), None)
+			.expect("a stale checked commit returns a result");
+		assert!(matches!(stale, CreateCommitResult::TooOld), "precondition: the window below is evicted");
+
+		let deltas = no_deltas();
+		let buf = deferred_flow_record(&deltas);
+		let (version, _lsn, _at, _deltas) =
+			oracle.commit_deferred_flow(deltas, Some(buf), None).expect("the flow commit lands");
+
+		assert_eq!(version, CommitVersion(current.0 + 1), "the flow commit takes the next version");
+	}
+
+	#[test]
+	fn a_deferred_flow_commit_installs_its_stamped_record_without_reading_the_store() {
+		// A record left at version 0 replays every flow commit onto the wrong version after a crash.
+		let oracle = create_test_oracle(0);
+		let key = create_test_key("stored");
+		let old = EncodedBytes(CowVec::new(vec![1u8; 4]));
+		let new = EncodedBytes(CowVec::new(vec![2u8; 4]));
+		oracle.new_commit(
+			CommitVersion(0),
+			ConflictManager::new(),
+			CowVec::new(vec![Delta::Set {
+				key: key.clone(),
+				bytes: old.clone(),
+				pre: SetPre::Absent,
+			}]),
+			None,
+		)
+		.expect("the seed commit lands");
+		let source = SourceVersion(42);
+		let deltas = CowVec::new(vec![Delta::Set {
+			key: key.clone(),
+			bytes: new.clone(),
+			pre: SetPre::Present(old.clone()),
+		}]);
+		let buf = deferred_flow_record(&deltas);
+
+		let before = oracle.inner.read().last_unchecked;
+		let (version, lsn, _at, _deltas) =
+			oracle.commit_deferred_flow(deltas, Some(buf), Some(source)).expect("the flow commit lands");
+
+		let record = oracle
+			.wal
+			.replay(Lsn::FIRST)
+			.expect("the commit log replays from its first record")
+			.map(|replayed| replayed.expect("every appended record decodes"))
+			.find(|replayed| replayed.lsn == lsn)
+			.map(|replayed| replayed.body)
+			.expect("the flow commit must reach the log");
+		let WalRecord::Multi(record) = record else {
+			panic!("a flow commit logs a multi record");
+		};
+		assert_eq!(record.version, version, "the record must carry the commit version, not 0");
+		assert_eq!(record.source, source, "the record must carry the stamped source, not 0");
+		assert_eq!(
+			record.deltas,
+			vec![Delta::Set {
+				key,
+				bytes: new,
+				pre: SetPre::Present(old),
+			}]
+		);
+		assert_eq!(
+			oracle.inner.read().last_unchecked,
+			before,
+			"a flow commit must not mark the oracle, otherwise every later checked commit reads its old values again"
+		);
+	}
+
+	#[cfg(reifydb_assertions)]
+	#[test]
+	#[should_panic(expected = "commit_deferred_flow got a set with an unresolved pre")]
+	fn a_deferred_flow_commit_with_an_unresolved_pre_never_reaches_the_lock() {
+		// An unresolved pre would be read under the commit lock while every user commit waits.
+		let oracle = create_test_oracle(0);
+		let set = |pre| Delta::Set {
+			key: create_test_key("unresolved"),
+			bytes: EncodedBytes(CowVec::new(vec![3u8; 4])),
+			pre,
+		};
+		let buf = deferred_flow_record(&CowVec::new(vec![set(SetPre::Absent)]));
+		let _ = oracle.commit_deferred_flow(CowVec::new(vec![set(SetPre::Unknown)]), Some(buf), None);
 	}
 }

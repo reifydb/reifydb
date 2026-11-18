@@ -317,6 +317,7 @@ impl SliceComputer {
 				written_views,
 				input_markers,
 				layers,
+				owned_queues: Arc::default(),
 			},
 			advance_to,
 			lsn,
@@ -890,10 +891,7 @@ mod integration {
 	};
 	use reifydb_runtime::context::{RuntimeContext, spawner::Spawner, transaction::TransactionContext};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::{
-		commit::{CommitBegin, CommitHandle},
-		transaction::Transaction,
-	};
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
 		byte_size::ByteSize,
 		factory::time::at_millis,
@@ -918,14 +916,12 @@ mod integration {
 
 	fn spawn_committer(engine: &StandardEngine) -> CommitterHandle {
 		let committer = Committer::new(
+			engine.clone(),
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
 		);
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		engine.spawner()
-			.spawn_flow("slice-test-committer", CommitterActor::new(committer, CommitHandle::new(begin)))
+		engine.spawner().spawn_flow("slice-test-committer", CommitterActor::new(committer))
 	}
 
 	fn commit(committer: &CommitterHandle, slice: FlowSlice) -> CommitVersion {
@@ -1805,14 +1801,14 @@ mod integration {
 
 	fn spawn_observed_committer(engine: &StandardEngine) -> (CommitterHandle, FlowMaterialization) {
 		let materialization = FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new());
-		let committer =
-			Committer::new(FlowPositionTracker::new(), materialization.clone(), engine.operator_state());
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let handle = engine.spawner().spawn_flow(
-			"slice-test-observed-committer",
-			CommitterActor::new(committer, CommitHandle::new(begin)),
+		let committer = Committer::new(
+			engine.clone(),
+			FlowPositionTracker::new(),
+			materialization.clone(),
+			engine.operator_state(),
 		);
+		let handle =
+			engine.spawner().spawn_flow("slice-test-observed-committer", CommitterActor::new(committer));
 		(handle, materialization)
 	}
 

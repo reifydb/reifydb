@@ -96,7 +96,7 @@ pub struct CreateDeferredWindowedViewGroupNode {
 
 #[derive(Debug, Clone)]
 pub struct WindowedViewGroupMember {
-	pub namespace: Namespace,
+	pub namespace: Option<Namespace>,
 	pub view: Fragment,
 	pub duration: Duration,
 	pub ttl: Option<Ttl>,

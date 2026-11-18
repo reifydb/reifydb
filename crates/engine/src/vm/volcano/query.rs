@@ -155,9 +155,9 @@ mod tests {
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	#[cfg(reifydb_assertions)]
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_value::{byte_size::ByteSize, error::ValueError};
+	use reifydb_value::byte_size::ByteSize;
 	#[cfg(reifydb_assertions)]
-	use reifydb_value::{params::Params, value::identity::IdentityId};
+	use reifydb_value::{error::ValueError, params::Params, value::identity::IdentityId};
 
 	use super::charge_query_memory_bytes;
 	#[cfg(reifydb_assertions)]

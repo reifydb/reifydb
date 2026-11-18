@@ -37,6 +37,8 @@ use tracing::instrument;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::filter::source::MultiCurrentKeySource;
+#[cfg(feature = "testing")]
+use crate::testing::MultiStoreHooks;
 use crate::{
 	CommitStoreConfig,
 	config::MultiStoreConfig,
@@ -108,6 +110,9 @@ pub struct StandardMultiStoreInner {
 	pub(crate) persistent_absent: AtomicU64,
 
 	pub(crate) filter: Option<ActorRef<FilterMessage>>,
+
+	#[cfg(feature = "testing")]
+	pub(crate) testing_hooks: RwLock<Option<Arc<dyn MultiStoreHooks>>>,
 }
 
 impl StandardMultiStore {
@@ -184,6 +189,8 @@ impl StandardMultiStore {
 			persistent_probes: AtomicU64::new(0),
 			persistent_absent: AtomicU64::new(0),
 			filter,
+			#[cfg(feature = "testing")]
+			testing_hooks: RwLock::new(None),
 		})))
 	}
 
@@ -225,6 +232,16 @@ impl StandardMultiStore {
 
 	pub fn clear_eviction_watermark(&self) {
 		*self.eviction_watermark.write() = None;
+	}
+
+	#[cfg(feature = "testing")]
+	pub fn set_testing_hooks(&self, hooks: Arc<dyn MultiStoreHooks>) {
+		*self.testing_hooks.write() = Some(hooks);
+	}
+
+	#[cfg(feature = "testing")]
+	pub fn clear_testing_hooks(&self) {
+		*self.testing_hooks.write() = None;
 	}
 
 	pub fn commit(&self) -> &CommitStore {

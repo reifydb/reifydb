@@ -263,6 +263,15 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
+	pub fn has_pending_catalog_changes(&self) -> bool {
+		match self {
+			Self::Admin(txn) => txn.changes.has_catalog_changes(),
+			Self::Test(t) => t.inner.changes.has_catalog_changes(),
+			Self::Command(_) => false,
+			Self::Query(_) => false,
+		}
+	}
+
 	pub fn unprocessed_flow_change_objects(&self) -> Vec<ObjectId> {
 		match self {
 			Self::Command(txn) => txn.accumulator.pending_objects(),

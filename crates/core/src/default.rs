@@ -8,6 +8,7 @@ pub mod query {
 
 	pub const ORACLE_WINDOW_SIZE: u64 = 500;
 	pub const ORACLE_WINDOW_SIZE_TESTING: u64 = 16;
+	pub const ORACLE_LSN_STEP: u64 = 4096;
 
 	pub const ROW_BATCH_SIZE: u16 = 128;
 	pub const ROW_BATCH_SIZE_TESTING: u16 = 4;

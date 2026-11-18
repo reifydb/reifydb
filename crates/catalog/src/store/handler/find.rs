@@ -56,6 +56,18 @@ impl CatalogStore {
 
 		Ok(Some(Self::get_handler(rx, id)?))
 	}
+
+	pub(crate) fn find_first_handler_name_in_namespace(
+		rx: &mut Transaction<'_>,
+		namespace: NamespaceId,
+	) -> Result<Option<String>, ValueError> {
+		let mut stream = rx.range(NamespaceHandlerKey::full_scan(namespace), RangeScope::All, 1024)?;
+		let Some(entry) = stream.next() else {
+			return Ok(None);
+		};
+		let multi = entry?;
+		Ok(Some(handler_namespace::get_name(EncodedCatalogRow::view(&multi.bytes)).to_string()))
+	}
 }
 
 #[cfg(test)]

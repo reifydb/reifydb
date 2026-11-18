@@ -88,7 +88,10 @@ fn commit_self_lease_keeps_own_version_leasable_after_cutoff_advances() {
 	let version = txn.commit().unwrap();
 
 	// The GC cutoff advances past our own commit version while its post-commit phase is still open.
-	engine.advance_version_to(CommitVersion(version.0 + 1));
+	let mut bump = engine.begin_command(engine.generate_transaction_id()).unwrap();
+	bump.set(vec![(as_key!("bump"), as_values!("b".to_string()))]).unwrap();
+	bump.commit().unwrap();
+	drop(bump);
 	assert!(
 		engine.query_done_until().0 > version.0,
 		"precondition: query watermark must be advanced past the commit version to exercise the eviction path"
@@ -111,34 +114,39 @@ fn a_carried_lease_chains_the_floor_across_batches() {
 	let engine = test_multi();
 
 	// Batch N leases its floor version while the query watermark is still below it.
+	let carry_at = CommitVersion(engine.query_done_until().0 + 4);
 	let carry = engine
-		.acquire_version_lease(CommitVersion(14090))
+		.acquire_version_lease(carry_at)
 		.expect("leasing at the current head must succeed before the watermark advances");
 
 	// The query watermark then passes both the carried version and the next batch's versions.
-	engine.advance_version_to(CommitVersion(14096));
+	while engine.query_done_until().0 < carry_at.0 + 6 {
+		let mut bump = engine.begin_command(engine.generate_transaction_id()).unwrap();
+		bump.set(vec![(as_key!("bump"), as_values!("b".to_string()))]).unwrap();
+		bump.commit().unwrap();
+	}
 	assert!(
-		engine.query_done_until().0 >= 14096,
+		engine.query_done_until().0 >= carry_at.0 + 6,
 		"precondition: the query watermark must be advanced past the carried lease"
 	);
 
-	// Batch N+1 must lease before the carry is released; the held carry keeps the cutoff at 14090.
+	// Batch N+1 must lease before the carry is released; the held carry keeps the cutoff at the carried version.
 	let next = engine
-		.acquire_version_lease(CommitVersion(14093))
+		.acquire_version_lease(CommitVersion(carry_at.0 + 3))
 		.expect("a version above a still-held carried lease must remain leasable");
-	assert_eq!(next.version(), CommitVersion(14093));
+	assert_eq!(next.version(), CommitVersion(carry_at.0 + 3));
 	drop(carry);
 
 	// The floor is now the new lease, not zero: the carry must not have opened all history.
 	let err = engine
-		.acquire_version_lease(CommitVersion(14092))
+		.acquire_version_lease(CommitVersion(carry_at.0 + 2))
 		.expect_err("a version below the carried lease must not be leasable");
 	assert_eq!(err.0.code, "TXN_012");
 
 	// Breaking the chain snaps the floor back to the query watermark.
 	drop(next);
 	let err = engine
-		.acquire_version_lease(CommitVersion(14093))
+		.acquire_version_lease(CommitVersion(carry_at.0 + 3))
 		.expect_err("with no carried lease, a version below the query watermark must fail loudly");
 	assert_eq!(err.0.code, "TXN_012");
 }

@@ -13,7 +13,12 @@ use reifydb_transaction::{
 use reifydb_value::{error::ValueError, fragment::Fragment, value::sumtype::VariantRef};
 use tracing::instrument;
 
-use crate::{CatalogStore, catalog::Catalog, store::handler::create::HandlerToCreate as StoreHandlerToCreate};
+use crate::{
+	CatalogStore,
+	catalog::{Catalog, name::NameAllowed},
+	error::NameKind,
+	store::handler::create::HandlerToCreate as StoreHandlerToCreate,
+};
 
 #[derive(Debug, Clone)]
 pub struct HandlerToCreate {
@@ -200,6 +205,13 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: HandlerToCreate,
 	) -> Result<Handler, ValueError> {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::Handler,
+			NameAllowed::default(),
+		)?;
 		let store_to_create = StoreHandlerToCreate {
 			name: to_create.name.clone(),
 			namespace: to_create.namespace,

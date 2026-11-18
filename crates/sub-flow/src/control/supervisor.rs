@@ -13,6 +13,7 @@ use std::{
 	},
 };
 
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage},
 	commit::{
@@ -29,7 +30,7 @@ use reifydb_core::{
 			id::{QueueId, ViewId},
 			object::ObjectId,
 			storage::StorageId,
-			view::ViewKind,
+			view::{View, ViewKind},
 		},
 		commit::{CommitEntry, CommitFloor, CommitLog, Loaded},
 		operator::FlowCheckpoint,
@@ -138,6 +139,8 @@ pub enum FlowSupervisorMessage {
 		flows: Vec<FlowId>,
 		reason: String,
 	},
+
+	Stopped,
 }
 
 pub struct FlowSupervisorParams {
@@ -201,6 +204,7 @@ pub struct SupervisorState {
 	analyzer: FlowGraphAnalyzer,
 	flows: BTreeMap<FlowId, FlowActorHandle>,
 	sources: BTreeMap<FlowId, Arc<BTreeSet<ObjectId>>>,
+	owned_queues: BTreeMap<FlowId, Arc<BTreeSet<QueueId>>>,
 	scan_cursor: CommitVersion,
 	scan_lsn: Lsn,
 	scan_lease: Option<VersionLeaseGuard>,
@@ -212,6 +216,7 @@ pub struct SupervisorState {
 	stall_watches: BTreeMap<FlowId, StallWatch>,
 	units: BTreeMap<FlowId, routing::FusedUnit>,
 	joining: bool,
+	stops_in_flight: usize,
 }
 
 enum FlowStart {
@@ -302,6 +307,9 @@ impl FlowSupervisor {
 			if self.is_transactional_flow(&flow) {
 				continue;
 			}
+			let queues =
+				owned_queues_of(&self.engine.catalog(), &mut Transaction::Query(&mut query), &flow);
+			state.owned_queues.insert(flow_id, queues);
 			state.analyzer.add(flow.clone());
 			let checkpoint = stored_checkpoint(&operators, flow_id);
 			to_spawn.push((flow, checkpoint));
@@ -426,7 +434,7 @@ impl FlowSupervisor {
 
 	fn handle_wake(&self, state: &mut SupervisorState, ctx: &Context<FlowSupervisorMessage>) {
 		self.queue_floor.disarm();
-		if state.loading {
+		if state.loading || state.joining || state.stops_in_flight > 0 {
 			return;
 		}
 
@@ -495,7 +503,7 @@ impl FlowSupervisor {
 		let loaded = outcome.unwrap_or_else(|e| {
 			panic!("flow supervisor could not load commits after version {}: {e}", state.scan_cursor.0)
 		});
-		if loaded.advance_to > state.scan_cursor {
+		if !state.joining && state.stops_in_flight == 0 && loaded.advance_to > state.scan_cursor {
 			self.scan(state, ctx, &loaded.entries, loaded.advance_to, (CommitVersion(0), Lsn::new(0)));
 		}
 		let _ = ctx.self_ref().send(FlowSupervisorMessage::Wake);
@@ -574,7 +582,7 @@ impl FlowSupervisor {
 			panic!("flow supervisor cannot store the poison of flows {flows:?}: {e}");
 		}
 		let downstream = downstream_units(state, &flows);
-		self.retire_poisoned(state, &flows);
+		self.retire_poisoned(state, &flows, ctx);
 		for (unit, view) in downstream {
 			let reason = format!("upstream {} is poisoned", self.view_name(view));
 			let sent = ctx.self_ref().send(FlowSupervisorMessage::Poisoned {
@@ -608,7 +616,7 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn retire_poisoned(&self, state: &mut SupervisorState, flows: &[FlowId]) {
+	fn retire_poisoned(&self, state: &mut SupervisorState, flows: &[FlowId], ctx: &Context<FlowSupervisorMessage>) {
 		let Some(&head) = flows.first() else {
 			return;
 		};
@@ -641,11 +649,18 @@ impl FlowSupervisor {
 				}
 			}
 		};
+		self.engine.flow_writers().unregister_flow(head);
 		match state.flows.remove(&head) {
 			Some(handle) => {
+				state.stops_in_flight += 1;
+				let self_ref = ctx.self_ref().clone();
+				let reply = Box::new(move || {
+					drop_state();
+					let _ = self_ref.send(FlowSupervisorMessage::Stopped);
+				});
 				let sent = handle.actor_ref().send(FlowActorMessage::Stop {
 					delete_checkpoint: true,
-					reply: Box::new(drop_state),
+					reply,
 				});
 				if let Err(SendError::Closed(unsent) | SendError::Full(unsent)) = sent {
 					for flow_id in flows {
@@ -680,6 +695,7 @@ impl FlowSupervisor {
 		for flow_id in flows {
 			state.start_lsns.remove(flow_id);
 			state.sources.remove(flow_id);
+			state.owned_queues.remove(flow_id);
 			state.stall_watches.remove(flow_id);
 			self.health.clear(*flow_id);
 			state.analyzer.remove(*flow_id);
@@ -758,9 +774,11 @@ impl FlowSupervisor {
 		}
 		state.units.retain(|head, _| !deleted.contains(head));
 		for (head, dropped) in &reforms {
+			self.engine.flow_writers().unregister_flow(*head);
 			let Some(handle) = state.flows.remove(head) else {
 				continue;
 			};
+			state.stops_in_flight += 1;
 			let self_ref = ctx.self_ref().clone();
 			let (head, dropped) = (*head, dropped.clone());
 			let stopped = gate.hold();
@@ -770,6 +788,7 @@ impl FlowSupervisor {
 					head,
 					dropped,
 				});
+				let _ = self_ref.send(FlowSupervisorMessage::Stopped);
 			});
 			if handle
 				.actor_ref()
@@ -787,13 +806,26 @@ impl FlowSupervisor {
 		for flow_id in &deleted {
 			if reformed.contains(flow_id) {
 				state.sources.remove(flow_id);
+				state.owned_queues.remove(flow_id);
 				state.stall_watches.remove(flow_id);
 				self.health.clear(*flow_id);
 				state.analyzer.remove(*flow_id);
 				lineage_dirty = true;
 				continue;
 			}
-			let retired = match retire_flow(&operators, &mut state.flows, *flow_id, gate.hold()) {
+			let stopped = gate.hold();
+			let reply: Box<dyn FnOnce() + Send> = if state.flows.contains_key(flow_id) {
+				state.stops_in_flight += 1;
+				let self_ref = ctx.self_ref().clone();
+				Box::new(move || {
+					stopped();
+					let _ = self_ref.send(FlowSupervisorMessage::Stopped);
+				})
+			} else {
+				stopped
+			};
+			self.engine.flow_writers().unregister_flow(*flow_id);
+			let retired = match retire_flow(&operators, &mut state.flows, *flow_id, reply) {
 				Ok(retired) => retired,
 				Err(e) => panic!("flow {} checkpoint removal failed: {e}", flow_id.0),
 			};
@@ -802,6 +834,7 @@ impl FlowSupervisor {
 			}
 			state.start_lsns.remove(flow_id);
 			state.sources.remove(flow_id);
+			state.owned_queues.remove(flow_id);
 			state.stall_watches.remove(flow_id);
 			self.health.clear(*flow_id);
 			state.analyzer.remove(*flow_id);
@@ -821,6 +854,17 @@ impl FlowSupervisor {
 			if self.is_transactional_flow(&flow) {
 				continue;
 			}
+			let mut query = match self.engine.begin_query_at_version(&lease, IdentityId::system()) {
+				Ok(q) => q,
+				Err(e) => panic!(
+					"flow supervisor cannot open create version {} of flow {}: {e}",
+					version.0, flow_id.0
+				),
+			};
+			let queues =
+				owned_queues_of(&self.engine.catalog(), &mut Transaction::Query(&mut query), &flow);
+			drop(query);
+			state.owned_queues.insert(flow_id, queues);
 			state.analyzer.add(flow.clone());
 			lineage_dirty = true;
 			to_spawn.push((flow, version, lsn, lease));
@@ -904,6 +948,16 @@ impl FlowSupervisor {
 		self.respawn(state, head, ctx);
 		state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
 		debug!(flow_id = head.0, "re-formed a fused unit after a member was dropped");
+	}
+
+	fn handle_stopped(&self, state: &mut SupervisorState, ctx: &Context<FlowSupervisorMessage>) {
+		if state.stops_in_flight == 0 {
+			panic!("flow supervisor got a stop reply while it counts no stop in flight");
+		}
+		state.stops_in_flight -= 1;
+		if state.stops_in_flight == 0 {
+			let _ = ctx.self_ref().send(FlowSupervisorMessage::Wake);
+		}
 	}
 
 	fn handle_reap(&self, dropped: Vec<DroppedView>) {
@@ -1013,6 +1067,7 @@ impl FlowSupervisor {
 		let flows: Vec<FlowId> = once(head).chain(joiners.iter().map(|(member, _)| *member)).collect();
 		let left = Arc::new(AtomicUsize::new(flows.len()));
 		for flow_id in flows {
+			self.engine.flow_writers().unregister_flow(flow_id);
 			let handle = state.flows.remove(&flow_id).expect("a flow about to join is running");
 			let left = left.clone();
 			let self_ref = ctx.self_ref().clone();
@@ -1046,8 +1101,12 @@ impl FlowSupervisor {
 		ctx: &Context<FlowSupervisorMessage>,
 	) {
 		state.joining = false;
+		let _ = ctx.self_ref().send(FlowSupervisorMessage::Wake);
 		let operators = self.engine.operator_state();
-		let known = |flow_id: FlowId| state.analyzer.flows().iter().any(|flow| flow.id == flow_id);
+		let known = |flow_id: FlowId| {
+			self.engine.catalog().cache().find_flow(flow_id).is_some()
+				&& state.analyzer.flows().iter().any(|flow| flow.id == flow_id)
+		};
 		let fused = known(head)
 			&& stored_checkpoint(&operators, head).is_some_and(|head_at| {
 				joiners.iter().all(|(member, _)| {
@@ -1080,6 +1139,9 @@ impl FlowSupervisor {
 	}
 
 	fn respawn(&self, state: &mut SupervisorState, flow_id: FlowId, ctx: &Context<FlowSupervisorMessage>) {
+		if self.engine.catalog().cache().find_flow(flow_id).is_none() {
+			return;
+		}
 		let Some(flow) = state.analyzer.flows().iter().find(|flow| flow.id == flow_id).cloned() else {
 			return;
 		};
@@ -1089,6 +1151,9 @@ impl FlowSupervisor {
 			.map(|unit| {
 				unit.members
 					.iter()
+					.filter(|(member, _)| {
+						self.engine.catalog().cache().find_flow(*member).is_some()
+					})
 					.filter_map(|(member, view)| {
 						state.analyzer
 							.flows()
@@ -1309,6 +1374,9 @@ impl FlowSupervisor {
 			);
 		}
 		let member_ids: Vec<FlowId> = members.iter().map(|(member, _)| member.id).collect();
+		let queues = queues_at_spawn(&state.owned_queues, flow_id, &member_ids);
+		let sink_views: Vec<ViewId> =
+			flow.sink_views().chain(members.iter().flat_map(|(member, _)| member.sink_views())).collect();
 		let name = match members.is_empty() {
 			true => format!("flow-{}", flow_id.0),
 			false => format!("unit-{}", flow_id.0),
@@ -1350,7 +1418,8 @@ impl FlowSupervisor {
 				FlowActor::backfilling(params, (version, lease, pin))
 			}
 		}
-		.with_markers(self.markers.clone());
+		.with_markers(self.markers.clone())
+		.with_owned_queues(queues);
 		let pending = actor.wake_pending();
 		let handle = self.spawner.spawn_flow(&name, actor);
 		let waker = FlowWaker::new(handle.actor_ref().clone(), pending, self.clock.clone())
@@ -1359,6 +1428,9 @@ impl FlowSupervisor {
 			self.flow_tracker.set_waker(member, waker.clone());
 		}
 		self.flow_tracker.set_waker(flow_id, waker);
+		for view in sink_views {
+			self.engine.flow_writers().register(view, flow_id, handle.actor_ref().clone());
+		}
 		state.flows.insert(flow_id, handle);
 	}
 
@@ -1442,6 +1514,39 @@ fn retire_flow(
 		}
 	}
 	Ok(true)
+}
+
+fn owned_queues_of(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &FlowDag) -> Arc<BTreeSet<QueueId>> {
+	let mut queues = BTreeSet::new();
+	for view in flow.sink_views() {
+		match catalog.find_view(txn, view) {
+			Ok(Some(View::Queue(q))) => {
+				queues.insert(q.queue);
+			}
+			Ok(Some(_)) => {}
+			Ok(None) => panic!(
+				"flow {} cannot resolve its sink view {} to find the queue it owns",
+				flow.id.0, view.0
+			),
+			Err(e) => panic!("flow {} cannot read its sink view {}: {e}", flow.id.0, view.0),
+		}
+	}
+	Arc::new(queues)
+}
+
+fn queues_at_spawn(
+	owned: &BTreeMap<FlowId, Arc<BTreeSet<QueueId>>>,
+	flow_id: FlowId,
+	members: &[FlowId],
+) -> Arc<BTreeSet<QueueId>> {
+	let mut queues = BTreeSet::new();
+	for id in once(&flow_id).chain(members) {
+		let Some(set) = owned.get(id) else {
+			panic!("flow {} has no resolved queue set at spawn", id.0);
+		};
+		queues.extend(set.iter().copied());
+	}
+	Arc::new(queues)
 }
 
 fn wake_sets(
@@ -1639,6 +1744,7 @@ impl Actor for FlowSupervisor {
 			analyzer: FlowGraphAnalyzer::new(),
 			flows: BTreeMap::new(),
 			sources: BTreeMap::new(),
+			owned_queues: BTreeMap::new(),
 			scan_cursor: CommitVersion(0),
 			scan_lsn: Lsn::new(0),
 			scan_lease: None,
@@ -1650,6 +1756,7 @@ impl Actor for FlowSupervisor {
 			stall_watches: BTreeMap::new(),
 			units: BTreeMap::new(),
 			joining: false,
+			stops_in_flight: 0,
 		}
 	}
 
@@ -1682,6 +1789,7 @@ impl Actor for FlowSupervisor {
 				flows,
 				reason,
 			} => self.handle_poisoned(state, flows, reason, ctx),
+			FlowSupervisorMessage::Stopped => self.handle_stopped(state, ctx),
 		}
 		Directive::Continue
 	}
@@ -1773,11 +1881,16 @@ mod tests {
 	use reifydb_core::{
 		actors::flow::FlowActorMessage,
 		common::CommitVersion,
+		flow::{
+			dag::FlowDag,
+			operator::{FlowNode, OperatorDef},
+		},
 		interface::{
 			catalog::{
-				flow::FlowId,
-				id::{TableId, ViewId},
+				flow::{FlowId, OperatorId},
+				id::{QueueId, TableId, ViewId},
 				object::ObjectId,
+				view::View,
 			},
 			operator::FlowCheckpoint,
 		},
@@ -1793,13 +1906,15 @@ mod tests {
 		sync::waiter::WaiterHandle,
 	};
 	use reifydb_store_operator::store::OperatorStore;
-	use reifydb_value::value::duration::Duration;
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::value::{duration::Duration, identity::IdentityId};
 	use reifydb_wal::lsn::Lsn;
 	use rustc_hash::{FxHashMap, FxHashSet};
 
 	use super::{
-		FLOOR_INTERLOCK, flow_lsn_floor, reap_orphan_checkpoints, retire_flow, stored_checkpoint, wake_sets,
-		wake_targets,
+		FLOOR_INTERLOCK, flow_lsn_floor, owned_queues_of, queues_at_spawn, reap_orphan_checkpoints,
+		retire_flow, stored_checkpoint, wake_sets, wake_targets,
 	};
 	use crate::progress::tracker::FlowPositionTracker;
 
@@ -2059,5 +2174,100 @@ mod tests {
 			wake_targets(&sets, &BTreeSet::from([ObjectId::Table(TableId(99))])).is_empty(),
 			"an input no flow reads must wake nobody, or every round wakes flows with nothing to do"
 		);
+	}
+
+	fn queue_view_engine() -> (TestEngine, ViewId, QueueId) {
+		let te = TestEngine::new();
+		te.admin("CREATE NAMESPACE test");
+		te.admin("CREATE TABLE test::src { id: int4 } WITH { time: processing }");
+		te.admin("CREATE DEFERRED QUEUE VIEW test::q { id: int4 } WITH { fifo: {} } AS { from test::src }");
+		let catalog = te.inner().catalog();
+		let mut query = te.inner().begin_query(IdentityId::system()).unwrap();
+		let mut txn = Transaction::Query(&mut query);
+		let namespace = catalog.find_namespace_by_name(&mut txn, "test").unwrap().unwrap();
+		let Some(View::Queue(view)) = catalog.find_view_by_name(&mut txn, namespace.id(), "q").unwrap() else {
+			panic!("precondition: test::q must be a queue view");
+		};
+		(te, view.id, view.queue)
+	}
+
+	fn sink_only_flow(sink: OperatorDef) -> FlowDag {
+		let mut builder = FlowDag::builder(FlowId(1));
+		builder.add_node(FlowNode::new(OperatorId(1), sink));
+		builder.build()
+	}
+
+	#[test]
+	fn the_owned_queue_of_a_queue_view_is_read_at_the_version_its_flow_was_created() {
+		// the lookup must run at the pinned version, otherwise a view dropped since then stops the supervisor
+		let (te, view, queue) = queue_view_engine();
+		let engine = te.inner().clone();
+		let lease = engine
+			.acquire_version_lease(engine.current_version().unwrap())
+			.expect("leasing at the current head must succeed");
+		te.admin("DROP VIEW test::q");
+		assert!(engine.catalog().cache().find_view(view).is_none(), "precondition: the view is gone at latest");
+
+		let flow = sink_only_flow(OperatorDef::SinkQueueView {
+			view,
+		});
+		let mut query = engine.begin_query_at_version(&lease, IdentityId::system()).unwrap();
+		let owned = owned_queues_of(&engine.catalog(), &mut Transaction::Query(&mut query), &flow);
+
+		assert_eq!(
+			*owned,
+			BTreeSet::from([queue]),
+			"the flow owns the queue its view had at the pinned version"
+		);
+	}
+
+	#[test]
+	fn a_flow_with_no_queue_view_owns_no_queue() {
+		// only a queue view hands over a queue, otherwise a table view flow could write a queue it does not own
+		let (te, _view, _queue) = queue_view_engine();
+		te.admin("CREATE DEFERRED VIEW test::v { id: int4 } AS { from test::src }");
+		let engine = te.inner().clone();
+		let table_view = {
+			let catalog = engine.catalog();
+			let mut query = engine.begin_query(IdentityId::system()).unwrap();
+			let mut txn = Transaction::Query(&mut query);
+			let namespace = catalog.find_namespace_by_name(&mut txn, "test").unwrap().unwrap();
+			catalog.find_view_by_name(&mut txn, namespace.id(), "v").unwrap().expect("test::v exists").id()
+		};
+
+		let flow = sink_only_flow(OperatorDef::SinkTableView {
+			view: table_view,
+		});
+		let mut query = engine.begin_query(IdentityId::system()).unwrap();
+		let owned = owned_queues_of(&engine.catalog(), &mut Transaction::Query(&mut query), &flow);
+
+		assert!(owned.is_empty(), "a table view has no queue, even while a queue view exists next to it");
+	}
+
+	#[test]
+	fn a_unit_spawns_with_the_queues_of_its_head_and_of_every_member() {
+		// a head-only read loses a member's queue, a whole-map read lets a unit write another flow's queue
+		let owned = BTreeMap::from([
+			(FlowId(1), Arc::new(BTreeSet::from([QueueId(7)]))),
+			(FlowId(2), Arc::new(BTreeSet::from([QueueId(8)]))),
+			(FlowId(3), Arc::new(BTreeSet::from([QueueId(9)]))),
+		]);
+
+		let queues = queues_at_spawn(&owned, FlowId(1), &[FlowId(2)]);
+
+		assert_eq!(
+			*queues,
+			BTreeSet::from([QueueId(7), QueueId(8)]),
+			"exactly the head's and the member's queues"
+		);
+	}
+
+	#[test]
+	#[should_panic(expected = "flow 2 has no resolved queue set at spawn")]
+	fn a_flow_with_no_kept_queue_set_stops_the_spawn() {
+		// a missing entry read as owning nothing would hide a fill or remove at the wrong place
+		let owned = BTreeMap::from([(FlowId(1), Arc::new(BTreeSet::from([QueueId(7)])))]);
+
+		queues_at_spawn(&owned, FlowId(1), &[FlowId(2)]);
 	}
 }

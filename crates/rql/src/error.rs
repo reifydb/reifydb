@@ -130,6 +130,14 @@ pub enum RqlError {
 		fragment: Fragment,
 	},
 
+	#[error("view `{namespace}::{view}` is written only by its flow: {operation} is not allowed")]
+	ViewNotWritable {
+		namespace: String,
+		view: String,
+		operation: &'static str,
+		fragment: Fragment,
+	},
+
 	#[error("Positional INSERT expects {expected} values, got {actual}")]
 	InsertPositionalWrongLength {
 		fragment: Fragment,
@@ -518,6 +526,24 @@ impl IntoDiagnostic for RqlError {
 					"Items leave a queue by being acknowledged or by retention, not by being edited"
 						.to_string(),
 				),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::ViewNotWritable {
+				namespace,
+				view,
+				operation,
+				fragment,
+			} => Diagnostic {
+				code: "VIEW_001".to_string(),
+				rql: None,
+				message: format!("view `{namespace}::{view}` is written only by its flow: {operation} is not allowed"),
+				column: None,
+				fragment,
+				label: Some("a view is written only by its flow".to_string()),
+				help: Some("write to the source the view reads instead".to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

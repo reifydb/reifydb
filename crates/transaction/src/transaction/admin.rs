@@ -7,7 +7,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::SetPre,
-	event::EventBus,
+	event::{EventBus, catalog::CatalogChangedEvent},
 	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
@@ -273,9 +273,23 @@ impl AdminTransaction {
 	) -> Result<CommitVersion, ValueError> {
 		let id = multi.id();
 		let pre_publish = &self.interceptors.pre_publish;
+		let event_bus = &self.event_bus;
+		let catalog_changed = changes.has_catalog_changes();
 		let version = multi.commit_with(|version| {
 			if let Err(err) = pre_publish.execute(PrePublishContext::new(id, version, &changes)) {
 				panic!("catalog cache fill for committed version {} failed: {}", version.0, err);
+			}
+			if version.0 == 0 {
+				reifydb_assertions! {
+					assert!(
+						!catalog_changed,
+						"an admin transaction with tracked catalog changes reached the pre-publish \
+						 step with commit version 0; version 0 means nothing was written, so the \
+						 catalog change would never reach a reader or flush the plan cache"
+					);
+				}
+			} else if catalog_changed {
+				event_bus.emit_inline(CatalogChangedEvent::new(version));
 			}
 		})?;
 		let _self_lease = multi.take_self_lease();

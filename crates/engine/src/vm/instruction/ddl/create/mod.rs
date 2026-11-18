@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::{
-	catalog::{Catalog, flow::FlowToCreate, view::ViewColumnToCreate},
+	catalog::{Catalog, flow::FlowToCreate, name::NameAllowed, view::ViewColumnToCreate},
 	store::view::create::ViewStorage,
 	vtable::system::operator_libary::OperatorLibrary,
 };
@@ -394,6 +394,14 @@ pub(crate) fn create_deferred_view_flow(
 		FlowToCreate {
 			name: Fragment::internal(view.name()),
 			namespace: view.namespace(),
+			allowed: NameAllowed {
+				view: Some(view.id()),
+				queue: match view {
+					View::Queue(q) => Some(q.queue),
+					_ => None,
+				},
+				namespace: None,
+			},
 		},
 		dag,
 	)?;
@@ -515,6 +523,10 @@ pub(crate) fn create_transactional_view_flow(
 		FlowToCreate {
 			name: Fragment::internal(view.name()),
 			namespace: view.namespace(),
+			allowed: NameAllowed {
+				view: Some(view.id()),
+				..NameAllowed::default()
+			},
 		},
 		dag,
 	)?;

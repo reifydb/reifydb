@@ -19,7 +19,6 @@ use reifydb_core::{
 	key::{any::TaggedKey, queue::QueueKey},
 	return_internal_error,
 };
-#[cfg(test)]
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow_async::transaction::{ViewLayers, substrate::operator_section};
 use reifydb_runtime::actor::{
@@ -30,8 +29,7 @@ use reifydb_runtime::actor::{
 use reifydb_store_operator::{store::OperatorStore, types::classify_slice};
 use reifydb_transaction::{
 	change::{QueueRowInsertion, RowChange},
-	commit::{CommitApply, CommitCompletion, CommitHandle, CommitSubmission, Committed},
-	transaction::command::CommandTransaction,
+	commit::{Committed, DeferredFlowCommit},
 };
 #[cfg(test)]
 use reifydb_value::value::identity::IdentityId;
@@ -62,6 +60,7 @@ pub enum CommitterMessage {
 		members: Vec<FlowId>,
 		source: SourceVersion,
 		pending: Pending,
+		owned_queues: Arc<BTreeSet<QueueId>>,
 		reply: TickCommitReply,
 	},
 
@@ -70,7 +69,6 @@ pub enum CommitterMessage {
 
 pub struct CommitterActor {
 	committer: Committer,
-	commit: CommitHandle,
 	name: &'static str,
 }
 
@@ -80,10 +78,9 @@ pub struct CommitterState {
 }
 
 impl CommitterActor {
-	pub fn new(committer: Committer, commit: CommitHandle) -> Self {
+	pub fn new(committer: Committer) -> Self {
 		Self {
 			committer,
-			commit,
 			name: "flow-committer",
 		}
 	}
@@ -129,7 +126,6 @@ impl CommitterActor {
 			let (slices, replies): (Vec<FlowSlice>, Vec<SliceCommitReply>) = group.into_iter().unzip();
 			self.committer.commit_slices(
 				self.name,
-				&self.commit,
 				Arc::new(slices),
 				replies.into_iter().enumerate().collect(),
 			);
@@ -143,6 +139,7 @@ impl CommitterActor {
 		members: Vec<FlowId>,
 		source: SourceVersion,
 		pending: Pending,
+		owned_queues: Arc<BTreeSet<QueueId>>,
 		reply: TickCommitReply,
 	) {
 		let (operator, sizes) = match operator_section(&self.committer.operators, &pending, &[], &[]) {
@@ -150,35 +147,22 @@ impl CommitterActor {
 			Err(e) => return (reply)(Err(e)),
 		};
 
-		let apply_committer = self.committer.clone();
-		let apply_operator = operator.clone();
-		let apply: CommitApply = Box::new(move |transaction| {
-			apply_committer.apply_tick(transaction, &pending, source, apply_operator)
-		});
-
 		let guard = self.committer.operators.begin_commit();
-		let completion_committer = self.committer.clone();
-		let completion: CommitCompletion = Box::new(move |result| {
-			match result {
-				Ok(committed) => {
-					completion_committer.apply_operator_slice(&operator, &sizes, committed);
-					let version = committed.version;
-					completion_committer.materialization.record_output(version);
-					completion_committer.flow_tracker.record_commit(flow_id, version);
-					for member in &members {
-						completion_committer.flow_tracker.record_commit(*member, version);
-					}
-					(reply)(Ok(()));
+		let result = self.committer.commit_tick(&pending, source, operator.clone(), &owned_queues);
+		match result {
+			Ok(committed) => {
+				self.committer.apply_operator_slice(&operator, &sizes, committed);
+				let version = committed.version;
+				self.committer.materialization.record_output(version);
+				self.committer.flow_tracker.record_commit(flow_id, version);
+				for member in &members {
+					self.committer.flow_tracker.record_commit(*member, version);
 				}
-				Err(e) => (reply)(Err(e)),
+				(reply)(Ok(()));
 			}
-			drop(guard);
-		});
-
-		self.commit.submit(CommitSubmission {
-			apply,
-			completion,
-		});
+			Err(e) => (reply)(Err(e)),
+		}
+		drop(guard);
 	}
 }
 
@@ -204,7 +188,6 @@ impl Actor for CommitterActor {
 					self.flush(state);
 					self.committer.commit_slices(
 						self.name,
-						&self.commit,
 						Arc::new(vec![slice]),
 						vec![(0, reply)],
 					);
@@ -215,10 +198,11 @@ impl Actor for CommitterActor {
 				members,
 				source,
 				pending,
+				owned_queues,
 				reply,
 			} => {
 				self.flush(state);
-				self.submit_tick(flow_id, members, source, pending, reply)
+				self.submit_tick(flow_id, members, source, pending, owned_queues, reply)
 			}
 			CommitterMessage::Flush => {
 				state.flush_queued = false;
@@ -249,6 +233,8 @@ pub struct FlowSlice {
 	pub input_markers: Option<InputMarkers>,
 
 	pub layers: Vec<(SourceVersion, Pending)>,
+
+	pub owned_queues: Arc<BTreeSet<QueueId>>,
 }
 
 impl FlowSlice {
@@ -262,6 +248,7 @@ impl FlowSlice {
 			written_views: Vec::new(),
 			input_markers: None,
 			layers: Vec::new(),
+			owned_queues: Arc::default(),
 		}
 	}
 
@@ -276,6 +263,7 @@ pub(crate) fn produced_output(pending: &Pending, emitted: bool) -> bool {
 
 #[derive(Clone)]
 pub struct Committer {
+	engine: StandardEngine,
 	flow_tracker: FlowPositionTracker,
 	materialization: FlowMaterialization,
 	operators: OperatorStore,
@@ -284,11 +272,13 @@ pub struct Committer {
 
 impl Committer {
 	pub fn new(
+		engine: StandardEngine,
 		flow_tracker: FlowPositionTracker,
 		materialization: FlowMaterialization,
 		operators: OperatorStore,
 	) -> Self {
 		Self {
+			engine,
 			flow_tracker,
 			materialization,
 			operators,
@@ -308,28 +298,20 @@ impl Committer {
 	fn commit_slices(
 		&self,
 		name: &'static str,
-		commit: &CommitHandle,
 		slices: Arc<Vec<FlowSlice>>,
 		members: Vec<(usize, SliceCommitReply)>,
 	) {
-		self.submit_slices(name, commit, slices, members)
+		self.submit_slices(name, slices, members)
 	}
 
 	#[instrument(name = "flow::committer::retry_slice", level = "debug", skip_all, fields(committer = name))]
-	fn retry_slice(
-		&self,
-		name: &'static str,
-		commit: &CommitHandle,
-		slices: Arc<Vec<FlowSlice>>,
-		member: (usize, SliceCommitReply),
-	) {
-		self.submit_slices(name, commit, slices, vec![member])
+	fn retry_slice(&self, name: &'static str, slices: Arc<Vec<FlowSlice>>, member: (usize, SliceCommitReply)) {
+		self.submit_slices(name, slices, vec![member])
 	}
 
 	fn submit_slices(
 		&self,
 		name: &'static str,
-		commit: &CommitHandle,
 		slices: Arc<Vec<FlowSlice>>,
 		members: Vec<(usize, SliceCommitReply)>,
 	) {
@@ -352,77 +334,75 @@ impl Committer {
 		let sections: Vec<(usize, OperatorSlice)> =
 			sized.iter().map(|(index, _, operator, _)| (*index, operator.clone())).collect();
 
-		let apply_committer = self.clone();
-		let apply_slices = Arc::clone(&slices);
-		let apply: CommitApply = Box::new(move |transaction| {
-			for (index, operator) in sections {
-				apply_committer.apply_slice(transaction, &apply_slices[index], operator)?;
-			}
-			Ok(())
-		});
-
 		let guard = self.operators.begin_commit();
-		let completion_committer = self.clone();
-		let retry_commit = commit.clone();
-		let completion: CommitCompletion = Box::new(move |result| {
-			match result {
-				Ok(committed) => {
-					for (index, reply, operator, sizes) in sized {
-						(reply)(Ok(completion_committer.finish_slice(
-							&slices[index],
-							&operator,
-							&sizes,
-							committed,
-						)));
-					}
-					release_slices(slices);
+		let result = self.commit_group(&slices, sections);
+		match result {
+			Ok(committed) => {
+				for (index, reply, operator, sizes) in sized {
+					(reply)(Ok(self.finish_slice(&slices[index], &operator, &sizes, committed)));
 				}
-				Err(e) => match <[SizedSlice; 1]>::try_from(sized) {
-					Ok([(_, reply, _, _)]) => (reply)(Err(e)),
-					Err(sized) => {
-						for (index, reply, _, _) in sized {
-							completion_committer.retry_slice(
-								name,
-								&retry_commit,
-								Arc::clone(&slices),
-								(index, reply),
-							);
-						}
-					}
-				},
+				release_slices(slices);
 			}
-			drop(guard);
-		});
+			Err(e) => match <[SizedSlice; 1]>::try_from(sized) {
+				Ok([(_, reply, _, _)]) => (reply)(Err(e)),
+				Err(sized) => {
+					for (index, reply, _, _) in sized {
+						self.retry_slice(name, Arc::clone(&slices), (index, reply));
+					}
+				}
+			},
+		}
+		drop(guard);
+	}
 
-		commit.submit(CommitSubmission {
-			apply,
-			completion,
-		});
+	fn commit_group(
+		&self,
+		slices: &[FlowSlice],
+		sections: Vec<(usize, OperatorSlice)>,
+	) -> Result<Committed, ValueError> {
+		let mut commit = self.engine.begin_deferred_flow_commit()?;
+		for (index, operator) in sections {
+			self.apply_slice(&mut commit, &slices[index], operator)?;
+		}
+		commit.commit()
+	}
+
+	fn commit_tick(
+		&self,
+		pending: &Pending,
+		source: SourceVersion,
+		operator: OperatorSlice,
+		owned_queues: &BTreeSet<QueueId>,
+	) -> Result<Committed, ValueError> {
+		let mut commit = self.engine.begin_deferred_flow_commit()?;
+		self.apply_tick(&mut commit, pending, source, operator, owned_queues)?;
+		commit.commit()
 	}
 
 	#[instrument(name = "flow::committer::apply_slice", level = "debug", skip_all)]
 	fn apply_slice(
 		&self,
-		transaction: &mut CommandTransaction,
+		commit: &mut DeferredFlowCommit,
 		slice: &FlowSlice,
 		operator: OperatorSlice,
 	) -> Result<(), ValueError> {
+		commit.own_queues(slice.owned_queues.iter().copied());
 		self.operators.check_checkpoints(&operator.checkpoints)?;
-		push_if_not_empty(transaction, operator)?;
+		push_if_not_empty(commit, operator);
 		if slice.layers.len() < 2 {
 			if let Some(source) = slice.source {
-				transaction.begin_layer(source)?;
+				commit.begin_layer(source);
 			}
-			apply_pending_writes(transaction, &slice.combined)?;
+			apply_pending_writes(commit, &slice.combined)?;
 		} else {
 			for (source, layer) in &slice.layers {
-				transaction.begin_layer(*source)?;
-				apply_pending_writes(transaction, layer)?;
+				commit.begin_layer(*source);
+				apply_pending_writes(commit, layer)?;
 			}
 		}
 		if let Some(input) = &slice.input_markers {
 			for written in &slice.written_views {
-				transaction.attach_view_markers(written.view, input.markers())?;
+				commit.attach_view_markers(written.view, input.markers())?;
 			}
 		}
 		Ok(())
@@ -527,14 +507,16 @@ impl Committer {
 	#[instrument(name = "flow::committer::apply_tick", level = "debug", skip_all)]
 	fn apply_tick(
 		&self,
-		transaction: &mut CommandTransaction,
+		commit: &mut DeferredFlowCommit,
 		pending: &Pending,
 		source: SourceVersion,
 		operator: OperatorSlice,
+		owned_queues: &BTreeSet<QueueId>,
 	) -> Result<(), ValueError> {
-		transaction.stamp_source(source)?;
-		push_if_not_empty(transaction, operator)?;
-		apply_pending_writes(transaction, pending)?;
+		commit.own_queues(owned_queues.iter().copied());
+		commit.stamp_source(source);
+		push_if_not_empty(commit, operator);
+		apply_pending_writes(commit, pending)?;
 
 		Ok(())
 	}
@@ -542,11 +524,11 @@ impl Committer {
 
 type SizedSlice = (usize, SliceCommitReply, OperatorSlice, Vec<Option<ByteSize>>);
 
-fn push_if_not_empty(transaction: &mut CommandTransaction, operator: OperatorSlice) -> Result<(), ValueError> {
+fn push_if_not_empty(commit: &mut DeferredFlowCommit, operator: OperatorSlice) {
 	if operator.is_empty() {
-		return Ok(());
+		return;
 	}
-	transaction.push_operator_slice(operator)
+	commit.push_operator_slice(operator);
 }
 
 #[instrument(name = "flow::committer::release_slices", level = "trace", skip_all)]
@@ -555,9 +537,9 @@ fn release_slices(slices: Arc<Vec<FlowSlice>>) {
 }
 
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
-fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<(), ValueError> {
+fn apply_pending_writes(commit: &mut DeferredFlowCommit, combined: &Pending) -> Result<(), ValueError> {
 	let mut writes: Vec<(TaggedKey, &PendingWrite)> = Vec::with_capacity(combined.len());
-	let dropped = dropped_queues(transaction, combined)?;
+	let dropped = dropped_queues(commit, combined)?;
 	for (encoded, pw) in combined.rows_ordered() {
 		let Some(key) = TaggedKey::decode(encoded) else {
 			return_internal_error!(
@@ -569,98 +551,43 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 			writes.push((key, pw));
 		}
 	}
-	let observed: Vec<TaggedKey> = writes
-		.iter()
-		.filter(|(_, pw)| {
-			matches!(
-				pw,
-				PendingWrite::Remove {
-					announce: RemoveVisibility::Announced | RemoveVisibility::Unobserved,
-				}
-			)
-		})
-		.map(|(key, _)| key.clone())
-		.collect();
-	let mut pres = transaction.get(&observed)?.into_iter();
-	let mut run = WriteRun::default();
+	let mut sets: Vec<(TaggedKey, EncodedBytes)> = Vec::new();
+	let mut removes: Vec<(TaggedKey, RemoveVisibility)> = Vec::new();
 	for (key, pw) in writes {
 		match pw {
 			PendingWrite::Set(value) => {
-				if run.sets.is_empty() {
-					run.flush(transaction)?;
+				if !removes.is_empty() {
+					commit.remove(take(&mut removes))?;
 				}
-				run.sets.push((key, value.clone()));
+				sets.push((key, value.clone()));
 			}
 			PendingWrite::Remove {
 				announce,
 			} => {
-				let pre = match announce {
-					RemoveVisibility::Silent => None,
-					RemoveVisibility::Announced | RemoveVisibility::Unobserved => {
-						pres.next().flatten()
-					}
-				};
-				match (announce, pre) {
-					(RemoveVisibility::Announced, Some(existing)) => {
-						if run.announced.is_empty() {
-							run.flush(transaction)?;
-						}
-						run.announced.push((key, existing.bytes));
-					}
-					(RemoveVisibility::Unobserved, Some(existing)) => {
-						if run.unobserved.is_empty() {
-							run.flush(transaction)?;
-						}
-						run.unobserved.push((key, existing.bytes));
-					}
-					_ => {
-						if run.silent.is_empty() {
-							run.flush(transaction)?;
-						}
-						run.silent.push(key);
-					}
+				if !sets.is_empty() {
+					commit.set(take(&mut sets))?;
 				}
+				removes.push((key, *announce));
 			}
 		}
 	}
-	run.flush(transaction)?;
-	transaction.track_row_change(&queue_row_changes(combined, &dropped));
+	if !sets.is_empty() {
+		commit.set(sets)?;
+	}
+	if !removes.is_empty() {
+		commit.remove(removes)?;
+	}
+	commit.track_row_change(&queue_row_changes(combined, &dropped));
 	Ok(())
 }
 
-#[derive(Default)]
-struct WriteRun {
-	sets: Vec<(TaggedKey, EncodedBytes)>,
-	announced: Vec<(TaggedKey, EncodedBytes)>,
-	unobserved: Vec<(TaggedKey, EncodedBytes)>,
-	silent: Vec<TaggedKey>,
-}
-
-impl WriteRun {
-	fn flush(&mut self, transaction: &mut CommandTransaction) -> Result<(), ValueError> {
-		if !self.sets.is_empty() {
-			transaction.set(take(&mut self.sets))?;
-		}
-		if !self.announced.is_empty() {
-			transaction.remove_with_pre(take(&mut self.announced))?;
-		}
-		if !self.unobserved.is_empty() {
-			transaction.remove_unobserved_with_pre(take(&mut self.unobserved))?;
-		}
-		if !self.silent.is_empty() {
-			transaction.remove_silent(take(&mut self.silent))?;
-		}
-		Ok(())
-	}
-}
-
-fn dropped_queues(transaction: &mut CommandTransaction, combined: &Pending) -> Result<BTreeSet<QueueId>, ValueError> {
+fn dropped_queues(commit: &mut DeferredFlowCommit, combined: &Pending) -> Result<BTreeSet<QueueId>, ValueError> {
 	let queues: BTreeSet<QueueId> = combined.queue_items().iter().map(|item| item.queue).collect();
 	if queues.is_empty() {
 		return Ok(BTreeSet::new());
 	}
 	let keys: Vec<TaggedKey> = queues.iter().map(|queue| QueueKey::new(*queue).into()).collect();
-	let found = transaction.get(&keys)?;
+	let found = commit.get(&keys)?;
 	Ok(queues.into_iter().zip(found).filter(|(_, row)| row.is_none()).map(|(queue, _)| queue).collect())
 }
 
@@ -711,10 +638,7 @@ mod commit_integration {
 		commit::watermark::ReaderWatermark,
 		delta::{Delta, RemoveAnnounce, SetPre},
 		interface::{
-			catalog::{
-				flow::OperatorId,
-				id::{IndexId, TableId},
-			},
+			catalog::{flow::OperatorId, id::ViewId},
 			commit::CommitEntry,
 			operator::OperatorStateWrite,
 			store::WalFloorCheckpoint,
@@ -722,20 +646,19 @@ mod commit_integration {
 		internal_error,
 		key::{
 			any::TaggedKey,
-			catalog::IndexEntryKey,
 			operator::state::{GroupStateKey, OperatorStateKey, unmanaged_key},
 			partition::PartitionKey,
 			row::RowKey,
 			series::SeriesRowKey,
 			tag::KeyTag,
 		},
-		value::index::encoded::EncodedIndexKey,
 		wal::{CommitRecord, WalRecord},
 	};
 	use reifydb_runtime::{
 		context::{RuntimeContext, transaction::TransactionContext},
 		sync::{mutex::Mutex, waiter::WaiterHandle},
 	};
+	use reifydb_store_multi::testing::MultiStoreHooks;
 	use reifydb_store_operator::{
 		actor::resident_flush::flush_now,
 		config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
@@ -746,8 +669,7 @@ mod commit_integration {
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
-		commit::CommitBegin, counting::OpCounts, queue::scheduling::queue_partition_counters,
-		transaction::Transaction, wal::CommitWal,
+		queue::scheduling::queue_partition_counters, transaction::Transaction, wal::CommitWal,
 	};
 	use reifydb_value::{
 		byte_size::ByteSize,
@@ -808,15 +730,101 @@ mod commit_integration {
 		}
 	}
 
+	struct FailFirstQueueRead {
+		reads: AtomicUsize,
+	}
+
+	impl MultiStoreHooks for FailFirstQueueRead {
+		fn before_get(&self, keys: &[EncodedKey], _version: CommitVersion) -> Result<(), ValueError> {
+			if !keys.iter().any(|key| KeyTag::of(key) == Some(KeyTag::Queue)) {
+				return Ok(());
+			}
+			if self.reads.fetch_add(1, Ordering::SeqCst) == 0 {
+				return Err(internal_error!("the batch commit fails once"));
+			}
+			Ok(())
+		}
+	}
+
+	struct BlockFirstRead {
+		key: EncodedKey,
+		gate: Mutex<Option<mpsc::Receiver<()>>>,
+	}
+
+	impl MultiStoreHooks for BlockFirstRead {
+		fn before_get(&self, keys: &[EncodedKey], _version: CommitVersion) -> Result<(), ValueError> {
+			if !keys.contains(&self.key) {
+				return Ok(());
+			}
+			let first = self.gate.lock().take();
+			if let Some(gate) = first {
+				gate.recv().expect("the test must release the first commit");
+			}
+			Ok(())
+		}
+	}
+
+	struct CountingReads {
+		keys: BTreeSet<EncodedKey>,
+		reads: AtomicUsize,
+	}
+
+	impl MultiStoreHooks for CountingReads {
+		fn before_get(&self, keys: &[EncodedKey], _version: CommitVersion) -> Result<(), ValueError> {
+			if keys.iter().any(|key| self.keys.contains(key)) {
+				self.reads.fetch_add(1, Ordering::SeqCst);
+			}
+			Ok(())
+		}
+	}
+
+	struct RecordedReads {
+		calls: Mutex<Vec<(Vec<EncodedKey>, CommitVersion)>>,
+	}
+
+	impl MultiStoreHooks for RecordedReads {
+		fn before_get(&self, keys: &[EncodedKey], version: CommitVersion) -> Result<(), ValueError> {
+			self.calls.lock().push((keys.to_vec(), version));
+			Ok(())
+		}
+	}
+
+	fn view_partition(n: u64) -> EncodedKey {
+		PartitionKey::encoded(ObjectId::View(ViewId(1)), Partition(u128::from(n)))
+	}
+
+	fn tick_of(pending: Pending, reply: TickCommitReply) -> CommitterMessage {
+		CommitterMessage::Tick {
+			flow_id: FlowId(1),
+			members: Vec::new(),
+			source: SourceVersion(1),
+			pending,
+			owned_queues: Arc::default(),
+			reply,
+		}
+	}
+
+	fn counting_reads(engine: &StandardEngine, keys: &[EncodedKey]) -> Arc<CountingReads> {
+		let hook = Arc::new(CountingReads {
+			keys: keys.iter().cloned().collect(),
+			reads: AtomicUsize::new(0),
+		});
+		engine.multi().store().set_testing_hooks(hook.clone());
+		hook
+	}
+
+	fn send_tick(handle: &CommitterHandle, pending: Pending) -> Result<(), ValueError> {
+		let (done, finished) = mpsc::channel();
+		let reply: TickCommitReply =
+			Box::new(move |result| done.send(result).expect("the test waits for the tick"));
+		assert!(handle.actor_ref().send(tick_of(pending, reply)).is_ok(), "send tick");
+		finished.recv_timeout(StdDuration::from_secs(10)).expect("the tick must reply")
+	}
+
 	fn synthetic_key(index: u64) -> EncodedKey {
-		// IndexEntry is neither commit-log-excluded nor consumer-relevant: the producer records
-		// the write while every consumer ignores it.
-		IndexEntryKey::new(
-			ObjectId::Table(TableId(1)),
-			IndexId::primary(1u64),
-			EncodedIndexKey::new([index as u8]),
-		)
-		.encode()
+		// a view partition key must stay ignored by row consumers, otherwise these tests would count lifted
+		// rows
+		PartitionKey::new(ObjectId::View(ViewId(1)), Partition(u128::from(index))).encode()
 	}
 
 	fn synthetic_slice(index: u64) -> FlowSlice {
@@ -828,16 +836,16 @@ mod commit_integration {
 		slice
 	}
 
-	fn build_committer_actor(engine: &StandardEngine, commit: CommitHandle) -> (CommitterHandle, Committer) {
+	fn build_committer_actor(engine: &StandardEngine) -> (CommitterHandle, Committer) {
 		let tracker = FlowPositionTracker::new();
 		let committer = Committer::new(
+			engine.clone(),
 			tracker.clone(),
 			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
 		);
-		let handle = engine
-			.spawner()
-			.spawn_flow("commit-test-committer", CommitterActor::new(committer.clone(), commit));
+		let handle =
+			engine.spawner().spawn_flow("commit-test-committer", CommitterActor::new(committer.clone()));
 		(handle, committer)
 	}
 
@@ -858,9 +866,7 @@ mod commit_integration {
 	fn each_slice_commits_in_its_own_version() {
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+		let (handle, committer) = build_committer_actor(&engine);
 
 		let replies = SliceReplies::new(2);
 		send_slices(&handle, &replies, 2);
@@ -886,9 +892,7 @@ mod commit_integration {
 		// is supposed to pair with
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+		let (handle, committer) = build_committer_actor(&engine);
 
 		let replies = SliceReplies::new(2);
 		send_slices(&handle, &replies, 2);
@@ -941,9 +945,7 @@ mod commit_integration {
 	fn a_committed_slice_admits_its_queue_items_through_the_plain_queue_interceptor() {
 		// Without this a queue view row exists but has no scheduling state, so no worker can ever claim it.
 		let (_te, engine, queue) = queue_engine();
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let (handle, _committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+		let (handle, _committer) = build_committer_actor(&engine);
 
 		let mut slice = synthetic_slice(1);
 		slice.combined.admit_queue_items(queue_items(queue, 1..=2));
@@ -965,9 +967,7 @@ mod commit_integration {
 	fn a_committed_tick_admits_its_queue_items_too() {
 		// A tick takes its own apply path, so an item carried there must not lose its scheduling state.
 		let (_te, engine, queue) = queue_engine();
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let (handle, _committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+		let (handle, _committer) = build_committer_actor(&engine);
 
 		let mut pending = Pending::new();
 		pending.insert(vec![synthetic_key(2)], vec![EncodedBytes(CowVec::new(vec![2u8; 4]))]);
@@ -980,6 +980,7 @@ mod commit_integration {
 				members: Vec::new(),
 				source: SourceVersion(1),
 				pending,
+				owned_queues: Arc::default(),
 				reply: Box::new(move |result| done.send(result).expect("the test waits for the tick")),
 			})
 			.is_ok());
@@ -991,21 +992,70 @@ mod commit_integration {
 	}
 
 	#[test]
+	fn a_slice_carrying_its_owned_queue_commits_a_row_of_that_queue() {
+		// a slice must hand its owned queues to the batch, otherwise the guard refuses every queue view row
+		let (_te, engine, queue) = queue_engine();
+		let (handle, _committer) = build_committer_actor(&engine);
+
+		let mut slice = synthetic_slice(1);
+		slice.combined.insert(
+			vec![RowKey::new(queue, RowNumber(1)).encode()],
+			vec![EncodedBytes(CowVec::new(vec![1]))],
+		);
+		slice.owned_queues = Arc::new(BTreeSet::from([queue]));
+		let replies = SliceReplies::new(1);
+		let sent = handle
+			.actor_ref()
+			.send(CommitterMessage::Slice {
+				slice,
+				reply: replies.reply(0),
+			})
+			.is_ok();
+		assert!(sent, "send slice");
+		replies.wait();
+
+		assert!(replies.versions()[0].1 > CommitVersion(0), "the slice with its own queue row must commit");
+	}
+
+	#[test]
+	fn a_tick_carrying_its_owned_queue_commits_a_row_of_that_queue() {
+		// a tick takes its own apply path, so it must hand its owned queues over too
+		let (_te, engine, queue) = queue_engine();
+		let (handle, _committer) = build_committer_actor(&engine);
+
+		let mut pending = Pending::new();
+		pending.insert(
+			vec![RowKey::new(queue, RowNumber(1)).encode()],
+			vec![EncodedBytes(CowVec::new(vec![1]))],
+		);
+		let (done, finished) = mpsc::channel();
+		assert!(handle
+			.actor_ref()
+			.send(CommitterMessage::Tick {
+				flow_id: FlowId(1),
+				members: Vec::new(),
+				source: SourceVersion(1),
+				pending,
+				owned_queues: Arc::new(BTreeSet::from([queue])),
+				reply: Box::new(move |result| done.send(result).expect("the test waits for the tick")),
+			})
+			.is_ok());
+
+		finished.recv_timeout(StdDuration::from_secs(10))
+			.expect("the tick must reply")
+			.expect("the tick with its own queue row must commit");
+	}
+
+	#[test]
 	fn a_retried_slice_admits_its_queue_items_exactly_once() {
 		// The failed batch never committed, so counting its items as well as the retry's would double the
 		// depth.
 		let (_te, engine, queue) = queue_engine();
-		let attempts = Arc::new(AtomicUsize::new(0));
-		let begin_engine = engine.clone();
-		let counted = attempts.clone();
-		let begin: CommitBegin = Arc::new(move || {
-			if counted.fetch_add(1, Ordering::SeqCst) == 0 {
-				return Err(internal_error!("the batch commit fails once"));
-			}
-			begin_engine.begin_command(IdentityId::system())
+		let attempts = Arc::new(FailFirstQueueRead {
+			reads: AtomicUsize::new(0),
 		});
-		let commit = CommitHandle::new(begin);
-		let (_handle, committer) = build_committer_actor(&engine, commit.clone());
+		engine.multi().store().set_testing_hooks(attempts.clone());
+		let (_handle, committer) = build_committer_actor(&engine);
 
 		let mut first = synthetic_slice(1);
 		first.combined.admit_queue_items(queue_items(queue, 1..=1));
@@ -1014,15 +1064,56 @@ mod commit_integration {
 		let replies = SliceReplies::new(2);
 		committer.commit_slices(
 			"retry-test",
-			&commit,
 			Arc::new(vec![first, second]),
 			vec![(0, replies.reply(0)), (1, replies.reply(1))],
 		);
 		replies.wait();
 
 		assert_eq!(replies.versions().len(), 2, "both slices must land through their retries");
-		assert_eq!(attempts.load(Ordering::SeqCst), 3, "one failed batch, then one retry per slice");
+		assert_eq!(attempts.reads.load(Ordering::SeqCst), 3, "one failed batch, then one retry per slice");
 		assert_eq!(depth(&engine, queue), vec![(Partition(7), 2)]);
+	}
+
+	#[test]
+	fn a_retried_slice_keeps_its_owned_queue() {
+		// a retry must pass the owned queues again, otherwise the retried slice is refused by the guard
+		let (_te, engine, queue) = queue_engine();
+		let attempts = Arc::new(FailFirstQueueRead {
+			reads: AtomicUsize::new(0),
+		});
+		engine.multi().store().set_testing_hooks(attempts.clone());
+		let (_handle, committer) = build_committer_actor(&engine);
+
+		let owned = Arc::new(BTreeSet::from([queue]));
+		let mut first = synthetic_slice(1);
+		first.combined.insert(
+			vec![RowKey::new(queue, RowNumber(1)).encode()],
+			vec![EncodedBytes(CowVec::new(vec![1]))],
+		);
+		first.combined.admit_queue_items(queue_items(queue, 1..=1));
+		first.owned_queues = Arc::clone(&owned);
+		let mut second = synthetic_slice(2);
+		second.combined.insert(
+			vec![RowKey::new(queue, RowNumber(2)).encode()],
+			vec![EncodedBytes(CowVec::new(vec![1]))],
+		);
+		second.combined.admit_queue_items(queue_items(queue, 2..=2));
+		second.owned_queues = owned;
+		let replies = SliceReplies::new(2);
+		committer.commit_slices(
+			"retry-owned-test",
+			Arc::new(vec![first, second]),
+			vec![(0, replies.reply(0)), (1, replies.reply(1))],
+		);
+		replies.wait();
+
+		assert_eq!(attempts.reads.load(Ordering::SeqCst), 3, "one failed batch, then one retry per slice");
+		let versions = replies.versions();
+		assert_eq!(versions.len(), 2, "both retried slices must land");
+		assert!(
+			versions.iter().all(|(_, version)| *version > CommitVersion(0)),
+			"each retried slice with its own queue row must commit"
+		);
 	}
 
 	#[test]
@@ -1031,9 +1122,7 @@ mod commit_integration {
 		// sweep.
 		let (te, engine, queue) = queue_engine();
 		te.admin("DROP QUEUE test::jobs");
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let (handle, _committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+		let (handle, _committer) = build_committer_actor(&engine);
 
 		let mut slice = synthetic_slice(1);
 		let row = RowKey::new(queue, RowNumber(1));
@@ -1090,8 +1179,8 @@ mod commit_integration {
 		// Operator state is written in the completion, so a failed commit must write none of it.
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
-		let begin: CommitBegin = Arc::new(|| Err(internal_error!("commit could not begin")));
-		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+		let (handle, committer) = build_committer_actor(&engine);
+		engine.multi().freeze_commits().expect("the freeze must take");
 		let store = committer.operators.clone();
 
 		let operator = OperatorId(9);
@@ -1132,9 +1221,7 @@ mod commit_integration {
 		// Operator state must never appear before the commit completes, falsified by applying at submission.
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+		let (handle, committer) = build_committer_actor(&engine);
 		let store = committer.operators.clone();
 
 		let op_a = OperatorId(3);
@@ -1184,16 +1271,11 @@ mod commit_integration {
 
 	fn gated_committer_actor(engine: &StandardEngine) -> (CommitterHandle, Committer, mpsc::Sender<()>) {
 		let (release, gate) = mpsc::channel::<()>();
-		let gate = Mutex::new(Some(gate));
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || {
-			let first = gate.lock().take();
-			if let Some(gate) = first {
-				gate.recv().expect("the test must release the first commit");
-			}
-			begin_engine.begin_command(IdentityId::system())
-		});
-		let (handle, committer) = build_committer_actor(engine, CommitHandle::new(begin));
+		engine.multi().store().set_testing_hooks(Arc::new(BlockFirstRead {
+			key: synthetic_key(9),
+			gate: Mutex::new(Some(gate)),
+		}));
+		let (handle, committer) = build_committer_actor(engine);
 		(handle, committer, release)
 	}
 
@@ -1262,9 +1344,7 @@ mod commit_integration {
 		// Every group must get its own flush, or slices queued after the first flush never commit.
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+		let (handle, committer) = build_committer_actor(&engine);
 
 		for (round, source) in [(1u64, 7u64), (2, 8), (3, 8)] {
 			let replies = SliceReplies::new(1);
@@ -1384,9 +1464,7 @@ mod commit_integration {
 		// rule that lost it would hide output from readers once a sink announces rows it did not store.
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+		let (handle, committer) = build_committer_actor(&engine);
 
 		commit_one(&handle, control_slice(false));
 		assert_eq!(
@@ -1402,12 +1480,12 @@ mod commit_integration {
 	}
 
 	fn row(number: u64) -> EncodedKey {
-		RowKey::encoded(StorageId::table(1), RowNumber(number))
+		RowKey::encoded(StorageId::view(1), RowNumber(number))
 	}
 
 	fn series_row(sequence: u64) -> EncodedKey {
 		SeriesRowKey {
-			storage: StorageId::series(2),
+			storage: StorageId::view(2),
 			variant_tag: None,
 			key: 1,
 			sequence,
@@ -1416,8 +1494,7 @@ mod commit_integration {
 	}
 
 	fn index_entry(value: u8) -> EncodedKey {
-		IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new([value]))
-			.encode()
+		PartitionKey::new(ObjectId::View(ViewId(1)), Partition(u128::from(value))).encode()
 	}
 
 	fn payload(tag: u8) -> EncodedBytes {
@@ -1436,18 +1513,36 @@ mod commit_integration {
 		txn.commit().expect("commit seed");
 	}
 
-	fn commit_pending(te: &TestEngine, pending: &Pending) -> (OpCounts, Vec<Delta>) {
+	fn commit_pending(te: &TestEngine, pending: &Pending) -> (Vec<Vec<EncodedKey>>, Vec<Delta>) {
 		let engine = te.inner();
-		let mut txn = engine.begin_command(IdentityId::system()).expect("begin");
-		apply_pending_writes(&mut txn, pending).expect("apply pending writes");
-		let counts = txn.op_counts();
-		let version = txn.commit().expect("commit");
+		let reads = Arc::new(RecordedReads {
+			calls: Mutex::new(Vec::new()),
+		});
+		engine.multi().store().set_testing_hooks(reads.clone());
+		let mut commit = engine.begin_deferred_flow_commit().expect("begin");
+		apply_pending_writes(&mut commit, pending).expect("apply pending writes");
+		let version = commit.commit().expect("commit").version;
+		engine.multi().store().clear_testing_hooks();
 		let entry: Arc<CommitEntry> = te
 			.commit_entries()
 			.into_iter()
 			.find(|entry| entry.version.commit == version)
 			.expect("the commit must reach the commit queue");
-		(counts, entry.deltas.clone())
+		let calls = reads
+			.calls
+			.lock()
+			.iter()
+			.map(|(keys, _)| keys.clone())
+			.filter(|keys| {
+				keys.iter().any(|key| {
+					matches!(
+						KeyTag::of(key),
+						Some(KeyTag::Row | KeyTag::SeriesRow | KeyTag::IndexEntry)
+					)
+				})
+			})
+			.collect();
+		(calls, entry.deltas.clone())
 	}
 
 	fn insert(key: EncodedKey, tag: u8) -> Delta {
@@ -1516,7 +1611,7 @@ mod commit_integration {
 		pending.remove_unobserved(index_entry(103));
 		pending.remove_unobserved(row(7));
 
-		let (counts, changes) = commit_pending(&te, &pending);
+		let (reads, changes) = commit_pending(&te, &pending);
 
 		assert_eq!(
 			changes,
@@ -1544,25 +1639,17 @@ mod commit_integration {
 			);
 		}
 
-		assert_eq!(counts.get_calls(), 1);
-		assert_eq!(counts.get_committed_calls(), 0);
-		assert_eq!(counts.set_calls(), 1);
-		assert_eq!(counts.remove_calls(), 0);
-		let row_counts = counts.of(KeyTag::Row);
-		let series_counts = counts.of(KeyTag::SeriesRow);
-		let index_counts = counts.of(KeyTag::IndexEntry);
-		for (kind, kind_counts, gets, sets, removes) in [
-			("row", row_counts, 4, 1, 5),
-			("series row", series_counts, 3, 0, 3),
-			("index entry", index_counts, 3, 1, 3),
+		assert_eq!(reads.len(), 1, "every pre-image comes from one batch read");
+		for (kind, tag, gets) in [
+			("row", KeyTag::Row, 5),
+			("series row", KeyTag::SeriesRow, 3),
+			("view partition", KeyTag::Partition, 4),
 		] {
 			assert_eq!(
-				(kind_counts.gets, kind_counts.committed_gets),
-				(gets, 0),
-				"{kind}: no point read, every announced or unobserved remove in the one batch"
+				reads[0].iter().filter(|key| KeyTag::of(key) == Some(tag)).count(),
+				gets,
+				"{kind}: no point read, every set and every announced or unobserved remove in the one batch"
 			);
-			assert_eq!(kind_counts.sets, sets, "{kind}: sets go in the batch");
-			assert_eq!(kind_counts.removes, removes, "{kind}: removes stay single calls");
 		}
 	}
 
@@ -1674,16 +1761,14 @@ mod commit_integration {
 		);
 
 		let committer = Committer::new(
+			engine.clone(),
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
 			store.clone(),
 		);
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let replies = SliceReplies::new(2);
 		committer.commit_slices(
 			"commit-test",
-			&CommitHandle::new(begin),
 			Arc::new(vec![blind_slice(failing, &inner, 1), blind_slice(healthy, &inner, 2)]),
 			vec![(0, replies.reply(0)), (1, replies.reply(1))],
 		);
@@ -1723,11 +1808,6 @@ mod commit_integration {
 		TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build()
 	}
 
-	fn logged_handle(engine: &StandardEngine) -> CommitHandle {
-		let begin_engine = engine.clone();
-		CommitHandle::new(Arc::new(move || begin_engine.begin_command(IdentityId::system())))
-	}
-
 	fn logged_sections(engine: &StandardEngine) -> Vec<(Lsn, CommitRecord)> {
 		engine.multi()
 			.wal()
@@ -1745,26 +1825,18 @@ mod commit_integration {
 			.collect()
 	}
 
-	fn plain_committer(store: OperatorStore) -> Committer {
+	fn plain_committer(engine: &StandardEngine, store: OperatorStore) -> Committer {
 		Committer::new(
+			engine.clone(),
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
 			store,
 		)
 	}
 
-	fn commit_direct(
-		committer: &Committer,
-		engine: &StandardEngine,
-		slice: FlowSlice,
-	) -> Result<CommitVersion, ValueError> {
+	fn commit_direct(committer: &Committer, slice: FlowSlice) -> Result<CommitVersion, ValueError> {
 		let replies = SliceReplies::new(1);
-		committer.commit_slices(
-			"commit-test",
-			&logged_handle(engine),
-			Arc::new(vec![slice]),
-			vec![(0, replies.reply(0))],
-		);
+		committer.commit_slices("commit-test", Arc::new(vec![slice]), vec![(0, replies.reply(0))]);
 		replies.wait();
 		replies.results.lock().pop().expect("the slice must reply").1
 	}
@@ -1783,13 +1855,13 @@ mod commit_integration {
 		// flow from a stale position.
 		let te = logged_engine();
 		let engine = te.inner().clone();
-		let committer = plain_committer(engine.operator_state());
+		let committer = plain_committer(&engine, engine.operator_state());
 		let operator = OperatorId(3);
 		let inner = state_inner(b"a");
 		let mut slice = state_slice(&[(operator, &inner, 1)]);
 		slice.combined.insert(vec![synthetic_key(1)], vec![EncodedBytes(CowVec::new(vec![1u8; 4]))]);
 
-		let version = commit_direct(&committer, &engine, slice).expect("the slice commits");
+		let version = commit_direct(&committer, slice).expect("the slice commits");
 
 		let records = logged_sections(&engine);
 		assert_eq!(records.len(), 1, "exactly one record carries the slice's operator section: {records:?}");
@@ -1811,14 +1883,13 @@ mod commit_integration {
 		// A refused checkpoint that is already logged replays as durable state the store rejected live.
 		let te = logged_engine();
 		let engine = te.inner().clone();
-		let committer = plain_committer(engine.operator_state());
+		let committer = plain_committer(&engine, engine.operator_state());
 		let inner = state_inner(b"a");
-		commit_direct(&committer, &engine, state_slice(&[(OperatorId(3), &inner, 1)]))
-			.expect("the first slice commits");
+		commit_direct(&committer, state_slice(&[(OperatorId(3), &inner, 1)])).expect("the first slice commits");
 
 		let mut behind = synthetic_slice(5);
 		behind.checkpoints = vec![(FlowId(1), checkpoint_at(5))];
-		let result = commit_direct(&committer, &engine, behind);
+		let result = commit_direct(&committer, behind);
 
 		assert!(result.is_err(), "a checkpoint behind the stored one must fail its slice");
 		let logged: Vec<CommitVersion> = logged_sections(&engine)
@@ -1836,7 +1907,7 @@ mod commit_integration {
 		// A tick whose state stays out of the log loses or double-applies that state after a crash.
 		let te = logged_engine();
 		let engine = te.inner().clone();
-		let (handle, _committer) = build_committer_actor(&engine, logged_handle(&engine));
+		let (handle, _committer) = build_committer_actor(&engine);
 		let operator = OperatorId(4);
 		let inner = state_inner(b"t");
 		let mut pending = state_slice(&[(operator, &inner, 7)]).combined;
@@ -1850,6 +1921,7 @@ mod commit_integration {
 				members: Vec::new(),
 				source: SourceVersion(1),
 				pending,
+				owned_queues: Arc::default(),
 				reply: Box::new(move |result| done.send(result).expect("the test waits for the tick")),
 			})
 			.is_ok());
@@ -1904,9 +1976,9 @@ mod commit_integration {
 			OperatorPersistentConfig::opened_with_checkpoint(storage, floor.clone()),
 			engine.spawner(),
 		));
-		let committer = plain_committer(store.clone());
+		let committer = plain_committer(&engine, store.clone());
 
-		commit_direct(&committer, &engine, state_slice(&[(OperatorId(5), &state_inner(b"m"), 3)]))
+		commit_direct(&committer, state_slice(&[(OperatorId(5), &state_inner(b"m"), 3)]))
 			.expect("the slice commits");
 		flush_now(store.resident());
 
@@ -1955,9 +2027,9 @@ mod commit_integration {
 			OperatorPersistentConfig::opened_with_checkpoint(storage, floor.clone()),
 			engine.spawner(),
 		));
-		let committer = plain_committer(store);
+		let committer = plain_committer(&engine, store);
 
-		commit_direct(&committer, &engine, state_slice(&[(OperatorId(5), &state_inner(b"g"), 3)]))
+		commit_direct(&committer, state_slice(&[(OperatorId(5), &state_inner(b"g"), 3)]))
 			.expect("the slice commits");
 
 		let records = logged_sections(&engine);
@@ -1970,5 +2042,150 @@ mod commit_integration {
 			heads[0],
 			records[0].0
 		);
+	}
+
+	#[test]
+	fn a_slice_group_commit_reads_the_store_once_for_its_pre_images() {
+		// A read per slice or per layer makes a group commit cost one store round trip per member.
+		let te = TestEngine::builder().with_commit_queue().build();
+		let engine = te.inner().clone();
+		seed(&engine, &[(view_partition(1), 1), (view_partition(2), 2)]);
+		let (_handle, committer) = build_committer_actor(&engine);
+		let reads = counting_reads(
+			&engine,
+			&[view_partition(1), view_partition(2), view_partition(3), view_partition(4)],
+		);
+
+		let mut first = FlowSlice::empty();
+		first.source = Some(SourceVersion(1));
+		first.combined.insert(vec![view_partition(3)], vec![payload(3)]);
+		first.combined.remove(vec![view_partition(1)]);
+		let mut second = FlowSlice::empty();
+		second.source = Some(SourceVersion(1));
+		second.combined.insert(vec![view_partition(4)], vec![payload(4)]);
+		second.combined.remove_unobserved(view_partition(2));
+		let replies = SliceReplies::new(2);
+		committer.commit_slices(
+			"commit-test",
+			Arc::new(vec![first, second]),
+			vec![(0, replies.reply(0)), (1, replies.reply(1))],
+		);
+		replies.wait();
+		let observed = reads.reads.load(Ordering::SeqCst);
+		engine.multi().store().clear_testing_hooks();
+
+		let versions = replies.versions();
+		assert_eq!(versions.len(), 2, "both slices must commit");
+		assert_eq!(versions[0].1, versions[1].1, "one group commits in one version");
+		assert_eq!(observed, 1, "the group reads every pre-image of its keys in one store read");
+	}
+
+	#[test]
+	fn a_slice_with_two_layers_commits_the_same_deltas_and_layers_as_before() {
+		// Lost layer marks merge two source versions into one, so a downstream flow reads the wrong history.
+		let te = TestEngine::builder().with_commit_queue().build();
+		let engine = te.inner().clone();
+		let (handle, _committer) = build_committer_actor(&engine);
+
+		let mut early = Pending::new();
+		early.insert(vec![view_partition(1)], vec![payload(1)]);
+		let mut late = Pending::new();
+		late.insert(vec![view_partition(1)], vec![payload(2)]);
+		let mut slice = FlowSlice::empty();
+		slice.combined.insert(vec![view_partition(1)], vec![payload(2)]);
+		slice.source = Some(SourceVersion(20));
+		slice.layers = vec![(SourceVersion(10), early), (SourceVersion(20), late)];
+		let version = commit_one(&handle, slice);
+
+		let entry: Arc<CommitEntry> = te
+			.commit_entries()
+			.into_iter()
+			.find(|entry| entry.version.commit == version)
+			.expect("the commit must reach the commit queue");
+		assert_eq!(entry.deltas, vec![insert(view_partition(1), 1), update(view_partition(1), 1, 2)]);
+		assert_eq!(entry.layers, vec![(SourceVersion(10), 0..1), (SourceVersion(20), 1..2)]);
+	}
+
+	#[test]
+	fn a_remove_only_tick_commits_silent_removes_without_reading_the_store() {
+		// A hand-off of silent removes that reads the store pays a round trip for an old value nobody sees.
+		let te = TestEngine::builder().with_commit_queue().build();
+		let engine = te.inner().clone();
+		seed(&engine, &[(view_partition(1), 1), (view_partition(2), 2)]);
+		let (handle, _committer) = build_committer_actor(&engine);
+		let reads = counting_reads(&engine, &[view_partition(1), view_partition(2)]);
+
+		let mut pending = Pending::new();
+		pending.remove_silent(view_partition(1));
+		pending.remove_silent(view_partition(2));
+		send_tick(&handle, pending).expect("the hand-off commits");
+		let observed = reads.reads.load(Ordering::SeqCst);
+		engine.multi().store().clear_testing_hooks();
+
+		assert_eq!(observed, 0, "a silent remove never reads its old value");
+		let mut query = engine.begin_query(IdentityId::system()).expect("begin query");
+		for key in [view_partition(1), view_partition(2)] {
+			assert!(
+				Transaction::Query(&mut query)
+					.get(&[tagged(&key)])
+					.map(|mut found| found.pop().flatten())
+					.expect("read removed row")
+					.is_none(),
+				"every silent remove must land"
+			);
+		}
+	}
+
+	#[test]
+	fn a_remove_only_tick_of_keys_already_gone_commits_and_announces_nothing() {
+		// A hand-off can race a key that is already gone; failing it would poison the flow for a no-op.
+		let te = TestEngine::builder().with_commit_queue().build();
+		let engine = te.inner().clone();
+		let (handle, _committer) = build_committer_actor(&engine);
+		let reads = counting_reads(&engine, &[view_partition(1), view_partition(2)]);
+
+		let mut pending = Pending::new();
+		pending.remove(vec![view_partition(1), view_partition(2)]);
+		let result = send_tick(&handle, pending);
+		let observed = reads.reads.load(Ordering::SeqCst);
+		engine.multi().store().clear_testing_hooks();
+
+		assert!(result.is_ok(), "a remove of a missing key must not fail the commit: {result:?}");
+		assert_eq!(observed, 1, "the announced removes read their old values in one batch");
+		let announced = te.commit_entries().into_iter().any(|entry| {
+			entry.deltas.iter().any(|delta| {
+				matches!(
+					delta,
+					Delta::Remove {
+						key,
+						announce: RemoveAnnounce::Announced { .. },
+					} if *key == tagged(&view_partition(1)) || *key == tagged(&view_partition(2))
+				)
+			})
+		});
+		assert!(!announced, "a remove of a key nobody stored must stay silent");
+	}
+
+	#[test]
+	fn a_set_after_a_remove_only_commit_carries_no_old_value() {
+		// A batch read at a stale version would hand the removed bytes over as the old value of the new row.
+		let te = TestEngine::builder().with_commit_queue().build();
+		let engine = te.inner().clone();
+		seed(&engine, &[(view_partition(1), 1)]);
+		let (handle, _committer) = build_committer_actor(&engine);
+
+		let mut pending = Pending::new();
+		pending.remove(vec![view_partition(1)]);
+		send_tick(&handle, pending).expect("the remove-only tick commits");
+		let mut slice = FlowSlice::empty();
+		slice.combined.insert(vec![view_partition(1)], vec![payload(2)]);
+		let version = commit_one(&handle, slice);
+
+		let entry: Arc<CommitEntry> = te
+			.commit_entries()
+			.into_iter()
+			.find(|entry| entry.version.commit == version)
+			.expect("the commit must reach the commit queue");
+		assert_eq!(entry.deltas, vec![insert(view_partition(1), 2)]);
 	}
 }

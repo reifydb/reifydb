@@ -198,6 +198,13 @@ impl StandardMultiStore {
 		keys: &[EncodedKey],
 		version: CommitVersion,
 	) -> Result<HashMap<EncodedKey, VersionedGetResult>, ValueError> {
+		#[cfg(feature = "testing")]
+		{
+			let hooks = self.testing_hooks.read().clone();
+			if let Some(hooks) = hooks {
+				hooks.before_get(keys, version)?;
+			}
+		}
 		let mut by_table: HashMap<EntryKind, Vec<ClassifiedKey<'_>>> = HashMap::new();
 		for key in keys {
 			let (table, storage_key) = storage_key(key);

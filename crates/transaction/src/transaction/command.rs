@@ -5,15 +5,14 @@ use std::{mem::take, ops::Bound, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::CommitVersion,
 	delta::SetPre,
 	event::EventBus,
 	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
-		catalog::{id::ViewId, object::ObjectId, storage::StorageId},
+		catalog::{object::ObjectId, storage::StorageId},
 		change::{Change, ChangeOrigin},
-		operator::OperatorSlice,
 		store::MultiVersionRow,
 	},
 	key::{
@@ -21,7 +20,7 @@ use reifydb_core::{
 		bound::TaggedKeyBoundRange,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
-	marker::{Marker, MarkerSink},
+	marker::MarkerSink,
 	util::ioc::IocContainer,
 };
 use reifydb_runtime::context::{
@@ -210,15 +209,6 @@ impl CommandTransaction {
 			return Ok(());
 		};
 		let attached = pending.attach_writer(t0s);
-		self.poison_on_marker_error(attached)
-	}
-
-	pub fn attach_view_markers(&mut self, view: ViewId, markers: Vec<Marker>) -> Result<(), ValueError> {
-		self.check_active()?;
-		let Some(pending) = self.pending_markers_mut() else {
-			return Ok(());
-		};
-		let attached = pending.attach_view(view, markers);
 		self.poison_on_marker_error(attached)
 	}
 
@@ -468,24 +458,6 @@ impl CommandTransaction {
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().read_as_of_version_exclusive(version);
-		Ok(())
-	}
-
-	pub fn stamp_source(&mut self, source: SourceVersion) -> Result<(), ValueError> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().stamp_source(source);
-		Ok(())
-	}
-
-	pub fn begin_layer(&mut self, source: SourceVersion) -> Result<(), ValueError> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().begin_layer(source);
-		Ok(())
-	}
-
-	pub fn push_operator_slice(&mut self, slice: OperatorSlice) -> Result<(), ValueError> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().push_operator_slice(slice);
 		Ok(())
 	}
 

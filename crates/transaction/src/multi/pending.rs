@@ -18,7 +18,11 @@ use crate::multi::types::DeltaEntry;
 
 const SLOT_COPIES_PER_ENTRY: usize = 2;
 
-const ENTRY_OVERHEAD: usize = SLOT_COPIES_PER_ENTRY * (size_of::<EncodedKey>() + size_of::<EncodedBytes>());
+pub(crate) const ENTRY_OVERHEAD: usize = SLOT_COPIES_PER_ENTRY * (size_of::<EncodedKey>() + size_of::<EncodedBytes>());
+
+pub(crate) const MAX_BATCH_ENTRIES: u64 = 1_000_000;
+
+pub(crate) const MAX_BATCH_SIZE: ByteSize = ByteSize::from_gib(1);
 
 #[derive(Debug, Default, Clone)]
 pub struct PendingWrites {
@@ -47,12 +51,12 @@ impl PendingWrites {
 
 	#[inline]
 	pub fn max_batch_size(&self) -> ByteSize {
-		ByteSize::from_gib(1)
+		MAX_BATCH_SIZE
 	}
 
 	#[inline]
 	pub fn max_batch_entries(&self) -> u64 {
-		1_000_000
+		MAX_BATCH_ENTRIES
 	}
 
 	#[inline]

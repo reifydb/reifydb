@@ -225,13 +225,13 @@ fn parity_engine() -> TestEngine {
 	// Option(T), so any divergence between the two sides is the parameter type's doing.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE TABLE test::text_plain { v: utf8 }");
-	t.admin("CREATE TABLE test::text_opt { v: Option(utf8) }");
+	t.admin("CREATE TABLE test::text_plain_rows { v: utf8 }");
+	t.admin("CREATE TABLE test::text_opt_rows { v: Option(utf8) }");
 	t.admin(
-		"CREATE PROCEDURE test::text_plain { v: utf8 } AS { INSERT test::text_plain [{ v: $v }]; map { v: $v } }",
+		"CREATE PROCEDURE test::text_plain { v: utf8 } AS { INSERT test::text_plain_rows [{ v: $v }]; map { v: $v } }",
 	);
 	t.admin(
-		"CREATE PROCEDURE test::text_opt { v: Option(utf8) } AS { INSERT test::text_opt [{ v: $v }]; map { v: $v } }",
+		"CREATE PROCEDURE test::text_opt { v: Option(utf8) } AS { INSERT test::text_opt_rows [{ v: $v }]; map { v: $v } }",
 	);
 	t.admin("CREATE PROCEDURE test::int2_plain { v: int2 } AS { map { v: $v } }");
 	t.admin("CREATE PROCEDURE test::int2_opt { v: Option(int2) } AS { map { v: $v } }");
@@ -253,8 +253,8 @@ fn int4_into_utf8_and_into_option_utf8_both_bind_the_text() {
 	assert_eq!(column(&plain, "v").get_value(0), Value::Utf8("42".to_string()));
 	assert_eq!(column(&opt, "v").get_value(0), column(&plain, "v").get_value(0));
 
-	let stored_plain_frames = t.query("FROM test::text_plain");
-	let stored_opt_frames = t.query("FROM test::text_opt");
+	let stored_plain_frames = t.query("FROM test::text_plain_rows");
+	let stored_opt_frames = t.query("FROM test::text_opt_rows");
 	let stored_plain = column(&stored_plain_frames, "v");
 	let stored_opt = column(&stored_opt_frames, "v");
 	assert_eq!(stored_plain.get_value(0), Value::Utf8("42".to_string()));

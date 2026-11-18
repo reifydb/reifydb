@@ -15,7 +15,12 @@ use reifydb_value::{
 };
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, catalog::Catalog, store::dictionary::create::DictionaryToCreate as StoreDictionaryToCreate};
+use crate::{
+	CatalogStore,
+	catalog::{Catalog, name::NameAllowed},
+	error::NameKind,
+	store::dictionary::create::DictionaryToCreate as StoreDictionaryToCreate,
+};
 
 #[derive(Debug, Clone)]
 pub struct DictionaryToCreate {
@@ -228,6 +233,13 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: DictionaryToCreate,
 	) -> Result<Dictionary, ValueError> {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::Dictionary,
+			NameAllowed::default(),
+		)?;
 		let dictionary = CatalogStore::create_dictionary(txn, to_create.into())?;
 		txn.track_dictionary_created(dictionary.clone())?;
 		Ok(dictionary)

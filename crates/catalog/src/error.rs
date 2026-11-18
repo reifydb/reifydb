@@ -80,6 +80,51 @@ impl Display for CatalogObjectKind {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NameKind {
+	Table,
+	RingBuffer,
+	View,
+	Dictionary,
+	Series,
+	Queue,
+	EnumOrEvent,
+	Procedure,
+	Handler,
+	Flow,
+	WindowedViewGroup,
+	Sink,
+	Source,
+	Test,
+	Binding,
+	Namespace,
+	VirtualTable,
+}
+
+impl Display for NameKind {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		match self {
+			NameKind::Table => f.write_str("table"),
+			NameKind::RingBuffer => f.write_str("ring buffer"),
+			NameKind::View => f.write_str("view"),
+			NameKind::Dictionary => f.write_str("dictionary"),
+			NameKind::Series => f.write_str("series"),
+			NameKind::Queue => f.write_str("queue"),
+			NameKind::EnumOrEvent => f.write_str("enum or event"),
+			NameKind::Procedure => f.write_str("procedure"),
+			NameKind::Handler => f.write_str("handler"),
+			NameKind::Flow => f.write_str("flow"),
+			NameKind::WindowedViewGroup => f.write_str("windowed view group"),
+			NameKind::Sink => f.write_str("sink"),
+			NameKind::Source => f.write_str("source"),
+			NameKind::Test => f.write_str("test"),
+			NameKind::Binding => f.write_str("binding"),
+			NameKind::Namespace => f.write_str("namespace"),
+			NameKind::VirtualTable => f.write_str("virtual table"),
+		}
+	}
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum CatalogError {
 	#[error("{kind} `{namespace}::{name}` already exists")]
@@ -312,6 +357,23 @@ pub enum CatalogError {
 		name: String,
 		operation: &'static str,
 		help: &'static str,
+		fragment: Fragment,
+	},
+
+	#[error("name `{namespace}::{name}` is already taken by a {existing}")]
+	NameTaken {
+		existing: NameKind,
+		namespace: String,
+		name: String,
+		fragment: Fragment,
+	},
+
+	#[error("cannot drop windowed view group `{group}`: its namespace `{namespace}` still holds {holds} `{name}`")]
+	WindowedViewGroupNamespaceNotEmpty {
+		group: String,
+		namespace: String,
+		holds: NameKind,
+		name: String,
 		fragment: Fragment,
 	},
 
@@ -1564,6 +1626,45 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 				label: Some("owned by a queue view".to_string()),
 				help: Some(help.to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::NameTaken {
+				existing,
+				namespace,
+				name,
+				fragment,
+			} => Diagnostic {
+				code: "CA_137".to_string(),
+				rql: None,
+				message: format!("name `{namespace}::{name}` is already taken by a {existing}"),
+				fragment,
+				label: Some("name already in use".to_string()),
+				help: Some(format!("choose a different name or drop the existing {existing}")),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::WindowedViewGroupNamespaceNotEmpty {
+				group,
+				namespace,
+				holds,
+				name,
+				fragment,
+			} => Diagnostic {
+				code: "CA_138".to_string(),
+				rql: None,
+				message: format!(
+					"cannot drop windowed view group `{group}`: its namespace `{namespace}` still holds {holds} `{name}`"
+				),
+				fragment,
+				label: Some("the group's namespace is not empty".to_string()),
+				help: Some(format!("drop {holds} `{namespace}::{name}` first, then drop the group")),
 				column: None,
 				notes: vec![],
 				cause: None,

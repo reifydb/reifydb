@@ -9,7 +9,12 @@ use reifydb_transaction::{
 use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, catalog::Catalog, store::source::create::SourceToCreate as StoreSourceToCreate};
+use crate::{
+	CatalogStore,
+	catalog::{Catalog, name::NameAllowed},
+	error::NameKind,
+	store::source::create::SourceToCreate as StoreSourceToCreate,
+};
 
 #[derive(Debug, Clone)]
 pub struct SourceToCreate {
@@ -144,6 +149,13 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: SourceToCreate,
 	) -> Result<Source, ValueError> {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::Source,
+			NameAllowed::default(),
+		)?;
 		let source = CatalogStore::create_source(txn, to_create.into())?;
 		txn.track_source_created(source.clone())?;
 		Ok(source)

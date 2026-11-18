@@ -28,8 +28,8 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::Catalog,
-	error::{CatalogError, CatalogObjectKind},
+	catalog::{Catalog, name::NameAllowed},
+	error::{CatalogError, CatalogObjectKind, NameKind},
 	store::{
 		column::create::ColumnToCreate,
 		primary_key::create::PrimaryKeyToCreate,
@@ -293,6 +293,13 @@ impl Catalog {
 
 	#[instrument(name = "catalog::table::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_table(&self, txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table, ValueError> {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::Table,
+			NameAllowed::default(),
+		)?;
 		let pk_columns = to_create.primary_key_columns.clone();
 		let table = CatalogStore::create_table(txn, to_create.into())?;
 		self.finalize_created_table(txn, table, pk_columns)
@@ -349,16 +356,6 @@ impl Catalog {
 	#[instrument(name = "catalog::table::list_columns", level = "trace", skip(self, txn))]
 	pub fn list_columns(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Vec<Column>, ValueError> {
 		CatalogStore::list_columns(txn, table_id)
-	}
-
-	#[instrument(name = "catalog::table::set_primary_key", level = "debug", skip(self, txn))]
-	pub fn set_table_primary_key(
-		&self,
-		txn: &mut AdminTransaction,
-		table_id: TableId,
-		primary_key_id: PrimaryKeyId,
-	) -> Result<(), ValueError> {
-		CatalogStore::set_table_primary_key(txn, table_id, primary_key_id)
 	}
 
 	#[instrument(name = "catalog::table::get_pk_id", level = "trace", skip(self, txn))]

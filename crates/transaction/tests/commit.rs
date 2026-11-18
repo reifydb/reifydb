@@ -1,42 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
-};
+use std::sync::Arc;
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
-	common::CommitVersion, event::EventBus, interface::catalog::id::QueueId, internal_err,
-	key::queue::QueueDeduplicationKey, testing::ProfileConfig,
+	common::CommitVersion,
+	event::EventBus,
+	interface::catalog::{id::ViewId, object::ObjectId},
+	key::partition::PartitionKey,
+	testing::ProfileConfig,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{
 		clock::{Clock, MockClock},
 		rng::Rng,
-		transaction::TransactionContext,
 	},
 	pool::Pools,
-	sync::{mutex::Mutex, waiter::WaiterHandle},
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
-use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
-	commit::{CommitBegin, CommitHandle, CommitSubmission, Committed},
+	commit::DeferredFlowCommit,
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
-	single::SingleTransaction,
-	transaction::command::CommandTransaction,
 	wal::{memory_wal, replay},
 };
-use reifydb_value::{error::ValueError, util::cowvec::CowVec, value::duration::Duration};
+use reifydb_value::{util::cowvec::CowVec, value::partition::Partition};
 
 struct Harness {
 	_actor_system: ActorSystem,
-	begin: CommitBegin,
+	multi: MultiTransaction,
+}
+
+impl Harness {
+	fn begin(&self) -> DeferredFlowCommit {
+		DeferredFlowCommit::new(self.multi.clone(), Interceptors::new().post_commit, None)
+			.expect("begin a deferred flow commit")
+	}
 }
 
 fn harness() -> Harness {
@@ -48,122 +50,48 @@ fn harness() -> Harness {
 	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0), CommitVersion(0));
 	let multi = MultiTransaction::new(
 		multi_store,
-		bus.clone(),
+		bus,
 		spawner.clone(),
 		Clock::Mock(MockClock::from_millis(1000)),
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(ProfileConfig),
-		wal.clone(),
+		wal,
 		recovery,
 	)
 	.unwrap();
-	let single = SingleTransaction::new(
-		SingleStore::testing_memory(),
-		bus.clone(),
-		wal,
-		Clock::Mock(MockClock::from_millis(1000)),
-	);
-
-	let begin: CommitBegin = Arc::new(move || {
-		let runtime = multi.runtime_context();
-		Ok(CommandTransaction::new(
-			multi.begin_command(multi.generate_transaction_id())?,
-			single.clone(),
-			bus.clone(),
-			Interceptors::new(),
-			Arc::new(TransactionContext::system(runtime)),
-		))
-	});
 
 	Harness {
 		_actor_system: actor_system,
-		begin,
+		multi,
 	}
 }
 
-fn key(name: &str) -> QueueDeduplicationKey {
-	QueueDeduplicationKey::new(QueueId(1), name.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>())
+fn key(name: &str) -> PartitionKey {
+	let partition = name.bytes().fold(0u128, |acc, byte| (acc << 8) | u128::from(byte));
+	PartitionKey::new(ObjectId::View(ViewId(1)), Partition(partition))
 }
 
 fn encoded_bytes(value: &str) -> EncodedBytes {
 	EncodedBytes(CowVec::new(value.as_bytes().to_vec()))
 }
 
-struct Recorder {
-	results: Mutex<Vec<(usize, Result<CommitVersion, ValueError>)>>,
-	remaining: AtomicUsize,
-	done: WaiterHandle,
-}
-
-impl Recorder {
-	fn new(expected: usize) -> Arc<Self> {
-		Arc::new(Self {
-			results: Mutex::new(Vec::new()),
-			remaining: AtomicUsize::new(expected),
-			done: WaiterHandle::new(),
-		})
-	}
-
-	fn completion(self: &Arc<Self>, index: usize) -> Box<dyn FnOnce(Result<Committed, ValueError>) + Send> {
-		let recorder = Arc::clone(self);
-		Box::new(move |result| {
-			recorder.results.lock().push((index, result.map(|committed| committed.version)));
-			if recorder.remaining.fetch_sub(1, Ordering::SeqCst) == 1 {
-				recorder.done.notify();
-			}
-		})
-	}
-
-	fn wait(&self) {
-		assert!(self.done.wait_timeout(Duration::from_seconds(10).unwrap()), "completions timed out");
-	}
-
-	fn versions(&self) -> Vec<(usize, CommitVersion)> {
-		self.results
-			.lock()
-			.iter()
-			.map(|(i, r)| (*i, *r.as_ref().expect("expected successful commit")))
-			.collect()
-	}
-}
-
-fn write_submission(
-	recorder: &Arc<Recorder>,
-	index: usize,
-	k: QueueDeduplicationKey,
-	v: EncodedBytes,
-) -> CommitSubmission {
-	CommitSubmission {
-		apply: Box::new(move |txn| txn.set(vec![(k.clone().into(), v)])),
-		completion: recorder.completion(index),
-	}
-}
-
-fn read_back(begin: &CommitBegin, k: &QueueDeduplicationKey) -> Option<Vec<u8>> {
-	let mut txn = begin().expect("begin read-back transaction");
-	let result = txn
-		.get(&[k.clone().into()])
-		.map(|mut found| found.pop().flatten())
-		.expect("get")
-		.map(|bytes| bytes.bytes.to_vec());
-	txn.rollback().expect("rollback read-back transaction");
-	result
+fn read_back(h: &Harness, k: &PartitionKey) -> Option<Vec<u8>> {
+	let mut commit = h.begin();
+	commit.get(&[k.clone().into()]).expect("get").pop().flatten().map(|bytes| bytes.to_vec())
 }
 
 #[test]
-fn each_submission_commits_in_its_own_version() {
+fn each_deferred_flow_commit_commits_in_its_own_version() {
 	// Nothing merges submissions, so one must never be able to roll back another's writes.
 	let h = harness();
-	let handle = CommitHandle::new(h.begin.clone());
 
-	let recorder = Recorder::new(3);
+	let mut versions: Vec<CommitVersion> = Vec::new();
 	for i in 0..3 {
-		handle.submit(write_submission(&recorder, i, key(&format!("inline-{i}")), encoded_bytes("y")));
+		let mut commit = h.begin();
+		commit.set(vec![(key(&format!("inline-{i}")).into(), encoded_bytes("y"))]).expect("set");
+		versions.push(commit.commit().expect("commit").version);
 	}
-	recorder.wait();
-
-	let mut versions: Vec<CommitVersion> = recorder.versions().iter().map(|(_, v)| *v).collect();
 	let deduped: Vec<CommitVersion> = {
 		let mut v = versions.clone();
 		v.dedup();
@@ -175,64 +103,23 @@ fn each_submission_commits_in_its_own_version() {
 }
 
 #[test]
-fn a_failing_apply_rolls_back_its_own_writes_and_the_handle_keeps_committing() {
-	// A failed apply must leave nothing behind, otherwise one bad submission poisons every later commit.
+fn a_dropped_deferred_flow_commit_leaves_nothing_behind_and_the_next_one_commits() {
+	// A batch that is dropped must leave nothing behind, otherwise one failed slice poisons every later commit.
 	let h = harness();
-	let handle = CommitHandle::new(h.begin.clone());
-
-	let failures = Arc::new(AtomicUsize::new(0));
-	let recorder = Recorder::new(2);
 
 	let k0 = key("poisoned-0");
-	let k0_apply = k0.clone();
-	let failures_0 = Arc::clone(&failures);
-	let recorder_0 = Arc::clone(&recorder);
-	handle.submit(CommitSubmission {
-		apply: Box::new(move |txn| {
-			txn.set(vec![(k0_apply.clone().into(), encoded_bytes("should-roll-back"))])?;
-			internal_err!("boom")
-		}),
-		completion: Box::new(move |result: Result<Committed, ValueError>| {
-			if result.is_err() {
-				failures_0.fetch_add(1, Ordering::SeqCst);
-			}
-			recorder_0.results.lock().push((0, result.map(|committed| committed.version)));
-			if recorder_0.remaining.fetch_sub(1, Ordering::SeqCst) == 1 {
-				recorder_0.done.notify();
-			}
-		}),
-	});
+	let mut dropped = h.begin();
+	dropped.set(vec![(k0.clone().into(), encoded_bytes("should-roll-back"))]).expect("set");
+	drop(dropped);
 
-	handle.submit(write_submission(&recorder, 1, key("survivor"), encoded_bytes("ok")));
-	recorder.wait();
+	let mut survivor = h.begin();
+	survivor.set(vec![(key("survivor").into(), encoded_bytes("ok"))]).expect("set");
+	survivor.commit().expect("commit");
 
-	assert_eq!(failures.load(Ordering::SeqCst), 1, "the failing submission must observe the error");
-	assert_eq!(read_back(&h.begin, &k0), None, "the writes of a failed apply must be rolled back");
+	assert_eq!(read_back(&h, &k0), None, "the writes of a dropped batch must leave nothing behind");
 	assert_eq!(
-		read_back(&h.begin, &key("survivor")),
+		read_back(&h, &key("survivor")),
 		Some(b"ok".to_vec()),
 		"a later submission must still commit after a failed one"
 	);
-}
-
-#[test]
-fn a_failed_apply_reports_its_error_to_its_own_completion() {
-	let h = harness();
-	let handle = CommitHandle::new(h.begin.clone());
-
-	let received: Arc<Mutex<Vec<ValueError>>> = Arc::new(Mutex::new(Vec::new()));
-	let received_completion = Arc::clone(&received);
-	let done = Arc::new(WaiterHandle::new());
-	let done_completion = Arc::clone(&done);
-	handle.submit(CommitSubmission {
-		apply: Box::new(|_txn| internal_err!("apply failure")),
-		completion: Box::new(move |result| {
-			received_completion.lock().push(result.unwrap_err());
-			done_completion.notify();
-		}),
-	});
-	assert!(done.wait_timeout(Duration::from_seconds(10).unwrap()));
-	let received = received.lock();
-	assert_eq!(received.len(), 1);
-	assert!(format!("{:?}", received[0]).contains("apply failure"));
 }

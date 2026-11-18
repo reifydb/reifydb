@@ -156,6 +156,8 @@ mod map_ends_in_a_comment;
 mod memory_limit;
 #[path = "missing_column_lookup.rs"]
 mod missing_column_lookup;
+#[path = "name_taken_across_kinds.rs"]
+mod name_taken_across_kinds;
 #[path = "nested_option_types.rs"]
 mod nested_option_types;
 #[path = "nested_read_policy_bypass.rs"]
@@ -282,6 +284,10 @@ mod udf_mixed_return_types_paths;
 mod udf_parameter_type;
 #[path = "udf_parameter_type_paths.rs"]
 mod udf_parameter_type_paths;
+#[path = "user_vtable_name_taken.rs"]
+mod user_vtable_name_taken;
+#[path = "view_dml_refused.rs"]
+mod view_dml_refused;
 #[path = "virtual_table_diagnostics.rs"]
 mod virtual_table_diagnostics;
 #[path = "vm_compare_answers_as_query.rs"]
@@ -296,5 +302,7 @@ mod window_batch_query;
 mod window_batch_query_fragment;
 #[path = "window_batch_query_paths.rs"]
 mod window_batch_query_paths;
+#[path = "windowed_view_group_namespace.rs"]
+mod windowed_view_group_namespace;
 #[path = "write_policy_old_row.rs"]
 mod write_policy_old_row;

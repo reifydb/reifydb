@@ -32,6 +32,7 @@ pub(crate) mod exec;
 pub mod executor;
 pub mod flow_lineage;
 pub mod instruction;
+pub mod plan_cache;
 pub mod services;
 pub mod stack;
 #[allow(clippy::module_inception)]

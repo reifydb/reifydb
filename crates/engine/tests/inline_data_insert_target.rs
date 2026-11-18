@@ -245,7 +245,7 @@ fn view_insert_is_an_error_with_the_view_fragment() {
 
 	let err = command_err(&t, "INSERT s::v [{ a: 1 }]");
 
-	assert_diagnostic(&err, "CA_004", "v");
+	assert_diagnostic(&err, "VIEW_001", "v");
 }
 
 #[test]

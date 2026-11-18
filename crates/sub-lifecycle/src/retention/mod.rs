@@ -2,4 +2,5 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod evictor;
+pub mod handoff;
 pub mod scan;

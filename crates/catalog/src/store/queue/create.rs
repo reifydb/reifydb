@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
 		column::{Column, ColumnIndex},
-		id::{ColumnId, NamespaceId, QueueId},
+		id::{NamespaceId, QueueId},
 		property::ColumnPropertyKind,
 		queue::{Queue, QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 	},
@@ -124,28 +124,6 @@ impl CatalogStore {
 		}
 	}
 
-	pub(crate) fn create_queue_with_id(
-		txn: &mut AdminTransaction,
-		queue_id: QueueId,
-		to_create: QueueToCreate,
-		column_ids: &[ColumnId],
-	) -> Result<Queue, ValueError> {
-		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
-		Self::validate_queue(&to_create)?;
-
-		let namespace_id = to_create.namespace;
-
-		Self::store_queue(txn, queue_id, namespace_id, &to_create)?;
-		Self::link_queue_to_namespace(txn, namespace_id, queue_id, to_create.name.text())?;
-		let built = Self::queue_without_columns(queue_id, &to_create);
-		let columns = Self::insert_queue_columns_with_ids(txn, queue_id, to_create, column_ids)?;
-
-		Ok(Queue {
-			columns,
-			..built
-		})
-	}
-
 	#[inline]
 	fn reject_existing_queue(
 		txn: &mut AdminTransaction,
@@ -237,35 +215,6 @@ impl CatalogStore {
 
 		Ok(columns)
 	}
-
-	fn insert_queue_columns_with_ids(
-		txn: &mut AdminTransaction,
-		queue_id: QueueId,
-		to_create: QueueToCreate,
-		column_ids: &[ColumnId],
-	) -> Result<Vec<Column>, ValueError> {
-		let mut columns = Vec::new();
-		for (idx, (col, column_id)) in to_create.columns.into_iter().zip(column_ids.iter()).enumerate() {
-			columns.push(CatalogStore::create_column_with_id(
-				txn,
-				*column_id,
-				queue_id,
-				ColumnToCreate {
-					fragment: Some(col.fragment.clone()),
-					namespace_name: String::new(),
-					object_name: String::new(),
-					column: col.name.text().to_string(),
-					constraint: col.constraint,
-					properties: col.properties,
-					index: ColumnIndex(idx as u8),
-					auto_increment: col.auto_increment,
-					dictionary_id: col.dictionary_id,
-				},
-			)?);
-		}
-
-		Ok(columns)
-	}
 }
 
 #[cfg(test)]
@@ -273,12 +222,11 @@ pub mod tests {
 	use reifydb_core::{
 		common::TimeSource,
 		interface::catalog::{
-			id::{ColumnId, NamespaceId, QueueId},
+			id::NamespaceId,
 			queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
 		},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
-	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{constraint::TypeConstraint, duration::Duration, value_type::ValueType},
@@ -389,27 +337,6 @@ pub mod tests {
 
 		assert!(err.message.contains("queue"), "error should name the object kind, got: {}", err.message);
 		assert!(err.message.contains("jobs"), "error should name the queue, got: {}", err.message);
-	}
-
-	#[test]
-	fn test_create_queue_with_id_uses_the_supplied_ids() {
-		let mut txn = create_test_admin_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
-
-		let mut to_create = queue_to_create("replayed");
-		to_create.namespace = namespace.id();
-
-		let created = CatalogStore::create_queue_with_id(&mut txn, QueueId(4242), to_create, &[ColumnId(9001)])
-			.unwrap();
-
-		assert_eq!(created.id, QueueId(4242));
-		assert_eq!(created.columns[0].id, ColumnId(9001));
-
-		let found =
-			CatalogStore::find_queue_by_name(&mut Transaction::Admin(&mut txn), namespace.id(), "replayed")
-				.unwrap()
-				.unwrap();
-		assert_eq!(found.id, created.id);
 	}
 }
 

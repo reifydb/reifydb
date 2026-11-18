@@ -215,3 +215,50 @@ fn functions_list_marks_aliases_with_their_canonical_name() {
 	let names = strings(&t, "from system::functions", "name");
 	assert!(names.iter().all(|n| !n.starts_with("system::builtin::")), "registry key prefix must not leak");
 }
+
+#[test]
+fn no_two_system_objects_share_a_name_in_a_namespace() {
+	// A bootstrap object added under a taken name skips the create check and would pass silently without this.
+	let t = bootstrapped();
+	let mut queries: Vec<(&str, String, &str, &str)> = [
+		"tables",
+		"ringbuffers",
+		"series",
+		"views",
+		"dictionaries",
+		"queues",
+		"enums",
+		"events",
+		"handlers",
+		"flows",
+		"windowed_view_groups",
+		"procedures",
+	]
+	.into_iter()
+	.map(|kind| (kind, format!("from system::{kind} map {{ namespace_id, name }}"), "namespace_id", "name"))
+	.collect();
+	queries.push((
+		"namespaces",
+		"from system::namespaces map { parent_id, local_name }".to_string(),
+		"parent_id",
+		"local_name",
+	));
+
+	let mut seen: BTreeMap<(String, String), &str> = BTreeMap::new();
+	for (kind, rql, namespace_column, name_column) in &queries {
+		let namespaces = strings(&t, rql, namespace_column);
+		let names = strings(&t, rql, name_column);
+		for (namespace, name) in namespaces.into_iter().zip(names) {
+			if let Some(first) = seen.insert((namespace.clone(), name.clone()), kind) {
+				let allowed = matches!(
+					(first, *kind),
+					("handlers", "procedures") | ("procedures", "handlers")
+				);
+				assert!(
+					allowed,
+					"`{name}` in namespace {namespace} is both a {first} row and a {kind} row"
+				);
+			}
+		}
+	}
+}

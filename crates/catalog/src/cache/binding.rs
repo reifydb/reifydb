@@ -61,41 +61,12 @@ impl CatalogCache {
 		self.bindings_by_grpc_name.get(name).and_then(|entry| self.find_binding(*entry.value()))
 	}
 
-	pub fn find_grpc_binding_by_name_at(&self, name: &str, version: CommitVersion) -> Option<Binding> {
-		self.bindings_by_grpc_name.get(name).and_then(|entry| self.find_binding_at(*entry.value(), version))
-	}
-
 	pub fn find_ws_binding_by_name(&self, name: &str) -> Option<Binding> {
 		self.bindings_by_ws_name.get(name).and_then(|entry| self.find_binding(*entry.value()))
 	}
 
-	pub fn find_ws_binding_by_name_at(&self, name: &str, version: CommitVersion) -> Option<Binding> {
-		self.bindings_by_ws_name.get(name).and_then(|entry| self.find_binding_at(*entry.value(), version))
-	}
-
-	pub fn find_http_binding_by_method_path(&self, method: &str, path: &str) -> Option<Binding> {
-		self.bindings_by_http_method_path
-			.get(&(method.to_string(), path.to_string()))
-			.and_then(|entry| self.find_binding(*entry.value()))
-	}
-
-	pub fn find_http_binding_by_method_path_at(
-		&self,
-		method: &str,
-		path: &str,
-		version: CommitVersion,
-	) -> Option<Binding> {
-		self.bindings_by_http_method_path
-			.get(&(method.to_string(), path.to_string()))
-			.and_then(|entry| self.find_binding_at(*entry.value(), version))
-	}
-
 	pub fn list_http_bindings(&self) -> Vec<Binding> {
 		self.bindings_http.iter().filter_map(|entry| self.find_binding(*entry.key())).collect()
-	}
-
-	pub fn list_http_bindings_at(&self, version: CommitVersion) -> Vec<Binding> {
-		self.bindings_http.iter().filter_map(|entry| self.find_binding_at(*entry.key(), version)).collect()
 	}
 
 	pub fn set_binding(&self, id: BindingId, version: CommitVersion, binding: Option<Binding>) {
@@ -126,12 +97,9 @@ impl CatalogCache {
 					self.bindings_by_ws_name.remove(name);
 				}
 				BindingProtocol::Http {
-					method,
-					path,
+					..
 				} => {
 					self.bindings_http.remove(&id);
-					self.bindings_by_http_method_path
-						.remove(&(method.as_str().to_string(), path.clone()));
 				}
 			}
 		}
@@ -162,12 +130,9 @@ impl CatalogCache {
 					self.bindings_by_ws_name.insert(name.clone(), id);
 				}
 				BindingProtocol::Http {
-					method,
-					path,
+					..
 				} => {
 					self.bindings_http.insert(id, ());
-					self.bindings_by_http_method_path
-						.insert((method.as_str().to_string(), path.clone()), id);
 				}
 			}
 

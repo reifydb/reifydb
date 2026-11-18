@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, fmt, fmt::Debug, str::FromStr, sync::Arc};
+use std::{
+	collections::HashSet,
+	fmt,
+	fmt::Debug,
+	str::FromStr,
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
+};
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	common::CommitVersion,
 	error::diagnostic::{query, subscription},
 	expression::{AliasExpression, Expression, IdentExpression, ParameterExpression, PrefixOperator},
 	fingerprint::{CompilationFingerprint, StatementFingerprint},
@@ -13,6 +23,7 @@ use reifydb_core::{
 		namespace::Namespace,
 		series::{SeriesKey, TimestampPrecision},
 	},
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql_frontend::{
@@ -86,10 +97,19 @@ pub struct IncrementalCompilation {
 #[derive(Debug, Clone)]
 pub struct Compiler(Arc<CompilerInner>);
 
+#[derive(Clone)]
+struct CachedPlan {
+	stamp: CommitVersion,
+	plans: Arc<Vec<Compiled>>,
+}
+
 struct CompilerInner {
 	catalog: Catalog,
 	routines: Routines,
-	cache: SyncLru<CompilationFingerprint, Arc<Vec<Compiled>>>,
+	cache: SyncLru<CompilationFingerprint, CachedPlan>,
+	last_catalog_change: AtomicU64,
+	hits: AtomicU64,
+	misses: AtomicU64,
 }
 
 impl Debug for CompilerInner {
@@ -108,21 +128,52 @@ impl Compiler {
 			catalog,
 			routines,
 			cache: SyncLru::new(DEFAULT_CAPACITY),
+			last_catalog_change: AtomicU64::new(0),
+			hits: AtomicU64::new(0),
+			misses: AtomicU64::new(0),
 		}))
+	}
+
+	fn cached(&self, tx: &Transaction<'_>, fingerprint: &CompilationFingerprint) -> Option<Arc<Vec<Compiled>>> {
+		let last = self.0.last_catalog_change.load(Ordering::SeqCst);
+		let found = if tx.has_pending_catalog_changes() || tx.version().0 < last {
+			None
+		} else {
+			self.0.cache.get(fingerprint).filter(|entry| entry.stamp.0 >= last).map(|entry| entry.plans)
+		};
+		if found.is_some() {
+			self.0.hits.fetch_add(1, Ordering::Relaxed);
+		} else {
+			self.0.misses.fetch_add(1, Ordering::Relaxed);
+		}
+		found
+	}
+
+	fn remember(&self, tx: &Transaction<'_>, fingerprint: CompilationFingerprint, plans: &Arc<Vec<Compiled>>) {
+		if tx.has_pending_catalog_changes() {
+			return;
+		}
+		if tx.version().0 < self.0.last_catalog_change.load(Ordering::SeqCst) {
+			return;
+		}
+		self.0.cache.put(
+			fingerprint,
+			CachedPlan {
+				stamp: tx.version(),
+				plans: plans.clone(),
+			},
+		);
 	}
 
 	pub fn compile(&self, tx: &mut Transaction<'_>, query: &str) -> Result<CompilationResult, ValueError> {
 		let fingerprint = CompilationFingerprint::from(xxh3_128(query.as_bytes()));
-		if let Some(cached) = self.0.cache.get(&fingerprint) {
+		if let Some(cached) = self.cached(&*tx, &fingerprint) {
 			return Ok(CompilationResult::Ready(cached));
 		}
 
 		let bump = Bump::new();
 		let statements = parse_str(&bump, query)?;
 		let has_ddl = statements.iter().any(|s| s.contains_ddl());
-		if has_ddl {
-			self.0.cache.clear();
-		}
 		if needs_incremental_compile(&statements, has_ddl) {
 			return Ok(CompilationResult::Incremental(IncrementalCompilation {
 				query: query.to_string(),
@@ -134,7 +185,7 @@ impl Compiler {
 		let plans = self.batch_compile_statements(&bump, tx, statements)?;
 		let arc_plans = Arc::new(plans);
 		if !has_ddl {
-			self.0.cache.put(fingerprint, arc_plans.clone());
+			self.remember(&*tx, fingerprint, &arc_plans);
 		}
 		Ok(CompilationResult::Ready(arc_plans))
 	}
@@ -215,7 +266,7 @@ impl Compiler {
 	{
 		let cacheable = tx.identity().is_privileged();
 		let fingerprint = CompilationFingerprint::from(xxh3_128(query.as_bytes()));
-		if cacheable && let Some(cached) = self.0.cache.get(&fingerprint) {
+		if cacheable && let Some(cached) = self.cached(&*tx, &fingerprint) {
 			return Ok(CompilationResult::Ready(cached));
 		}
 
@@ -223,9 +274,6 @@ impl Compiler {
 		let statements = parse_str(&bump, query)?;
 
 		let has_ddl = statements.iter().any(|s| s.contains_ddl());
-		if has_ddl {
-			self.0.cache.clear();
-		}
 		let total_statements = statements.len();
 		let needs_incremental = total_statements > 1 && has_ddl;
 
@@ -259,7 +307,7 @@ impl Compiler {
 
 		let plans = Arc::new(plans);
 		if cacheable && !has_ddl {
-			self.0.cache.put(fingerprint, plans.clone());
+			self.remember(&*tx, fingerprint, &plans);
 		}
 		Ok(CompilationResult::Ready(plans))
 	}
@@ -345,20 +393,19 @@ impl Compiler {
 		Ok(None)
 	}
 
+	pub fn record_catalog_change(&self, version: CommitVersion) {
+		self.0.last_catalog_change.fetch_max(version.0, Ordering::SeqCst);
+	}
+
 	pub fn clear(&self) {
 		self.0.cache.clear();
 	}
+}
 
-	pub fn len(&self) -> usize {
-		self.0.cache.len()
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.0.cache.is_empty()
-	}
-
-	pub fn capacity(&self) -> usize {
-		self.0.cache.capacity()
+impl MetricsCollector for Compiler {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		out.push(MetricsSample::counter("plan_cache", "hits", self.0.hits.load(Ordering::Relaxed)));
+		out.push(MetricsSample::counter("plan_cache", "misses", self.0.misses.load(Ordering::Relaxed)));
 	}
 }
 
@@ -2366,5 +2413,72 @@ fn constant_value(expr: &Expression) -> Result<Option<Value>, ValueError> {
 			Ok(Some(Value::Record(fields)))
 		}
 		_ => Ok(None),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::sync::{Arc, atomic::Ordering};
+
+	use reifydb_catalog::catalog::Catalog;
+	use reifydb_core::{common::CommitVersion, fingerprint::CompilationFingerprint};
+	use reifydb_routine_abi::registry::Routines;
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::util::hash::xxh3_128;
+
+	use super::{CachedPlan, Compiler};
+
+	#[test]
+	fn an_entry_stamped_before_the_last_catalog_change_is_not_served() {
+		// A put racing a catalog commit can leave an older stamp; without the stamp compare it is served.
+		let t = TestEngine::new();
+		t.admin("create namespace plan_cache_stamp");
+		let mut q = t.inner().begin_query(TestEngine::identity()).unwrap();
+		let tx = Transaction::Query(&mut q);
+		let s = tx.version();
+		assert!(s.0 > 1, "the snapshot must sit above the bootstrap version for an older stamp to exist");
+		let compiler = Compiler::new(Catalog::testing(), Routines::empty());
+		let fingerprint = CompilationFingerprint::from(xxh3_128(b"from test::t"));
+		compiler.record_catalog_change(s);
+
+		compiler.0.cache.put(
+			fingerprint,
+			CachedPlan {
+				stamp: CommitVersion(s.0 - 1),
+				plans: Arc::new(Vec::new()),
+			},
+		);
+		assert!(
+			compiler.cached(&tx, &fingerprint).is_none(),
+			"an entry stamped before the last change must not be served"
+		);
+		assert_eq!(compiler.0.misses.load(Ordering::Relaxed), 1);
+		assert_eq!(compiler.0.hits.load(Ordering::Relaxed), 0);
+
+		compiler.0.cache.put(
+			fingerprint,
+			CachedPlan {
+				stamp: s,
+				plans: Arc::new(Vec::new()),
+			},
+		);
+		assert!(
+			compiler.cached(&tx, &fingerprint).is_some(),
+			"an entry stamped at the last change must be served"
+		);
+		assert_eq!(compiler.0.hits.load(Ordering::Relaxed), 1);
+		assert_eq!(compiler.0.misses.load(Ordering::Relaxed), 1);
+	}
+
+	#[test]
+	fn the_last_catalog_change_never_moves_back() {
+		// Pre-publish handlers run outside the oracle lock, so a late lower version must not lower the mark.
+		let compiler = Compiler::new(Catalog::testing(), Routines::empty());
+
+		compiler.record_catalog_change(CommitVersion(5));
+		compiler.record_catalog_change(CommitVersion(3));
+
+		assert_eq!(compiler.0.last_catalog_change.load(Ordering::SeqCst), 5);
 	}
 }

@@ -14,6 +14,7 @@ pub mod handler;
 pub mod identity;
 pub mod identity_attribute;
 pub mod migration;
+pub mod name;
 pub mod namespace;
 pub mod object;
 pub mod operator_retention;

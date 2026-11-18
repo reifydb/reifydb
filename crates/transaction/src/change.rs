@@ -454,6 +454,11 @@ pub struct CatalogChangesSavepoint {
 }
 
 impl TransactionalCatalogChanges {
+	pub fn has_catalog_changes(&self) -> bool {
+		self.log.iter()
+			.any(|operation| !matches!(operation, Operation::ColumnBlock { .. } | Operation::Test { .. }))
+	}
+
 	pub fn savepoint(&self) -> CatalogChangesSavepoint {
 		CatalogChangesSavepoint {
 			binding_len: self.binding.len(),
@@ -1347,4 +1352,62 @@ pub enum RowChange {
 	TableInsert(TableRowInsertion),
 	QueueInsert(QueueRowInsertion),
 	QueueAck(QueueRowAck),
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::catalog::{
+			column_block::{ColumnBlock, ColumnBlockSource},
+			id::{ColumnBlockId, MigrationId, NamespaceId, TableId},
+			migration::Migration,
+		},
+	};
+	use reifydb_value::util::hash::Hash128;
+
+	use super::{Change, OperationType, TransactionalCatalogChanges};
+
+	#[test]
+	fn column_block_changes_alone_are_not_a_catalog_change() {
+		// Column blocks never shape a plan; counting them would flush the plan cache on every storage flush.
+		let mut changes = TransactionalCatalogChanges::default();
+		assert!(!changes.has_catalog_changes(), "an empty change set has no catalog change");
+
+		changes.add_column_block_change(Change {
+			pre: None,
+			post: Some(ColumnBlock {
+				id: ColumnBlockId(1),
+				namespace: NamespaceId(1),
+				source: ColumnBlockSource::Table {
+					table_id: TableId(1),
+					commit_version: CommitVersion(1),
+				},
+				row_count: 0,
+				partition_values: Vec::new(),
+				stats: Vec::new(),
+			}),
+			op: OperationType::Create,
+		});
+		assert!(
+			!changes.has_catalog_changes(),
+			"a column block change alone must not count as a catalog change"
+		);
+
+		changes.add_migration_change(Change {
+			pre: None,
+			post: Some(Migration {
+				id: MigrationId(1),
+				name: "m".to_string(),
+				body: String::new(),
+				rollback_body: None,
+				hash: Hash128(0),
+			}),
+			op: OperationType::Create,
+		});
+		assert!(
+			changes.has_catalog_changes(),
+			"any tracked change other than a column block is a catalog change"
+		);
+	}
 }

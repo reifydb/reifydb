@@ -17,6 +17,8 @@ pub mod tier;
 
 pub mod config;
 pub mod store;
+#[cfg(feature = "testing")]
+pub mod testing;
 
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
@@ -343,6 +345,20 @@ impl MultiStore {
 	) -> Result<HashMap<EncodedKey, VersionedGetResult>, ValueError> {
 		match self {
 			MultiStore::Standard(store) => store.get_versioned(ctx, keys, version),
+		}
+	}
+
+	#[cfg(feature = "testing")]
+	pub fn set_testing_hooks(&self, hooks: Arc<dyn testing::MultiStoreHooks>) {
+		match self {
+			MultiStore::Standard(store) => store.set_testing_hooks(hooks),
+		}
+	}
+
+	#[cfg(feature = "testing")]
+	pub fn clear_testing_hooks(&self) {
+		match self {
+			MultiStore::Standard(store) => store.clear_testing_hooks(),
 		}
 	}
 }

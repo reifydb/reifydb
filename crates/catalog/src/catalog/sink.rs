@@ -9,7 +9,12 @@ use reifydb_transaction::{
 use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, catalog::Catalog, store::sink::create::SinkToCreate as StoreSinkToCreate};
+use crate::{
+	CatalogStore,
+	catalog::{Catalog, name::NameAllowed},
+	error::NameKind,
+	store::sink::create::SinkToCreate as StoreSinkToCreate,
+};
 
 #[derive(Debug, Clone)]
 pub struct SinkToCreate {
@@ -124,6 +129,13 @@ impl Catalog {
 
 	#[instrument(name = "catalog::sink::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_sink(&self, txn: &mut AdminTransaction, to_create: SinkToCreate) -> Result<Sink, ValueError> {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::Sink,
+			NameAllowed::default(),
+		)?;
 		let sink = CatalogStore::create_sink(txn, to_create.into())?;
 		txn.track_sink_created(sink.clone())?;
 		Ok(sink)

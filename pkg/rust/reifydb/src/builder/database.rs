@@ -73,18 +73,10 @@ use reifydb_sub_tracing::builder::TracingConfigurator;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::factory::TracingSubsystemFactory;
 use reifydb_transaction::{
-	TransactionVersion,
-	commit::{CommitBegin, CommitHandle},
-	interceptor::builder::InterceptorBuilder,
-	multi::transaction::MultiTransaction,
-	single::SingleTransaction,
-	wal::CommitLogMetrics,
+	TransactionVersion, interceptor::builder::InterceptorBuilder, multi::transaction::MultiTransaction,
+	single::SingleTransaction, wal::CommitLogMetrics,
 };
-use reifydb_value::{
-	byte_size::ByteSize,
-	error::ValueError,
-	value::{Value, identity::IdentityId},
-};
+use reifydb_value::{byte_size::ByteSize, error::ValueError, value::Value};
 use reifydb_wal::sync::WalMode;
 
 #[cfg(not(reifydb_single_threaded))]
@@ -526,6 +518,7 @@ impl DatabaseBuilder {
 		);
 
 		self.ioc = self.ioc.register(engine.clone());
+		metrics_registry.register_collector(Arc::new(engine.services().compiler.clone()));
 
 		let mut clear_on_failure = ClearIocOnFailure::new(self.ioc.clone());
 
@@ -559,13 +552,6 @@ impl DatabaseBuilder {
 		}
 
 		bootloader.apply_migrations(&self.migrations)?;
-
-		let commit_handle = {
-			let begin_engine = engine.clone();
-			let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-			CommitHandle::new(begin)
-		};
-		self.ioc = self.ioc.register(commit_handle);
 
 		let mut all_versions = vec![
 			SystemVersion {

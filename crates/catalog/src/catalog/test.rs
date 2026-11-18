@@ -13,7 +13,11 @@ use reifydb_transaction::{
 use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::instrument;
 
-use crate::{catalog::Catalog, store::sequence::system::SystemSequence};
+use crate::{
+	catalog::{Catalog, name::NameAllowed},
+	error::NameKind,
+	store::sequence::system::SystemSequence,
+};
 
 #[derive(Debug, Clone)]
 pub struct TestToCreate {
@@ -204,6 +208,13 @@ impl Catalog {
 
 	#[instrument(name = "catalog::test::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_test(&self, txn: &mut AdminTransaction, to_create: TestToCreate) -> Result<Test, ValueError> {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::Test,
+			NameAllowed::default(),
+		)?;
 		let id = SystemSequence::next_test_id(txn)?;
 
 		let test = Test {

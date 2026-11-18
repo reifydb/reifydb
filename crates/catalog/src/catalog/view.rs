@@ -25,7 +25,8 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::Catalog,
+	catalog::{Catalog, name::NameAllowed},
+	error::NameKind,
 	store::view::create::{
 		ViewColumnToCreate as StoreViewColumnToCreate, ViewStorage, ViewToCreate as StoreViewToCreate,
 	},
@@ -247,6 +248,23 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: ViewToCreate,
 	) -> Result<View, ValueError> {
+		let owned_queue = match &to_create.storage {
+			ViewStorage::Queue {
+				queue,
+				..
+			} => Some(*queue),
+			_ => None,
+		};
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::View,
+			NameAllowed {
+				queue: owned_queue,
+				..NameAllowed::default()
+			},
+		)?;
 		let view = CatalogStore::create_deferred_view(txn, to_create.into())?;
 		txn.track_view_created(view.clone())?;
 
@@ -263,6 +281,23 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: ViewToCreate,
 	) -> Result<View, ValueError> {
+		let owned_queue = match &to_create.storage {
+			ViewStorage::Queue {
+				queue,
+				..
+			} => Some(*queue),
+			_ => None,
+		};
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::View,
+			NameAllowed {
+				queue: owned_queue,
+				..NameAllowed::default()
+			},
+		)?;
 		let view = CatalogStore::create_transactional_view(txn, to_create.into())?;
 		txn.track_view_created(view.clone())?;
 
@@ -292,16 +327,6 @@ impl Catalog {
 	#[instrument(name = "catalog::view::list_all", level = "trace", skip(self, txn))]
 	pub fn list_views_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<View>, ValueError> {
 		CatalogStore::list_views_all(txn)
-	}
-
-	#[instrument(name = "catalog::view::set_primary_key", level = "debug", skip(self, txn))]
-	pub fn set_view_primary_key(
-		&self,
-		txn: &mut AdminTransaction,
-		view_id: ViewId,
-		primary_key_id: PrimaryKeyId,
-	) -> Result<(), ValueError> {
-		CatalogStore::set_view_primary_key(txn, view_id, primary_key_id)
 	}
 
 	#[instrument(name = "catalog::view::get_pk_id", level = "trace", skip(self, txn))]

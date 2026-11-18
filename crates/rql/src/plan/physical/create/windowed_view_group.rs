@@ -19,9 +19,16 @@ impl<'bump> Compiler<'bump> {
 		create: logical::CreateDeferredWindowedViewGroupNode<'bump>,
 	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let namespace = self.resolve_view_namespace(rx, &create.group)?;
+		let own = format!("{}::{}", namespace.name(), create.group.name.text());
 		let mut members = Vec::with_capacity(create.members.len());
 		for member in create.members {
-			let member_namespace = self.resolve_view_namespace(rx, &member.view)?;
+			let member_text =
+				member.view.namespace.iter().map(|n| n.text()).collect::<Vec<&str>>().join("::");
+			let member_namespace = if member_text == own {
+				None
+			} else {
+				Some(self.resolve_view_namespace(rx, &member.view)?)
+			};
 			let as_clause = self.compile(rx, member.as_clause)?.unwrap();
 			members.push(WindowedViewGroupMember {
 				namespace: member_namespace,

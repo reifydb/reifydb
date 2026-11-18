@@ -12,8 +12,9 @@ use std::{
 
 use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
-	catalog::Catalog,
+	catalog::{Catalog, name::NameAllowed},
 	completeness::CompletenessWriterRef,
+	error::NameKind,
 	interceptor::CatalogCacheInterceptor,
 	metrics::storage::metrics::MetricsReader,
 	vtable::{
@@ -23,6 +24,7 @@ use reifydb_catalog::{
 	},
 };
 use reifydb_core::{
+	actors::flow::FlowWriterRegistry,
 	commit::{queue::CommitQueue, tracker::WriteTracker, watermark::ReaderWatermark},
 	common::CommitVersion,
 	error::diagnostic::engine::read_only_rejection,
@@ -57,6 +59,7 @@ use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::ScanLayout;
 use reifydb_transaction::{
 	TransactionId,
+	commit::DeferredFlowCommit,
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 	error::TransactionError,
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
@@ -82,6 +85,7 @@ use crate::{
 		Admin, Command, Query,
 		executor::Executor,
 		flow_lineage::ViewLineage,
+		plan_cache::PlanCacheListener,
 		services::{EngineConfig, Services},
 	},
 };
@@ -132,6 +136,22 @@ impl StandardEngine {
 		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
 		txn.set_marker_source(self.executor.ioc.clone(), self.clock().clone());
 		Ok(txn)
+	}
+
+	#[instrument(name = "engine::transaction::begin_deferred_flow_commit", level = "debug", skip(self))]
+	pub fn begin_deferred_flow_commit(&self) -> Result<DeferredFlowCommit, ValueError> {
+		reifydb_assertions! {
+			assert!(
+				!self.is_read_only(),
+				"begin_deferred_flow_commit called on a read-only engine: writes are permanently disabled after set_read_only(), so any caller reaching this point has bypassed the reject_if_read_only guard"
+			);
+		}
+		let interceptors = self.interceptors.create();
+		DeferredFlowCommit::new(
+			self.multi.clone(),
+			interceptors.post_commit,
+			Some((self.executor.ioc.clone(), self.clock().clone())),
+		)
 	}
 
 	#[instrument(name = "engine::transaction::begin_admin", level = "debug", skip(self))]
@@ -388,6 +408,14 @@ impl StandardEngine {
 			columns,
 		});
 
+		let mut query = self.begin_query(IdentityId::system())?;
+		catalog.reject_name_taken(
+			&mut Transaction::Query(&mut query),
+			namespace_id,
+			&Fragment::internal(name),
+			NameKind::VirtualTable,
+			NameAllowed::default(),
+		)?;
 		catalog.register_vtable_user(def.clone())?;
 
 		let data_fn: UserVTableDataFunction = Arc::new(move |_params| table.get());
@@ -468,6 +496,10 @@ impl StandardEngine {
 			registry
 		});
 
+		if config.ioc.try_resolve::<FlowWriterRegistry>().is_none() {
+			config.ioc.register_service(FlowWriterRegistry::new());
+		}
+
 		let completeness: CompletenessWriterRef =
 			Arc::new(CompletenessWriterImpl::new(catalog.clone(), config.runtime_context.clock.clone()));
 		config.ioc.register_service::<CompletenessWriterRef>(completeness);
@@ -492,11 +524,14 @@ impl StandardEngine {
 			single.clone(),
 		)));
 
+		let executor = Executor::new(catalog.clone(), config, operator_library.clone(), metrics_reader);
+		event_bus.register(PlanCacheListener::new(executor.services().compiler.clone()));
+
 		Self(Arc::new(Inner {
 			multi,
 			single,
 			event_bus,
-			executor: Executor::new(catalog.clone(), config, operator_library.clone(), metrics_reader),
+			executor,
 			interceptors,
 			catalog,
 			operator_library,
@@ -696,6 +731,13 @@ impl StandardEngine {
 	#[inline]
 	pub fn queue_wake(&self) -> QueueWakeRegistry {
 		self.ioc().resolve::<QueueWakeRegistry>().expect("StandardEngine::new registers the QueueWakeRegistry")
+	}
+
+	#[inline]
+	pub fn flow_writers(&self) -> FlowWriterRegistry {
+		self.ioc()
+			.resolve::<FlowWriterRegistry>()
+			.expect("StandardEngine::new registers the FlowWriterRegistry")
 	}
 
 	#[inline]

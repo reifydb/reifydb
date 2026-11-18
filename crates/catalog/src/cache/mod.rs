@@ -152,8 +152,6 @@ pub struct CatalogCacheInner {
 
 	pub(crate) bindings_http: SkipMap<BindingId, ()>,
 
-	pub(crate) bindings_by_http_method_path: SkipMap<(String, String), BindingId>,
-
 	pub(crate) configs: SkipMap<ConfigKey, MultiVersionConfig>,
 
 	#[cfg(reifydb_assertions)]
@@ -314,7 +312,6 @@ impl CatalogCache {
 			bindings_by_grpc_name: SkipMap::new(),
 			bindings_by_ws_name: SkipMap::new(),
 			bindings_http: SkipMap::new(),
-			bindings_by_http_method_path: SkipMap::new(),
 			configs: SkipMap::new(),
 			#[cfg(reifydb_assertions)]
 			pending_config_overrides: Mutex::new(BTreeSet::new()),

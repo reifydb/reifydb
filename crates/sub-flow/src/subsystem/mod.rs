@@ -55,15 +55,8 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_transaction::{
-	commit::{CommitBegin, CommitHandle},
-	wal::flow_wal,
-};
-use reifydb_value::{
-	byte_size::ByteSize,
-	error::ValueError,
-	value::{duration::Duration, identity::IdentityId},
-};
+use reifydb_transaction::wal::flow_wal;
+use reifydb_value::{byte_size::ByteSize, error::ValueError, value::duration::Duration};
 
 use crate::{
 	builder::{CustomOperators, FlowConfig},
@@ -123,15 +116,11 @@ impl FlowSubsystem {
 
 		let flow_scope = spawner.scope();
 
-		let commit_handle = ioc.try_resolve::<CommitHandle>().unwrap_or_else(|| {
-			let begin_engine = engine.clone();
-			let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-			CommitHandle::new(begin)
-		});
 		let poll_frontier = ReaderWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
 		let markers = ioc.try_resolve::<LatencyConsumer>().map(|_| MarkerPlane::register(ioc));
 		let committer = Committer::new(
+			engine.clone(),
 			flow_tracker.clone(),
 			materialization.clone(),
 			substrate.operators.clone().expect("the flow substrate is built with an operator store"),
@@ -142,14 +131,10 @@ impl FlowSubsystem {
 		let mut committer_refs = Vec::with_capacity(shards);
 		let mut terminal_committer_refs = Vec::with_capacity(shards);
 		for _ in 0..shards {
-			let handle = flow_scope.spawn_flow(
-				"flow-committer",
-				CommitterActor::new(committer.clone(), commit_handle.clone()),
-			);
+			let handle = flow_scope.spawn_flow("flow-committer", CommitterActor::new(committer.clone()));
 			committer_refs.push(handle.actor_ref().clone());
 			committer_handles.push(handle);
-			let terminal = CommitterActor::new(committer.clone(), commit_handle.clone())
-				.named("flow-committer-terminal");
+			let terminal = CommitterActor::new(committer.clone()).named("flow-committer-terminal");
 			let handle = flow_scope.spawn_flow("flow-committer-terminal", terminal);
 			terminal_committer_refs.push(handle.actor_ref().clone());
 			committer_handles.push(handle);

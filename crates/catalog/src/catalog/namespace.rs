@@ -24,8 +24,8 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::Catalog,
-	error::{CatalogError, CatalogObjectKind},
+	catalog::{Catalog, name::NameAllowed},
+	error::{CatalogError, CatalogObjectKind, NameKind},
 	store::namespace::create::NamespaceToCreate as StoreNamespaceToCreate,
 };
 
@@ -327,6 +327,17 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: NamespaceToCreate,
 	) -> Result<Namespace, ValueError> {
+		let name = match &to_create.namespace_fragment {
+			Some(fragment) if fragment.text() == to_create.local_name => fragment.clone(),
+			_ => Fragment::internal(&to_create.local_name),
+		};
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.parent_id,
+			&name,
+			NameKind::Namespace,
+			NameAllowed::default(),
+		)?;
 		let namespace = CatalogStore::create_namespace(txn, to_create.into())?;
 		txn.track_namespace_created(namespace.clone())?;
 		Ok(namespace)

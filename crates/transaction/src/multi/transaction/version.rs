@@ -14,8 +14,6 @@ pub trait VersionProvider: Send + Sync + Clone {
 	fn reserve(&self) -> Result<CommitVersion, ValueError>;
 	fn publish(&self, version: CommitVersion);
 	fn current(&self) -> Result<CommitVersion, ValueError>;
-
-	fn advance_to(&self, _version: CommitVersion) {}
 }
 
 #[derive(Clone)]
@@ -46,10 +44,6 @@ impl VersionProvider for StandardVersionProvider {
 
 	fn current(&self) -> Result<CommitVersion, ValueError> {
 		Ok(CommitVersion(self.next_version.load(Ordering::SeqCst)))
-	}
-
-	fn advance_to(&self, version: CommitVersion) {
-		self.next_version.fetch_max(version.0, Ordering::SeqCst);
 	}
 }
 

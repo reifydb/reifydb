@@ -19,9 +19,12 @@ use reifydb_value::error::ValueError;
 use crate::{
 	error::RqlError,
 	expression::ExpressionCompiler,
-	plan::logical::{
-		Compiler, DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, FilterNode, LogicalPlan,
-		PipelineNode, mutate::compile_returning_clause,
+	plan::{
+		logical::{
+			Compiler, DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, FilterNode, LogicalPlan,
+			PipelineNode, mutate::compile_returning_clause,
+		},
+		view_not_writable,
 	},
 };
 
@@ -101,6 +104,11 @@ impl<'bump> Compiler<'bump> {
 		let namespace_id = ns.id();
 
 		if self.catalog.find_queue_by_name(tx, namespace_id, target_name)?.is_some() {
+			if let Some(refusal) =
+				view_not_writable(&self.catalog, tx, &ns, target_name, "DELETE", name.to_owned())?
+			{
+				return Err(refusal);
+			}
 			return Err(RqlError::QueueImmutable {
 				fragment: name.to_owned(),
 			}

@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 
 use crate::{
 	interface::{
-		catalog::{id::IndexId, metrics::MetricsId, object::ObjectId},
+		catalog::{id::IndexId, metrics::MetricsId, object::ObjectId, storage::StorageId},
 		store::Tier,
 	},
 	key::{
@@ -261,6 +261,21 @@ impl TaggedKey {
 			Self::QueueKeyActive(_) => KeyTag::QueueKeyActive,
 			Self::SortedViewRow(_) => KeyTag::SortedViewRow,
 			Self::PartitionedSortedViewRow(_) => KeyTag::PartitionedSortedViewRow,
+		}
+	}
+
+	pub fn flow_storage(&self) -> Option<StorageId> {
+		match self {
+			Self::Row(key) => Some(key.storage),
+			Self::PartitionedRow(key) => Some(key.storage),
+			Self::SortedViewRow(key) => Some(key.storage),
+			Self::PartitionedSortedViewRow(key) => Some(key.storage),
+			Self::SeriesRow(key) => Some(key.storage),
+			Self::PartitionedSeriesRow(key) => Some(key.storage),
+			Self::RingBufferMetadata(key) => Some(key.storage),
+			Self::SeriesPartitionMetadata(key) => Some(key.storage),
+			Self::Partition(key) => StorageId::from_object(key.object),
+			_ => None,
 		}
 	}
 
@@ -1500,7 +1515,7 @@ mod tests {
 				QueueAttemptKey, QueueDeduplicationKey, QueueDueKey, QueueItemStateKey, QueueKey,
 				QueueKeyActiveKey, QueuePartitionKey,
 			},
-			ringbuffer::{RingBufferKey, RingBufferMetadataKey},
+			ringbuffer::{RingBufferKey, RingBufferMetadataKey, ViewEvictionKey},
 			row::{
 				PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, RowSequenceKey, RowSettingsKey,
 				RowShapeFieldKey, RowShapeKey, SortedViewRowKey,
@@ -2623,5 +2638,59 @@ mod tests {
 		assert_eq!(size_of::<EncodedKey>(), 48);
 		assert_eq!(size_of::<TaggedKey>(), 96);
 		assert_eq!(size_of::<PartitionedSortedViewRowKey>(), size_of::<TaggedKey>());
+	}
+
+	#[test]
+	fn flow_storage_names_the_storage_of_every_flow_key_and_none_for_the_rest() {
+		// a flow key kind missing from the classifier makes the ownership guard refuse real flow commits
+		let view = StorageId::view(1);
+		let on_the_view: [TaggedKey; 9] = [
+			RowKey {
+				storage: view,
+				row: RowNumber(1),
+			}
+			.into(),
+			PartitionedRowKey::new(view, Partition(1), RowNumber(1)).into(),
+			SortedViewRowKey::new(view, SortRun::new([0x10u8]), RowNumber(1)).into(),
+			PartitionedSortedViewRowKey::new(view, Partition(1), SortRun::new([0x10u8]), RowNumber(1))
+				.into(),
+			SeriesRowKey {
+				storage: view,
+				variant_tag: None,
+				key: 0,
+				sequence: 0,
+			}
+			.into(),
+			PartitionedSeriesRowKey::new(view, Partition(1), None, 0, 0).into(),
+			PartitionKey::new(ObjectId::View(ViewId(1)), Partition(1)).into(),
+			RingBufferMetadataKey::new(view).into(),
+			SeriesPartitionMetadataKey::new(view, Partition(1)).into(),
+		];
+		for key in on_the_view {
+			assert_eq!(key.flow_storage(), Some(view), "{key:?} is a key a flow writes on its view");
+		}
+
+		let queue_partition: TaggedKey = PartitionKey::new(ObjectId::Queue(QueueId(1)), Partition(1)).into();
+		assert_eq!(
+			queue_partition.flow_storage(),
+			Some(StorageId::queue(QueueId(1))),
+			"a partition key of a queue must name the queue, otherwise a queue view cannot write it"
+		);
+
+		let not_flow_keys: [TaggedKey; 5] = [
+			IndexEntryKey::new(
+				ObjectId::table(1),
+				IndexId::primary(PrimaryKeyId(1)),
+				EncodedIndexKey::new([0x01u8]),
+			)
+			.into(),
+			QueueDeduplicationKey::new(QueueId(1), [0x01u8]).into(),
+			ViewKey::new(ViewId(1)).into(),
+			RowSequenceKey::new(view).into(),
+			ViewEvictionKey::new(ViewId(1)).into(),
+		];
+		for key in not_flow_keys {
+			assert_eq!(key.flow_storage(), None, "{key:?} is not a key a flow commit may carry");
+		}
 	}
 }

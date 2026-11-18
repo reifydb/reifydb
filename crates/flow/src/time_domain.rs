@@ -302,7 +302,7 @@ fn view_is_event(
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::{
-		catalog::flow::FlowToCreate,
+		catalog::{flow::FlowToCreate, name::NameAllowed},
 		test_utils::{create_namespace, create_view},
 	};
 	use reifydb_core::{
@@ -364,6 +364,10 @@ mod tests {
 			FlowToCreate {
 				name: Fragment::internal(name),
 				namespace: view.namespace(),
+				allowed: NameAllowed {
+					view: Some(view.id()),
+					..NameAllowed::default()
+				},
 			},
 			builder.build(),
 		)

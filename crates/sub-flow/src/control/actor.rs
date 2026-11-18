@@ -12,6 +12,7 @@ use std::{
 	},
 };
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::{flow::FlowActorMessage, pending::Pending},
 	commit::{
@@ -19,19 +20,22 @@ use reifydb_core::{
 		queue::{CommitPull, CommitQueue},
 	},
 	common::{CommitVersion, SourceVersion},
+	delta::RemoveVisibility,
 	error::diagnostic::flow::flow_step_panicked,
 	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			flow::FlowId,
-			id::ViewId,
+			id::{QueueId, ViewId},
 			object::ObjectId,
 		},
 		commit::{CommitEntry, Loaded},
 		operator::FlowCheckpoint,
 	},
 };
+#[cfg(reifydb_assertions)]
+use reifydb_core::{interface::catalog::storage::StorageId, key::any::TaggedKey};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow_async::{
 	engine::{FlowEngineInner, frontier::WatermarkHolds},
@@ -142,6 +146,7 @@ pub struct FlowActor {
 	wake_pending: Arc<AtomicBool>,
 	backfill: bool,
 	create_snapshot: Mutex<Option<(CommitVersion, VersionLeaseGuard, CheckpointPin)>>,
+	owned_queues: Arc<BTreeSet<QueueId>>,
 }
 
 #[derive(Clone, Copy)]
@@ -198,6 +203,7 @@ pub struct FlowActorState {
 	hold_cache: Option<HoldCache>,
 	backlog: bool,
 	split: Option<Split>,
+	retention: Option<Pending>,
 }
 
 impl FlowActor {
@@ -251,11 +257,17 @@ impl FlowActor {
 			wake_pending: Arc::new(AtomicBool::new(false)),
 			backfill: false,
 			create_snapshot: Mutex::new(None),
+			owned_queues: Arc::default(),
 		}
 	}
 
 	pub(crate) fn with_markers(mut self, markers: Option<MarkerMap>) -> Self {
 		self.computer = self.computer.with_markers(markers);
+		self
+	}
+
+	pub(crate) fn with_owned_queues(mut self, queues: Arc<BTreeSet<QueueId>>) -> Self {
+		self.owned_queues = queues;
 		self
 	}
 
@@ -286,6 +298,7 @@ impl FlowActor {
 		error!(flow_id = self.flow_id.0, reason = %reason, "poisoning flow");
 		self.report_poisoned(ctx, reason);
 		state.poisoned = true;
+		state.retention = None;
 		*self.create_snapshot.lock() = None;
 	}
 
@@ -937,7 +950,7 @@ impl FlowActor {
 		&self,
 		state: &mut FlowActorState,
 		ctx: &Context<FlowActorMessage>,
-		slice: FlowSlice,
+		mut slice: FlowSlice,
 		advance_to: CommitVersion,
 		lsn: Lsn,
 		more: bool,
@@ -977,6 +990,7 @@ impl FlowActor {
 				committed,
 			});
 		});
+		slice.owned_queues = Arc::clone(&self.owned_queues);
 		if self.commit_target()
 			.send(CommitterMessage::Slice {
 				slice,
@@ -1201,6 +1215,7 @@ impl FlowActor {
 				members: self.members.iter().map(|(member, _)| member.id).collect(),
 				source: SourceVersion(state.cursor.0 + 1),
 				pending,
+				owned_queues: Arc::clone(&self.owned_queues),
 				reply,
 			})
 			.is_err()
@@ -1209,6 +1224,137 @@ impl FlowActor {
 			if !ctx.is_cancelled() {
 				panic!("flow {} committer stopped outside shutdown", self.flow_id.0);
 			}
+		}
+	}
+
+	fn on_remove_expired(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		keys: Vec<EncodedKey>,
+		visibility: RemoveVisibility,
+	) {
+		if keys.is_empty() {
+			return;
+		}
+		if state.poisoned || state.pending_stop.is_some() {
+			return;
+		}
+		let parked = state.retention.get_or_insert_with(Pending::new);
+		match visibility {
+			RemoveVisibility::Announced => parked.remove(keys),
+			RemoveVisibility::Silent => {
+				for key in keys {
+					parked.remove_silent(key);
+				}
+			}
+			RemoveVisibility::Unobserved => {
+				for key in keys {
+					parked.remove_unobserved(key);
+				}
+			}
+		}
+		self.start_retention(state, ctx);
+	}
+
+	fn start_retention(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+		if state.retention.is_none() {
+			return;
+		}
+		if state.poisoned || state.pending_stop.is_some() {
+			state.retention = None;
+			return;
+		}
+		if state.committing || state.backfilling {
+			return;
+		}
+		let Some(pending) = state.retention.take() else {
+			return;
+		};
+		reifydb_assertions! {
+			for (key, _) in pending.iter_sorted() {
+				assert!(
+					reifydb_flow_async::transaction::read::read_from(key)
+						!= reifydb_flow_async::transaction::read::ReadFrom::Query,
+					"flow {:?} committed {:?} on a retention hand-off, a key it reads back through the query pinned at its cursor, which never sees this commit",
+					self.flow_id,
+					reifydb_core::key::tag::KeyTag::of(key)
+				);
+			}
+			self.assert_owns_handed_keys(&pending);
+		}
+		state.hold_cache = None;
+		state.committing = true;
+		state.drain_after_commit = true;
+		let self_ref = ctx.self_ref().clone();
+		let reply: TickCommitReply = Box::new(move |result| {
+			let _ = self_ref.send(FlowActorMessage::RetentionCommitted {
+				result,
+			});
+		});
+		if self.commit_target()
+			.send(CommitterMessage::Tick {
+				flow_id: self.flow_id,
+				members: self.members.iter().map(|(member, _)| member.id).collect(),
+				source: SourceVersion(state.cursor.0 + 1),
+				pending,
+				owned_queues: Arc::clone(&self.owned_queues),
+				reply,
+			})
+			.is_err()
+		{
+			state.committing = false;
+			if !ctx.is_cancelled() {
+				panic!("flow {} committer stopped outside shutdown", self.flow_id.0);
+			}
+		}
+	}
+
+	fn on_retention_committed(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		result: Result<(), ValueError>,
+	) {
+		state.committing = false;
+		match result {
+			Ok(()) => {
+				if take(&mut state.drain_after_commit) {
+					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+				}
+			}
+			Err(e) => self.retry_or_poison(state, ctx, format!("retention commit failed: {e}")),
+		}
+	}
+
+	#[cfg(reifydb_assertions)]
+	fn assert_owns_handed_keys(&self, pending: &Pending) {
+		let sinks: BTreeSet<ViewId> = self
+			.flow
+			.sink_views()
+			.chain(self.members.iter().flat_map(|(member, _)| member.sink_views()))
+			.collect();
+		for (key, _) in pending.iter_sorted() {
+			let tagged = TaggedKey::decode(key);
+			let storage = match &tagged {
+				Some(TaggedKey::Row(row)) => Some(row.storage),
+				Some(TaggedKey::PartitionedRow(row)) => Some(row.storage),
+				Some(TaggedKey::SeriesRow(row)) => Some(row.storage),
+				Some(TaggedKey::PartitionedSeriesRow(row)) => Some(row.storage),
+				_ => None,
+			};
+			let owned = match storage {
+				Some(StorageId::View(id)) => sinks.contains(&id),
+				Some(StorageId::Queue(id)) => self.owned_queues.contains(&id),
+				_ => false,
+			};
+			assert!(
+				owned,
+				"flow {:?}: a retention hand-off carried a key this flow does not own: {:?} on {:?}",
+				self.flow_id,
+				tagged.as_ref().map(TaggedKey::kind),
+				storage
+			);
 		}
 	}
 
@@ -1318,6 +1464,7 @@ impl Actor for FlowActor {
 			hold_cache: None,
 			backlog: false,
 			split: None,
+			retention: None,
 		};
 
 		if !state.poisoned {
@@ -1391,12 +1538,28 @@ impl Actor for FlowActor {
 				committed,
 			} => {
 				self.on_slice_committed(state, ctx, advance_to, more, result, committed);
+				self.start_retention(state, ctx);
 				self.stop_if_pending(state)
 			}
 			FlowActorMessage::TickCommitted {
 				result,
 			} => {
 				self.on_tick_committed(state, ctx, result);
+				self.start_retention(state, ctx);
+				self.stop_if_pending(state)
+			}
+			FlowActorMessage::RemoveExpired {
+				keys,
+				visibility,
+			} => {
+				self.on_remove_expired(state, ctx, keys, visibility);
+				Directive::Continue
+			}
+			FlowActorMessage::RetentionCommitted {
+				result,
+			} => {
+				self.on_retention_committed(state, ctx, result);
+				self.start_retention(state, ctx);
 				self.stop_if_pending(state)
 			}
 			FlowActorMessage::CheckpointNow {
@@ -1418,6 +1581,7 @@ impl Actor for FlowActor {
 				delete_checkpoint,
 				reply,
 			} => {
+				state.retention = None;
 				state.pending_stop = Some((delete_checkpoint, reply));
 				self.stop_if_pending(state)
 			}
@@ -1477,11 +1641,7 @@ mod pull_protocol {
 	};
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::{
-		commit::{CommitBegin, CommitHandle},
-		multi::RangeScope,
-		transaction::Transaction,
-	};
+	use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 	use reifydb_value::{
 		byte_size::ByteSize,
 		value::{Value, system_columns::row_numbers},
@@ -1578,16 +1738,13 @@ mod pull_protocol {
 
 		let tracker = FlowPositionTracker::new();
 		let committer = Committer::new(
+			engine.clone(),
 			tracker.clone(),
 			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
 			substrate.operators.clone().expect("the test substrate carries an operator store"),
 		);
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let committer_handle = engine.spawner().spawn_flow(
-			"pull-protocol-committer",
-			CommitterActor::new(committer, CommitHandle::new(begin)),
-		);
+		let committer_handle =
+			engine.spawner().spawn_flow("pull-protocol-committer", CommitterActor::new(committer));
 
 		let flow_wal = engine.ioc().resolve::<FlowWal>().expect("test harness must register the flow wal");
 		let loader_handle = engine.spawner().spawn_flow(
@@ -2869,16 +3026,14 @@ mod pull_protocol {
 			"the restarted operator store starts empty"
 		);
 		let committer2 = Committer::new(
+			h.engine.clone(),
 			h.tracker.clone(),
 			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
 			operators2.clone(),
 		);
-		let begin_engine = h.engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let committer2_handle = h.engine.spawner().spawn_flow(
-			"pull-protocol-committer-restart",
-			CommitterActor::new(committer2, CommitHandle::new(begin)),
-		);
+		let committer2_handle =
+			h.engine.spawner()
+				.spawn_flow("pull-protocol-committer-restart", CommitterActor::new(committer2));
 		let health2 = FlowHealthRegistry::new();
 		let (poisoned, reports) = mpsc::channel();
 		let supervisor2 =
@@ -3033,7 +3188,7 @@ mod tick_failures {
 	use arrow_array::{ArrayRef, UInt64Array};
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
-		actors::pending::Pending,
+		actors::pending::{Pending, PendingWrite},
 		commit::tracker::WriteTracker,
 		common::{OperatorClass, WindowRequirements, WindowSizeDomain},
 		default::flow::LOOKUP_TRACKER_ENTRIES_TESTING,
@@ -3047,6 +3202,7 @@ mod tick_failures {
 			flow::OperatorCapability,
 		},
 		internal_error,
+		key::row::RowKey,
 		operator_with::ApplyWith,
 		state::timer::TimerKind,
 		value::{batch::batch, column::factory::int4},
@@ -3075,6 +3231,7 @@ mod tick_failures {
 		factory::time::at_millis,
 		value::{
 			container::temporal_array::datetime_array,
+			row_number::RowNumber,
 			system_columns::{SystemColumn, with_system_column},
 		},
 	};
@@ -3554,6 +3711,142 @@ mod tick_failures {
 		});
 
 		(te, actor)
+	}
+
+	struct PendingRecorder {
+		ticks: mpsc::Sender<Pending>,
+	}
+
+	impl Actor for PendingRecorder {
+		type State = ();
+		type Message = CommitterMessage;
+
+		fn init(&self, _ctx: &Context<Self::Message>) {}
+
+		fn handle(&self, _state: &mut (), msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
+			if let CommitterMessage::Tick {
+				pending,
+				..
+			} = msg
+			{
+				self.ticks.send(pending).expect("the test still listens for retention commits");
+			}
+			Directive::Continue
+		}
+
+		fn config(&self) -> ActorConfig {
+			ActorConfig::new()
+		}
+	}
+
+	fn retention_actor() -> (TestEngine, FlowActor, ViewId, mpsc::Receiver<Pending>) {
+		let te = TestEngine::builder().with_commit_queue().build();
+		let engine = te.inner().clone();
+
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4 }");
+		te.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
+		te.admin("CREATE DEFERRED VIEW app::w { id: int4 } AS { FROM app::v MAP { id } }");
+		let v = view_named(&engine, "v");
+		let w = view_named(&engine, "w");
+
+		let substrate = FlowSubstrate::with_dictionary(
+			engine.dictionary_allocators(),
+			engine.operator_state(),
+			WriteTracker::detached(),
+		);
+
+		let mut builder = FlowDag::builder(FLOW);
+		builder.add_node(FlowNode::new(
+			SOURCE,
+			OperatorDef::SourceView {
+				view: v,
+			},
+		));
+		builder.add_node(apply_node(TIMED, "boom"));
+		builder.add_node(FlowNode::new(
+			SINK,
+			OperatorDef::SinkTableView {
+				view: w,
+			},
+		));
+		builder.add_edge(FlowEdge::new(1, builder.id(), SOURCE, TIMED)).expect("edge");
+		builder.add_edge(FlowEdge::new(2, builder.id(), TIMED, SINK)).expect("edge");
+		let flow = builder.build();
+
+		let (ticks, received) = mpsc::channel();
+		let committer = engine
+			.spawner()
+			.spawn_ephemeral(
+				"retention-committer",
+				PendingRecorder {
+					ticks,
+				},
+			)
+			.actor_ref()
+			.clone();
+		let actor = FlowActor::new(FlowActorParams {
+			engine: engine.clone(),
+			supervisor: idle(&engine, "retention-supervisor"),
+			committer: committer.clone(),
+			terminal_committer: committer,
+			queue: CommitQueue::new(
+				ByteSize::from_mib(8),
+				false,
+				CommitVersion(0),
+				LOOKUP_TRACKER_ENTRIES_TESTING as usize,
+			),
+			loader: idle(&engine, "retention-loader"),
+			control: ControlFrontier::new(),
+			custom_operators: timer_operators(),
+			substrate,
+			operator_samples: OperatorSampleRegistry::new(),
+			clock: engine.clock().clone(),
+			health: FlowHealthRegistry::new(),
+			flow_tracker: FlowPositionTracker::new(),
+			flow,
+			members: Vec::new(),
+			source_objects: Arc::new(BTreeSet::new()),
+			completeness_objects: None,
+			cursor: CommitVersion(0),
+			cursor_lsn: Lsn::new(0),
+			pull_batch_bytes: ByteSize::from_mib(8),
+			load_batch_bytes: ByteSize::from_mib(8),
+			checkpoint_lag: 10_000,
+			checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
+			retry_limit: RETRY_LIMIT,
+			retry_backoff: Duration::from_milliseconds(50).unwrap(),
+			wake_coalesce: Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
+			batch_size: 8,
+		});
+
+		(te, actor, w, received)
+	}
+
+	fn hand_off(harness: &mut TestHarness<FlowActor>, keys: Vec<EncodedKey>) {
+		harness.send(FlowActorMessage::RemoveExpired {
+			keys,
+			visibility: RemoveVisibility::Announced,
+		});
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the hand-off must be handled");
+	}
+
+	fn next_retention_commit(ticks: &mpsc::Receiver<Pending>) -> Pending {
+		ticks.recv_timeout(Duration::from_seconds(10).unwrap().to_std())
+			.expect("the retention commit must go out")
+	}
+
+	fn no_retention_commit(ticks: &mpsc::Receiver<Pending>) -> bool {
+		ticks.recv_timeout(Duration::from_milliseconds(200).unwrap().to_std()).is_err()
+	}
+
+	fn announced_remove(pending: &Pending, key: &EncodedKey) -> bool {
+		matches!(
+			pending.write_at(key),
+			Some(PendingWrite::Remove {
+				announce: RemoveVisibility::Announced
+			})
+		)
 	}
 
 	fn source_view(engine: &StandardEngine) -> ViewId {
@@ -4158,6 +4451,33 @@ mod tick_failures {
 			.clone()
 	}
 
+	#[test]
+	fn unregistering_a_flow_drops_every_view_it_wrote_and_no_other() {
+		// A stale entry must never reach a stopped actor; the registry must be shared, never per call.
+		let (te, _health, _actor) = quiet_actor();
+		let (sender, _received) = mpsc::channel();
+		let first = wake_recorder(te.inner(), sender.clone());
+		let second = wake_recorder(te.inner(), sender);
+		let (a, b) = (FlowId(1), FlowId(2));
+		te.inner().flow_writers().register(ViewId(1), a, first.clone());
+		te.inner().flow_writers().register(ViewId(2), a, first);
+		te.inner().flow_writers().register(ViewId(3), b, second);
+
+		let reader = te.inner().clone();
+		for view in [ViewId(1), ViewId(2), ViewId(3)] {
+			assert!(
+				reader.flow_writers().find(view).is_some(),
+				"view {view:?} must be found once registered"
+			);
+		}
+
+		te.inner().flow_writers().unregister_flow(a);
+
+		assert!(reader.flow_writers().find(ViewId(1)).is_none(), "an unregistered flow must leave view 1");
+		assert!(reader.flow_writers().find(ViewId(2)).is_none(), "an unregistered flow must leave view 2");
+		assert!(reader.flow_writers().find(ViewId(3)).is_some(), "another flow's view must stay registered");
+	}
+
 	fn next_message(received: &mpsc::Receiver<&'static str>) -> &'static str {
 		received.recv_timeout(Duration::from_seconds(10).unwrap().to_std())
 			.expect("the recorder must receive the next message")
@@ -4234,5 +4554,317 @@ mod tick_failures {
 
 		assert_eq!(harness.state().retry_count, 0, "precondition: the tick must compute cleanly");
 		assert!(!harness.state().committing, "a tick that fired nothing and wrote nothing dispatched a commit");
+	}
+
+	#[test]
+	fn a_handed_batch_goes_out_as_one_remove_only_commit() {
+		// Without the dispatch expired view rows stay in place for ever.
+		let (_te, actor, sink, ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+		let keys = vec![RowKey::encoded(sink, RowNumber(1)), RowKey::encoded(sink, RowNumber(2))];
+
+		hand_off(&mut harness, keys.clone());
+
+		let pending = next_retention_commit(&ticks);
+		assert!(no_retention_commit(&ticks), "one hand-off must go out as exactly one commit");
+		assert_eq!(pending.len(), 2, "the commit must hold only the handed keys");
+		for key in &keys {
+			assert!(announced_remove(&pending, key), "each handed key must be an announced remove");
+		}
+		assert!(harness.state().committing, "the retention commit must hold the one-commit latch");
+		assert!(harness.state().retention.is_none(), "a dispatched set must leave the parked slot");
+	}
+
+	#[test]
+	fn a_batch_handed_during_a_commit_waits_and_goes_out_when_it_lands() {
+		// A flow must never have two commits in flight at once.
+		let (_te, actor, sink, ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().committing = true;
+		let shared = RowKey::encoded(sink, RowNumber(1));
+
+		hand_off(&mut harness, vec![shared.clone()]);
+		hand_off(&mut harness, vec![shared.clone(), RowKey::encoded(sink, RowNumber(2))]);
+		assert!(no_retention_commit(&ticks), "a hand-off during a commit must wait for it to land");
+
+		harness.send(FlowActorMessage::TickCommitted {
+			result: Ok(()),
+		});
+		harness.process_one();
+
+		let pending = next_retention_commit(&ticks);
+		assert!(no_retention_commit(&ticks), "the parked set must go out as one commit");
+		assert_eq!(pending.len(), 2, "a key handed twice must land once");
+		assert!(announced_remove(&pending, &shared), "the shared key must be removed");
+	}
+
+	#[test]
+	fn a_batch_handed_during_a_slice_commit_goes_out_when_it_lands() {
+		// Without a start after a slice commit a parked set waits until the next hand-off.
+		let (_te, actor, sink, ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().committing = true;
+
+		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
+		assert!(no_retention_commit(&ticks), "a hand-off during a commit must wait for it to land");
+
+		harness.send(FlowActorMessage::SliceCommitted {
+			advance_to: CommitVersion(0),
+			more: false,
+			result: Ok(()),
+			committed: None,
+		});
+		harness.process_one();
+
+		next_retention_commit(&ticks);
+		assert!(no_retention_commit(&ticks), "the parked set must go out as one commit");
+	}
+
+	#[test]
+	fn a_batch_parked_during_a_retention_commit_goes_out_when_it_lands() {
+		// Without a start after a retention commit a set parked behind it waits until the next hand-off.
+		let (_te, actor, sink, ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+		let (first, second) = (RowKey::encoded(sink, RowNumber(1)), RowKey::encoded(sink, RowNumber(2)));
+
+		hand_off(&mut harness, vec![first.clone()]);
+		next_retention_commit(&ticks);
+		hand_off(&mut harness, vec![second.clone()]);
+		assert!(no_retention_commit(&ticks), "a hand-off during a retention commit must wait for it");
+
+		harness.send(FlowActorMessage::RetentionCommitted {
+			result: Ok(()),
+		});
+		harness.process_one();
+
+		let pending = next_retention_commit(&ticks);
+		assert!(no_retention_commit(&ticks), "two hand-offs make exactly two commits");
+		assert_eq!(pending.len(), 1, "the second commit must hold only the second batch");
+		assert!(announced_remove(&pending, &second), "the second commit must remove the second key");
+		assert!(!announced_remove(&pending, &first), "the first batch must not be committed twice");
+	}
+
+	#[test]
+	fn a_poisoned_flow_drops_a_handed_batch() {
+		// A poisoned flow must never write its views.
+		let (_te, actor, sink, ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().poisoned = true;
+
+		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
+
+		assert!(no_retention_commit(&ticks), "a poisoned flow must not commit a hand-off");
+		assert!(harness.state().retention.is_none(), "a poisoned flow must not park a hand-off");
+	}
+
+	#[test]
+	fn a_flow_that_turns_poisoned_drops_its_parked_batch() {
+		// A parked set must never outlive the poison, otherwise a poisoned flow still writes.
+		let (_te, actor, sink, ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().backfilling = true;
+		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
+		assert!(harness.state().retention.is_some(), "precondition: the hand-off must park during backfill");
+		harness.state_mut().retry_count = RETRY_LIMIT;
+
+		harness.send(FlowActorMessage::Loaded {
+			outcome: Err(internal_error!("load failed")),
+		});
+		harness.process_one();
+
+		assert!(harness.state().poisoned, "precondition: the failed load must poison past the retry limit");
+		assert!(harness.state().retention.is_none(), "the poison must drop the parked set");
+		assert!(no_retention_commit(&ticks), "a poisoned flow must not commit its parked set");
+	}
+
+	#[test]
+	fn a_batch_handed_during_backfill_waits_and_goes_out_when_the_backfill_commit_lands() {
+		// The set must survive the backfill and never commit during it, otherwise it races the backfill write.
+		let (_te, actor, sink, ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().backfilling = true;
+		harness.state_mut().committing = false;
+		let key = RowKey::encoded(sink, RowNumber(1));
+
+		hand_off(&mut harness, vec![key.clone()]);
+		assert!(no_retention_commit(&ticks), "a hand-off during backfill must wait for its end");
+		assert!(harness.state().retention.is_some(), "a hand-off during backfill must stay parked");
+
+		harness.state_mut().committing = true;
+		harness.send(FlowActorMessage::SliceCommitted {
+			advance_to: CommitVersion(0),
+			more: false,
+			result: Ok(()),
+			committed: None,
+		});
+		harness.process_one();
+
+		let pending = next_retention_commit(&ticks);
+		assert!(no_retention_commit(&ticks), "the parked set must go out as one commit");
+		assert!(announced_remove(&pending, &key), "the parked key must be committed once the backfill ends");
+	}
+
+	#[test]
+	fn a_failed_backfill_commit_keeps_the_batch_parked() {
+		// The set must wait for the real end of backfill, never for a failed slice reply.
+		let (_te, actor, sink, ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().backfilling = true;
+		harness.state_mut().committing = false;
+		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
+
+		harness.state_mut().committing = true;
+		harness.send(FlowActorMessage::SliceCommitted {
+			advance_to: CommitVersion(0),
+			more: false,
+			result: Err(internal_error!("commit rejected")),
+			committed: None,
+		});
+		harness.process_one();
+
+		assert!(no_retention_commit(&ticks), "a failed backfill commit must not release the parked set");
+		assert!(harness.state().retention.is_some(), "the set must stay parked after a failed backfill commit");
+		assert!(harness.state().backfilling, "precondition: a failed backfill commit must keep the backfill");
+	}
+
+	#[test]
+	fn a_stopping_flow_drops_a_parked_batch_and_refuses_new_ones() {
+		// A stopping flow must never commit a hand-off, otherwise it races the cleanup after its stop.
+		let (_te, actor, sink, ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().committing = true;
+		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
+		let replied = Arc::new(AtomicBool::new(false));
+		let flag = replied.clone();
+
+		harness.send(FlowActorMessage::Stop {
+			delete_checkpoint: false,
+			reply: Box::new(move || flag.store(true, Ordering::SeqCst)),
+		});
+		harness.process_one();
+		assert!(harness.state().retention.is_none(), "the stop must drop the parked set");
+
+		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(2))]);
+		assert!(harness.state().retention.is_none(), "a stopping flow must refuse a new hand-off");
+
+		harness.send(FlowActorMessage::TickCommitted {
+			result: Ok(()),
+		});
+		assert_eq!(
+			harness.process_one(),
+			Some(Directive::Stop),
+			"the held stop must run once the commit lands"
+		);
+		assert!(no_retention_commit(&ticks), "a stopping flow must commit no hand-off");
+		assert!(replied.load(Ordering::SeqCst), "the stop reply must run");
+	}
+
+	#[test]
+	fn a_batch_handed_during_a_load_goes_out_at_once() {
+		// A load in flight never writes, so the set must go out without waiting for it.
+		let (_te, actor, sink, ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().awaiting_load = true;
+
+		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
+
+		next_retention_commit(&ticks);
+		assert!(no_retention_commit(&ticks), "one hand-off must go out as exactly one commit");
+	}
+
+	#[test]
+	fn a_failed_retention_commit_counts_a_retry() {
+		// A failed retention commit must count a strike, otherwise the flow runs on a store it could not write.
+		let (_te, actor, sink, ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
+		next_retention_commit(&ticks);
+
+		harness.send(FlowActorMessage::RetentionCommitted {
+			result: Err(internal_error!("commit rejected")),
+		});
+		harness.process_one();
+
+		assert_eq!(harness.state().retry_count, 1, "a failed retention commit must count a strike");
+		assert!(!harness.state().committing, "the latch must clear, otherwise the flow never drains again");
+	}
+
+	#[test]
+	fn a_landed_retention_commit_drains_again_and_is_not_a_tick() {
+		// Without the held drain the flow stalls, and a retention commit must never reset a strike.
+		let (_te, actor, sink, ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().retry_count = 1;
+		let backlog = harness.state().backlog;
+		let cursor = harness.state().cursor;
+		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
+		next_retention_commit(&ticks);
+		assert!(harness.state().drain_after_commit, "precondition: the retention commit must ask for a drain");
+
+		harness.send(FlowActorMessage::RetentionCommitted {
+			result: Ok(()),
+		});
+		harness.process_one();
+
+		assert!(!harness.state().drain_after_commit, "a landed retention commit must queue the drain it held");
+		assert!(!harness.state().committing, "a landed retention commit must clear the latch");
+		assert_eq!(harness.state().backlog, backlog, "a retention commit must not touch the backlog");
+		assert_eq!(harness.state().cursor, cursor, "a retention commit must not move the cursor");
+		assert_eq!(harness.state().retry_count, 1, "a landed retention commit must not reset the strike");
+	}
+
+	#[cfg(reifydb_assertions)]
+	#[test]
+	#[should_panic(expected = "a retention hand-off carried a key this flow does not own")]
+	fn a_handed_key_of_another_flow_trips_the_ownership_assertion() {
+		// A key outside the flow's sinks must never be committed: retention routed it to the wrong writer.
+		let (te, actor, _sink, _ticks) = retention_actor();
+		let mut harness = TestHarness::new(actor);
+
+		hand_off(&mut harness, vec![RowKey::encoded(source_view(te.inner()), RowNumber(1))]);
+	}
+
+	#[test]
+	fn a_handed_row_of_an_owned_queue_passes_the_ownership_assertion() {
+		// an owned queue must come from the actor's own set, otherwise a queue view the cache lost trips the
+		// assertion
+		let (_te, actor, _sink, ticks) = retention_actor();
+		let actor = actor.with_owned_queues(Arc::new(BTreeSet::from([QueueId(1)])));
+		let mut harness = TestHarness::new(actor);
+		let key = RowKey::encoded(QueueId(1), RowNumber(1));
+
+		harness.send(FlowActorMessage::RemoveExpired {
+			keys: vec![key.clone()],
+			visibility: RemoveVisibility::Announced,
+		});
+		assert_eq!(harness.process_one(), Some(Directive::Continue));
+
+		let pending = ticks
+			.recv_timeout(Duration::from_seconds(10).unwrap().to_std())
+			.expect("the retention commit must go out");
+		assert_eq!(pending.len(), 1);
+		assert!(matches!(
+			pending.write_at(&key),
+			Some(PendingWrite::Remove {
+				announce: RemoveVisibility::Announced
+			})
+		));
+	}
+
+	#[cfg(reifydb_assertions)]
+	#[test]
+	#[should_panic(expected = "a retention hand-off carried a key this flow does not own")]
+	fn a_handed_row_of_a_queue_the_flow_does_not_own_trips_the_ownership_assertion() {
+		// a queue outside the actor's own set must be refused, otherwise a flow removes rows of another flow's
+		// queue
+		let (_te, actor, _sink, _ticks) = retention_actor();
+		let actor = actor.with_owned_queues(Arc::new(BTreeSet::from([QueueId(1)])));
+		let mut harness = TestHarness::new(actor);
+
+		harness.send(FlowActorMessage::RemoveExpired {
+			keys: vec![RowKey::encoded(QueueId(2), RowNumber(1))],
+			visibility: RemoveVisibility::Announced,
+		});
+		harness.process_one();
 	}
 }

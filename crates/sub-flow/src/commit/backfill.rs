@@ -295,6 +295,7 @@ pub(crate) fn compute_unit_backfill(
 		written_views: Vec::new(),
 		input_markers: None,
 		layers: Vec::new(),
+		owned_queues: Arc::default(),
 	};
 	Ok((slice, holds))
 }
@@ -414,7 +415,6 @@ mod tests {
 	};
 	use reifydb_runtime::context::{RuntimeContext, spawner::Spawner, transaction::TransactionContext};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::commit::{CommitBegin, CommitHandle};
 	use reifydb_value::{
 		util::cowvec::CowVec,
 		value::{duration::Duration, partition::Partition},
@@ -476,14 +476,13 @@ mod tests {
 		drop(snapshot);
 
 		let materialization = FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new());
-		let committer =
-			Committer::new(FlowPositionTracker::new(), materialization.clone(), engine.operator_state());
-		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let handle = engine.spawner().spawn_flow(
-			"backfill-test-committer",
-			CommitterActor::new(committer, CommitHandle::new(begin)),
+		let committer = Committer::new(
+			engine.clone(),
+			FlowPositionTracker::new(),
+			materialization.clone(),
+			engine.operator_state(),
 		);
+		let handle = engine.spawner().spawn_flow("backfill-test-committer", CommitterActor::new(committer));
 		let (sender, receiver) = mpsc::channel();
 		assert!(
 			handle.actor_ref()

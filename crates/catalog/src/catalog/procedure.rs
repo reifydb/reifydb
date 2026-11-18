@@ -20,7 +20,12 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::{CatalogStore, cache::CatalogCache, catalog::Catalog, error::CatalogError};
+use crate::{
+	CatalogStore,
+	cache::CatalogCache,
+	catalog::{Catalog, name::NameAllowed},
+	error::{CatalogError, NameKind},
+};
 
 #[derive(Debug, Clone)]
 pub enum ResolvedProcedure {
@@ -297,18 +302,14 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: ProcedureToCreate,
 	) -> Result<Procedure, ValueError> {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace(),
+			to_create.name(),
+			NameKind::Procedure,
+			NameAllowed::default(),
+		)?;
 		let procedure = CatalogStore::create_procedure(txn, to_create)?;
-		txn.track_procedure_created(procedure.clone())?;
-		Ok(procedure)
-	}
-
-	pub fn create_procedure_with_id(
-		&self,
-		txn: &mut AdminTransaction,
-		id: ProcedureId,
-		to_create: ProcedureToCreate,
-	) -> Result<Procedure, ValueError> {
-		let procedure = CatalogStore::create_procedure_with_id(txn, id, to_create)?;
 		txn.track_procedure_created(procedure.clone())?;
 		Ok(procedure)
 	}

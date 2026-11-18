@@ -157,7 +157,10 @@ fn the_queue_behind_a_view_refuses_direct_inserts_and_drops_but_a_plain_queue_do
 	let t = prepared();
 	t.admin(FULL);
 	let insert = t.command_err(r#"INSERT test::q [{ id: 1, kind: "a", change: "insert" }]"#);
-	assert!(insert.contains("CA_136") && insert.contains("insert into the source"), "{insert}");
+	assert!(
+		insert.contains("VIEW_001") && insert.contains("write to the source the view reads instead"),
+		"{insert}"
+	);
 	let drop = t.admin_err("DROP QUEUE test::q");
 	assert!(drop.contains("CA_136") && drop.contains("use DROP VIEW"), "{drop}");
 	assert!(find(&t, "q").1.is_some());

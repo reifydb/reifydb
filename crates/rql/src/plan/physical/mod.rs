@@ -84,6 +84,7 @@ use crate::{
 			tree::{QueryTree, fold},
 		},
 		physical::interner::FragmentInterner,
+		view_not_writable,
 	},
 };
 
@@ -248,7 +249,7 @@ pub struct CreateDeferredWindowedViewGroupNode<'bump> {
 
 #[derive(Debug)]
 pub struct WindowedViewGroupMember<'bump> {
-	pub namespace: Namespace,
+	pub namespace: Option<Namespace>,
 	pub view: Fragment,
 	pub duration: Duration,
 	pub ttl: Option<Ttl>,
@@ -691,6 +692,22 @@ pub fn compile_physical<'b>(
 impl<'bump> Compiler<'bump> {
 	fn bump_box(&self, plan: PhysicalPlan<'bump>) -> BumpBox<'bump, PhysicalPlan<'bump>> {
 		BumpBox::new_in(plan, self.bump)
+	}
+
+	fn view_or_table_not_found(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		namespace: &Namespace,
+		name: &BumpFragment<'bump>,
+		operation: &'static str,
+	) -> Result<ValueError, ValueError> {
+		let fragment = self.interner.intern_fragment(name);
+		if let Some(refusal) =
+			view_not_writable(&self.catalog, rx, namespace, name.text(), operation, fragment.clone())?
+		{
+			return Ok(refusal);
+		}
+		Ok(ValueError(Box::new(table_not_found(fragment, namespace.name(), name.text()))))
 	}
 
 	pub fn compile(
@@ -1278,11 +1295,7 @@ impl<'bump> Compiler<'bump> {
 			let Some(table_def) =
 				self.catalog.find_table_by_name(rx, namespace.id(), table_id.name.text())?
 			else {
-				return_error!(table_not_found(
-					self.interner.intern_fragment(&table_id.name),
-					namespace.name(),
-					table_id.name.text()
-				));
+				return Err(self.view_or_table_not_found(rx, &namespace, &table_id.name, "DELETE")?);
 			};
 
 			let namespace_id = if let Some(n) = table_id.namespace.first() {
@@ -1436,11 +1449,7 @@ impl<'bump> Compiler<'bump> {
 			let Some(table_def) =
 				self.catalog.find_table_by_name(rx, namespace.id(), table_id.name.text())?
 			else {
-				return_error!(table_not_found(
-					self.interner.intern_fragment(&table_id.name),
-					namespace.name(),
-					table_id.name.text()
-				));
+				return Err(self.view_or_table_not_found(rx, &namespace, &table_id.name, "UPDATE")?);
 			};
 
 			let namespace_id = if let Some(n) = table_id.namespace.first() {
@@ -2633,11 +2642,7 @@ impl<'bump> Compiler<'bump> {
 			return_error!(namespace_not_found(fragment, &ns_name));
 		};
 		let Some(table_def) = self.catalog.find_table_by_name(rx, namespace.id(), table.name.text())? else {
-			return_error!(table_not_found(
-				self.interner.intern_fragment(&table.name),
-				namespace.name(),
-				table.name.text()
-			));
+			return Err(self.view_or_table_not_found(rx, &namespace, &table.name, "INSERT")?);
 		};
 
 		let namespace_id = if let Some(n) = table.namespace.first() {

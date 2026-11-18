@@ -27,7 +27,8 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::Catalog,
+	catalog::{Catalog, name::NameAllowed},
+	error::NameKind,
 	store::ringbuffer::create::{
 		RingBufferColumnToCreate as StoreRingBufferColumnToCreate,
 		RingBufferToCreate as StoreRingBufferToCreate,
@@ -269,6 +270,13 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: RingBufferToCreate,
 	) -> Result<RingBuffer, ValueError> {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::RingBuffer,
+			NameAllowed::default(),
+		)?;
 		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
@@ -352,16 +360,6 @@ impl Catalog {
 		partitions: &[Option<Partition>],
 	) -> Result<(), ValueError> {
 		CatalogStore::remove_partition_metadata(txn, ringbuffer, partitions)
-	}
-
-	#[instrument(name = "catalog::ringbuffer::set_primary_key", level = "debug", skip(self, txn))]
-	pub fn set_ringbuffer_primary_key(
-		&self,
-		txn: &mut AdminTransaction,
-		ringbuffer_id: RingBufferId,
-		primary_key_id: PrimaryKeyId,
-	) -> Result<(), ValueError> {
-		CatalogStore::set_ringbuffer_primary_key(txn, ringbuffer_id, primary_key_id)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::get_pk_id", level = "trace", skip(self, txn))]

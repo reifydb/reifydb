@@ -22,7 +22,8 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::Catalog,
+	catalog::{Catalog, name::NameAllowed},
+	error::NameKind,
 	store::{flow::create::FlowToCreate as StoreFlowToCreate, sequence::flow as flow_sequence},
 };
 
@@ -30,6 +31,7 @@ use crate::{
 pub struct FlowToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
+	pub allowed: NameAllowed,
 }
 
 impl From<FlowToCreate> for StoreFlowToCreate {
@@ -309,6 +311,13 @@ impl Catalog {
 		to_create: FlowToCreate,
 		dag: FlowDag,
 	) -> Result<Flow, ValueError> {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::Flow,
+			to_create.allowed,
+		)?;
 		let flow = CatalogStore::create_flow(txn, dag.id(), to_create.into())?;
 		for (_, node) in dag.graph.nodes() {
 			CatalogStore::create_operator(txn, flow.id, node)?;
@@ -427,16 +436,6 @@ impl Catalog {
 			}
 		}
 		Ok(false)
-	}
-
-	#[instrument(name = "catalog::flow::update_name", level = "debug", skip(self, txn))]
-	pub fn update_flow_name(
-		&self,
-		txn: &mut AdminTransaction,
-		flow_id: FlowId,
-		new_name: String,
-	) -> Result<(), ValueError> {
-		CatalogStore::update_flow_name(txn, flow_id, new_name)
 	}
 
 	#[instrument(name = "catalog::flow::poison", level = "debug", skip(self, txn))]

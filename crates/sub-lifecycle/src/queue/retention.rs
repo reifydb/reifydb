@@ -11,14 +11,16 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
+	delta::RemoveVisibility,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
-			id::QueueId,
+			id::{QueueId, ViewId},
 			queue::{
 				Queue, QueueItemStatus, decode_queue_attempt, decode_queue_deduplication,
 				decode_queue_item_state,
 			},
+			view::View,
 		},
 		store::SingleVersionRange,
 	},
@@ -51,7 +53,10 @@ use reifydb_value::{
 };
 use tracing::{Span, debug, field::Empty, instrument, warn};
 
-use crate::plane::RetentionPlane;
+use crate::{
+	plane::RetentionPlane,
+	retention::handoff::{HandOff, hand_off},
+};
 
 struct ItemCursor {
 	queue: QueueId,
@@ -59,9 +64,21 @@ struct ItemCursor {
 	last: EncodedKey,
 }
 
+enum Sweep {
+	Purge,
+	HandOff,
+	AttemptsOnly,
+	StateOnly,
+}
+
 struct Doomed {
 	row: RowNumber,
-	state_only: bool,
+	sweep: Sweep,
+}
+
+struct Swept {
+	deleted: u64,
+	skipped: bool,
 }
 
 pub struct QueueRetentionTask {
@@ -134,9 +151,20 @@ impl QueueRetentionTask {
 			.collect())
 	}
 
+	fn owning_view(&self, queue: &Queue) -> Result<Option<ViewId>, ValueError> {
+		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
+		let mut txn = Transaction::Query(&mut query_txn);
+		let view = self.engine.catalog().find_view_by_name(&mut txn, queue.namespace, &queue.name)?;
+		Ok(match view {
+			Some(View::Queue(view)) if view.queue == queue.id => Some(view.id),
+			_ => None,
+		})
+	}
+
 	fn classify(
 		&self,
 		queue: QueueId,
+		view_owned: bool,
 		row: RowNumber,
 		attempt: u32,
 		cutoff: DateTime,
@@ -152,9 +180,16 @@ impl QueueRetentionTask {
 			if record.finished_at > cutoff {
 				return Ok(None);
 			}
+			let sweep = if !view_owned {
+				Sweep::Purge
+			} else if query_txn.get(&[RowKey::new(queue, row).into()])?.pop().flatten().is_some() {
+				Sweep::HandOff
+			} else {
+				Sweep::AttemptsOnly
+			};
 			return Ok(Some(Doomed {
 				row,
-				state_only: false,
+				sweep,
 			}));
 		}
 
@@ -170,14 +205,34 @@ impl QueueRetentionTask {
 
 		Ok(Some(Doomed {
 			row,
-			state_only: true,
+			sweep: Sweep::StateOnly,
 		}))
 	}
 
-	fn delete_items(&self, queue: QueueId, doomed: &[Doomed]) -> Result<u64, ValueError> {
-		let purge: Vec<&Doomed> = doomed.iter().filter(|item| !item.state_only).collect();
+	fn delete_items(&self, queue: QueueId, view: Option<ViewId>, doomed: &[Doomed]) -> Result<Swept, ValueError> {
+		let handed: Vec<&Doomed> = doomed.iter().filter(|item| matches!(item.sweep, Sweep::HandOff)).collect();
+		let purge: Vec<&Doomed> =
+			doomed.iter().filter(|item| matches!(item.sweep, Sweep::Purge | Sweep::AttemptsOnly)).collect();
+
+		let mut skipped = false;
+		if !handed.is_empty() {
+			let Some(view) = view else {
+				return_internal_error!("a queue with no owning view produced a hand-off item")
+			};
+			let keys = handed
+				.iter()
+				.map(|item| TaggedKey::from(RowKey::new(queue, item.row)).encode())
+				.collect();
+			match hand_off(&self.engine, view, keys, RemoveVisibility::Announced) {
+				HandOff::Sent => {}
+				HandOff::Skipped => skipped = true,
+			}
+		}
 		if purge.is_empty() {
-			return Ok(0);
+			return Ok(Swept {
+				deleted: 0,
+				skipped,
+			});
 		}
 
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
@@ -198,12 +253,15 @@ impl QueueRetentionTask {
 		for key in &attempt_keys {
 			txn.remove(vec![(key.clone().into(), None)])?;
 		}
-		for item in &purge {
+		for item in purge.iter().filter(|item| matches!(item.sweep, Sweep::Purge)) {
 			txn.remove(vec![(RowKey::new(queue, item.row).into(), None)])?;
 		}
 		txn.commit()?;
 
-		Ok(purge.len() as u64)
+		Ok(Swept {
+			deleted: purge.len() as u64,
+			skipped,
+		})
 	}
 
 	fn sweep_deduplication(
@@ -325,12 +383,21 @@ impl LifecycleTask for QueueRetentionTask {
 		let mut floor = None;
 		let mut parked: Option<ItemCursor> = None;
 		let mut backlog = 0u64;
+		let mut skipped = 0u64;
 
 		'queues: for queue in &queues[start.min(queues.len())..] {
 			let Some((cutoff, binding)) = self.cutoff_of(queue, now) else {
 				continue;
 			};
 			floor = Some(binding);
+			let view = match self.owning_view(queue) {
+				Ok(view) => view,
+				Err(e) => panic!(
+					"queue retention failed to find the view that owns queue {}: {}",
+					queue.id.0, e
+				),
+			};
+			let mut queue_skipped = false;
 
 			let resume_here = resume.as_ref().filter(|cursor| cursor.queue == queue.id);
 			let partitions = self.partitions(queue.id);
@@ -384,7 +451,7 @@ impl LifecycleTask for QueueRetentionTask {
 						{
 							continue;
 						}
-						match self.classify(queue.id, *row, *attempt, cutoff) {
+						match self.classify(queue.id, view.is_some(), *row, *attempt, cutoff) {
 							Ok(Some(item)) => doomed.push(item),
 							Ok(None) => {}
 							Err(e) => {
@@ -394,15 +461,24 @@ impl LifecycleTask for QueueRetentionTask {
 					}
 
 					if !doomed.is_empty() {
-						match self.delete_items(queue.id, &doomed) {
-							Ok(count) => deleted += count,
+						match self.delete_items(queue.id, view, &doomed) {
+							Ok(swept) => {
+								deleted += swept.deleted;
+								queue_skipped |= swept.skipped;
+							}
 							Err(e) => {
 								warn!(queue = queue.id.0, error = %e, "queue retention failed to delete items");
 								doomed.clear();
 							}
 						}
 
-						let rows: Vec<RowNumber> = doomed.iter().map(|item| item.row).collect();
+						let rows: Vec<RowNumber> = doomed
+							.iter()
+							.filter(|item| {
+								matches!(item.sweep, Sweep::Purge | Sweep::StateOnly)
+							})
+							.map(|item| item.row)
+							.collect();
 						if let Err(e) = remove_item_states(
 							&Arc::new(TransactionContext::system(
 								self.engine.runtime_context().clone(),
@@ -421,6 +497,7 @@ impl LifecycleTask for QueueRetentionTask {
 					}
 				}
 			}
+			skipped += u64::from(queue_skipped);
 
 			if queue.deduplicate.is_some() {
 				let remaining = budget.saturating_sub(scanned).max(1);
@@ -444,7 +521,7 @@ impl LifecycleTask for QueueRetentionTask {
 		span.record("scanned", scanned);
 		span.record("deleted", deleted);
 
-		self.plane.record_reclamation(RetentionClass::QueueRetention, floor, deleted, backlog);
+		self.plane.record_reclamation(RetentionClass::QueueRetention, floor, deleted, backlog + skipped);
 
 		if backlog > 0 {
 			debug!(scanned, deleted, "queue retention yielded with a backlog");

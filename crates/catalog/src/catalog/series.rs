@@ -29,7 +29,8 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::Catalog,
+	catalog::{Catalog, name::NameAllowed},
+	error::NameKind,
 	store::series::create::{
 		SeriesColumnToCreate as StoreSeriesColumnToCreate, SeriesToCreate as StoreSeriesToCreate,
 	},
@@ -288,6 +289,13 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: SeriesToCreate,
 	) -> Result<Series, ValueError> {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::Series,
+			NameAllowed::default(),
+		)?;
 		let series = CatalogStore::create_series(txn, to_create.into())?;
 		txn.track_series_created(series.clone())?;
 

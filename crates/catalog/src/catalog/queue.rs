@@ -6,7 +6,7 @@ use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
 		change::CatalogTrackQueueChangeOperations,
-		id::{ColumnId, NamespaceId, QueueId},
+		id::{NamespaceId, QueueId},
 		property::ColumnPropertyKind,
 		queue::{Queue, QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 	},
@@ -26,7 +26,8 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::Catalog,
+	catalog::{Catalog, name::NameAllowed},
+	error::NameKind,
 	store::queue::create::{QueueColumnToCreate as StoreQueueColumnToCreate, QueueToCreate as StoreQueueToCreate},
 };
 
@@ -251,22 +252,14 @@ impl Catalog {
 
 	#[instrument(name = "catalog::queue::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_queue(&self, txn: &mut AdminTransaction, to_create: QueueToCreate) -> Result<Queue, ValueError> {
+		self.reject_name_taken(
+			&mut Transaction::Admin(&mut *txn),
+			to_create.namespace,
+			&to_create.name,
+			NameKind::Queue,
+			NameAllowed::default(),
+		)?;
 		let queue = CatalogStore::create_queue(txn, to_create.into())?;
-		txn.track_queue_created(queue.clone())?;
-
-		self.get_or_create_queue_shape(&mut Transaction::Admin(&mut *txn), &queue)?;
-
-		Ok(queue)
-	}
-
-	pub fn create_queue_with_id(
-		&self,
-		txn: &mut AdminTransaction,
-		queue_id: QueueId,
-		to_create: QueueToCreate,
-		column_ids: &[ColumnId],
-	) -> Result<Queue, ValueError> {
-		let queue = CatalogStore::create_queue_with_id(txn, queue_id, to_create.into(), column_ids)?;
 		txn.track_queue_created(queue.clone())?;
 
 		self.get_or_create_queue_shape(&mut Transaction::Admin(&mut *txn), &queue)?;

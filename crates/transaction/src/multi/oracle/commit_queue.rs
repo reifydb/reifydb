@@ -6,7 +6,6 @@
 use std::{
 	cell::UnsafeCell,
 	hint::spin_loop,
-	mem::take,
 	ptr::null_mut,
 	sync::atomic::{AtomicPtr, AtomicU32, Ordering},
 	thread::{Thread, current, park_timeout},
@@ -18,12 +17,7 @@ use std::{
 	thread::{Builder, JoinHandle, park},
 };
 
-use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
-	delta::Delta,
-	interface::operator::OperatorSection,
-	wal::CommitLayer,
-};
+use reifydb_core::{common::CommitVersion, delta::Delta};
 use reifydb_value::{error::ValueError, reifydb_assertions, util::cowvec::CowVec};
 
 use super::{CommitRebase, CommitShared, CommittedWindow, CreateCommitResult, OracleState, Prepared, SpanTiming};
@@ -37,13 +31,11 @@ const WAITER_PARK: Duration = Duration::from_micros(50);
 struct CommitPayload {
 	version: CommitVersion,
 	window_size: u64,
+	lsn_step: u64,
 	conflicts: Option<ConflictManager>,
 	deltas: Option<CowVec<Delta>>,
 	rebase: Option<CommitRebase>,
 	prepared: Option<Prepared>,
-	source: Option<SourceVersion>,
-	section: Option<OperatorSection>,
-	layers: Vec<CommitLayer>,
 	result: Option<Result<CreateCommitResult, ValueError>>,
 	evicted: Vec<CommittedWindow>,
 }
@@ -64,25 +56,21 @@ impl CommitRequest {
 	fn new(
 		version: CommitVersion,
 		window_size: u64,
+		lsn_step: u64,
 		conflicts: ConflictManager,
 		deltas: CowVec<Delta>,
 		rebase: Option<CommitRebase>,
 		prepared: Option<Prepared>,
-		source: Option<SourceVersion>,
-		section: OperatorSection,
-		layers: Vec<CommitLayer>,
 	) -> Self {
 		Self {
 			payload: UnsafeCell::new(CommitPayload {
 				version,
 				window_size,
+				lsn_step,
 				conflicts: Some(conflicts),
 				deltas: Some(deltas),
 				rebase,
 				prepared,
-				source,
-				section: Some(section),
-				layers,
 				result: None,
 				evicted: Vec::new(),
 			}),
@@ -242,22 +230,10 @@ where
 		deltas: CowVec<Delta>,
 		rebase: Option<CommitRebase>,
 		prepared: Option<Prepared>,
-		source: Option<SourceVersion>,
-		section: OperatorSection,
-		layers: Vec<CommitLayer>,
 		window_size: u64,
+		lsn_step: u64,
 	) -> Result<(CreateCommitResult, CowVec<Delta>), ValueError> {
-		let request = CommitRequest::new(
-			version,
-			window_size,
-			conflicts,
-			deltas,
-			rebase,
-			prepared,
-			source,
-			section,
-			layers,
-		);
+		let request = CommitRequest::new(version, window_size, lsn_step, conflicts, deltas, rebase, prepared);
 		self.queue.push(&request as *const CommitRequest as *mut CommitRequest);
 		loop {
 			if self.queue.sequencer_active() {
@@ -314,10 +290,6 @@ where
 					.expect("a queued commit request must carry a conflict manager");
 				let deltas =
 					payload.deltas.as_mut().expect("a queued commit request must carry its deltas");
-				let section = payload
-					.section
-					.take()
-					.expect("a queued commit request must carry its operator section");
 				let result = self.service(
 					state,
 					payload.version,
@@ -325,10 +297,8 @@ where
 					deltas,
 					payload.rebase.take(),
 					payload.prepared.take(),
-					payload.source,
-					section,
-					take(&mut payload.layers),
 					payload.window_size,
+					payload.lsn_step,
 					timing,
 					&mut payload.evicted,
 				);

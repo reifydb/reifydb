@@ -184,12 +184,6 @@ where
 		self.inner.command.notify_on_mark(version, callback);
 	}
 
-	pub fn advance_version_to(&self, version: CommitVersion) {
-		self.inner.versions.advance_to(version);
-		self.inner.command.advance_to(version);
-		self.inner.query.advance_to(version);
-	}
-
 	pub fn leases(&self) -> Arc<VersionLeases> {
 		self.inner.leases.clone()
 	}
@@ -353,10 +347,6 @@ impl MultiTransaction {
 
 	pub fn config(&self) -> Arc<dyn GetConfig> {
 		self.0.tm.config()
-	}
-
-	pub fn advance_version_to(&self, version: CommitVersion) {
-		self.0.tm.advance_version_to(version);
 	}
 
 	pub fn freeze_commits(&self) -> Result<CommitVersion, ValueError> {

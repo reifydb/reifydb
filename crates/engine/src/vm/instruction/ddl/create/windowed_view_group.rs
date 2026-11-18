@@ -3,8 +3,11 @@
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::{
-	catalog::{flow::FlowToCreate, view::ViewToCreate, windowed_view_group::WindowedViewGroupToCreate},
-	error::{CatalogError, CatalogObjectKind},
+	catalog::{
+		flow::FlowToCreate, name::NameAllowed, namespace::NamespaceToCreate, view::ViewToCreate,
+		windowed_view_group::WindowedViewGroupToCreate,
+	},
+	error::{CatalogError, CatalogObjectKind, NameKind},
 	store::row_settings::create::create_row_settings,
 };
 use reifydb_core::{
@@ -12,6 +15,7 @@ use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackViewChangeOperations, namespace::Namespace, storage::StorageId, view::View,
 	},
+	internal,
 	row::RowSettings,
 	value::batch::single_row,
 };
@@ -19,7 +23,7 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_flow::compiler::compile_group_flow;
 use reifydb_rql::{error::RqlError, nodes::CreateDeferredWindowedViewGroupNode, query::QueryPlan};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{error::ValueError, fragment::Fragment, return_error, value::Value};
+use reifydb_value::{error, error::ValueError, return_error, value::Value};
 
 use super::{
 	check_flow_dag, count_windowed_nodes, extract_view_sort, prepare_flow_plan, split_at_windowed_node,
@@ -33,17 +37,54 @@ pub(crate) fn create_deferred_windowed_view_group(
 	symbols: &SymbolTable,
 	plan: CreateDeferredWindowedViewGroupNode,
 ) -> Result<RecordBatch, ValueError> {
-	reject_taken_group_name(services, txn, &plan.namespace, &plan.group)?;
+	if services
+		.catalog
+		.find_windowed_view_group_by_name(&mut Transaction::Admin(txn), plan.namespace.id(), plan.group.text())?
+		.is_some()
+	{
+		return Err(CatalogError::AlreadyExists {
+			kind: CatalogObjectKind::WindowedViewGroup,
+			namespace: plan.namespace.name().to_string(),
+			name: plan.group.text().to_string(),
+			fragment: plan.group.clone(),
+		}
+		.into());
+	}
+	services.catalog.reject_name_taken(
+		&mut Transaction::Admin(txn),
+		plan.namespace.id(),
+		&plan.group,
+		NameKind::WindowedViewGroup,
+		NameAllowed::default(),
+	)?;
+	let own: Option<Namespace> = if plan.members.iter().any(|member| member.namespace.is_none()) {
+		Some(services.catalog.create_namespace(
+			txn,
+			NamespaceToCreate {
+				namespace_fragment: None,
+				name: format!("{}::{}", plan.namespace.name(), plan.group.text()),
+				local_name: plan.group.text().to_string(),
+				parent_id: plan.namespace.id(),
+				grpc: None,
+				token: None,
+			},
+		)?)
+	} else {
+		None
+	};
 
 	let mut member_plans: Vec<(QueryPlan, View)> = Vec::with_capacity(plan.members.len());
 	let mut prefix: Option<QueryPlan> = None;
 	for member in plan.members {
+		let Some(member_ns) = member.namespace.as_ref().or(own.as_ref()) else {
+			return Err(error!(internal!("windowed view group member has no namespace")));
+		};
 		if let Some(view) = services.catalog.find_view_by_name(
 			&mut Transaction::Admin(txn),
-			member.namespace.id(),
+			member_ns.id(),
 			member.view.text(),
 		)? {
-			return_error!(view_already_exists(member.view.clone(), member.namespace.name(), view.name()));
+			return_error!(view_already_exists(member.view.clone(), member_ns.name(), view.name()));
 		}
 
 		let mut as_clause = member.as_clause;
@@ -73,7 +114,7 @@ pub(crate) fn create_deferred_windowed_view_group(
 			txn,
 			ViewToCreate {
 				name: member.view.clone(),
-				namespace: member.namespace.id(),
+				namespace: member_ns.id(),
 				columns: plan.columns.clone(),
 				storage: view_storage(&plan.storage_kind),
 				sort,
@@ -113,6 +154,10 @@ pub(crate) fn create_deferred_windowed_view_group(
 		FlowToCreate {
 			name: plan.group.clone(),
 			namespace: plan.namespace.id(),
+			allowed: NameAllowed {
+				namespace: own.as_ref().map(|ns| ns.id()),
+				..NameAllowed::default()
+			},
 		},
 		dag,
 	)?;
@@ -135,37 +180,4 @@ pub(crate) fn create_deferred_windowed_view_group(
 		("members", Value::Uint8(member_count as u64)),
 		("created", Value::Boolean(true)),
 	])
-}
-
-fn reject_taken_group_name(
-	services: &Services,
-	txn: &mut AdminTransaction,
-	namespace: &Namespace,
-	group: &Fragment,
-) -> Result<(), ValueError> {
-	let name = group.text();
-	let taken = if services.catalog.find_view_by_name(&mut Transaction::Admin(txn), namespace.id(), name)?.is_some()
-	{
-		Some(CatalogObjectKind::View)
-	} else if services
-		.catalog
-		.find_windowed_view_group_by_name(&mut Transaction::Admin(txn), namespace.id(), name)?
-		.is_some()
-	{
-		Some(CatalogObjectKind::WindowedViewGroup)
-	} else if services.catalog.find_flow_by_name(&mut Transaction::Admin(txn), namespace.id(), name)?.is_some() {
-		Some(CatalogObjectKind::Flow)
-	} else {
-		None
-	};
-	match taken {
-		Some(kind) => Err(CatalogError::AlreadyExists {
-			kind,
-			namespace: namespace.name().to_string(),
-			name: name.to_string(),
-			fragment: group.clone(),
-		}
-		.into()),
-		None => Ok(()),
-	}
 }

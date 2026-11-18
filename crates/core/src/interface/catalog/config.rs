@@ -49,6 +49,7 @@ pub fn active_config_profile() -> ConfigProfile {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ConfigKey {
 	OracleWindowSize,
+	OracleLsnStep,
 	QueryRowBatchSize,
 	QueryBytes,
 	RetentionEvictInterval,
@@ -107,6 +108,7 @@ impl ConfigKey {
 	pub fn all() -> &'static [Self] {
 		&[
 			Self::OracleWindowSize,
+			Self::OracleLsnStep,
 			Self::QueryRowBatchSize,
 			Self::QueryBytes,
 			Self::RetentionEvictInterval,
@@ -181,6 +183,7 @@ impl ConfigKey {
 	pub fn production_value(&self) -> Value {
 		match self {
 			Self::OracleWindowSize => Value::Uint8(default::query::ORACLE_WINDOW_SIZE),
+			Self::OracleLsnStep => Value::Uint8(default::query::ORACLE_LSN_STEP),
 			Self::QueryRowBatchSize => Value::Uint2(default::query::ROW_BATCH_SIZE),
 			Self::QueryBytes => Value::Uint8(default::query::MEMORY_LIMIT.as_bytes()),
 			Self::RetentionEvictInterval => Value::Duration(default::retention::EVICT_INTERVAL),
@@ -251,6 +254,7 @@ impl ConfigKey {
 	pub fn testing_value(&self) -> Value {
 		match self {
 			Self::OracleWindowSize => Value::Uint8(default::query::ORACLE_WINDOW_SIZE_TESTING),
+			Self::OracleLsnStep => Value::Uint8(default::query::ORACLE_LSN_STEP),
 			Self::QueryRowBatchSize => Value::Uint2(default::query::ROW_BATCH_SIZE_TESTING),
 			Self::QueryBytes => Value::Uint8(default::query::MEMORY_LIMIT_TESTING.as_bytes()),
 			Self::RetentionEvictInterval => Value::Duration(default::retention::EVICT_INTERVAL_TESTING),
@@ -339,6 +343,9 @@ impl ConfigKey {
 	pub fn description(&self) -> &'static str {
 		match self {
 			Self::OracleWindowSize => "Number of transactions per conflict-detection window.",
+			Self::OracleLsnStep => {
+				"Number of commit versions between two remembered commit log positions. A smaller step lets the commit log floor follow saved data more closely and keeps more positions in memory."
+			}
 			Self::QueryRowBatchSize => {
 				"Number of rows produced per batch by query / DML pipeline operators."
 			}
@@ -591,6 +598,7 @@ impl ConfigKey {
 	pub fn requires_restart(&self) -> bool {
 		match self {
 			Self::OracleWindowSize => false,
+			Self::OracleLsnStep => false,
 			Self::QueryRowBatchSize => false,
 			Self::QueryBytes => false,
 			Self::RetentionEvictInterval => true,
@@ -649,6 +657,7 @@ impl ConfigKey {
 	pub fn expected_types(&self) -> &'static [ValueType] {
 		match self {
 			Self::OracleWindowSize => &[ValueType::Uint8],
+			Self::OracleLsnStep => &[ValueType::Uint8],
 			Self::QueryRowBatchSize => &[ValueType::Uint2],
 			Self::QueryBytes => &[ValueType::Uint8],
 			Self::RetentionEvictInterval => &[ValueType::Duration],
@@ -707,6 +716,7 @@ impl ConfigKey {
 	pub fn is_optional(&self) -> bool {
 		match self {
 			Self::OracleWindowSize => false,
+			Self::OracleLsnStep => false,
 			Self::QueryRowBatchSize => false,
 			Self::QueryBytes => false,
 			Self::RetentionEvictInterval => false,
@@ -794,6 +804,10 @@ impl ConfigKey {
 			},
 			Self::QueryBytes => match value {
 				Value::Uint8(0) => Err("QUERY_BYTES must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::OracleLsnStep => match value {
+				Value::Uint8(0) => Err("ORACLE_LSN_STEP must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::CommitQueueBytes => match value {
@@ -1072,6 +1086,7 @@ impl fmt::Display for ConfigKey {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Self::OracleWindowSize => write!(f, "ORACLE_WINDOW_SIZE"),
+			Self::OracleLsnStep => write!(f, "ORACLE_LSN_STEP"),
 			Self::QueryRowBatchSize => write!(f, "QUERY_ROW_BATCH_SIZE"),
 			Self::QueryBytes => write!(f, "QUERY_BYTES"),
 			Self::RetentionEvictInterval => write!(f, "RETENTION_EVICT_INTERVAL"),
@@ -1134,6 +1149,7 @@ impl FromStr for ConfigKey {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s {
 			"ORACLE_WINDOW_SIZE" => Ok(Self::OracleWindowSize),
+			"ORACLE_LSN_STEP" => Ok(Self::OracleLsnStep),
 			"QUERY_ROW_BATCH_SIZE" => Ok(Self::QueryRowBatchSize),
 			"QUERY_BYTES" => Ok(Self::QueryBytes),
 			"RETENTION_EVICT_INTERVAL" => Ok(Self::RetentionEvictInterval),
@@ -1361,7 +1377,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 53);
+		assert_eq!(all.len(), 54);
 		assert!(all.contains(&ConfigKey::FlowLookupTrackerEntries));
 		assert!(all.contains(&ConfigKey::FlowLookupCacheEntries));
 		assert!(all.contains(&ConfigKey::MetricsSnapshotTtl));
@@ -1881,5 +1897,21 @@ mod tests {
 			ConfigKey::OperatorWalAutocheckpoint
 		);
 		assert_eq!(format!("{}", ConfigKey::OperatorWalAutocheckpoint), "OPERATOR_WAL_AUTOCHECKPOINT");
+	}
+
+	#[test]
+	fn test_oracle_lsn_step_defaults_round_trips_and_rejects_zero() {
+		// a step of 0 would divide by zero on the first commit
+		let key = ConfigKey::OracleLsnStep;
+		assert_eq!(key.production_value(), Value::Uint8(4096));
+		assert_eq!(key.testing_value(), Value::Uint8(4096));
+		assert_eq!(key.to_string().parse::<ConfigKey>().unwrap(), key);
+		assert_eq!(key.to_string(), "ORACLE_LSN_STEP");
+		assert!(!key.requires_restart());
+		match key.accept(Value::Uint8(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => assert!(reason.contains("greater than zero")),
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+		assert_eq!(key.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
 	}
 }
