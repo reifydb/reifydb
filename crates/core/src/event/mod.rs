@@ -279,7 +279,13 @@ impl EventBus {
 
 #[cfg(test)]
 pub mod tests {
-	use std::{sync::Arc, thread};
+	use std::{
+		sync::{
+			Arc,
+			mpsc::{Receiver, channel},
+		},
+		thread,
+	};
 
 	use reifydb_runtime::{
 		actor::{system::ActorSystem, traits::Actor},
@@ -468,7 +474,7 @@ pub mod tests {
 	}
 
 	struct GateListener {
-		gate: Mutex<std::sync::mpsc::Receiver<()>>,
+		gate: Mutex<Receiver<()>>,
 	}
 
 	impl EventListener<TestEvent> for GateListener {
@@ -504,7 +510,7 @@ pub mod tests {
 		// The gate keeps event 2 queued past B's register, so only the barrier compare keeps it from B.
 		let actor_system = test_actor_system();
 		let event_bus = EventBus::new(&actor_system.spawner());
-		let (open, gate) = std::sync::mpsc::channel::<()>();
+		let (open, gate) = channel::<()>();
 		event_bus.register::<TestEvent, GateListener>(GateListener {
 			gate: Mutex::new(gate),
 		});

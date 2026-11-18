@@ -183,6 +183,8 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
+	use std::fmt::Debug;
+
 	use reifydb_core::{
 		common::TimeSource,
 		flow::dag::FlowDag,
@@ -210,8 +212,8 @@ mod tests {
 	use crate::{
 		catalog::{
 			Catalog, binding::BindingToCreate, dictionary::DictionaryToCreate, flow::FlowToCreate,
-			procedure::ProcedureToCreate, queue::QueueToCreate, series::SeriesToCreate,
-			table::TableToCreate, test::TestToCreate, view::ViewToCreate,
+			handler::HandlerToCreate, procedure::ProcedureToCreate, queue::QueueToCreate,
+			series::SeriesToCreate, table::TableToCreate, test::TestToCreate, view::ViewToCreate,
 		},
 		store::view::create::ViewStorage,
 		test_utils::{
@@ -220,7 +222,7 @@ mod tests {
 		},
 	};
 
-	fn assert_taken_by(result: Result<impl std::fmt::Debug, ValueError>, kind: &str) {
+	fn assert_taken_by(result: Result<impl Debug, ValueError>, kind: &str) {
 		let err = result.expect_err("the create under a taken name must be refused");
 		assert_eq!(err.code, "CA_137", "{}", err.message);
 		assert!(err.message.ends_with(&format!("is already taken by a {kind}")), "{}", err.message);
@@ -293,7 +295,7 @@ mod tests {
 			"handler" => {
 				catalog.create_handler(
 					txn,
-					crate::catalog::handler::HandlerToCreate {
+					HandlerToCreate {
 						name: Fragment::internal("x"),
 						namespace,
 						variant: handler_variant(),
@@ -534,7 +536,7 @@ mod tests {
 		let catalog = Catalog::testing();
 		catalog.create_handler(
 			&mut txn,
-			crate::catalog::handler::HandlerToCreate {
+			HandlerToCreate {
 				name: Fragment::internal("x"),
 				namespace: namespace.id(),
 				variant: handler_variant(),
@@ -551,7 +553,7 @@ mod tests {
 		create_table(&mut txn, "second", "y", &[]);
 		let result = catalog.create_handler(
 			&mut txn,
-			crate::catalog::handler::HandlerToCreate {
+			HandlerToCreate {
 				name: Fragment::internal("y"),
 				namespace: second.id(),
 				variant: handler_variant(),
