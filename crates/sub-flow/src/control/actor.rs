@@ -62,7 +62,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 use reifydb_wal::lsn::Lsn;
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 use crate::{
 	builder::CustomOperators,
@@ -391,28 +391,44 @@ impl FlowActor {
 		Some(target)
 	}
 
-	fn rebuild_flow_engine(&self, state: &mut FlowActorState) -> Result<(), ValueError> {
+	fn rebuild_flow_engine(&self, state: &mut FlowActorState, reason: &str) -> Result<bool, ValueError> {
+		if self.member_dropped() {
+			debug!(
+				flow_id = self.flow_id.0,
+				reason = %reason,
+				"flow error after a member was dropped, waiting for the supervisor's stop"
+			);
+			return Ok(false);
+		}
 		let mut flow_engine = self.build_flow_engine();
 		self.register_flow(&mut flow_engine)?;
 		state.flow_engine = flow_engine;
 		state.hold_cache = None;
-		Ok(())
+		Ok(true)
+	}
+
+	fn member_dropped(&self) -> bool {
+		self.members.iter().any(|(member, _)| self.engine.catalog().cache().find_flow(member.id).is_none())
 	}
 
 	fn retry_or_poison(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, reason: String) {
+		match self.rebuild_flow_engine(state, &reason) {
+			Ok(true) => {}
+			Ok(false) => return,
+			Err(e) => {
+				self.poison(
+					state,
+					ctx,
+					format!("flow engine rebuild failed after error: {e} (original: {reason})"),
+				);
+				return;
+			}
+		}
 		if state.retry_count >= self.retry_limit {
 			self.poison(state, ctx, reason);
 			return;
 		}
 		state.retry_count += 1;
-		if let Err(e) = self.rebuild_flow_engine(state) {
-			self.poison(
-				state,
-				ctx,
-				format!("flow engine rebuild failed after error: {e} (original: {reason})"),
-			);
-			return;
-		}
 		let backoff = match self.retry_backoff.try_mul(1i64 << state.retry_count.min(16)) {
 			Ok(backoff) => backoff,
 			Err(e) => {
@@ -1057,6 +1073,14 @@ impl FlowActor {
 				if !state.backfilling && TransactionError::is_commit_too_large(&e) {
 					let span = (advance_to.0 - state.cursor.0) / 2;
 					if span == 0 {
+						if self.member_dropped() {
+							debug!(
+								flow_id = self.flow_id.0,
+								reason = %e,
+								"version over the commit record limit after a member was dropped, waiting for the supervisor's stop"
+							);
+							return;
+						}
 						self.poison(
 							state,
 							ctx,
@@ -1072,15 +1096,19 @@ impl FlowActor {
 						end,
 						span,
 					});
-					if let Err(rebuild) = self.rebuild_flow_engine(state) {
-						self.poison(
-							state,
-							ctx,
-							format!(
-								"flow engine rebuild failed after error: {rebuild} (original: slice commit failed: {e})"
-							),
-						);
-						return;
+					match self.rebuild_flow_engine(state, &e.to_string()) {
+						Ok(true) => {}
+						Ok(false) => return,
+						Err(rebuild) => {
+							self.poison(
+								state,
+								ctx,
+								format!(
+									"flow engine rebuild failed after error: {rebuild} (original: slice commit failed: {e})"
+								),
+							);
+							return;
+						}
 					}
 					warn!(
 						flow_id = self.flow_id.0,
@@ -3254,7 +3282,6 @@ mod tick_failures {
 	const WATERMARK_MS: i64 = 10_000;
 	const RETRY_LIMIT: u32 = 3;
 	const SINK: OperatorId = OperatorId(9_003);
-	const MEMBER: FlowId = FlowId(9_100);
 	const MEMBER_SOURCE: OperatorId = OperatorId(9_101);
 	const MEMBER_SEEN: OperatorId = OperatorId(9_102);
 
@@ -3593,6 +3620,21 @@ mod tick_failures {
 		CustomOperators::new(map)
 	}
 
+	fn flow_named(engine: &StandardEngine, name: &str) -> FlowId {
+		let mut query = engine.begin_query(IdentityId::system()).expect("query");
+		let mut txn = Transaction::Query(&mut query);
+		let namespace = engine
+			.catalog()
+			.find_namespace_by_name(&mut txn, "app")
+			.expect("namespace")
+			.expect("the test declares namespace app");
+		engine.catalog()
+			.find_flow_by_name(&mut txn, namespace.id(), name)
+			.expect("flow lookup")
+			.expect("every deferred view the test declares has a flow")
+			.id
+	}
+
 	fn view_named(engine: &StandardEngine, name: &str) -> ViewId {
 		let mut query = engine.begin_query(IdentityId::system()).expect("query");
 		let mut txn = Transaction::Query(&mut query);
@@ -3635,6 +3677,7 @@ mod tick_failures {
 		te.admin("CREATE TABLE app::t { id: int4 }");
 		te.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
 		te.admin("CREATE DEFERRED VIEW app::w { id: int4 } AS { FROM app::v MAP { id } }");
+		te.admin("CREATE DEFERRED VIEW app::x { id: int4 } AS { FROM app::w MAP { id } }");
 		let v = view_named(&engine, "v");
 		let w = view_named(&engine, "w");
 
@@ -3663,7 +3706,7 @@ mod tick_failures {
 		head.add_edge(FlowEdge::new(2, head.id(), TIMED, SINK)).expect("edge");
 		let head = head.build();
 
-		let mut member = FlowDag::builder(MEMBER);
+		let mut member = FlowDag::builder(flow_named(&engine, "x"));
 		member.add_node(FlowNode::new(
 			MEMBER_SOURCE,
 			OperatorDef::SourceView {
@@ -4032,7 +4075,7 @@ mod tick_failures {
 		// A member missing from the report stays active in the catalog and respawns at restart on its dead
 		// head.
 		let (poisoned, reports) = mpsc::channel();
-		let (_te, actor) = unit_actor_with("boom", failing_unit_operators(), |engine| {
+		let (te, actor) = unit_actor_with("boom", failing_unit_operators(), |engine| {
 			engine.spawner()
 				.spawn_ephemeral(
 					"unit-poison-recorder",
@@ -4054,9 +4097,104 @@ mod tick_failures {
 		let (flows, reason) = reports
 			.recv_timeout(Duration::from_seconds(10).unwrap().to_std())
 			.expect("a poisoned unit must report to the supervisor");
-		assert_eq!(flows, vec![FLOW, MEMBER], "the head and every member must be reported in one message");
+		assert_eq!(
+			flows,
+			vec![FLOW, flow_named(te.inner(), "x")],
+			"the head and every member must be reported in one message"
+		);
 		assert!(!reason.is_empty(), "the report must carry the poison reason");
 		assert!(reports.try_recv().is_err(), "one poison must be reported once");
+	}
+
+	#[test]
+	fn a_unit_failing_after_a_member_drop_waits_for_the_stop_instead_of_poisoning() {
+		// The supervisor stores a reported poison in the catalog, so a head poisoned before the reform stays
+		// dead.
+		let (poisoned, reports) = mpsc::channel();
+		let (te, actor) = unit_actor_with("boom", failing_unit_operators(), |engine| {
+			engine.spawner()
+				.spawn_ephemeral(
+					"unit-drop-poison-recorder",
+					PoisonRecorder {
+						poisoned,
+					},
+				)
+				.actor_ref()
+				.clone()
+		});
+		let mut harness = TestHarness::new(actor);
+		assert!(!harness.state().poisoned, "precondition: registration must succeed");
+		te.admin("DROP VIEW app::x");
+
+		for _ in 0..=RETRY_LIMIT {
+			tick(&mut harness);
+		}
+		assert!(!harness.state().poisoned, "a unit whose member is gone must not poison past the retry limit");
+		assert!(
+			reports.recv_timeout(Duration::from_milliseconds(200).unwrap().to_std()).is_err(),
+			"a unit whose member is gone must report no poison to the supervisor"
+		);
+
+		let replied = Arc::new(AtomicBool::new(false));
+		let flag = replied.clone();
+		harness.send(FlowActorMessage::Stop {
+			delete_checkpoint: false,
+			reply: Box::new(move || flag.store(true, Ordering::SeqCst)),
+		});
+		assert_eq!(harness.process_one(), Some(Directive::Stop), "the supervisor's stop must still land");
+		assert!(replied.load(Ordering::SeqCst), "the supervisor reforms the unit only after this reply");
+	}
+
+	#[test]
+	fn a_single_version_over_the_record_limit_after_a_member_drop_waits_for_the_stop_instead_of_poisoning() {
+		// The oversized rows may be the gone member's own, so poisoning here stores a poison the reform cannot
+		// clear.
+		let (poisoned, reports) = mpsc::channel();
+		let (te, actor) = unit_actor_with("ring", unit_operators(Arc::new(AtomicUsize::new(0))), |engine| {
+			engine.spawner()
+				.spawn_ephemeral(
+					"unit-span-poison-recorder",
+					PoisonRecorder {
+						poisoned,
+					},
+				)
+				.actor_ref()
+				.clone()
+		});
+		let mut harness = TestHarness::new(actor);
+		assert!(!harness.state().poisoned, "precondition: registration must succeed");
+		harness.state_mut().backfilling = false;
+		harness.state_mut().committing = true;
+		te.admin("DROP VIEW app::x");
+
+		harness.send(FlowActorMessage::SliceCommitted {
+			advance_to: CommitVersion(1),
+			more: false,
+			result: Err(TransactionError::CommitTooLarge {
+				bytes: 70_000,
+				limit: 65_536,
+			}
+			.into()),
+			committed: None,
+		});
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the refused commit must be handled");
+		assert!(
+			!harness.state().poisoned,
+			"one version over the limit must not poison a unit whose member is gone"
+		);
+		assert!(
+			reports.recv_timeout(Duration::from_milliseconds(200).unwrap().to_std()).is_err(),
+			"a unit whose member is gone must report no poison to the supervisor"
+		);
+
+		let replied = Arc::new(AtomicBool::new(false));
+		let flag = replied.clone();
+		harness.send(FlowActorMessage::Stop {
+			delete_checkpoint: false,
+			reply: Box::new(move || flag.store(true, Ordering::SeqCst)),
+		});
+		assert_eq!(harness.process_one(), Some(Directive::Stop), "the supervisor's stop must still land");
+		assert!(replied.load(Ordering::SeqCst), "the supervisor reforms the unit only after this reply");
 	}
 
 	#[test]

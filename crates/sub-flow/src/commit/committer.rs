@@ -1534,12 +1534,7 @@ mod commit_integration {
 			.iter()
 			.map(|(keys, _)| keys.clone())
 			.filter(|keys| {
-				keys.iter().any(|key| {
-					matches!(
-						KeyTag::of(key),
-						Some(KeyTag::Row | KeyTag::SeriesRow | KeyTag::IndexEntry)
-					)
-				})
+				keys.iter().any(|key| matches!(KeyTag::of(key), Some(KeyTag::Row | KeyTag::SeriesRow)))
 			})
 			.collect();
 		(calls, entry.deltas.clone())
