@@ -2256,6 +2256,7 @@ mod tests {
 			1,
 			"a handed row must count as expired at send"
 		);
+		drop(test);
 	}
 
 	#[test]
@@ -2366,6 +2367,7 @@ mod tests {
 				"row {row} must be handed off after the skip: {keys:?}"
 			);
 		}
+		drop(test);
 	}
 
 	#[test]
@@ -2389,6 +2391,7 @@ mod tests {
 			evictor.plane().snapshot(RetentionClass::RowTtl).backlog_hint > 0,
 			"views left over budget must still be reported as backlog"
 		);
+		drop(test);
 	}
 
 	#[test]
@@ -2407,6 +2410,7 @@ mod tests {
 		let progress = tick_now(&test, &mut state, RetentionClass::RowTtl);
 
 		assert_eq!(progress, Progress::Yielded, "a table over budget must still yield for catch-up");
+		drop(test);
 	}
 
 	#[cfg(reifydb_assertions)]
