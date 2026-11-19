@@ -33,5 +33,5 @@ mod state;
 #[path = "transaction/timer.rs"]
 mod timer;
 
-#[path = "transaction/watermark.rs"]
-mod watermark;
+#[path = "transaction/source_watermark.rs"]
+mod source_watermark;

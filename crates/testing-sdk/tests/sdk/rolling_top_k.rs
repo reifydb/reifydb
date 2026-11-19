@@ -456,7 +456,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 		.expect("apply");
 	let before = h.snapshot_state().len();
 
-	let fired = h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	let fired = h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
 
 	assert!(fired > 0, "the insert must have armed a seal timer that the watermark then passes");
 	assert!(
@@ -566,7 +566,7 @@ fn a_top_k_trade_behind_the_window_is_dropped_and_a_trade_inside_it_revives_the_
 		.build()
 		.expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 7, 1.0)).build()).expect("apply");
-	h.advance_watermark(DateTime::from_millis(115)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(115)).expect("watermark");
 
 	let behind = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 102, 7, 2.0)).build()).expect("apply");
 	assert!(behind.diffs.is_empty(), "a trade behind the window must be dropped, got {:?}", behind.diffs.len());

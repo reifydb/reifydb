@@ -147,8 +147,8 @@ impl<O> Harness<O> {
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(at),
 		});
-		if let Some(watermark) = self.flow_watermark {
-			txn.set_flow_watermark(watermark);
+		if let Some(flow_watermark) = self.flow_watermark {
+			txn.set_flow_watermark(flow_watermark);
 		}
 		txn
 	}
@@ -383,15 +383,15 @@ impl<O: HostOperator> Harness<O> {
 		Ok(out)
 	}
 
-	pub fn settle_timers(&mut self, watermark_ms: i64) -> Result<Vec<Change>, ValueError> {
+	pub fn settle_timers(&mut self, flow_watermark_ms: i64) -> Result<Vec<Change>, ValueError> {
 		const MAX_ROUNDS: u32 = 4_096;
-		let watermark = DateTime::from_epoch_millis(watermark_ms).expect("a settle watermark is representable");
+		let flow_watermark = DateTime::from_epoch_millis(flow_watermark_ms).expect("a settle flow watermark is representable");
 		let operator = self.operator.id();
 		let mut emitted = Vec::new();
 		let mut rounds = 0u32;
 		loop {
-			let mut txn = self.begin(watermark);
-			let due = TimerWheel::take_due(operator, &mut txn, watermark, usize::MAX, None)?.timers;
+			let mut txn = self.begin(flow_watermark);
+			let due = TimerWheel::take_due(operator, &mut txn, flow_watermark, usize::MAX, None)?.timers;
 			if due.is_empty() {
 				self.end(txn);
 				return Ok(emitted);

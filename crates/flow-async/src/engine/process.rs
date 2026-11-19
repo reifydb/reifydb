@@ -28,7 +28,7 @@ use crate::{
 	transaction::{
 		ChangeCoordinate, FlowTransaction,
 		output_watermark::{OutputWatermarks, PublishedWatermark},
-		watermark::SourceWatermarks,
+		source_watermark::SourceWatermarks,
 	},
 };
 
@@ -115,7 +115,7 @@ impl FlowEngineInner {
 			None => return Ok(()),
 		};
 
-		let sources = self.watermark_sources(&flow);
+		let sources = self.flow_watermark_sources(&flow);
 
 		let (arrivals, mut silent) =
 			published_arrivals(&self.sources, &self.substrate.output_watermarks, flow_id, version, &sources);
@@ -156,7 +156,7 @@ impl FlowEngineInner {
 			self.seed_entry_nodes(flow, flow_id, change, &mut pending);
 		}
 
-		let sources = self.watermark_sources(flow);
+		let sources = self.flow_watermark_sources(flow);
 		let mut arrivals: SourceArrivals = pending
 			.iter()
 			.map(|(operator_id, changes)| {
@@ -809,14 +809,14 @@ mod tests {
 		inner.process_version(&mut txn, &flow, FlowId(1), ChangeVersion::from(CommitVersion(5)), vec![], topo)
 			.unwrap();
 
-		assert_eq!(inner.watermark_sources(&flow), vec![SOURCE, OperatorId(2)]);
+		assert_eq!(inner.flow_watermark_sources(&flow), vec![SOURCE, OperatorId(2)]);
 		assert_eq!(
 			SourceWatermarks::source_watermark(OperatorId(2), &mut txn).unwrap(),
 			at_millis(30_000),
 			"the view's published watermark must reach the lookup's own watermark"
 		);
 		assert_eq!(
-			SourceWatermarks::flow_watermark(&inner.watermark_sources(&flow), &mut txn).unwrap(),
+			SourceWatermarks::flow_watermark(&inner.flow_watermark_sources(&flow), &mut txn).unwrap(),
 			at_millis(30_000),
 			"the flow watermark must be the min of the left source and the lookup's view, not the left alone"
 		);
@@ -830,7 +830,7 @@ mod tests {
 		let inner = lookup_engine(&engine);
 		let flow = lookup_flow(LookupObject::Table(TableId(4)));
 
-		assert_eq!(inner.watermark_sources(&flow), vec![SOURCE]);
+		assert_eq!(inner.flow_watermark_sources(&flow), vec![SOURCE]);
 	}
 
 	#[test]
@@ -846,7 +846,7 @@ mod tests {
 		inner.remove_flow(FlowId(1));
 
 		assert!(inner.lookup_sources.is_empty());
-		assert_eq!(inner.watermark_sources(&flow), vec![SOURCE]);
+		assert_eq!(inner.flow_watermark_sources(&flow), vec![SOURCE]);
 	}
 
 	#[test]

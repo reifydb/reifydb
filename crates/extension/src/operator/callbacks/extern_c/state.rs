@@ -968,8 +968,8 @@ pub(super) extern "C" fn host_flow_watermark(
 	unsafe {
 		let host = get_host_mut(&mut *ctx);
 		match host.flow_watermark() {
-			Ok(Some(watermark)) => {
-				*bits_out = watermark.to_order();
+			Ok(Some(flow_watermark)) => {
+				*bits_out = flow_watermark.to_order();
 				*present_out = 1;
 				EXTERN_C_OK
 			}

@@ -43,7 +43,7 @@ impl FlowEngineInner {
 		}
 	}
 
-	pub fn watermark_sources(&self, flow: &FlowDag) -> Vec<OperatorId> {
+	pub fn flow_watermark_sources(&self, flow: &FlowDag) -> Vec<OperatorId> {
 		let lookups: Vec<OperatorId> = self
 			.lookup_sources
 			.values()

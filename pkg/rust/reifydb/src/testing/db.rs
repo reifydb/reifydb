@@ -169,7 +169,7 @@ impl TestDb {
 
 	pub fn await_all_flows(&self, timeout: impl Into<ValueDuration>) -> bool {
 		let progress = self.db.progress();
-		let target = watermarks.tx().current().expect("current commit version");
+		let target = progress.tx().current().expect("current commit version");
 		progress
 			.reader()
 			.wait_for_flow_caught_up(target, timeout.into())

@@ -571,7 +571,7 @@ fn late_event_for_sealed_window_dropped() {
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 180, 5.0)).build()).expect("apply");
-	h.advance_watermark(DateTime::from_millis(180)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(180)).expect("advance watermark");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 0, "insert into a sealed window must be dropped");
 }
@@ -586,7 +586,7 @@ fn late_event_within_seal_is_accepted() {
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 120, 5.0)).build()).expect("apply");
-	h.advance_watermark(DateTime::from_millis(120)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(120)).expect("advance watermark");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1, "window 0 is still within its lateness at watermark 120");
 	let post = out.diffs[0].post().expect("post");
@@ -646,7 +646,7 @@ fn remove_within_seal_is_applied_and_sealed_remove_is_dropped() {
 	assert_eq!(read::<f64>(r, "volume"), Some(10.0));
 
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(4, "BTC", 240, 2.0)).build()).expect("apply");
-	h.advance_watermark(DateTime::from_millis(240)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(240)).expect("advance watermark");
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 0, "retraction of a sealed window must be dropped");
 }
@@ -710,7 +710,7 @@ fn sealing_forgets_window_state_in_the_store() {
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	let before = h.snapshot_state();
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 240, 2.0)).build()).expect("apply");
-	h.advance_watermark(DateTime::from_millis(240)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(240)).expect("advance watermark");
 	let after = h.snapshot_state();
 	let freed = before.keys().filter(|k| !after.contains_key(*k)).count();
 	assert!(freed > 0, "sealing window 0 must remove its accumulator state from the store");

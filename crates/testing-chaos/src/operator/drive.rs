@@ -46,7 +46,7 @@ where
 	let mut session = Session::new(subject);
 	let mut live: Vec<W::Row> = Vec::new();
 	let mut next_row = RowNumber(1);
-	let mut watermark = 0u64;
+	let mut flow_watermark = 0u64;
 
 	let mut arrival = 0u64;
 	let mut trace: Vec<String> = Vec::new();
@@ -58,11 +58,11 @@ where
 
 		if roll < scenario.tick_pct {
 			let drawn = rng.random_range(1..=scenario.coord_span_ms / 2);
-			watermark = watermark.saturating_add(drawn).min(arrival);
+			flow_watermark = flow_watermark.saturating_add(drawn).min(arrival);
 			trace.push(format!("step {step}: seal at {watermark}"));
-			fingerprint = mix(mix(fingerprint, 1), watermark);
-			session.tick(watermark).expect("tick must succeed");
-			model.advance_ledger(watermark);
+			fingerprint = mix(mix(fingerprint, 1), flow_watermark);
+			session.tick(flow_watermark).expect("tick must succeed");
+			model.advance_ledger(flow_watermark);
 		} else if scenario.mixed_batches {
 			let target = scenario.batch.draw(&mut rng);
 			fingerprint = mix(fingerprint, 8);

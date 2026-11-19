@@ -12,7 +12,7 @@ use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Published {
-	watermark_ms: i64,
+	output_watermark_ms: i64,
 	at: CommitVersion,
 	clamped: bool,
 }
@@ -50,21 +50,21 @@ impl OutputWatermarks {
 				 output watermark was established"
 			);
 		}
-		let watermark_ms = output_watermark.to_millis();
+		let output_watermark_ms = output_watermark.to_millis();
 		self.inner
 			.entry(output)
 			.and_modify(|current| {
 				if !current.clamped {
-					current.watermark_ms = watermark_ms;
+					current.output_watermark_ms = output_watermark_ms;
 					current.at = at;
 					current.clamped = true;
-				} else if watermark_ms > current.watermark_ms {
-					current.watermark_ms = watermark_ms;
+				} else if output_watermark_ms > current.output_watermark_ms {
+					current.output_watermark_ms = output_watermark_ms;
 					current.at = at;
 				}
 			})
 			.or_insert(Published {
-				watermark_ms,
+				output_watermark_ms,
 				at,
 				clamped: true,
 			});
@@ -76,7 +76,7 @@ impl OutputWatermarks {
 			None => PublishedWatermark::Unpublished,
 			Some(published) if !published.clamped => PublishedWatermark::Withheld,
 			Some(published) if published.at < version => {
-				PublishedWatermark::Visible(DateTime::from_millis(published.watermark_ms))
+				PublishedWatermark::Visible(DateTime::from_millis(published.output_watermark_ms))
 			}
 			Some(_) => PublishedWatermark::Withheld,
 		}
@@ -87,7 +87,7 @@ impl OutputWatermarks {
 			.iter()
 			.map(|entry| OutputWatermarkEntry {
 				output: *entry.key(),
-				output_watermark: DateTime::from_millis(entry.watermark_ms),
+				output_watermark: DateTime::from_millis(entry.output_watermark_ms),
 				at: entry.at,
 			})
 			.collect()
@@ -107,20 +107,20 @@ impl OutputWatermarks {
 
 	pub fn hydrate(&self, entries: OutputWatermarkEntries) {
 		for entry in entries {
-			let watermark_ms = entry.output_watermark.to_millis();
+			let output_watermark_ms = entry.output_watermark.to_millis();
 			self.inner
 				.entry(entry.output)
 				.and_modify(|current| {
-					if watermark_ms > current.watermark_ms {
+					if output_watermark_ms > current.output_watermark_ms {
 						*current = Published {
-							watermark_ms,
+							output_watermark_ms,
 							at: entry.at,
 							clamped: false,
 						};
 					}
 				})
 				.or_insert(Published {
-					watermark_ms,
+					output_watermark_ms,
 					at: entry.at,
 					clamped: false,
 				});

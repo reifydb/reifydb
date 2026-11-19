@@ -205,7 +205,7 @@ impl TimerWheel {
 	pub fn take_due(
 		operator: OperatorId,
 		txn: &mut impl FlowTransaction,
-		watermark: DateTime,
+		flow_watermark: DateTime,
 		limit: usize,
 		from: Option<&TimerWheelKey>,
 	) -> Result<DueTimers, ValueError> {
@@ -243,7 +243,7 @@ impl TimerWheel {
 				kind: suffix.kind.0,
 				key: armed_key(&EncodedPodRow::from(item.bytes.clone()))?,
 			};
-			if timer.due > watermark || due.len() == take {
+			if timer.due > flow_watermark || due.len() == take {
 				next = Some(timer.due);
 				break;
 			}

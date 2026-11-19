@@ -62,7 +62,7 @@ pub struct SliceConfig {
 }
 
 pub struct HoldCache {
-	pub(crate) watermarks: Vec<PublishedWatermark>,
+	pub(crate) published_watermarks: Vec<PublishedWatermark>,
 	pub(crate) holds: OutputWatermarkHolds,
 }
 
@@ -155,7 +155,7 @@ impl SliceComputer {
 		Ok(checkpoints)
 	}
 
-	fn unit_watermarks(
+	fn unit_published_watermarks(
 		&self,
 		flow_engine: &FlowEngineInner,
 		head: FlowId,
@@ -207,10 +207,10 @@ impl SliceComputer {
 			cursor.completeness_objects,
 		)?;
 		if changes.is_empty() {
-			let watermarks = self.unit_watermarks(flow_engine, cursor.flow_id, advance_to);
+			let published_watermarks = self.unit_published_watermarks(flow_engine, cursor.flow_id, advance_to);
 			if !checkpoint_due(advance_to, cursor.durable_cursor, config)
 				&& let Some(cache) = hold_cache.as_ref()
-				&& cache.watermarks == watermarks
+				&& cache.published_watermarks == published_watermarks
 			{
 				return Ok(SliceStep::Skip {
 					advance_to,
@@ -235,7 +235,7 @@ impl SliceComputer {
 					holds,
 					..
 				} => Some(HoldCache {
-					watermarks,
+					published_watermarks,
 					holds: holds.clone(),
 				}),
 				SliceStep::Commit {
@@ -387,12 +387,12 @@ impl SliceComputer {
 			lookup: None,
 		});
 
-		flow_engine.begin_watermarks(&mut txn)?;
+		flow_engine.begin_source_watermarks(&mut txn)?;
 		for flow in self.unit_ids(flow_id) {
 			flow_engine.fold_published_arrivals(&mut txn, flow, state_version)?;
 		}
 		let holds = self.unit_holds(flow_engine, &mut txn, flow_id)?;
-		flow_engine.stage_watermarks(&txn);
+		flow_engine.stage_source_watermarks(&txn);
 		Ok((holds, txn.take_pending()))
 	}
 
@@ -434,7 +434,7 @@ impl SliceComputer {
 		});
 		txn.snapshot = current;
 
-		flow_engine.begin_watermarks(&mut txn)?;
+		flow_engine.begin_source_watermarks(&mut txn)?;
 		let mut emitted = Vec::with_capacity(groups.len());
 		for (index, changes) in groups.into_iter().enumerate() {
 			if index > 0 {
@@ -445,7 +445,7 @@ impl SliceComputer {
 			emitted.push(txn.emitted);
 		}
 		let holds = self.unit_holds(flow_engine, &mut txn, flow_id)?;
-		flow_engine.stage_watermarks(&txn);
+		flow_engine.stage_source_watermarks(&txn);
 
 		let layers = txn.take_pending().into_layers();
 		Ok((layers.into_iter().zip(emitted).collect(), holds))
@@ -480,7 +480,7 @@ impl SliceComputer {
 			lookup: self.lookup.clone(),
 		});
 
-		flow_engine.begin_watermarks(&mut txn)?;
+		flow_engine.begin_source_watermarks(&mut txn)?;
 		if !self.members.is_empty() {
 			txn.capture_emits();
 		}
@@ -492,7 +492,7 @@ impl SliceComputer {
 			flow_engine.process_tick(&mut txn, *member, cursor)?;
 		}
 
-		flow_engine.stage_watermarks(&txn);
+		flow_engine.stage_source_watermarks(&txn);
 		let emitted = txn.emitted;
 		Ok((txn.take_pending(), emitted))
 	}
@@ -892,7 +892,7 @@ mod integration {
 		transaction::{
 			read::{ReadFrom, read_from},
 			substrate::FlowSubstrate,
-			watermark::SourceWatermarks,
+			source_watermark::SourceWatermarks,
 		},
 	};
 	use reifydb_runtime::context::{RuntimeContext, spawner::Spawner, transaction::TransactionContext};
@@ -2087,7 +2087,7 @@ mod integration {
 			matches!(second, SliceStep::Skip { .. }),
 			"a watermark-only advance must not cost a commit of its own"
 		);
-		flow_engine.accept_watermarks(false);
+		flow_engine.accept_source_watermarks(false);
 
 		let third = empty_pull(
 			&computer,
@@ -2170,7 +2170,7 @@ mod integration {
 			output_watermark: at_millis(12_345),
 		};
 		let mut hold_cache = Some(HoldCache {
-			watermarks: flow_engine.published_watermarks(flow, CommitVersion(7)),
+			published_watermarks: flow_engine.published_watermarks(flow, CommitVersion(7)),
 			holds: vec![sentinel],
 		});
 

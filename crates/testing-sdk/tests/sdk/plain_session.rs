@@ -163,7 +163,7 @@ fn a_session_seals_by_its_last_row_not_its_start() {
 	let mut h = harness!(SumTumblingOnly, session(10, None)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 	h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 105, 2.0)).build()).expect("apply");
-	h.advance_watermark(DateTime::from_millis(112)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(112)).expect("watermark");
 
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 110, 4.0)).build()).expect("apply");
 
@@ -216,7 +216,7 @@ fn a_remove_of_a_row_in_a_sealed_session_is_dropped() {
 	let mut h = harness!(SumTumblingOnly, session(10, None)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 	h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 200, 2.0)).build()).expect("apply");
-	h.advance_watermark(DateTime::from_millis(150)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(150)).expect("watermark");
 
 	let removed = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 	let after = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 205, 4.0)).build()).expect("apply");
@@ -313,7 +313,7 @@ fn an_emptied_session_publishes_nothing_on_seal() {
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 	assert_eq!(render(&out), vec![(DiffType::Remove, 1.0, at(100), at(110))], "precondition");
-	h.advance_watermark(DateTime::from_millis(10_000)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("watermark");
 
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 10_000, 4.0)).build()).expect("apply");
 

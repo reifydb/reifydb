@@ -1791,8 +1791,8 @@ mod seal_tests {
 			self.inner.flow_watermark()
 		}
 
-		fn set_flow_watermark(&mut self, watermark: DateTime) {
-			self.inner.set_flow_watermark(watermark)
+		fn set_flow_watermark(&mut self, flow_watermark: DateTime) {
+			self.inner.set_flow_watermark(flow_watermark)
 		}
 
 		fn source_watermark_cache(&mut self) -> &mut HashMap<OperatorId, i64> {

@@ -356,8 +356,8 @@ impl FlowTransaction for DeferredTransaction {
 		self.flow_watermark
 	}
 
-	fn set_flow_watermark(&mut self, watermark: DateTime) {
-		self.flow_watermark = Some(watermark);
+	fn set_flow_watermark(&mut self, flow_watermark: DateTime) {
+		self.flow_watermark = Some(flow_watermark);
 	}
 
 	fn source_watermark_cache(&mut self) -> &mut HashMap<OperatorId, i64> {

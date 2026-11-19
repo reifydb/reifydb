@@ -64,8 +64,8 @@ impl testscript::runner::Runner for Runner {
 			}
 			"await" => {
 				let progress = self.instance.progress();
-				let target = watermarks.tx().current()?;
-				if !watermarks.reader().wait_for_flow_caught_up(
+				let target = progress.tx().current()?;
+				if !progress.reader().wait_for_flow_caught_up(
 					target,
 					ValueDuration::from_nanos_infallible(10_000_000_000),
 				)? {

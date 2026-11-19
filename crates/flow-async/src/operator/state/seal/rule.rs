@@ -124,8 +124,8 @@ impl SealRule {
 	}
 }
 
-pub fn output_watermark<C: Coord>(watermark: C, lateness: C::Span) -> C {
-	watermark.saturating_sub_span(lateness)
+pub fn output_watermark<C: Coord>(operator_watermark: C, lateness: C::Span) -> C {
+	operator_watermark.saturating_sub_span(lateness)
 }
 
 pub fn is_sealed<C: Coord>(event: C, horizon: C) -> bool {

@@ -197,11 +197,11 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 			.collect()
 	}
 
-	pub fn advance_watermark(&mut self, at: DateTime) -> Result<usize, SdkError> {
+	pub fn advance_flow_watermark(&mut self, at: DateTime) -> Result<usize, SdkError> {
 		const MAX_ROUNDS: usize = 8192;
 
-		let watermark = self.txn.flow_watermark().map_or(at, |current| current.max(at));
-		self.txn.set_flow_watermark(watermark);
+		let flow_watermark = self.txn.flow_watermark().map_or(at, |current| current.max(at));
+		self.txn.set_flow_watermark(flow_watermark);
 		let mut fired = 0usize;
 		for _ in 0..MAX_ROUNDS {
 			let due = TimerWheel::take_due(self.operator_id, &mut self.txn, at, MAX_TIMERS_PER_SCAN, None)?;
@@ -213,7 +213,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 				fired += 1;
 			}
 		}
-		panic!("advance_watermark kept finding due timers after {MAX_ROUNDS} rounds; an operator is \
+		panic!("advance_flow_watermark kept finding due timers after {MAX_ROUNDS} rounds; an operator is \
 			 re-arming at or below the watermark it was just woken for, which would spin the real \
 			 wheel too")
 	}
@@ -368,7 +368,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> Subject for InProcessOpera
 			i64::try_from(at_ms).expect("chaos harness tick time fits in i64 milliseconds"),
 		)?;
 		let fired_from = self.history.len();
-		self.advance_watermark(at)?;
+		self.advance_flow_watermark(at)?;
 		let diffs: Diffs =
 			self.history[fired_from..].iter().flat_map(|change| change.diffs.iter().cloned()).collect();
 		if diffs.is_empty() {

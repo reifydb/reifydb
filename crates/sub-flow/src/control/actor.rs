@@ -869,7 +869,7 @@ impl FlowActor {
 				holds,
 			}) => {
 				state.retry_count = 0;
-				state.flow_engine.accept_watermarks(false);
+				state.flow_engine.accept_source_watermarks(false);
 				if let Some(reads) = reads {
 					self.advance_view_cursors(state, reads, advance_to);
 				}
@@ -1047,7 +1047,7 @@ impl FlowActor {
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
-				state.flow_engine.accept_watermarks(true);
+				state.flow_engine.accept_source_watermarks(true);
 				state.backfilling = false;
 				*self.create_snapshot.lock() = None;
 				for (producer, cursor) in take(&mut state.pending_view_cursors) {
@@ -1135,7 +1135,7 @@ impl FlowActor {
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
-				state.flow_engine.accept_watermarks(true);
+				state.flow_engine.accept_source_watermarks(true);
 				self.move_lookup_lease(state);
 				self.flow_tracker.record_tick(self.flow_id);
 				self.resume_after_commit(state, ctx, false);
@@ -1151,7 +1151,7 @@ impl FlowActor {
 			return;
 		}
 		let resolved = self.computer.resolved_holds(&mut state.flow_engine, self.flow_id, self.initial_cursor);
-		state.flow_engine.discard_staged_watermarks();
+		state.flow_engine.discard_staged_source_watermarks();
 		match resolved {
 			Ok((holds, _)) => {
 				for hold in holds {
@@ -1188,7 +1188,7 @@ impl FlowActor {
 					if produced_output(&pending, emitted) {
 						self.dispatch_tick_commit(state, ctx, pending);
 					} else {
-						state.flow_engine.accept_watermarks(false);
+						state.flow_engine.accept_source_watermarks(false);
 						self.flow_tracker.record_tick(self.flow_id);
 					}
 				}
@@ -1660,7 +1660,7 @@ mod pull_protocol {
 	use reifydb_flow_async::{
 		operator::provider::EmptyOperatorProvider,
 		transaction::{
-			DeferredParams, FlowTransaction, deferred::DeferredTransaction, watermark::SourceWatermarks,
+			DeferredParams, FlowTransaction, deferred::DeferredTransaction, source_watermark::SourceWatermarks,
 		},
 	};
 	use reifydb_runtime::{
@@ -3240,7 +3240,7 @@ mod tick_failures {
 		operator::{BoxedHostOperator, HostOperator, TimedOutput, host::HostContext},
 		timer::{Timer, wheel::TimerWheel},
 		transaction::{
-			DeferredParams, FlowTransaction, deferred::DeferredTransaction, watermark::SourceWatermarks,
+			DeferredParams, FlowTransaction, deferred::DeferredTransaction, source_watermark::SourceWatermarks,
 		},
 	};
 	use reifydb_runtime::{
@@ -4487,7 +4487,7 @@ mod tick_failures {
 		let mut harness = TestHarness::new(actor);
 		assert!(!harness.state().poisoned, "precondition: registration must succeed");
 		harness.state_mut().hold_cache = Some(HoldCache {
-			watermarks: Vec::new(),
+			published_watermarks: Vec::new(),
 			holds: OutputWatermarkHolds::new(),
 		});
 

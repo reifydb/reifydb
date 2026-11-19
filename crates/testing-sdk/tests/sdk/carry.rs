@@ -222,7 +222,7 @@ fn a_carry_window_folds_past_the_lateness_horizon_and_drops_its_accumulator_rows
 		for i in 0..windows {
 			h.apply(TestChangeBuilder::new().insert(input_row(i + 1, "BTC", i * 60, i as f64)).build())
 				.expect("apply");
-			h.advance_watermark(DateTime::from_millis((i * 60) as i64)).expect("advance watermark");
+			h.advance_flow_watermark(DateTime::from_millis((i * 60) as i64)).expect("advance watermark");
 		}
 		h.group_state().len()
 	};
@@ -284,8 +284,8 @@ fn a_seal_frees_every_window_of_a_stopped_carry_group_that_declared_no_immutable
 	let mut long = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(), 40);
 	let before = long.snapshot_state().len();
 
-	short.advance_watermark(DateTime::from_millis(10_000_000)).expect("advance watermark");
-	long.advance_watermark(DateTime::from_millis(10_000_000)).expect("advance watermark");
+	short.advance_flow_watermark(DateTime::from_millis(10_000_000)).expect("advance watermark");
+	long.advance_flow_watermark(DateTime::from_millis(10_000_000)).expect("advance watermark");
 
 	let (short_after, long_after) = (short.snapshot_state().len(), long.snapshot_state().len());
 	assert_eq!(long_after, short_after, "a sealed group must leave the same state however many windows it crossed");

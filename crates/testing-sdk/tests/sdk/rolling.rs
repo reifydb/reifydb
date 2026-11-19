@@ -436,7 +436,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 		.expect("apply");
 	let before = h.snapshot_state().len();
 
-	let fired = h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	let fired = h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
 
 	assert!(fired > 0, "the insert must have armed a seal timer that the watermark then passes");
 	assert!(

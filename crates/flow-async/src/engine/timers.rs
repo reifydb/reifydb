@@ -21,7 +21,7 @@ use crate::{
 	engine::{FlowEngineInner, dispatch::Node},
 	operator::host::TxnHostContext,
 	timer::{Timer, TimerDue, registry::TimerStage, timer_runs, wheel::TimerWheel},
-	transaction::{ChangeCoordinate, FlowTransaction, watermark::SourceWatermarks},
+	transaction::{ChangeCoordinate, FlowTransaction, source_watermark::SourceWatermarks},
 };
 
 const MAX_TIMER_ROUNDS: u32 = 4_096;
@@ -35,7 +35,7 @@ impl FlowEngineInner {
 		version: ChangeVersion,
 		topo: &[OperatorId],
 	) -> Result<u32, ValueError> {
-		let sources = self.watermark_sources(flow);
+		let sources = self.flow_watermark_sources(flow);
 		if sources.is_empty() {
 			let armed = self.file_foreign_arms(flow.id, txn.take_armed());
 			self.timers.fold(flow.id, armed);
@@ -81,8 +81,8 @@ impl FlowEngineInner {
 		let mut budget = MAX_TIMERS_PER_DISPATCH;
 		let mut cursors: HashMap<OperatorId, TimerWheelKey> = HashMap::new();
 		loop {
-			let watermark = SourceWatermarks::flow_watermark(sources, txn)?;
-			txn.set_flow_watermark(watermark);
+			let flow_watermark = SourceWatermarks::flow_watermark(sources, txn)?;
+			txn.set_flow_watermark(flow_watermark);
 			let armed = self.file_foreign_arms(flow.id, txn.take_armed());
 			for entry in &armed {
 				if cursors.get(&entry.operator_id).is_some_and(|cursor| entry.due <= cursor.due.0) {
@@ -90,7 +90,7 @@ impl FlowEngineInner {
 				}
 			}
 			let mut due: Vec<(OperatorId, Timer)> = Vec::new();
-			for candidate in stage.due_before(armed, watermark) {
+			for candidate in stage.due_before(armed, flow_watermark) {
 				if budget == 0 {
 					break;
 				}
@@ -98,7 +98,7 @@ impl FlowEngineInner {
 				let taken = TimerWheel::take_due(
 					operator_id,
 					txn,
-					watermark,
+					flow_watermark,
 					budget,
 					cursors.get(&operator_id),
 				)?;
@@ -125,14 +125,14 @@ impl FlowEngineInner {
 				let oldest = due.iter().map(|(_, timer)| timer.due).min().map(|at| at.to_millis());
 				panic!(
 					"timer dispatch did not reach quiescence within {MAX_TIMER_ROUNDS} rounds at \
-					 version {}: watermark {} ms, {} timers still due, oldest armed at {:?} ms, \
-					 {:?} ms behind the watermark; a lag near zero means an operator re-arms \
-					 what it just fired, a large lag means the watermark jumped past a backlog",
+					 version {}: flow_watermark {} ms, {} timers still due, oldest armed at {:?} ms, \
+					 {:?} ms behind the flow_watermark; a lag near zero means an operator re-arms \
+					 what it just fired, a large lag means the flow_watermark jumped past a backlog",
 					version.commit.0,
-					watermark.to_millis(),
+					flow_watermark.to_millis(),
 					due.len(),
 					oldest,
-					oldest.map(|at| watermark.to_millis() - at)
+					oldest.map(|at| flow_watermark.to_millis() - at)
 				);
 			}
 
@@ -288,7 +288,7 @@ mod tests {
 			FlowTransaction,
 			mock::FlowTxn,
 			substrate::{FlowSubstrate, persist},
-			watermark::SourceWatermarks,
+			source_watermark::SourceWatermarks,
 		},
 	};
 

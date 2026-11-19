@@ -208,11 +208,11 @@ mod tests {
 		// A seal horizon is watermark - lateness; with both sides a bare u64 nothing stopped a
 		// millisecond span reaching a nanosecond coordinate, yielding a horizon a million times too
 		// small. Pairing a coordinate with its own Span makes the wrong subtraction fail to compile.
-		let watermark = ByDateTime(DateTime::from_epoch_millis(6_060_000).expect("representable instant"));
+		let operator_watermark = ByDateTime(DateTime::from_epoch_millis(6_060_000).expect("representable instant"));
 		let one_minute = Duration::from_seconds(60).expect("representable span");
 
 		assert_eq!(
-			watermark.saturating_sub_span(one_minute),
+			operator_watermark.saturating_sub_span(one_minute),
 			ByDateTime(DateTime::from_epoch_millis(6_000_000).expect("representable")),
 			"a minute behind the watermark is a minute, not a million times less"
 		);
@@ -231,8 +231,8 @@ mod tests {
 		// The boundary is load-bearing in both directions. A window whose start sits exactly one lateness
 		// span behind the watermark is still reachable by a late event, so sealing it would discard a
 		// legitimate retraction; sealing nothing would let state grow without bound.
-		let watermark = ByDateTime(DateTime::from_epoch_millis(6_060_000).expect("representable"));
-		let horizon = output_watermark(watermark, Duration::from_seconds(60).expect("representable"));
+		let operator_watermark = ByDateTime(DateTime::from_epoch_millis(6_060_000).expect("representable"));
+		let horizon = output_watermark(operator_watermark, Duration::from_seconds(60).expect("representable"));
 
 		let at_boundary = ByDateTime(DateTime::from_epoch_millis(6_000_000).expect("representable"));
 		let before_boundary = ByDateTime(DateTime::from_epoch_millis(5_999_999).expect("representable"));

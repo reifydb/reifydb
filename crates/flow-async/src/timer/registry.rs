@@ -19,8 +19,8 @@ pub struct TimerStage {
 }
 
 impl TimerStage {
-	pub fn due_before(&mut self, armed: Vec<TimerDue>, watermark: DateTime) -> Vec<TimerDue> {
-		self.staged.due_before(armed, self.flow, watermark)
+	pub fn due_before(&mut self, armed: Vec<TimerDue>, flow_watermark: DateTime) -> Vec<TimerDue> {
+		self.staged.due_before(armed, self.flow, flow_watermark)
 	}
 
 	pub fn refresh(&mut self, operator: OperatorId, next: Option<TimerDue>) {
@@ -55,17 +55,17 @@ impl TimerRegistry {
 		}
 	}
 
-	pub fn due_before(&mut self, armed: Vec<TimerDue>, flow: FlowId, watermark: DateTime) -> Vec<TimerDue> {
+	pub fn due_before(&mut self, armed: Vec<TimerDue>, flow: FlowId, flow_watermark: DateTime) -> Vec<TimerDue> {
 		self.fold(flow, armed);
 		let Some(operators) = self.flows.get(&flow) else {
 			return Vec::new();
 		};
-		if operators.values().min().is_none_or(|earliest| *earliest > watermark) {
+		if operators.values().min().is_none_or(|earliest| *earliest > flow_watermark) {
 			return Vec::new();
 		}
 		operators
 			.iter()
-			.filter(|(_, due)| **due <= watermark)
+			.filter(|(_, due)| **due <= flow_watermark)
 			.map(|(operator_id, due)| TimerDue {
 				operator_id: *operator_id,
 				due: *due,

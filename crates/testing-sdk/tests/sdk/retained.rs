@@ -217,8 +217,8 @@ fn parity_with_plain_driver() {
 		let ours = retained.apply(batch).expect("retained apply");
 		assert_eq!(seen(&ours), seen(&theirs), "step {step}");
 	}
-	plain.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
-	retained.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
+	plain.advance_flow_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
+	retained.advance_flow_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
 	let close = TestChangeBuilder::new().insert(input_row(6, "ETH", 1, 120_000, 1)).build();
 	let theirs = plain.apply(close.clone()).expect("plain apply");
 	let ours = retained.apply(close).expect("retained apply");

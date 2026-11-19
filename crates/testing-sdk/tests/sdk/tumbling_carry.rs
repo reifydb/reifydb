@@ -402,7 +402,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 		.expect("apply");
 	let before = h.snapshot_state().len();
 
-	let fired = h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	let fired = h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
 
 	assert!(fired > 0, "the insert must have armed a seal timer that the watermark then passes");
 	assert!(
@@ -440,7 +440,7 @@ fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
 			 own feed must never seal the window it is currently filling"
 		);
 		published += 1;
-		h.advance_watermark(DateTime::from_millis(ts as i64)).expect("advance watermark");
+		h.advance_flow_watermark(DateTime::from_millis(ts as i64)).expect("advance watermark");
 	}
 
 	assert_eq!(published, 5, "every window in the ladder must publish, not just the first");
@@ -461,7 +461,7 @@ fn a_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
 	let opened = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	assert!(!opened.diffs.is_empty(), "precondition: the window at 0 opened and published");
 
-	h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
 
 	let late = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
 	assert!(
@@ -541,7 +541,7 @@ fn an_emptied_carry_window_publishes_nothing_when_folded() {
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	assert_eq!(out.diffs[0].kind(), DiffType::Remove, "precondition: the emptied window publishes its removal");
-	h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 10_000, 1.0)).build()).expect("apply");
 	assert!(out.diffs.iter().all(|d| d.kind() == DiffType::Insert), "only the new window publishes");
 	assert_eq!(out.diffs.iter().map(|d| d.post().expect("post").num_rows()).sum::<usize>(), 1);

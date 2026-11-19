@@ -166,7 +166,7 @@ impl Database {
 		self.engine.catalog()
 	}
 
-	pub fn watermarks(&self) -> Progress<'_> {
+	pub fn progress(&self) -> Progress<'_> {
 		Progress::new(self)
 	}
 

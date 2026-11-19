@@ -51,7 +51,7 @@ pub mod row_number;
 pub mod scope;
 pub mod state;
 pub mod substrate;
-pub mod watermark;
+pub mod source_watermark;
 
 use reifydb_value::error::ValueError;
 
@@ -227,7 +227,7 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 
 	fn flow_watermark(&self) -> Option<DateTime>;
 
-	fn set_flow_watermark(&mut self, watermark: DateTime);
+	fn set_flow_watermark(&mut self, flow_watermark: DateTime);
 
 	fn source_watermark_cache(&mut self) -> &mut HashMap<OperatorId, i64>;
 

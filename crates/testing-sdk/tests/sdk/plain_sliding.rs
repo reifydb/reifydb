@@ -116,7 +116,7 @@ fn a_late_row_is_dropped_only_from_its_sealed_windows() {
 	// dropping the whole row once its oldest window seals would lose it from windows still open
 	let mut h = harness!(SumTumblingOnly, sliding(10, 5, 10)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
-	h.advance_watermark(DateTime::from_millis(113)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(113)).expect("watermark");
 
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 97, 2.0)).build()).expect("apply");
 

@@ -71,8 +71,8 @@ impl MockStore {
 		self.batch_time = Some(at);
 	}
 
-	pub(crate) fn with_flow_watermark(mut self, watermark: DateTime) -> Self {
-		self.flow_watermark = Some(watermark);
+	pub(crate) fn with_flow_watermark(mut self, flow_watermark: DateTime) -> Self {
+		self.flow_watermark = Some(flow_watermark);
 		self
 	}
 

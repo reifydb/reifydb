@@ -15,7 +15,7 @@ use reifydb_value::{error::ValueError, value::datetime::DateTime};
 use crate::{
 	engine::FlowEngineInner,
 	operator::{BoxedHostOperator, state::seal::rule::output_watermark},
-	transaction::{FlowTransaction, output_watermark::SourceWatermarks},
+	transaction::{FlowTransaction, source_watermark::SourceWatermarks},
 	window::coord::ByDateTime,
 };
 
@@ -49,11 +49,11 @@ impl FlowEngineInner {
 			.filter(|(registered, _)| *registered == flow_id)
 			.map(|(_, operator)| *operator)
 			.collect();
-		let watermarks = output_watermarks(txn, flow, &self.operators, topo, &lookups)?;
+		let output_watermarks = output_watermarks(txn, flow, &self.operators, topo, &lookups)?;
 
 		let mut held: OutputWatermarkHolds = Vec::with_capacity(sinks.len());
 		for (object, operator_id) in sinks.iter().copied() {
-			let Some(output_watermark) = watermarks.get(&operator_id) else {
+			let Some(output_watermark) = output_watermarks.get(&operator_id) else {
 				continue;
 			};
 			if output_watermark.to_millis() == 0 {
@@ -168,15 +168,15 @@ mod tests {
 	const FLOW: FlowId = FlowId(1);
 
 	#[derive(Debug, Clone, Copy)]
-	struct WatermarkAdvance {
+	struct SourceWatermarkAdvance {
 		source: OperatorId,
 		at: DateTime,
 	}
 
-	type WatermarkAdvances = Vec<WatermarkAdvance>;
+	type SourceWatermarkAdvances = Vec<SourceWatermarkAdvance>;
 
-	fn advance(source: u64, at: i64) -> WatermarkAdvance {
-		WatermarkAdvance {
+	fn advance(source: u64, at: i64) -> SourceWatermarkAdvance {
+		SourceWatermarkAdvance {
 			source: OperatorId(source),
 			at: at_millis(at),
 		}
@@ -380,7 +380,7 @@ mod tests {
 			self
 		}
 
-		fn holds(self, advances: WatermarkAdvances) -> OutputWatermarkHolds {
+		fn holds(self, advances: SourceWatermarkAdvances) -> OutputWatermarkHolds {
 			let Harness {
 				engine,
 				mut inner,

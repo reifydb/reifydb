@@ -291,11 +291,11 @@ mod tests {
 		// end, so the coordinate exactly one span behind must arm at coord + span. Tumbling's
 		// strict +1 gate arms one tick late and the boundary entry then never expires.
 		let span = Duration::from_seconds(5).expect("representable span");
-		let watermark = order(10_000);
+		let operator_watermark = order(10_000);
 
 		let armed = evict_instant(order(5_000), span);
 		assert!(
-			armed.to_order() <= watermark,
+			armed.to_order() <= operator_watermark,
 			"a coordinate exactly one span behind the watermark must already be due"
 		);
 		assert_eq!(
@@ -304,7 +304,7 @@ mod tests {
 			"and the cutoff that firing derives must land on that coordinate, not past it"
 		);
 		assert!(
-			evict_instant(order(5_001), span).to_order() > watermark,
+			evict_instant(order(5_001), span).to_order() > operator_watermark,
 			"one millisecond newer is still inside the window and must not be armed yet"
 		);
 	}
