@@ -280,7 +280,7 @@ where
 			slots.insert(ordered.clone(), keys.len());
 			keys.push(state_key);
 		}
-		let now = store.batch_time();
+		let batch_time = store.batch_time();
 		let mut session = match keys.is_empty() {
 			true => None,
 			false => Some(batch::<_, WindowSlot<Accumulator>>(store, &keys)?),
@@ -308,7 +308,7 @@ where
 				Some(window) => window,
 				None => WindowSlot {
 					row: None,
-					first_time: span.start.as_time().unwrap_or(now),
+					first_time: span.start.as_time().unwrap_or(batch_time),
 					acc: CountedAccumulator::new(new_accumulator()),
 				},
 			};
@@ -429,7 +429,7 @@ where
 			};
 			if !emit.withdraw {
 				if window.row.is_none() {
-					window.first_time = emit.span.start.as_time().unwrap_or(now);
+					window.first_time = emit.span.start.as_time().unwrap_or(batch_time);
 				}
 				window.row = Some(row_number);
 			}

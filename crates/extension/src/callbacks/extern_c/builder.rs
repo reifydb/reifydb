@@ -612,7 +612,7 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 	}
 
 	let mut inner = registry.inner.lock();
-	let now = DateTime::from_nanos(batch_time_nanos);
+	let batch_time = DateTime::from_nanos(batch_time_nanos);
 
 	let pre_columns = match assemble_columns_opt(
 		&mut inner,
@@ -627,7 +627,7 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 		pre_row_numbers_len,
 		pre_times_ptr,
 		pre_times_len,
-		now,
+		batch_time,
 	) {
 		Ok(c) => c,
 		Err(code) => return code,
@@ -645,7 +645,7 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 		post_row_numbers_len,
 		post_times_ptr,
 		post_times_len,
-		now,
+		batch_time,
 	) {
 		Ok(c) => c,
 		Err(code) => return code,
