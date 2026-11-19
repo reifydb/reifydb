@@ -66,18 +66,18 @@ fn encode<T: OperatorState>(value: &T) -> Result<EncodedPodRow, SdkError> {
 pub struct InProcessContext<'a> {
 	host: *mut (dyn HostContext + 'a),
 	operator: OperatorId,
-	now: DateTime,
+	batch_time: DateTime,
 	diffs: Vec<Diff>,
 	_marker: PhantomData<&'a mut (dyn HostContext + 'a)>,
 }
 
 impl<'a> InProcessContext<'a> {
 	pub fn new(host: &'a mut (dyn HostContext + 'a), operator: OperatorId) -> Self {
-		let now = host.batch_time();
+		let batch_time = host.batch_time();
 		Self {
 			host: host as *mut (dyn HostContext + 'a),
 			operator,
-			now,
+			batch_time,
 			diffs: Vec::new(),
 			_marker: PhantomData,
 		}
@@ -316,7 +316,7 @@ impl GuestEmitContext for InProcessContext<'_> {
 		self.operator
 	}
 	fn batch_time(&self) -> DateTime {
-		self.now
+		self.batch_time
 	}
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<(), SdkError> {
 		reject_reserved_kind(kind)?;

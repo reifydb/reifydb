@@ -46,10 +46,10 @@ impl ScanCounters {
 	}
 
 	pub fn since(self) -> Self {
-		let now = Self::sample();
+		let after = Self::sample();
 		Self {
-			fetched: now.fetched.wrapping_sub(self.fetched),
-			tombstones: now.tombstones.wrapping_sub(self.tombstones),
+			fetched: after.fetched.wrapping_sub(self.fetched),
+			tombstones: after.tombstones.wrapping_sub(self.tombstones),
 		}
 	}
 }

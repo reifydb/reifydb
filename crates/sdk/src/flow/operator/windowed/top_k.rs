@@ -116,15 +116,15 @@ where
 				}
 			}
 		}
-		let now = store.batch_time();
+		let batch_time = store.batch_time();
 		for (sk, (number, is_new)) in added.into_iter().zip(numbers) {
 			let new = ranking[sk].clone();
 			applied.emits.push(if is_new {
-				TopKRow::Insert(number, now, new.clone())
+				TopKRow::Insert(number, batch_time, new.clone())
 			} else {
-				TopKRow::Update(number, now, new.clone(), new.clone())
+				TopKRow::Update(number, batch_time, new.clone(), new.clone())
 			});
-			next.insert(sk.clone(), (number, now, new));
+			next.insert(sk.clone(), (number, batch_time, new));
 		}
 		if !freed.is_empty() {
 			store.remove_row_number(group_id, &freed)?;

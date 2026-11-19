@@ -1276,7 +1276,7 @@ mod join_row_expiry_guard_tests {
 			CommitVersion(0)
 		}
 
-		fn wall_now(&self) -> DateTime {
+		fn now(&self) -> DateTime {
 			DateTime::default()
 		}
 

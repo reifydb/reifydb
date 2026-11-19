@@ -73,17 +73,17 @@ pub(crate) fn build_shape(host: &mut dyn HostContext, columns: &RecordBatch) -> 
 pub(crate) struct JoinRows {
 	columns: RecordBatch,
 	side: JoinSide,
-	now: DateTime,
+	batch_time: DateTime,
 	encoded: Option<EncodedRows>,
 	held: HashMap<RowNumber, bool>,
 }
 
 impl JoinRows {
-	pub(crate) fn new(columns: &RecordBatch, side: JoinSide, now: DateTime) -> Self {
+	pub(crate) fn new(columns: &RecordBatch, side: JoinSide, batch_time: DateTime) -> Self {
 		Self {
 			columns: columns.clone(),
 			side,
-			now,
+			batch_time,
 			encoded: None,
 			held: HashMap::new(),
 		}
@@ -104,7 +104,7 @@ impl JoinRows {
 				let shape = build_shape(host, &self.columns)?;
 				store.set_row_shape(host, &shape)?;
 				let numbers = require_row_numbers(&self.columns)?.to_vec();
-				let rows = encode_rows(&shape, &self.columns, self.side, self.now)?;
+				let rows = encode_rows(&shape, &self.columns, self.side, self.batch_time)?;
 				EncodedRows {
 					numbers,
 					rows,
@@ -120,7 +120,7 @@ impl JoinRows {
 		let times: Vec<Option<DateTime>> =
 			(0..indices.len()).map(|row| times.get(row).copied().flatten()).collect();
 		let instants: ArrayRef =
-			Arc::new(datetime_array(times.iter().map(|time| time.unwrap_or(self.now)).collect::<Vec<_>>()));
+			Arc::new(datetime_array(times.iter().map(|time| time.unwrap_or(self.batch_time)).collect::<Vec<_>>()));
 		let numbers: ArrayRef = Arc::new(UInt64Array::from_iter_values(
 			require_row_numbers(&taken)?.iter().map(|number| number.value()),
 		));
@@ -155,7 +155,7 @@ fn encode_rows(
 	shape: &RowShape,
 	columns: &RecordBatch,
 	side: JoinSide,
-	now: DateTime,
+	batch_time: DateTime,
 ) -> Result<Vec<EncodedPodRow>, ValueError> {
 	let views: Vec<ColumnView> = user_columns(columns)
 		.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
@@ -166,7 +166,7 @@ fn encode_rows(
 	let base = EnvelopeBuilder::new().fingerprint(shape.fingerprint());
 	bodies.into_iter()
 		.enumerate()
-		.map(|(row, body)| Ok(stamps.stamp(base, row, now)?.build(body.freeze().as_slice())))
+		.map(|(row, body)| Ok(stamps.stamp(base, row, batch_time)?.build(body.freeze().as_slice())))
 		.collect()
 }
 
@@ -214,7 +214,7 @@ impl<'a> Stamps<'a> {
 		&self,
 		mut envelope: EnvelopeBuilder,
 		row: usize,
-		now: DateTime,
+		batch_time: DateTime,
 	) -> Result<EnvelopeBuilder, ValueError> {
 		match self {
 			Stamps::Left {
@@ -260,7 +260,7 @@ impl<'a> Stamps<'a> {
 				};
 				Ok(match time {
 					Some(time) => envelope.time(time),
-					None => envelope.created_at(now),
+					None => envelope.created_at(batch_time),
 				})
 			}
 		}
@@ -874,11 +874,11 @@ mod tests {
 		let operator = OperatorId(72);
 		let store = Store::new(JoinSide::Right);
 
-		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
+		let batch_time = DateTime::from_nanos(1_700_000_000_000_000_000);
 		let columns = columns_with_time(&[("mint", 7)], 1, None);
 		let shape = build_shape(&mut host(&mut txn, operator), &columns).unwrap();
 
-		let row = JoinRows::new(&columns, JoinSide::Right, now)
+		let row = JoinRows::new(&columns, JoinSide::Right, batch_time)
 			.encoded(&mut host(&mut txn, operator), &store)
 			.unwrap()
 			.row(0)
@@ -886,7 +886,7 @@ mod tests {
 		let envelope = Envelope::try_view(&row).unwrap();
 		assert_eq!(envelope.header_size(), 17, "flags byte plus a fingerprint plus exactly one instant");
 		assert_eq!(envelope.fingerprint(), Some(shape.fingerprint()));
-		assert_eq!(envelope.created_at(), Some(now));
+		assert_eq!(envelope.created_at(), Some(batch_time));
 		assert_eq!(envelope.time(), None);
 		assert_eq!(envelope.updated_at(), None, "a second stamp would widen every buffered row by 8 bytes");
 
@@ -898,10 +898,10 @@ mod tests {
 			&[row.into_bytes()],
 		)
 		.unwrap();
-		assert_eq!(created_at(&decoded).unwrap(), &[now][..]);
+		assert_eq!(created_at(&decoded).unwrap(), &[batch_time][..]);
 		assert_eq!(
 			updated_at(&decoded).unwrap(),
-			&[now][..],
+			&[batch_time][..],
 			"both stamps are synthesized from the one stored instant"
 		);
 		assert!(
@@ -919,12 +919,12 @@ mod tests {
 		let operator = OperatorId(73);
 		let store = Store::new(JoinSide::Right);
 
-		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
+		let batch_time = DateTime::from_nanos(1_700_000_000_000_000_000);
 		let event = DateTime::from_nanos(1_600_000_000_000_000_000);
 		let columns = columns_with_time(&[("mint", 9)], 2, Some(event));
 		let shape = build_shape(&mut host(&mut txn, operator), &columns).unwrap();
 
-		let row = JoinRows::new(&columns, JoinSide::Right, now)
+		let row = JoinRows::new(&columns, JoinSide::Right, batch_time)
 			.encoded(&mut host(&mut txn, operator), &store)
 			.unwrap()
 			.row(0)
@@ -957,7 +957,7 @@ mod tests {
 		let operator = OperatorId(74);
 		let store = Store::new(JoinSide::Right);
 
-		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
+		let batch_time = DateTime::from_nanos(1_700_000_000_000_000_000);
 		let event = DateTime::from_nanos(1_600_000_000_000_000_000);
 		let first = columns_with_time(&[("mint", 1)], 1, None);
 		let second = columns_with_time(&[("mint", 2)], 2, Some(event));
@@ -968,7 +968,7 @@ mod tests {
 		let rows: Vec<EncodedBytes> = [&first, &second, &third]
 			.into_iter()
 			.map(|columns| {
-				JoinRows::new(columns, JoinSide::Right, now)
+				JoinRows::new(columns, JoinSide::Right, batch_time)
 					.encoded(&mut host(&mut txn, operator), &store)
 					.unwrap()
 					.row(0)
@@ -985,8 +985,8 @@ mod tests {
 			&rows,
 		)
 		.unwrap();
-		assert_eq!(created_at(&decoded).unwrap(), &[now, event, now][..]);
-		assert_eq!(updated_at(&decoded).unwrap(), &[now, event, now][..]);
+		assert_eq!(created_at(&decoded).unwrap(), &[batch_time, event, batch_time][..]);
+		assert_eq!(updated_at(&decoded).unwrap(), &[batch_time, event, batch_time][..]);
 		assert_eq!(
 			row_times(&decoded).unwrap(),
 			vec![None, Some(event), None],
@@ -1003,7 +1003,7 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(70);
 		let store = Store::new(JoinSide::Right);
-		let now = txn.batch_time();
+		let batch_time = txn.batch_time();
 
 		let key_a = h(0xA);
 		let resolved = columns_with_fields(&[("mint", 1), ("decimals", 8)], 1);
@@ -1011,7 +1011,7 @@ mod tests {
 			&mut host(&mut txn, operator),
 			&store,
 			&key_a,
-			&mut JoinRows::new(&resolved, JoinSide::Right, now),
+			&mut JoinRows::new(&resolved, JoinSide::Right, batch_time),
 			&[0],
 		)
 		.unwrap();
@@ -1022,7 +1022,7 @@ mod tests {
 			&mut host(&mut txn, operator),
 			&store,
 			&key_b,
-			&mut JoinRows::new(&freshly_discovered, JoinSide::Right, now),
+			&mut JoinRows::new(&freshly_discovered, JoinSide::Right, batch_time),
 			&[0],
 		)
 		.unwrap();
@@ -1048,14 +1048,14 @@ mod tests {
 		let operator = OperatorId(71);
 		let store = Store::new(JoinSide::Right);
 		let key = h(0xC);
-		let now = txn.batch_time();
+		let batch_time = txn.batch_time();
 
 		let row1 = columns_with_fields(&[("mint", 111), ("flag", 1)], 1);
 		add_to_state_entry_batch(
 			&mut host(&mut txn, operator),
 			&store,
 			&key,
-			&mut JoinRows::new(&row1, JoinSide::Right, now),
+			&mut JoinRows::new(&row1, JoinSide::Right, batch_time),
 			&[0],
 		)
 		.unwrap();
@@ -1066,7 +1066,7 @@ mod tests {
 			&mut host(&mut txn, operator),
 			&store,
 			&key,
-			&mut JoinRows::new(&row2, JoinSide::Right, now),
+			&mut JoinRows::new(&row2, JoinSide::Right, batch_time),
 			&[0],
 		)
 		.unwrap();

@@ -754,7 +754,7 @@ impl LookupOperator {
 			}
 		}
 		if let Some(delay) = self.config.emit_after {
-			let due = host.wall_now().add_duration(&delay).map_err(|error| ValueError::from(*error))?;
+			let due = host.now().add_duration(&delay).map_err(|error| ValueError::from(*error))?;
 			for partition in changed {
 				self.waiting.entry(partition).or_insert(due);
 			}
@@ -773,7 +773,7 @@ impl LookupOperator {
 		if self.waiting.is_empty() {
 			return Ok(());
 		}
-		let now = host.wall_now();
+		let now = host.now();
 		let due: Vec<Partition> =
 			self.waiting.iter().filter(|(_, at)| **at <= now).map(|(partition, _)| *partition).collect();
 		if due.is_empty() {
@@ -1023,7 +1023,7 @@ impl HostOperator for LookupOperator {
 			return Ok(None);
 		}
 		mark_diffs(&mut result, &self.output_sumtypes)?;
-		Ok(Some(TimedOutput::new(result, host.wall_now())))
+		Ok(Some(TimedOutput::new(result, host.now())))
 	}
 
 	fn input_order(&self) -> InputOrder {

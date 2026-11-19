@@ -144,12 +144,12 @@ impl SeriesMaterializationActor {
 			Err(e) => panic!("series materialization: begin_query failed: {e}"),
 		};
 		let catalog = self.engine.catalog();
-		let now_wall = self.wall_clock_now();
+		let now = self.now();
 		let series_list = match catalog.list_series(&mut Transaction::Query(&mut query_txn)) {
 			Ok(series_list) => series_list,
 			Err(e) => panic!("series materialization: list_series failed: {e}"),
 		};
-		if let Err(e) = self.sweep_unnamed_files(state, &mut query_txn, &catalog, now_wall) {
+		if let Err(e) = self.sweep_unnamed_files(state, &mut query_txn, &catalog, now) {
 			panic!("series materialization: sweeping unnamed block files failed: {e}");
 		}
 		state.partitions.clear();
@@ -159,7 +159,7 @@ impl SeriesMaterializationActor {
 				&mut query_txn,
 				&catalog,
 				&series,
-				now_wall,
+				now,
 			)) {
 				panic!(
 					"series materialization failed for series {:?} ({}): {e}",
@@ -170,7 +170,7 @@ impl SeriesMaterializationActor {
 	}
 
 	#[inline]
-	fn wall_clock_now(&self) -> DateTime {
+	fn now(&self) -> DateTime {
 		self.engine.clock().now()
 	}
 
@@ -180,7 +180,7 @@ impl SeriesMaterializationActor {
 		query_txn: &mut QueryTransaction,
 		catalog: &Catalog,
 		series: &Series,
-		now_wall: DateTime,
+		now: DateTime,
 	) -> Result<(), ValueError> {
 		let partitions = self.partitions_of(state, query_txn, series)?;
 		let ids: Vec<Partition> = partitions.iter().map(|(partition, _)| *partition).collect();
@@ -215,7 +215,7 @@ impl SeriesMaterializationActor {
 						width: self.bucket_width,
 					};
 					start = start.saturating_add(self.bucket_width);
-					if !is_closed(&bucket, series, scope.metadata, now_wall, self.lateness) {
+					if !is_closed(&bucket, series, scope.metadata, now, self.lateness) {
 						deferred = true;
 						continue;
 					}
@@ -225,7 +225,7 @@ impl SeriesMaterializationActor {
 			if !deferred {
 				self.clear_dirty_mark(series, partition, &metadata)?;
 			}
-			self.merge_windows(series, scope, now_wall)?;
+			self.merge_windows(series, scope, now)?;
 		}
 		Ok(())
 	}
@@ -567,7 +567,7 @@ impl SeriesMaterializationActor {
 		&self,
 		series: &Series,
 		scope: PartitionScope<'_>,
-		now_wall: DateTime,
+		now: DateTime,
 	) -> Result<(), ValueError> {
 		if self.merge_buckets == 0 {
 			return Ok(());
@@ -599,7 +599,7 @@ impl SeriesMaterializationActor {
 				end: window.end,
 				width: self.bucket_width,
 			};
-			if !is_closed(&last, series, scope.metadata, now_wall, self.lateness) {
+			if !is_closed(&last, series, scope.metadata, now, self.lateness) {
 				continue;
 			}
 			self.merge_window(series, scope, window, &inputs)?;

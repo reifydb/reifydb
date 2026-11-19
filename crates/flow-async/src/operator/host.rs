@@ -78,7 +78,7 @@ pub trait HostContext: WindowStore + Resolve {
 		self.version()
 	}
 
-	fn wall_now(&self) -> DateTime;
+	fn now(&self) -> DateTime;
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError>;
 
@@ -186,7 +186,7 @@ pub trait HostContext: WindowStore + Resolve {
 pub struct TxnHostContext<'a, T: FlowTransaction> {
 	txn: &'a mut T,
 	operator: OperatorId,
-	now: DateTime,
+	batch_time: DateTime,
 	retention: Option<Duration>,
 	#[cfg(test)]
 	pub dictionary_resolves: usize,
@@ -198,11 +198,11 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 	}
 
 	pub fn with_retention(txn: &'a mut T, operator: OperatorId, retention: Option<Duration>) -> Self {
-		let now = txn.batch_time();
+		let batch_time = txn.batch_time();
 		Self {
 			txn,
 			operator,
-			now,
+			batch_time,
 			retention,
 			#[cfg(test)]
 			dictionary_resolves: 0,
@@ -215,7 +215,7 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 		};
 		let latest = managed_latest_key(group);
 		let previous = expiry_get::<DateTime>(self, &latest)?;
-		let due = reclaim_due(self.now, retention);
+		let due = reclaim_due(self.batch_time, retention);
 		let due = previous.map_or(due, |previous| previous.max(due));
 		if let Some(previous) = previous.filter(|previous| *previous != due) {
 			expiry_drop(self, &managed_due_key(previous, group))?;
@@ -412,7 +412,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	}
 
 	fn batch_time(&self) -> DateTime {
-		self.now
+		self.batch_time
 	}
 }
 
@@ -431,7 +431,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		self.txn.snapshot_version()
 	}
 
-	fn wall_now(&self) -> DateTime {
+	fn now(&self) -> DateTime {
 		self.txn.clock().now()
 	}
 

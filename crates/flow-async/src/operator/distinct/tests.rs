@@ -49,31 +49,31 @@ fn host(txn: &mut DeferredTransaction, operator: OperatorId) -> TxnHostContext<'
 	TxnHostContext::new(txn, operator)
 }
 
-fn keyed_row(value: i64, row_num: u64, now: DateTime) -> RecordBatch {
+fn keyed_row(value: i64, row_num: u64, changed_at: DateTime) -> RecordBatch {
 	let user = batch(vec![int8("k", [value])]).unwrap();
 	let system: [(SystemColumn, ArrayRef); 4] = [
 		(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![row_num]))),
-		(SystemColumn::CreatedAt, Arc::new(datetime_array([now]))),
-		(SystemColumn::UpdatedAt, Arc::new(datetime_array([now]))),
-		(SystemColumn::Time, Arc::new(datetime_array([now]))),
+		(SystemColumn::CreatedAt, Arc::new(datetime_array([changed_at]))),
+		(SystemColumn::UpdatedAt, Arc::new(datetime_array([changed_at]))),
+		(SystemColumn::Time, Arc::new(datetime_array([changed_at]))),
 	];
 	system.into_iter().fold(user, |columns, (column, array)| with_system_column(columns, column, array).unwrap())
 }
 
 fn build_insert(value: i64, row_num: u64) -> Change {
-	let now = DateTime::default();
-	let columns = keyed_row(value, row_num, now);
+	let changed_at = DateTime::default();
+	let columns = keyed_row(value, row_num, changed_at);
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::insert(columns));
-	Change::from_flow(OperatorId(99), ChangeVersion::from(CommitVersion(1)), diffs, now)
+	Change::from_flow(OperatorId(99), ChangeVersion::from(CommitVersion(1)), diffs, changed_at)
 }
 
 fn build_remove(value: i64, row_num: u64) -> Change {
-	let now = DateTime::default();
-	let columns = keyed_row(value, row_num, now);
+	let changed_at = DateTime::default();
+	let columns = keyed_row(value, row_num, changed_at);
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::remove(columns));
-	Change::from_flow(OperatorId(99), ChangeVersion::from(CommitVersion(1)), diffs, now)
+	Change::from_flow(OperatorId(99), ChangeVersion::from(CommitVersion(1)), diffs, changed_at)
 }
 
 fn persisted_rows(op: &DistinctOperator, txn: &mut DeferredTransaction) -> BTreeMap<Vec<u8>, Vec<u8>> {

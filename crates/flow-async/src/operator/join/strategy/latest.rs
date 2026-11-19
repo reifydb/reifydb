@@ -345,13 +345,13 @@ mod tests {
 	use super::*;
 
 	fn right_rows(row_numbers: [u64; 2], sequences: Option<[u64; 2]>) -> RecordBatch {
-		let now = DateTime::from_nanos(1_000);
+		let changed_at = DateTime::from_nanos(1_000);
 		let user = batch(vec![int8("v", [10, 20])]).unwrap();
 		let mut system: Vec<(SystemColumn, ArrayRef)> = vec![
 			(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(row_numbers.to_vec()))),
-			(SystemColumn::CreatedAt, Arc::new(datetime_array([now, now]))),
-			(SystemColumn::UpdatedAt, Arc::new(datetime_array([now, now]))),
-			(SystemColumn::Time, Arc::new(datetime_array([now, now]))),
+			(SystemColumn::CreatedAt, Arc::new(datetime_array([changed_at, changed_at]))),
+			(SystemColumn::UpdatedAt, Arc::new(datetime_array([changed_at, changed_at]))),
+			(SystemColumn::Time, Arc::new(datetime_array([changed_at, changed_at]))),
 		];
 		if let Some(sequences) = sequences {
 			system.push((SystemColumn::Sequence, Arc::new(UInt64Array::from(sequences.to_vec()))));

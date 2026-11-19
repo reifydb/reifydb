@@ -238,8 +238,8 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		self.inner.version()
 	}
 
-	fn wall_now(&self) -> DateTime {
-		self.inner.wall_now()
+	fn now(&self) -> DateTime {
+		self.inner.now()
 	}
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError> {

@@ -112,8 +112,8 @@ mod tests {
 		sum
 	}
 
-	fn naive(points: &[(i64, f64)], now: i64) -> f64 {
-		points.iter().map(|&(t, v)| v * (-((now - t) as f64) * LN_2 / HALFLIFE as f64).exp()).sum()
+	fn naive(points: &[(i64, f64)], at: i64) -> f64 {
+		points.iter().map(|&(t, v)| v * (-((at - t) as f64) * LN_2 / HALFLIFE as f64).exp()).sum()
 	}
 
 	fn close(a: f64, b: f64) -> bool {

@@ -616,7 +616,7 @@ where
 		mut buckets: TumblingBuckets<G, S, Vec<(K, V)>>,
 		order: &[(G, WindowSpan<S>)],
 	) -> Result<Vec<PendingEmit<G, S, O>>, ValueError> {
-		let now = store.batch_time();
+		let batch_time = store.batch_time();
 		let mut pending: Vec<PendingEmit<G, S, O>> = Vec::new();
 
 		for ordered in order {
@@ -633,7 +633,7 @@ where
 			let Some(slots) = session.windows.get(ordered) else {
 				continue;
 			};
-			let first_time = span.start.as_time().unwrap_or(now);
+			let first_time = span.start.as_time().unwrap_or(batch_time);
 			let (before, header) = Self::fold_window(&mut session.batch, slots, events, first_time)?;
 
 			if before > 0 || header.count > 0 {

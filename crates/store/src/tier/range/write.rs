@@ -210,7 +210,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				tick: next,
 				created: next,
 				materializes: 0,
-				batch_time: 0,
+				last_write: 0,
 				covered: true,
 			});
 			if fresh {
@@ -239,7 +239,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			}
 			target.entries.extend(markers);
 			target.tick = next + placed - 1;
-			target.batch_time = writes + placed;
+			target.last_write = writes + placed;
 		}
 		shard.next_tick = next + placed;
 		shard.writes = writes + placed;
@@ -363,7 +363,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				tick: next,
 				created: next,
 				materializes: 0,
-				batch_time: 0,
+				last_write: 0,
 				covered: true,
 			});
 			if fresh {
@@ -384,7 +384,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			target.entries.insert(key, entry);
 			account(&mut target.bytes, budget, old, new);
 			target.tick = next;
-			target.batch_time = stamp;
+			target.last_write = stamp;
 		}
 		shard.next_tick = next + 1;
 		shard.writes = stamp;
@@ -549,7 +549,7 @@ mod tests {
 				tick: 0,
 				created: 0,
 				materializes: 0,
-				batch_time: 0,
+				last_write: 0,
 				covered: true,
 			},
 		);
@@ -880,7 +880,7 @@ mod tests {
 				tick: 0,
 				created: 0,
 				materializes: 0,
-				batch_time: 0,
+				last_write: 0,
 				covered: false,
 			},
 		);
@@ -923,7 +923,7 @@ mod tests {
 				shard.budget.used(),
 				shard.next_tick,
 				shard.writes,
-				shard.partitions.get(id).map(|target| (target.tick, target.created, target.batch_time)),
+				shard.partitions.get(id).map(|target| (target.tick, target.created, target.last_write)),
 			)
 		};
 		(

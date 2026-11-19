@@ -52,14 +52,14 @@ fn a_later_row_moves_the_grouped_row_to_its_own_newer_time() {
 	insert(&db, 2, 1, 9, "2026-01-01T00:03:20Z");
 	db.await_row_count("FROM app::w | filter { s == @2026-01-01T00:03:00Z and n == 1 }", 1, TIMEOUT);
 
-	let now = buckets(&db);
+	let buckets = buckets(&db);
 	assert!(
-		now.contains(&("2026-01-01T00:03:00.000000000Z".to_string(), Value::Int8(1))),
-		"the group now sits in the 00:03 bucket: {now:?}"
+		buckets.contains(&("2026-01-01T00:03:00.000000000Z".to_string(), Value::Int8(1))),
+		"the group now sits in the 00:03 bucket: {buckets:?}"
 	);
 	assert!(
-		!now.iter().any(|(s, n)| s.starts_with("2026-01-01T00:01") && *n == Value::Int8(1)),
-		"the group left the 00:01 bucket: {now:?}"
+		!buckets.iter().any(|(s, n)| s.starts_with("2026-01-01T00:01") && *n == Value::Int8(1)),
+		"the group left the 00:01 bucket: {buckets:?}"
 	);
 }
 

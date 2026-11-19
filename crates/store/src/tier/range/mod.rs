@@ -149,7 +149,7 @@ struct Partition<K, R> {
 	tick: u64,
 	created: u64,
 	materializes: u64,
-	batch_time: u64,
+	last_write: u64,
 	covered: bool,
 }
 
@@ -157,7 +157,7 @@ struct Partition<K, R> {
 struct Progress {
 	created: u64,
 	materializes: u64,
-	batch_time: u64,
+	last_write: u64,
 }
 
 impl<K, R> Partition<K, R> {
@@ -165,7 +165,7 @@ impl<K, R> Partition<K, R> {
 		Progress {
 			created: self.created,
 			materializes: self.materializes,
-			batch_time: self.batch_time,
+			last_write: self.last_write,
 		}
 	}
 }

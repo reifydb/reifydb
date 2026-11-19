@@ -230,7 +230,7 @@ where
 			return Ok(Vec::new());
 		}
 		let retention = self.retention;
-		let now = store.batch_time();
+		let batch_time = store.batch_time();
 		let mut groups: Vec<G> = buckets.keys().map(|(group, _)| group.clone()).collect();
 		groups.dedup();
 		let mut meta_keys: Vec<MetaKey> = Vec::with_capacity(groups.len());
@@ -275,7 +275,7 @@ where
 				span,
 				carry_out: None,
 				last_output: None,
-				first_time: span.start.as_time().unwrap_or(now),
+				first_time: span.start.as_time().unwrap_or(batch_time),
 			});
 			if entry.high_water.is_none_or(|hw| span.start > hw) {
 				entry.high_water = Some(span.start);

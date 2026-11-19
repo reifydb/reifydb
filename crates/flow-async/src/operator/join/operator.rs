@@ -1495,10 +1495,10 @@ mod seal_tests {
 		Duration::from_seconds(value).unwrap()
 	}
 
-	fn txn_at(engine: &TestEngine, coordinate: u64) -> DeferredTransaction {
-		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
+	fn txn_at(engine: &TestEngine, step: u64) -> DeferredTransaction {
+		let mut txn = engine.flow_txn().at(CommitVersion(step)).deferred();
 		txn.set_batch_time(Some(DateTime::from_nanos(
-				i64::try_from(coordinate).expect("test coordinate fits in i64 nanoseconds"),
+				i64::try_from(step).expect("test step fits in i64 nanoseconds"),
 			)));
 		txn
 	}

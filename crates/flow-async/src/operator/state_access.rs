@@ -238,8 +238,8 @@ mod tests {
 		sets: usize,
 		gets: usize,
 		classifications: Vec<(Vec<u8>, Option<ByteSize>)>,
-		// Settable clock so the persisted timestamp is observable; defaults to epoch.
-		now: DateTime,
+		// Settable batch time so the persisted timestamp is observable; defaults to epoch.
+		batch_time: DateTime,
 	}
 
 	impl TimerStore for MockStore {
@@ -387,7 +387,7 @@ mod tests {
 		}
 
 		fn batch_time(&self) -> DateTime {
-			self.now
+			self.batch_time
 		}
 	}
 
