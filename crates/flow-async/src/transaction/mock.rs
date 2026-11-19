@@ -14,7 +14,7 @@ use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::value::datetime::DateTime;
 
 use crate::transaction::{
-	ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate,
+	DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate,
 };
 
 pub struct FlowTxnBuilder<'a> {
@@ -66,14 +66,8 @@ impl<'a> FlowTxnBuilder<'a> {
 			),
 			lookup: None,
 		});
-		txn.set_change_coordinate(default_coordinate());
+		txn.set_batch_time(Some(DateTime::from_millis(0)));
 		txn
-	}
-}
-
-fn default_coordinate() -> ChangeCoordinate {
-	ChangeCoordinate {
-		at: Some(DateTime::from_millis(0)),
 	}
 }
 

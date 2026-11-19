@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow_async::transaction::{
-	ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction, reclaim::ReclaimExtension,
+	DeferredParams, FlowTransaction, deferred::DeferredTransaction, reclaim::ReclaimExtension,
 	state::StateExtension, substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::{
@@ -66,10 +66,8 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		),
 		lookup: None,
 	});
-	// The substrate derives an intern's position from the change coordinate, so it is set here.
-	txn.set_change_coordinate(ChangeCoordinate {
-		at: Some(DateTime::from_millis(0)),
-	});
+	// The substrate derives an intern's position from the batch time, so it is set here.
+	txn.set_batch_time(Some(DateTime::from_millis(0)));
 	txn
 }
 

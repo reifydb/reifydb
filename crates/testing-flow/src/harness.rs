@@ -38,7 +38,7 @@ use reifydb_flow_async::{
 	operator::{HostOperator, host::TxnHostContext, sink::DurableSink},
 	timer::{Timer, timer_runs, wheel::TimerWheel},
 	transaction::{
-		ChangeCoordinate, DeferredParams, FlowTransaction,
+		DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
 		substrate::{FlowSubstrate, operator_section},
 	},
@@ -144,9 +144,7 @@ impl<O> Harness<O> {
 			substrate: self.substrate.clone(),
 			lookup: None,
 		});
-		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(at),
-		});
+		txn.set_batch_time(Some(at));
 		if let Some(flow_watermark) = self.flow_watermark {
 			txn.set_flow_watermark(flow_watermark);
 		}
@@ -185,7 +183,7 @@ pub struct SinkStep {
 
 impl<O: DurableSink> Harness<O> {
 	pub fn apply_sink(&mut self, change: Change) -> Result<SinkStep, ValueError> {
-		let at = coordinate_of(&change)?;
+		let at = batch_time_of(&change)?;
 		let before = self.pending.clone();
 		let mut txn = self.begin(at);
 		self.operator.apply(&mut txn, change)?;
@@ -342,7 +340,7 @@ impl<O: HostOperator> Harness<O> {
 	}
 
 	pub fn apply(&mut self, change: Change) -> Result<Change, ValueError> {
-		let at = coordinate_of(&change)?;
+		let at = batch_time_of(&change)?;
 		let operator = self.operator.id();
 		let mut txn = self.begin(at);
 		let out = {
@@ -358,12 +356,10 @@ impl<O: HostOperator> Harness<O> {
 			return Ok(Vec::new());
 		};
 		let operator = self.operator.id();
-		let mut txn = self.begin(coordinate_of(first)?);
+		let mut txn = self.begin(batch_time_of(first)?);
 		let mut outs = Vec::with_capacity(changes.len());
 		for change in changes {
-			txn.set_change_coordinate(ChangeCoordinate {
-				at: Some(coordinate_of(&change)?),
-			});
+			txn.set_batch_time(Some(batch_time_of(&change)?));
 			let mut host = TxnHostContext::new(&mut txn, operator);
 			outs.push(self.operator.apply(&mut host, change)?);
 		}
@@ -404,9 +400,7 @@ impl<O: HostOperator> Harness<O> {
 			);
 			for run in timer_runs(due) {
 				if self.operator.batches_timers() && run[0].kind == TimerKind::Seal {
-					txn.set_change_coordinate(ChangeCoordinate {
-						at: run.iter().map(|timer| timer.due).max(),
-					});
+					txn.set_batch_time(run.iter().map(|timer| timer.due).max());
 					let mut host = TxnHostContext::new(&mut txn, operator);
 					let outputs = self.operator.on_timers(&mut host, run)?;
 					let version = ChangeVersion::from(txn.version());
@@ -417,9 +411,7 @@ impl<O: HostOperator> Harness<O> {
 					continue;
 				}
 				for timer in run {
-					txn.set_change_coordinate(ChangeCoordinate {
-						at: Some(timer.due),
-					});
+					txn.set_batch_time(Some(timer.due));
 					let mut host = TxnHostContext::new(&mut txn, operator);
 					let output = self.operator.on_timer(&mut host, timer)?;
 					if let Some(output) = output {
@@ -442,7 +434,7 @@ impl<O: HostOperator> Harness<O> {
 	}
 }
 
-fn coordinate_of(change: &Change) -> Result<DateTime, ValueError> {
+fn batch_time_of(change: &Change) -> Result<DateTime, ValueError> {
 	let mut latest = None;
 	for columns in change.diffs.iter().filter_map(|diff| diff.post().or_else(|| diff.pre())) {
 		latest = latest.max(time(columns)?.iter().copied().max());
@@ -495,11 +487,11 @@ mod tests {
 	};
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
-	use super::coordinate_of;
+	use super::batch_time_of;
 	use crate::generator::{insert, row};
 
 	#[test]
-	fn the_coordinate_is_the_latest_row_time() {
+	fn the_batch_time_is_the_latest_row_time() {
 		// A batch is one arrival, so its position is the latest event time it carries - matching what
 		// the batch path freezes as the flow watermark. Taking the first row's time instead would make
 		// a group's due-ness depend on how the driver happened to order rows inside a change.
@@ -507,14 +499,14 @@ mod tests {
 		let late = DateTime::from_epoch_millis(9_000).unwrap();
 
 		let change = change_at(&[early, late, early]);
-		assert_eq!(coordinate_of(&change).expect("the coordinate reads"), late);
+		assert_eq!(batch_time_of(&change).expect("the batch time reads"), late);
 
 		// No row time is not the same as time zero: it means the workload declared no position, and the
 		// change's own stamp is the only honest answer left.
 		let stamped = DateTime::from_epoch_millis(4_242).unwrap();
 		let timeless =
 			Change::from_flow(OperatorId(1), ChangeVersion::from(CommitVersion(1)), Vec::new(), stamped);
-		assert_eq!(coordinate_of(&timeless).expect("the coordinate reads"), stamped);
+		assert_eq!(batch_time_of(&timeless).expect("the batch time reads"), stamped);
 	}
 
 	fn change_at(times: &[DateTime]) -> Change {

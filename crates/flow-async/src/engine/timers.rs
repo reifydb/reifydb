@@ -21,7 +21,7 @@ use crate::{
 	engine::{FlowEngineInner, dispatch::Node},
 	operator::host::TxnHostContext,
 	timer::{Timer, TimerDue, registry::TimerStage, timer_runs, wheel::TimerWheel},
-	transaction::{ChangeCoordinate, FlowTransaction, source_watermark::SourceWatermarks},
+	transaction::{FlowTransaction, source_watermark::SourceWatermarks},
 };
 
 const MAX_TIMER_ROUNDS: u32 = 4_096;
@@ -170,9 +170,7 @@ impl FlowEngineInner {
 								&& run[0].kind == TimerKind::Seal =>
 						{
 							let count = run.len();
-							txn.set_change_coordinate(ChangeCoordinate {
-								at: run.iter().map(|timer| timer.due).max(),
-							});
+							txn.set_batch_time(run.iter().map(|timer| timer.due).max());
 							let mut host = TxnHostContext::with_retention(
 								txn,
 								operator.id(),
@@ -192,9 +190,7 @@ impl FlowEngineInner {
 						Node::Operator(operator) => {
 							let mut outputs = Vec::with_capacity(run.len());
 							for timer in run {
-								txn.set_change_coordinate(ChangeCoordinate {
-									at: Some(timer.due),
-								});
+								txn.set_batch_time(Some(timer.due));
 								let mut host = TxnHostContext::with_retention(
 									txn,
 									operator.id(),
@@ -207,9 +203,7 @@ impl FlowEngineInner {
 						Node::DurableSink(sink) => {
 							let mut outputs = Vec::with_capacity(run.len());
 							for timer in run {
-								txn.set_change_coordinate(ChangeCoordinate {
-									at: Some(timer.due),
-								});
+								txn.set_batch_time(Some(timer.due));
 								outputs.push(
 									txn.run_durable_sink_timer(&mut **sink, timer)?
 								);

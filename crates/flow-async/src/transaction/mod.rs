@@ -61,11 +61,6 @@ use crate::{
 	transaction::{read::flow_merge_pending_iterator, substrate::FlowSubstrate},
 };
 
-#[derive(Clone, Copy)]
-pub struct ChangeCoordinate {
-	pub at: Option<DateTime>,
-}
-
 pub struct DeferredParams {
 	pub ctx: Arc<TransactionContext>,
 	pub version: CommitVersion,
@@ -221,9 +216,9 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 
 	fn armed_mut(&mut self) -> &mut Vec<TimerDue>;
 
-	fn change_coordinate(&self) -> Option<ChangeCoordinate>;
+	fn batch_time_if_set(&self) -> Option<DateTime>;
 
-	fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate);
+	fn set_batch_time(&mut self, at: Option<DateTime>);
 
 	fn flow_watermark(&self) -> Option<DateTime>;
 
@@ -349,7 +344,7 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 	}
 
 	fn batch_time(&self) -> DateTime {
-		match self.change_coordinate().and_then(|coordinate| coordinate.at) {
+		match self.batch_time_if_set() {
 			Some(at) => at,
 			None => self.clock().now(),
 		}

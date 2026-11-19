@@ -30,7 +30,7 @@ use reifydb_flow_async::{
 	operator::{TimedOutput, sink::DurableSink},
 	timer::{Timer, TimerDue},
 	transaction::{
-		ChangeCoordinate, FlowTransaction,
+		FlowTransaction,
 		dictionary::DictionaryExtension,
 		pending_get,
 		read::{ReadFrom, range_read_from, read_from},
@@ -57,7 +57,7 @@ pub struct EphemeralTransaction {
 	pub catalog: Catalog,
 	pub armed: Vec<TimerDue>,
 	pub clock: Clock,
-	pub change_coordinate: Option<ChangeCoordinate>,
+	pub batch_time: Option<DateTime>,
 	pub flow_watermark: Option<DateTime>,
 	pub substrate: FlowSubstrate,
 	pub state: HashMap<EncodedKey, EncodedBytes>,
@@ -86,7 +86,7 @@ impl EphemeralTransaction {
 			catalog,
 			armed: Vec::new(),
 			clock,
-			change_coordinate: None,
+			batch_time: None,
 			flow_watermark: None,
 			substrate,
 			state,
@@ -309,12 +309,12 @@ impl FlowTransaction for EphemeralTransaction {
 		&mut self.armed
 	}
 
-	fn change_coordinate(&self) -> Option<ChangeCoordinate> {
-		self.change_coordinate
+	fn batch_time_if_set(&self) -> Option<DateTime> {
+		self.batch_time
 	}
 
-	fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate) {
-		self.change_coordinate = Some(coordinate);
+	fn set_batch_time(&mut self, at: Option<DateTime>) {
+		self.batch_time = at;
 	}
 
 	fn flow_watermark(&self) -> Option<DateTime> {

@@ -16,7 +16,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow_async::transaction::{
-	ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate,
+	DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
@@ -99,14 +99,8 @@ impl<'a> FlowTxnBuilder<'a> {
 			),
 			lookup: None,
 		});
-		txn.set_change_coordinate(default_coordinate());
+		txn.set_batch_time(Some(DateTime::from_millis(0)));
 		txn
-	}
-}
-
-fn default_coordinate() -> ChangeCoordinate {
-	ChangeCoordinate {
-		at: Some(DateTime::from_millis(0)),
 	}
 }
 

@@ -24,7 +24,7 @@ use reifydb_flow_async::{
 	operator::{TimedOutput, sink::DurableSink},
 	timer::{Timer, TimerDue},
 	transaction::{
-		ChangeCoordinate, FlowTransaction, dictionary::DictionaryExtension, pending_get,
+		FlowTransaction, dictionary::DictionaryExtension, pending_get,
 		substrate::FlowSubstrate,
 	},
 };
@@ -52,7 +52,7 @@ pub struct TestFlowTransaction {
 	substrate: FlowSubstrate,
 	pending: Pending,
 	armed: Vec<TimerDue>,
-	change_coordinate: Option<ChangeCoordinate>,
+	batch_time: Option<DateTime>,
 	flow_watermark: Option<DateTime>,
 	source_watermarks: HashMap<OperatorId, i64>,
 	row_shapes: HashMap<OperatorId, HashMap<EncodedKey, RowShape>>,
@@ -79,7 +79,7 @@ impl TestFlowTransaction {
 			),
 			pending: Pending::new(),
 			armed: Vec::new(),
-			change_coordinate: None,
+			batch_time: None,
 			flow_watermark: None,
 			source_watermarks: HashMap::new(),
 			row_shapes: HashMap::new(),
@@ -128,12 +128,12 @@ impl FlowTransaction for TestFlowTransaction {
 		&mut self.armed
 	}
 
-	fn change_coordinate(&self) -> Option<ChangeCoordinate> {
-		self.change_coordinate
+	fn batch_time_if_set(&self) -> Option<DateTime> {
+		self.batch_time
 	}
 
-	fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate) {
-		self.change_coordinate = Some(coordinate);
+	fn set_batch_time(&mut self, at: Option<DateTime>) {
+		self.batch_time = at;
 	}
 
 	fn flow_watermark(&self) -> Option<DateTime> {

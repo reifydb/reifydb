@@ -387,7 +387,7 @@ mod reclaim_tests {
 	use crate::{
 		operator::{host::TxnHostContext, state::test_utils::test::whole_keyspace},
 		transaction::{
-			ChangeCoordinate, FlowTransaction,
+			FlowTransaction,
 			deferred::DeferredTransaction,
 			mock::FlowTxn,
 			state::{StateExtension, StateRange},
@@ -453,9 +453,7 @@ mod reclaim_tests {
 		retention: Option<Duration>,
 		key: &GroupStateKey,
 	) -> Result<(), ValueError> {
-		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_millis(millis)),
-		});
+		txn.set_batch_time(Some(DateTime::from_millis(millis)));
 		TxnHostContext::with_retention(txn, OP, retention)
 			.state_set(vec![(key.clone(), EncodedPodRow::new(&[1]))])
 	}

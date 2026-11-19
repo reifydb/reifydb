@@ -1443,7 +1443,7 @@ mod seal_tests {
 		},
 		timer::{TimerDue, extension::TimerExtension},
 		transaction::{
-			ChangeCoordinate, FlowTransaction,
+			FlowTransaction,
 			deferred::DeferredTransaction,
 			join_expiry::{join_due_range, join_expiry_key},
 			mock::FlowTxn,
@@ -1497,11 +1497,9 @@ mod seal_tests {
 
 	fn txn_at(engine: &TestEngine, coordinate: u64) -> DeferredTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
-		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_nanos(
+		txn.set_batch_time(Some(DateTime::from_nanos(
 				i64::try_from(coordinate).expect("test coordinate fits in i64 nanoseconds"),
-			)),
-		});
+			)));
 		txn
 	}
 
@@ -1779,12 +1777,12 @@ mod seal_tests {
 			self.inner.armed_mut()
 		}
 
-		fn change_coordinate(&self) -> Option<ChangeCoordinate> {
-			self.inner.change_coordinate()
+		fn batch_time_if_set(&self) -> Option<DateTime> {
+			self.inner.batch_time_if_set()
 		}
 
-		fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate) {
-			self.inner.set_change_coordinate(coordinate)
+		fn set_batch_time(&mut self, at: Option<DateTime>) {
+			self.inner.set_batch_time(at)
 		}
 
 		fn flow_watermark(&self) -> Option<DateTime> {

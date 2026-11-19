@@ -16,7 +16,7 @@ use reifydb_core::{
 };
 use reifydb_flow::txn::FlowGet;
 use reifydb_flow_async::transaction::{
-	ChangeCoordinate, FlowTransaction, state::StateExtension, substrate::FlowSubstrate,
+	FlowTransaction, state::StateExtension, substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_sub_subscription::transaction::EphemeralTransaction;
@@ -46,9 +46,7 @@ fn ephemeral(engine: &TestEngine) -> EphemeralTransaction {
 			WriteTracker::detached(),
 		),
 	);
-	txn.set_change_coordinate(ChangeCoordinate {
-		at: Some(DateTime::from_millis(0)),
-	});
+	txn.set_batch_time(Some(DateTime::from_millis(0)));
 	txn
 }
 

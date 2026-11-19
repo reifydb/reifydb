@@ -220,7 +220,7 @@ mod reap_tests {
 		},
 		timer::Timer,
 		transaction::{
-			ChangeCoordinate, FlowTransaction,
+			FlowTransaction,
 			deferred::DeferredTransaction,
 			mock::FlowTxn,
 			state::{StateExtension, StateRange},
@@ -247,11 +247,9 @@ mod reap_tests {
 
 	fn txn_at(engine: &TestEngine, coordinate: u64) -> DeferredTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
-		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_nanos(
+		txn.set_batch_time(Some(DateTime::from_nanos(
 				i64::try_from(coordinate).expect("test coordinate fits in i64 nanoseconds"),
-			)),
-		});
+			)));
 		txn
 	}
 
@@ -347,7 +345,7 @@ mod seal_arm_tests {
 		},
 		timer::Timer,
 		transaction::{
-			ChangeCoordinate, FlowTransaction,
+			FlowTransaction,
 			deferred::DeferredTransaction,
 			mock::FlowTxn,
 			state::{StateExtension, StateRange},
@@ -382,11 +380,9 @@ mod seal_arm_tests {
 
 	fn txn_at(engine: &TestEngine, coordinate: u64) -> DeferredTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
-		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_nanos(
+		txn.set_batch_time(Some(DateTime::from_nanos(
 				i64::try_from(coordinate).expect("test coordinate fits in i64 nanoseconds"),
-			)),
-		});
+			)));
 		txn
 	}
 

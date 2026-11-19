@@ -209,7 +209,7 @@ mod tests {
 	};
 	use reifydb_flow_async::{
 		operator::host::TxnHostContext,
-		transaction::{ChangeCoordinate, FlowTransaction},
+		transaction::FlowTransaction,
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_testing_sdk::in_process::transaction::TestFlowTransaction;
@@ -228,9 +228,7 @@ mod tests {
 	fn a_dylib_read_of_an_absent_group_writes_nothing() {
 		// a probe that wrote would resurrect groups the reaper had already erased
 		let mut txn = TestFlowTransaction::new(CommitVersion(7), Clock::Mock(MockClock::new(0)));
-		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_millis(0)),
-		});
+		txn.set_batch_time(Some(DateTime::from_millis(0)));
 		let mut host = TxnHostContext::new(&mut txn, NODE);
 		let group = GroupId::of(&key("absent"));
 		let absent = OperatorStateKey::inner_encoded(group, KeyspaceId::ACCUMULATOR, []);
@@ -256,9 +254,7 @@ mod tests {
 	fn a_dylib_batch_read_hands_back_the_key_the_guest_wrote() {
 		// Handing back an operator-scoped key unstripped makes the guest's own lookups miss.
 		let mut txn = TestFlowTransaction::new(CommitVersion(7), Clock::Mock(MockClock::new(0)));
-		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_millis(0)),
-		});
+		txn.set_batch_time(Some(DateTime::from_millis(0)));
 		let mut host = TxnHostContext::new(&mut txn, NODE);
 
 		let written = stored_key("entry");
@@ -294,9 +290,7 @@ mod tests {
 	fn an_in_process_guest_cannot_arm_or_disarm_the_reclaim_timer() {
 		// A guest that arms the engine's reclaim kind would free managed state on its own schedule.
 		let mut txn = TestFlowTransaction::new(CommitVersion(7), Clock::Mock(MockClock::new(0)));
-		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_millis(0)),
-		});
+		txn.set_batch_time(Some(DateTime::from_millis(0)));
 		let mut host = TxnHostContext::new(&mut txn, NODE);
 		let mut ctx = InProcessContext::new(&mut host, NODE);
 		let due = DateTime::from_millis(5_000);

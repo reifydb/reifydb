@@ -99,7 +99,7 @@ use crate::{
 	operator::{TimedOutput, sink::DurableSink},
 	timer::{Timer, TimerDue},
 	transaction::{
-		ChangeCoordinate, DeferredParams, FlowTransaction, LookupAt, LookupContext, ViewLayers,
+		DeferredParams, FlowTransaction, LookupAt, LookupContext, ViewLayers,
 		dictionary::DictionaryExtension,
 		pending_get,
 		read::{OperatorStateRangeIter, ReadFrom, flow_merge_pending_iterator, range_read_from, read_from},
@@ -122,7 +122,7 @@ pub struct DeferredTransaction {
 	pub armed: Vec<TimerDue>,
 	pub clock: Clock,
 
-	pub change_coordinate: Option<ChangeCoordinate>,
+	pub batch_time: Option<DateTime>,
 
 	pub flow_watermark: Option<DateTime>,
 
@@ -167,7 +167,7 @@ impl DeferredTransaction {
 			captured: None,
 			armed: Vec::new(),
 			clock: params.clock,
-			change_coordinate: None,
+			batch_time: None,
 			flow_watermark: None,
 			source_watermark_cache: HashMap::new(),
 			row_shape_cache: HashMap::new(),
@@ -344,12 +344,12 @@ impl FlowTransaction for DeferredTransaction {
 		&mut self.armed
 	}
 
-	fn change_coordinate(&self) -> Option<ChangeCoordinate> {
-		self.change_coordinate
+	fn batch_time_if_set(&self) -> Option<DateTime> {
+		self.batch_time
 	}
 
-	fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate) {
-		self.change_coordinate = Some(coordinate);
+	fn set_batch_time(&mut self, at: Option<DateTime>) {
+		self.batch_time = at;
 	}
 
 	fn flow_watermark(&self) -> Option<DateTime> {

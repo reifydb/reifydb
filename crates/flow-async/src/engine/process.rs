@@ -26,7 +26,7 @@ use crate::{
 	engine::{COMPLETENESS_OBJECT, FlowEngineInner},
 	operator::max_input_time,
 	transaction::{
-		ChangeCoordinate, FlowTransaction,
+		FlowTransaction,
 		output_watermark::{OutputWatermarks, PublishedWatermark},
 		source_watermark::SourceWatermarks,
 	},
@@ -213,9 +213,7 @@ impl FlowEngineInner {
 			};
 
 			let at = latest_input_time(&inbox)?;
-			txn.set_change_coordinate(ChangeCoordinate {
-				at,
-			});
+			txn.set_batch_time(at);
 
 			let combined_output = self.dispatch_node(txn, flow.id, &operator, inbox)?;
 			nodes_processed += 1;

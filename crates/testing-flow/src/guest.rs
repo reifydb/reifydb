@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::{BoxedHostOperator, apply::engine_retention, host::TxnHostContext},
 	transaction::{
-		ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction,
+		DeferredParams, FlowTransaction, deferred::DeferredTransaction,
 		substrate::FlowSubstrate,
 	},
 };
@@ -80,11 +80,9 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 			substrate: self.substrate.clone(),
 			lookup: None,
 		});
-		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_millis(
-				i64::try_from(self.version).expect("test change coordinate fits in i64 millis"),
-			)),
-		});
+		txn.set_batch_time(Some(DateTime::from_millis(
+				i64::try_from(self.version).expect("test batch time fits in i64 millis"),
+			)));
 		txn
 	}
 
