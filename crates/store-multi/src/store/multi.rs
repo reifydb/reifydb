@@ -1296,7 +1296,7 @@ mod cache_tests {
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 			row::{RowKey, RowKeyRange, StorageRowKey},
 		},
-		lifecycle::watermark::EvictionWatermark,
+		lifecycle::floor::FlushFloor,
 	};
 	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_store_commit::{MultiVersionScope, RangeCursor, RangeStop, RawEntry, VersionedGetResult};
@@ -1465,16 +1465,16 @@ mod cache_tests {
 		.unwrap();
 	}
 
-	struct FixedWatermark(CommitVersion);
+	struct FixedFloor(CommitVersion);
 
-	impl EvictionWatermark for FixedWatermark {
-		fn watermark(&self) -> CommitVersion {
+	impl FlushFloor for FixedFloor {
+		fn floor(&self) -> CommitVersion {
 			self.0
 		}
 	}
 
 	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-		store.set_eviction_watermark(Arc::new(FixedWatermark(cutoff)));
+		store.set_flush_floor(Arc::new(FixedFloor(cutoff)));
 		store.flush_pending_blocking();
 	}
 

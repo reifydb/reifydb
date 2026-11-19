@@ -17,7 +17,7 @@ use reifydb_core::{
 		catalog::{flow::FlowId, id::ViewId, object::ObjectId},
 		commit::CommitEntry,
 	},
-	lifecycle::watermark::ConsumerPositions,
+	lifecycle::floor::ConsumerPositions,
 };
 use reifydb_flow_async::transaction::{LookupAt, LookupVersions, ViewLayers};
 use reifydb_runtime::{actor::mailbox::ActorRef, context::clock::Clock, sync::rwlock::RwLock};

@@ -4,12 +4,12 @@
 use std::{marker::PhantomData, thread};
 
 use reifydb_core::{
-	commit::watermark::FlowCaughtUpWatermark,
+	commit::position::FlowCaughtUpPosition,
 	common::CommitVersion,
 	interface::{
 		catalog::flow::FlowId,
-		flow::{FlowTickSampler, FlowWatermarkRow, FlowWatermarkSampler},
-		subscription::{SubscriptionWatermarkRow, SubscriptionWatermarkSampler},
+		flow::{FlowTickSampler, FlowPositionRow, FlowPositionSampler},
+		subscription::{SubscriptionPositionRow, SubscriptionPositionSampler},
 	},
 };
 use reifydb_runtime::context::clock::Clock;
@@ -17,53 +17,53 @@ use reifydb_value::{error::ValueError, value::duration::Duration};
 
 use crate::Database;
 
-pub struct Watermarks<'a> {
+pub struct Progress<'a> {
 	db: &'a Database,
 }
 
-impl<'a> Watermarks<'a> {
+impl<'a> Progress<'a> {
 	pub(crate) fn new(db: &'a Database) -> Self {
 		Self {
 			db,
 		}
 	}
 
-	pub fn tx(&self) -> TxWatermarks<'a> {
-		TxWatermarks {
+	pub fn tx(&self) -> TxProgress<'a> {
+		TxProgress {
 			db: self.db,
 		}
 	}
 
-	pub fn reader(&self) -> ReaderWatermarks<'a> {
-		ReaderWatermarks {
+	pub fn reader(&self) -> ReaderProgress<'a> {
+		ReaderProgress {
 			db: self.db,
 			clock: Clock::Real,
 		}
 	}
 
-	pub fn flow(&self) -> Option<FlowWatermarks<'a>> {
-		let source = self.db.engine().ioc().resolve::<FlowWatermarkSampler>().ok()?;
+	pub fn flow(&self) -> Option<FlowPositions<'a>> {
+		let source = self.db.engine().ioc().resolve::<FlowPositionSampler>().ok()?;
 		let ticks = self.db.engine().ioc().resolve::<FlowTickSampler>().ok()?;
-		Some(FlowWatermarks {
+		Some(FlowPositions {
 			source,
 			ticks,
 			_marker: PhantomData,
 		})
 	}
 
-	pub fn subscription(&self) -> Option<SubscriptionWatermarks<'a>> {
-		let source = self.db.engine().ioc().resolve::<SubscriptionWatermarkSampler>().ok()?;
-		Some(SubscriptionWatermarks {
+	pub fn subscription(&self) -> Option<SubscriptionPositions<'a>> {
+		let source = self.db.engine().ioc().resolve::<SubscriptionPositionSampler>().ok()?;
+		Some(SubscriptionPositions {
 			source,
 			_marker: PhantomData,
 		})
 	}
 
 	/// The only fallible read is `tx().current()`.
-	pub fn snapshot(&self) -> Result<WatermarkSnapshot, ValueError> {
+	pub fn snapshot(&self) -> Result<ProgressSnapshot, ValueError> {
 		let tx = self.tx();
 		let reader = self.reader();
-		Ok(WatermarkSnapshot {
+		Ok(ProgressSnapshot {
 			tx: TxSnapshot {
 				current: tx.current()?,
 				done_until: tx.done_until(),
@@ -78,11 +78,11 @@ impl<'a> Watermarks<'a> {
 	}
 }
 
-pub struct TxWatermarks<'a> {
+pub struct TxProgress<'a> {
 	db: &'a Database,
 }
 
-impl TxWatermarks<'_> {
+impl TxProgress<'_> {
 	/// Highest committed version on the engine. Advances on every successful commit.
 	pub fn current(&self) -> Result<CommitVersion, ValueError> {
 		self.db.engine().current_version()
@@ -95,12 +95,12 @@ impl TxWatermarks<'_> {
 	}
 }
 
-pub struct ReaderWatermarks<'a> {
+pub struct ReaderProgress<'a> {
 	db: &'a Database,
 	clock: Clock,
 }
 
-impl ReaderWatermarks<'_> {
+impl ReaderProgress<'_> {
 	/// Highest commit version the commit queue has released in order. Advances even for commits
 	/// whose deltas are all excluded by `is_commit_excluded`, so it is the done-until mark every reader
 	/// is measured against.
@@ -110,7 +110,7 @@ impl ReaderWatermarks<'_> {
 
 	/// How far the subscription reader has read the commit queue.
 	pub fn subscription(&self) -> CommitVersion {
-		self.db.engine().reader_watermark()
+		self.db.engine().reader_position()
 	}
 
 	/// The version up to which every deferred flow has materialized its output, for chains of any
@@ -119,7 +119,7 @@ impl ReaderWatermarks<'_> {
 	pub fn flow_caught_up(&self) -> CommitVersion {
 		self.db.engine()
 			.ioc()
-			.try_resolve::<FlowCaughtUpWatermark>()
+			.try_resolve::<FlowCaughtUpPosition>()
 			.map(|w| w.get())
 			.unwrap_or(CommitVersion(0))
 	}
@@ -128,7 +128,7 @@ impl ReaderWatermarks<'_> {
 	///
 	/// `timeout` is wall-clock, deliberately not the database clock: a caller that builds with
 	/// `RuntimeConfig::seeded(..)` gets a frozen `MockClock`, and a deadline derived from it can
-	/// never be reached, turning a watermark that never arrives into a permanent hang instead of
+	/// never be reached, turning a position that never arrives into a permanent hang instead of
 	/// a bounded `false`.
 	pub fn wait_for_subscription(&self, version: CommitVersion, timeout: Duration) -> bool {
 		if self.subscription() >= version {
@@ -149,11 +149,11 @@ impl ReaderWatermarks<'_> {
 	/// Waits for every deferred flow to have materialized output covering `version`, returning
 	/// whether they got there. Wall-clock `timeout`, for the reason given on [`Self::wait_for_subscription`].
 	pub fn wait_for_flow_caught_up(&self, version: CommitVersion, timeout: Duration) -> Result<bool, ValueError> {
-		let watermark = self.db.engine().ioc().try_resolve::<FlowCaughtUpWatermark>();
+		let caught_up = self.db.engine().ioc().try_resolve::<FlowCaughtUpPosition>();
 		let deadline = self.clock.instant() + timeout.to_std();
 		loop {
-			if let Some(watermark) = &watermark {
-				watermark.ensure_healthy()?;
+			if let Some(caught_up) = &caught_up {
+				caught_up.ensure_healthy()?;
 			}
 			if self.flow_caught_up() >= version {
 				return Ok(true);
@@ -166,14 +166,14 @@ impl ReaderWatermarks<'_> {
 	}
 }
 
-pub struct FlowWatermarks<'a> {
-	source: FlowWatermarkSampler,
+pub struct FlowPositions<'a> {
+	source: FlowPositionSampler,
 	ticks: FlowTickSampler,
 	_marker: PhantomData<&'a Database>,
 }
 
-impl FlowWatermarks<'_> {
-	pub fn all(&self) -> Vec<FlowWatermarkRow> {
+impl FlowPositions<'_> {
+	pub fn all(&self) -> Vec<FlowPositionRow> {
 		self.source.all()
 	}
 
@@ -182,22 +182,22 @@ impl FlowWatermarks<'_> {
 	}
 }
 
-pub struct SubscriptionWatermarks<'a> {
-	source: SubscriptionWatermarkSampler,
+pub struct SubscriptionPositions<'a> {
+	source: SubscriptionPositionSampler,
 	_marker: PhantomData<&'a Database>,
 }
 
-impl SubscriptionWatermarks<'_> {
-	pub fn all(&self) -> Vec<SubscriptionWatermarkRow> {
+impl SubscriptionPositions<'_> {
+	pub fn all(&self) -> Vec<SubscriptionPositionRow> {
 		self.source.all()
 	}
 }
 
 #[derive(Debug, Clone)]
-pub struct WatermarkSnapshot {
+pub struct ProgressSnapshot {
 	pub tx: TxSnapshot,
 	pub reader: ReaderSnapshot,
-	pub flow: Option<Vec<FlowWatermarkRow>>,
+	pub flow: Option<Vec<FlowPositionRow>>,
 }
 
 #[derive(Debug, Clone, Copy)]

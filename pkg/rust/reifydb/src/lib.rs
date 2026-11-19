@@ -19,7 +19,7 @@ mod subscribe;
 pub mod subsystem;
 pub mod system;
 pub mod vendor;
-pub mod watermarks;
+pub mod progress;
 
 pub use api::{
 	migration::{Migration, MigrationSource, MigrationStatement},

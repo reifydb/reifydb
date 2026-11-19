@@ -10,7 +10,7 @@ set k=v1 version=1
 ---
 ok
 
-watermark 1
+flush_floor 1
 flush
 ---
 ok

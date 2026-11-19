@@ -25,7 +25,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	actors::flow::FlowWriterRegistry,
-	commit::{queue::CommitQueue, tracker::WriteTracker, watermark::ReaderWatermark},
+	commit::{queue::CommitQueue, tracker::WriteTracker, position::ReaderPosition},
 	common::CommitVersion,
 	error::diagnostic::engine::read_only_rejection,
 	event::{Event, EventBus},
@@ -42,7 +42,7 @@ use reifydb_core::{
 		},
 	},
 	internal,
-	lifecycle::watermark::CheckpointFloor,
+	lifecycle::floor::CheckpointFloor,
 	metrics::sample::MetricKind,
 	retry::RetryStrategy,
 	util::ioc::IocContainer,
@@ -755,8 +755,8 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn reader_watermark(&self) -> CommitVersion {
-		self.executor.ioc.try_resolve::<ReaderWatermark>().map(|w| w.get()).unwrap_or(CommitVersion(0))
+	pub fn reader_position(&self) -> CommitVersion {
+		self.executor.ioc.try_resolve::<ReaderPosition>().map(|w| w.get()).unwrap_or(CommitVersion(0))
 	}
 
 	pub fn set_read_only(&self) {
@@ -803,7 +803,7 @@ impl Shutdown for StandardEngine {
 		self.interceptors.clear_late();
 		self.executor.ioc.clear();
 		self.executor.virtual_table_registry.clear();
-		self.multi().store().clear_eviction_watermark();
+		self.multi().store().clear_flush_floor();
 		#[cfg(not(reifydb_single_threaded))]
 		if let Some(registry) = self.executor.remote_registry.as_ref() {
 			registry.shutdown();

@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::CommitVersion, interface::flow::FlowWatermarkRow};
+use reifydb_core::{common::CommitVersion, interface::flow::FlowPositionRow};
 
 use crate::progress::tracker::{FlowPositionTracker, ObjectVersionTracker};
 
-pub(crate) fn compute_flow_watermarks(
+pub(crate) fn compute_flow_positions(
 	object_tracker: &ObjectVersionTracker,
 	flow_tracker: &FlowPositionTracker,
 	consumable: impl Fn() -> CommitVersion,
-) -> Vec<FlowWatermarkRow> {
+) -> Vec<FlowPositionRow> {
 	let object_versions = object_tracker.all();
 	let flow_positions = flow_tracker.all();
 	let consumable = consumable();
@@ -24,7 +24,7 @@ pub(crate) fn compute_flow_watermarks(
 
 		for (object_id, version) in &object_versions {
 			let lag = version.0.saturating_sub(flow_version);
-			rows.push(FlowWatermarkRow {
+			rows.push(FlowPositionRow {
 				flow_id: *flow_id,
 				object_id: *object_id,
 				lag,

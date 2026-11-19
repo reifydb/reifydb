@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::{catalog::vtable::VTable, flow::FlowWatermarkSampler},
+	interface::{catalog::vtable::VTable, subscription::SubscriptionPositionSampler},
 	util::ioc::IocContainer,
 	value::{batch::batch, column::builder::ColumnBuilder},
 };
@@ -16,23 +16,23 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemFlowWatermarks {
+pub struct SystemSubscriptionPositions {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 	ioc: IocContainer,
 }
 
-impl SystemFlowWatermarks {
+impl SystemSubscriptionPositions {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			vtable: SystemCatalog::get_system_flow_watermarks_table().clone(),
+			vtable: SystemCatalog::get_system_subscription_positions_table().clone(),
 			exhausted: false,
 			ioc,
 		}
 	}
 }
 
-impl BaseVTable for SystemFlowWatermarks {
+impl BaseVTable for SystemSubscriptionPositions {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<(), ValueError> {
 		self.exhausted = false;
 		Ok(())
@@ -43,28 +43,25 @@ impl BaseVTable for SystemFlowWatermarks {
 			return Ok(None);
 		}
 
-		let rows = match self.ioc.try_resolve::<FlowWatermarkSampler>() {
+		let rows = match self.ioc.try_resolve::<SubscriptionPositionSampler>() {
 			Some(source) => source.all(),
 			None => vec![],
 		};
 
-		let mut flow_ids = ColumnBuilder::with_capacity(ValueType::Uint8, rows.len());
+		let mut subscription_ids = ColumnBuilder::with_capacity(ValueType::Uint8, rows.len());
 		let mut object_ids = ColumnBuilder::with_capacity(ValueType::Uint8, rows.len());
 		let mut lags = ColumnBuilder::with_capacity(ValueType::Uint8, rows.len());
-		let mut outstanding = ColumnBuilder::with_capacity(ValueType::Uint8, rows.len());
 
 		for row in rows {
-			flow_ids.push(row.flow_id.0);
+			subscription_ids.push(row.subscription_id.0);
 			object_ids.push(row.object_id.as_u64());
 			lags.push(row.lag);
-			outstanding.push(row.outstanding);
 		}
 
 		let columns = vec![
-			flow_ids.finish("flow_id"),
+			subscription_ids.finish("subscription_id"),
 			object_ids.finish("object_id"),
 			lags.finish("lag"),
-			outstanding.finish("outstanding"),
 		];
 
 		self.exhausted = true;

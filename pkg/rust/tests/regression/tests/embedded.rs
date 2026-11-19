@@ -63,7 +63,7 @@ impl testscript::runner::Runner for Runner {
 				}
 			}
 			"await" => {
-				let watermarks = self.instance.watermarks();
+				let progress = self.instance.progress();
 				let target = watermarks.tx().current()?;
 				if !watermarks.reader().wait_for_flow_caught_up(
 					target,

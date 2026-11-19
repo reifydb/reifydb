@@ -43,7 +43,7 @@ fn unrelated_write_advances_idle_flow_without_tick() {
 
 	// Now write only into table a. Only va sources a; vb is idle for this batch.
 	db.command("INSERT app::a [{ id: 1 }, { id: 2 }]");
-	let target = db.watermarks().tx().current().expect("current version");
+	let target = db.progress().tx().current().expect("current version");
 
 	// The affected view materializes from its push.
 	let va = db.await_row_count("FROM app::va", 2, Duration::from_seconds_const(5));
@@ -54,7 +54,7 @@ fn unrelated_write_advances_idle_flow_without_tick() {
 	// reaching `target` is the only observable proof that the idle flow advanced.
 	let deadline = Clock::Real.instant() + Duration::from_seconds_const(5);
 	loop {
-		let caught_up = db.watermarks().reader().flow_caught_up();
+		let caught_up = db.progress().reader().flow_caught_up();
 		if caught_up >= target {
 			break;
 		}
@@ -109,7 +109,7 @@ fn every_later_unrelated_write_advances_the_idle_flow_again() {
 	for id in 1..=3i32 {
 		thread::sleep(Duration::from_milliseconds_const(300).to_std());
 		db.command(&format!("INSERT app::a [{{ id: {id} }}]"));
-		let target = db.watermarks().tx().current().expect("current version");
+		let target = db.progress().tx().current().expect("current version");
 		let va_rows = db.await_row_count("FROM app::va", id as usize, Duration::from_seconds_const(5));
 		assert_eq!(
 			va_rows, id as usize,
@@ -118,7 +118,7 @@ fn every_later_unrelated_write_advances_the_idle_flow_again() {
 
 		let deadline = Clock::Real.instant() + Duration::from_seconds_const(5);
 		loop {
-			let caught_up = db.watermarks().reader().flow_caught_up();
+			let caught_up = db.progress().reader().flow_caught_up();
 			if caught_up >= target {
 				break;
 			}

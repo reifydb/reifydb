@@ -13,7 +13,7 @@ use reifydb_core::{
 	commit::{
 		loader::CommitLoaderMessage,
 		queue::{CommitPull, CommitQueue, CommitQueueFloor, lsn_through},
-		watermark::ReaderWatermark,
+		position::ReaderPosition,
 	},
 	common::CommitVersion,
 	interface::{
@@ -85,7 +85,7 @@ pub struct SubscriptionReader {
 	queue: CommitQueue,
 	floor: CommitQueueFloor,
 	consumer: SubscriptionCommitLogConsumer,
-	watermark: ReaderWatermark,
+	watermark: ReaderPosition,
 	clock: Clock,
 	start: CommitVersion,
 	start_lsn: Lsn,
@@ -99,7 +99,7 @@ impl SubscriptionReader {
 		queue: CommitQueue,
 		floor: CommitQueueFloor,
 		consumer: SubscriptionCommitLogConsumer,
-		watermark: ReaderWatermark,
+		watermark: ReaderPosition,
 		start: CommitVersion,
 		start_lsn: Lsn,
 		loader: ActorRef<CommitLoaderMessage>,

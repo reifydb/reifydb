@@ -21,9 +21,9 @@ const OUTSTANDING_ROUNDS: usize = 300;
 fn await_caught_up(db: &TestDb) {
 	// Spins rather than delegating to `await_all_flows`: the defect is a watermark that crosses too
 	// early, so a sleep interval hands the chain enough time to finish and hides it.
-	let target = db.watermarks().tx().current().expect("current commit version");
+	let target = db.progress().tx().current().expect("current commit version");
 	let deadline = Clock::Real.instant() + BARRIER_TIMEOUT;
-	while db.watermarks().reader().flow_caught_up() < target {
+	while db.progress().reader().flow_caught_up() < target {
 		assert!(
 			Clock::Real.instant() < deadline,
 			"the caught-up watermark never reached committed version {} - the materialization gate is \
@@ -96,7 +96,7 @@ fn zero_outstanding_means_the_whole_chain_is_materialized() {
 
 		let deadline = Clock::Real.instant() + BARRIER_TIMEOUT;
 		loop {
-			let flow = db.watermarks().flow().expect("flow watermarks");
+			let flow = db.progress().flow().expect("flow watermarks");
 			let rows = flow.all();
 			if !rows.is_empty() && rows.iter().all(|r| r.outstanding == 0) {
 				break;

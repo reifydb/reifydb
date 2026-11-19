@@ -161,9 +161,9 @@ impl VTableRegistry {
 			SystemCatalog::get_system_bindings_grpc_table(),
 			SystemCatalog::get_system_bindings_ws_table(),
 			SystemCatalog::get_system_flow_units_table(),
-			SystemCatalog::get_system_flow_watermarks_table(),
+			SystemCatalog::get_system_flow_positions_table(),
 			SystemCatalog::get_system_subscriptions_table(),
-			SystemCatalog::get_system_subscription_watermarks_table(),
+			SystemCatalog::get_system_subscription_positions_table(),
 		])
 	}
 }

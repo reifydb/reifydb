@@ -13,7 +13,7 @@ use reifydb_core::event::metric::{MultiEviction, MultiPersist, MultiSweptEvent};
 use reifydb_core::lifecycle::progress::Progress;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::{common::CommitVersion, default, interface::store::EntryKind};
-use reifydb_core::{event::EventBus, interface::store::WalCheckpoint, lifecycle::watermark::EvictionWatermark};
+use reifydb_core::{event::EventBus, interface::store::WalCheckpoint, lifecycle::floor::FlushFloor};
 use reifydb_runtime::{
 	context::clock::Clock,
 	sync::{mutex::Mutex, rwlock::RwLock},
@@ -66,7 +66,7 @@ pub struct FlushEngine {
 	persistent: MultiPersistentTier,
 	persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	checkpoint: Arc<OnceLock<Arc<dyn WalCheckpoint>>>,
-	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
+	flush_floor: Arc<RwLock<Option<Arc<dyn FlushFloor>>>>,
 	point: Option<MultiPointTier>,
 	range: Option<MultiRangeTier>,
 	clock: Clock,
@@ -96,7 +96,7 @@ impl FlushEngine {
 		persistent: MultiPersistentTier,
 		persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 		checkpoint: Arc<OnceLock<Arc<dyn WalCheckpoint>>>,
-		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
+		flush_floor: Arc<RwLock<Option<Arc<dyn FlushFloor>>>>,
 		clock: Clock,
 		event_bus: EventBus,
 	) -> Self {
@@ -105,7 +105,7 @@ impl FlushEngine {
 			persistent,
 			persistence,
 			checkpoint,
-			eviction_watermark,
+			flush_floor,
 			point: None,
 			range: None,
 			clock,
@@ -175,7 +175,7 @@ impl FlushEngine {
 	}
 
 	fn eviction_cutoff(&self) -> Option<CommitVersion> {
-		let cutoff = self.eviction_watermark.read().as_ref()?.watermark();
+		let cutoff = self.flush_floor.read().as_ref()?.floor();
 		if cutoff.0 == 0 {
 			return None;
 		}
@@ -498,10 +498,10 @@ mod tests {
 		consumed
 	}
 
-	struct StaticWatermark(CommitVersion);
+	struct StaticFloor(CommitVersion);
 
-	impl EvictionWatermark for StaticWatermark {
-		fn watermark(&self) -> CommitVersion {
+	impl FlushFloor for StaticFloor {
+		fn floor(&self) -> CommitVersion {
 			self.0
 		}
 	}
@@ -524,15 +524,15 @@ mod tests {
 
 	fn build_engine(
 		persistence: Arc<dyn ObjectPersistence>,
-		watermark: Option<CommitVersion>,
+		floor: Option<CommitVersion>,
 	) -> (FlushEngine, SqliteTempPathGuard) {
 		let buffer = CommitStore::new();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
-		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
-		if let Some(w) = watermark {
-			*watermark_lock.write() = Some(Arc::new(StaticWatermark(w)));
+		let floor_lock: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
+		if let Some(w) = floor {
+			*floor_lock.write() = Some(Arc::new(StaticFloor(w)));
 		}
 		(
 			FlushEngine::new(
@@ -540,7 +540,7 @@ mod tests {
 				persistent,
 				persistence_lock,
 				no_wal_checkpoint(),
-				watermark_lock,
+				floor_lock,
 				Clock::Real,
 				testing_event_bus(),
 			),
@@ -548,20 +548,20 @@ mod tests {
 		)
 	}
 
-	fn build_engine_over(persistent: MultiPersistentTier, watermark: Option<CommitVersion>) -> FlushEngine {
+	fn build_engine_over(persistent: MultiPersistentTier, floor: Option<CommitVersion>) -> FlushEngine {
 		let buffer = CommitStore::new();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(Arc::new(AllPersistent));
-		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
-		if let Some(w) = watermark {
-			*watermark_lock.write() = Some(Arc::new(StaticWatermark(w)));
+		let floor_lock: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
+		if let Some(w) = floor {
+			*floor_lock.write() = Some(Arc::new(StaticFloor(w)));
 		}
 		FlushEngine::new(
 			buffer,
 			persistent,
 			persistence_lock,
 			no_wal_checkpoint(),
-			watermark_lock,
+			floor_lock,
 			Clock::Real,
 			testing_event_bus(),
 		)
@@ -619,14 +619,14 @@ mod tests {
 
 	fn build_engine_watching_sweeps(
 		persistence: Arc<dyn ObjectPersistence>,
-		watermark: CommitVersion,
+		floor: CommitVersion,
 	) -> (FlushEngine, SqliteTempPathGuard, SweepCollector) {
 		let buffer = CommitStore::new();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
-		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
-		*watermark_lock.write() = Some(Arc::new(StaticWatermark(watermark)));
+		let floor_lock: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
+		*floor_lock.write() = Some(Arc::new(StaticFloor(floor)));
 
 		let event_bus = testing_event_bus();
 		let collector = SweepCollector::default();
@@ -638,7 +638,7 @@ mod tests {
 				persistent,
 				persistence_lock,
 				no_wal_checkpoint(),
-				watermark_lock,
+				floor_lock,
 				Clock::Real,
 				event_bus,
 			),
@@ -703,22 +703,22 @@ mod tests {
 
 	fn build_engine_with_point(
 		persistence: Arc<dyn ObjectPersistence>,
-		watermark: CommitVersion,
+		floor: CommitVersion,
 		point: MultiPointTier,
 	) -> (FlushEngine, SqliteTempPathGuard) {
 		let buffer = CommitStore::new();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
-		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
-		*watermark_lock.write() = Some(Arc::new(StaticWatermark(watermark)));
+		let floor_lock: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
+		*floor_lock.write() = Some(Arc::new(StaticFloor(floor)));
 		(
 			FlushEngine::new(
 				buffer,
 				persistent,
 				persistence_lock,
 				no_wal_checkpoint(),
-				watermark_lock,
+				floor_lock,
 				Clock::Real,
 				testing_event_bus(),
 			)
@@ -728,9 +728,9 @@ mod tests {
 	}
 
 	#[test]
-	fn eviction_cutoff_is_none_without_watermark() {
+	fn eviction_cutoff_is_none_without_flush_floor() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), None);
-		assert!(actor.eviction_cutoff().is_none(), "no watermark set => no eviction");
+		assert!(actor.eviction_cutoff().is_none(), "no flush floor set => no eviction");
 	}
 
 	#[test]
@@ -777,7 +777,7 @@ mod tests {
 	}
 
 	#[test]
-	fn sweep_persists_then_evicts_persistent_object_below_watermark() {
+	fn sweep_persists_then_evicts_persistent_object_below_flush_floor() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
 		let kind = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
 		let key = ek("k");
@@ -822,7 +822,7 @@ mod tests {
 
 		assert!(
 			matches!(actor.commit.get(kind, key.as_ref(), CommitVersion(2)), VersionedGetResult::NotFound),
-			"non-persistent object must still be evicted below the watermark"
+			"non-persistent object must still be evicted below the flush floor"
 		);
 		assert!(
 			matches!(
@@ -842,7 +842,7 @@ mod tests {
 	}
 
 	#[test]
-	fn sweep_keeps_everything_when_all_above_watermark() {
+	fn sweep_keeps_everything_when_all_above_flush_floor() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
 		let kind = EntryKind::Source(StorageId::Table(TableId(3)), EntryLayout::Row);
 		let key = ek("k");
@@ -853,7 +853,7 @@ mod tests {
 		assert_eq!(
 			actor.commit.get(kind, key.as_ref(), CommitVersion(5)).value().as_deref(),
 			Some(b"v5".as_slice()),
-			"a version above the watermark must never be evicted"
+			"a version above the flush floor must never be evicted"
 		);
 		assert!(
 			matches!(
@@ -863,7 +863,7 @@ mod tests {
 					.remove(0),
 				VersionedGetResult::NotFound
 			),
-			"nothing below the watermark => nothing persisted"
+			"nothing below the flush floor => nothing persisted"
 		);
 	}
 
@@ -1108,12 +1108,12 @@ mod tests {
 					.remove(0),
 				VersionedGetResult::NotFound
 			),
-			"hot must not be persisted - it is above the watermark"
+			"hot must not be persisted - it is above the flush floor"
 		);
 	}
 
 	#[test]
-	fn flush_all_persists_every_key_regardless_of_watermark() {
+	fn flush_all_persists_every_key_regardless_of_flush_floor() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
 		let kind = EntryKind::Source(StorageId::Table(TableId(101)), EntryLayout::Row);
 		let cold = ek("cold");
@@ -1131,7 +1131,7 @@ mod tests {
 				.value()
 				.as_deref(),
 			Some(b"cold2".as_slice()),
-			"a key committed above the watermark must be persisted by a full flush"
+			"a key committed above the flush floor must be persisted by a full flush"
 		);
 		assert_eq!(
 			actor.persistent
@@ -1271,10 +1271,10 @@ mod tests {
 		);
 	}
 
-	struct MovingWatermark(AtomicU64);
+	struct MovingFloor(AtomicU64);
 
-	impl EvictionWatermark for MovingWatermark {
-		fn watermark(&self) -> CommitVersion {
+	impl FlushFloor for MovingFloor {
+		fn floor(&self) -> CommitVersion {
 			CommitVersion(self.0.load(Ordering::SeqCst))
 		}
 	}
@@ -1283,16 +1283,16 @@ mod tests {
 	fn a_pass_whose_cutoff_falls_mid_way_never_marks_rows_it_did_not_write_as_saved() {
 		// The marker must be the lowest cutoff of the pass, otherwise replay skips rows sqlite never got.
 		let (persistent, _guard) = MultiPersistentTier::sqlite_in_memory();
-		let moving = Arc::new(MovingWatermark(AtomicU64::new(5)));
+		let moving = Arc::new(MovingFloor(AtomicU64::new(5)));
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(Arc::new(AllPersistent));
-		let watermark: Arc<dyn EvictionWatermark> = moving.clone();
+		let floor: Arc<dyn FlushFloor> = moving.clone();
 		let engine = FlushEngine::new(
 			CommitStore::new(),
 			persistent,
 			persistence_lock,
 			no_wal_checkpoint(),
-			Arc::new(RwLock::new(Some(watermark))),
+			Arc::new(RwLock::new(Some(floor))),
 			Clock::Real,
 			testing_event_bus(),
 		);
@@ -1379,7 +1379,7 @@ mod tests {
 	}
 
 	#[test]
-	fn flush_all_removes_the_persisted_row_for_a_delete_above_the_watermark() {
+	fn flush_all_removes_the_persisted_row_for_a_delete_above_the_flush_floor() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
 		let kind = EntryKind::Source(StorageId::Table(TableId(102)), EntryLayout::Row);
 		let key = ek("k");
@@ -1399,7 +1399,7 @@ mod tests {
 					.remove(0),
 				VersionedGetResult::NotFound
 			),
-			"a delete committed above the watermark must remove the persisted row, not resurrect v5"
+			"a delete committed above the flush floor must remove the persisted row, not resurrect v5"
 		);
 	}
 
@@ -1420,7 +1420,7 @@ mod tests {
 					.remove(0),
 				VersionedGetResult::Value { .. }
 			),
-			"a Multi entry committed below the watermark must reach the persistent tier; \
+			"a Multi entry committed below the flush floor must reach the persistent tier; \
 			 dictionary entries and commit log checkpoints live in this keyspace and are lost on restart if it does not"
 		);
 	}

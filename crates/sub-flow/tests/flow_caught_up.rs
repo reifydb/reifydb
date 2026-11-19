@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// `await_all_flows` blocks on `flow_consumer()`, so a watermark pinned at 0 hangs every test that
+// `await_all_flows` blocks on `flow_consumer()`, so a position pinned at 0 hangs every test that
 // uses it, and one that advances on discovery rather than on commit races the following query
 // against an unmaterialized view. The wall-clock deadline turns the first into a timeout.
 
@@ -12,12 +12,12 @@ use reifydb_runtime::context::clock::Clock;
 use reifydb_value::value::duration::Duration;
 
 fn setup() -> TestDb {
-	// `.with_flow(...)` installs the subsystem that registers the caught-up watermark.
+	// `.with_flow(...)` installs the subsystem that registers the caught-up position.
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
 }
 
 #[test]
-fn flow_consumer_watermark_advances_to_committed_version() {
+fn flow_consumer_position_advances_to_committed_version() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4 }");
@@ -26,20 +26,20 @@ fn flow_consumer_watermark_advances_to_committed_version() {
 	db.command("INSERT app::t [{ id: 1 }, { id: 2 }, { id: 3 }]");
 
 	// The highest committed version right after the insert, which the pipeline must catch up to.
-	let target = db.watermarks().tx().current().expect("current version");
+	let target = db.progress().tx().current().expect("current version");
 
-	// A wall-clock deadline, so a watermark that never advances fails as a timeout, not a hang.
+	// A wall-clock deadline, so a position that never advances fails as a timeout, not a hang.
 	let deadline = Clock::Real.instant() + Duration::from_seconds_const(10);
 	loop {
-		let flow_consumer = db.watermarks().reader().flow_caught_up();
+		let flow_consumer = db.progress().reader().flow_caught_up();
 		if flow_consumer >= target {
 			break;
 		}
 		if Clock::Real.instant() >= deadline {
 			panic!(
-				"flow consumer watermark did not reach the committed version within 10s: \
+				"flow consumer position did not reach the committed version within 10s: \
 				 flow_consumer={} target={} (the flow subsystem is not advancing \
-				 FlowConsumerWatermark - every await-based flow test will hang)",
+				 FlowConsumerPosition - every await-based flow test will hang)",
 				flow_consumer.0, target.0
 			);
 		}
@@ -47,7 +47,7 @@ fn flow_consumer_watermark_advances_to_committed_version() {
 	}
 
 	// Queried with no seal poll, so `flow_consumer() >= target` has to be a true materialization
-	// barrier: a watermark that advanced on discovery reads an empty view here.
+	// barrier: a position that advanced on discovery reads an empty view here.
 	let rows: usize = db.row_count("FROM app::v");
 	assert_eq!(
 		rows, 3,

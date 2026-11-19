@@ -70,9 +70,9 @@ fn queue(db: &TestDb) -> CommitQueue {
 }
 
 fn wait_for_consumer_caught_up(db: &TestDb) -> CommitVersion {
-	let target = db.watermarks().tx().current().expect("current version");
+	let target = db.progress().tx().current().expect("current version");
 	let timeout = Duration::from_seconds(10).unwrap();
-	if !db.watermarks().reader().wait_for_subscription(target, timeout) {
+	if !db.progress().reader().wait_for_subscription(target, timeout) {
 		panic!("subscription reader did not reach {:?} within {:?}", target, timeout);
 	}
 	target
@@ -95,7 +95,7 @@ fn a_batch_sent_to_an_unreachable_worker_fails_naming_the_worker() {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4 }");
 	let _floor = queue(&db).floor("test");
-	let before = db.watermarks().tx().current().expect("current version");
+	let before = db.progress().tx().current().expect("current version");
 	db.command("INSERT app::t [{id: 1}]");
 	let target = wait_for_consumer_caught_up(&db);
 

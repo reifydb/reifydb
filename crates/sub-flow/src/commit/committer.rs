@@ -635,7 +635,7 @@ mod commit_integration {
 	};
 	use reifydb_core::{
 		actors::pending::PendingQueueItem,
-		commit::watermark::ReaderWatermark,
+		commit::position::ReaderPosition,
 		delta::{Delta, RemoveAnnounce, SetPre},
 		interface::{
 			catalog::{flow::OperatorId, id::ViewId},
@@ -841,7 +841,7 @@ mod commit_integration {
 		let committer = Committer::new(
 			engine.clone(),
 			tracker.clone(),
-			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
+			FlowMaterialization::new(ReaderPosition::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
 		);
 		let handle =
@@ -1758,7 +1758,7 @@ mod commit_integration {
 		let committer = Committer::new(
 			engine.clone(),
 			FlowPositionTracker::new(),
-			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
+			FlowMaterialization::new(ReaderPosition::new(), FlowPositionTracker::new()),
 			store.clone(),
 		);
 		let replies = SliceReplies::new(2);
@@ -1824,7 +1824,7 @@ mod commit_integration {
 		Committer::new(
 			engine.clone(),
 			FlowPositionTracker::new(),
-			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
+			FlowMaterialization::new(ReaderPosition::new(), FlowPositionTracker::new()),
 			store,
 		)
 	}

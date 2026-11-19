@@ -26,7 +26,7 @@ use reifydb_core::{
 		store::MultiVersionCommit,
 	},
 	key::{any::TaggedKey, row::RowKey},
-	lifecycle::watermark::EvictionWatermark,
+	lifecycle::floor::FlushFloor,
 };
 use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::MultiVersionScope;
@@ -54,10 +54,10 @@ const ROWS: u64 = 160;
 
 const BATCH: u64 = 64;
 
-struct StaticWatermark(CommitVersion);
+struct StaticFloor(CommitVersion);
 
-impl EvictionWatermark for StaticWatermark {
-	fn watermark(&self) -> CommitVersion {
+impl FlushFloor for StaticFloor {
+	fn floor(&self) -> CommitVersion {
 		self.0
 	}
 }
@@ -138,7 +138,7 @@ fn commit_remove(store: &StandardMultiStore, storage: StorageId, row: u64, versi
 }
 
 fn flush(store: &StandardMultiStore, cutoff: u64) {
-	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(cutoff))));
+	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(cutoff))));
 	store.flush_pending_blocking();
 }
 

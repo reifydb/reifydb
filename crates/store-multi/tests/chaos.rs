@@ -5,7 +5,7 @@
 
 //! Model-based chaos for store-multi: a seeded op sequence runs against a full-history oracle and three
 //! store configurations, and every read is differentially checked. Flush collapses MVCC history below its
-//! cutoff, so the oracle is only queried at versions >= the high watermark W (the max flush cutoff so far).
+//! cutoff, so the oracle is only queried at versions >= the high flush floor W (the max flush cutoff so far).
 
 #[path = "chaos/concurrency.rs"]
 mod concurrency;

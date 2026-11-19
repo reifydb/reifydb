@@ -26,7 +26,7 @@ pub mod session;
 pub mod subscription;
 pub mod transaction;
 pub mod vm;
-pub mod watermark;
+pub mod query_floor;
 
 pub struct EngineVersion;
 

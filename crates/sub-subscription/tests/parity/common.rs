@@ -89,14 +89,14 @@ pub fn drain_sub(db: &TestDb, sub_id: SubscriptionId) -> Vec<StagedBatch> {
 }
 
 pub fn wait_for_consumer_caught_up(db: &TestDb) {
-	let target = db.watermarks().tx().current().expect("current version");
+	let target = db.progress().tx().current().expect("current version");
 	let timeout = Duration::from_seconds(10).unwrap();
-	if !db.watermarks().reader().wait_for_subscription(target, timeout) {
+	if !db.progress().reader().wait_for_subscription(target, timeout) {
 		panic!(
 			"commit log consumer did not reach {:?} within {:?} (current consumer = {:?})",
 			target,
 			timeout,
-			db.watermarks().reader().subscription()
+			db.progress().reader().subscription()
 		);
 	}
 }

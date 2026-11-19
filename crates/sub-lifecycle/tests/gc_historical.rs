@@ -4,7 +4,7 @@
 //! Historical GC task: reclaiming superseded versions without ever passing the reader floor.
 //!
 //! Dropping a version at or above `effective_gc_cutoff` loses a row from a live reader's snapshot; treating a zero
-//! watermark as "sweep everything" leaks in the other direction. `store-multi` covers the tier primitive, so what
+//! floor as "sweep everything" leaks in the other direction. `store-multi` covers the tier primitive, so what
 //! is testable here is the task around it: the floor it honours, the zero case, and its cursor across slices.
 
 use std::{
@@ -47,9 +47,9 @@ const SHAPE: EntryKind = EntryKind::Source(StorageId::Table(TableId(1)), EntryLa
 /// Only `query_done_until` is scripted; the other reader terms sit wide open, so each test drives the
 /// BufferHistoricalGc cutoff through exactly one term.
 #[derive(Clone)]
-struct ScriptedWatermark(Arc<AtomicU64>);
+struct ScriptedFloor(Arc<AtomicU64>);
 
-impl FloorSource for ScriptedWatermark {
+impl FloorSource for ScriptedFloor {
 	fn query_done_until(&self) -> CommitVersion {
 		CommitVersion(self.0.load(Ordering::SeqCst))
 	}
@@ -114,8 +114,8 @@ fn visible_at(store: &StandardMultiStore, name: &str, version: u64) -> Option<St
 		.map(|v| String::from_utf8_lossy(v.as_ref()).to_string())
 }
 
-fn task(store: StandardMultiStore, watermark: ScriptedWatermark) -> HistoricalGcTask {
-	let plane = RetentionPlane::new(Arc::new(watermark), VersionEpoch::new());
+fn task(store: StandardMultiStore, floor: ScriptedFloor) -> HistoricalGcTask {
+	let plane = RetentionPlane::new(Arc::new(floor), VersionEpoch::new());
 	HistoricalGcTask::new(store, plane, Clock::testing(), Arc::new(StubConfig))
 }
 
@@ -125,8 +125,8 @@ fn a_zero_watermark_reclaims_nothing_rather_than_everything() {
 	// as an unbounded cutoff would reclaim the entire version space of a freshly started database.
 	let store = store();
 	write_versions(&store, "k", 5);
-	let watermark = ScriptedWatermark(Arc::new(AtomicU64::new(0)));
-	let mut task = task(store.clone(), watermark);
+	let floor = ScriptedFloor(Arc::new(AtomicU64::new(0)));
+	let mut task = task(store.clone(), floor);
 
 	assert_eq!(task.run_slice(), Progress::Exhausted);
 
@@ -134,7 +134,7 @@ fn a_zero_watermark_reclaims_nothing_rather_than_everything() {
 		assert_eq!(
 			visible_at(&store, "k", v),
 			Some(format!("v{v}")),
-			"a zero watermark must leave version {v} untouched"
+			"a zero floor must leave version {v} untouched"
 		);
 	}
 }
@@ -145,8 +145,8 @@ fn never_reclaims_a_version_a_reader_at_the_floor_can_still_reach() {
 	// at the cutoff instead of strictly below it is the classic off-by-one that loses a live snapshot's row.
 	let store = store();
 	write_versions(&store, "k", 5);
-	let watermark = ScriptedWatermark(Arc::new(AtomicU64::new(3)));
-	let mut task = task(store.clone(), watermark);
+	let floor = ScriptedFloor(Arc::new(AtomicU64::new(3)));
+	let mut task = task(store.clone(), floor);
 
 	task.run_slice();
 
@@ -165,7 +165,7 @@ fn raising_the_floor_reclaims_the_versions_it_releases() {
 	let store = store();
 	write_versions(&store, "k", 5);
 	let floor = Arc::new(AtomicU64::new(0));
-	let mut task = task(store.clone(), ScriptedWatermark(floor.clone()));
+	let mut task = task(store.clone(), ScriptedFloor(floor.clone()));
 
 	floor.store(5, Ordering::SeqCst);
 	task.run_slice();
@@ -187,7 +187,7 @@ fn reports_exhausted_so_the_lane_does_not_spin_on_a_drained_store() {
 	// This class drains its whole backlog per slice. Reporting Yielded would make the lane immediately schedule
 	// a catch-up tick that has nothing to do, burning the lane other classes are queued behind.
 	let store = store();
-	let mut task = task(store, ScriptedWatermark(Arc::new(AtomicU64::new(10))));
+	let mut task = task(store, ScriptedFloor(Arc::new(AtomicU64::new(10))));
 
 	assert_eq!(
 		task.run_slice(),
@@ -203,7 +203,7 @@ fn a_second_slice_after_the_floor_advances_reclaims_the_newly_released_versions(
 	let store = store();
 	write_versions(&store, "k", 6);
 	let floor = Arc::new(AtomicU64::new(2));
-	let mut task = task(store.clone(), ScriptedWatermark(floor.clone()));
+	let mut task = task(store.clone(), ScriptedFloor(floor.clone()));
 
 	task.run_slice();
 	assert_eq!(visible_at(&store, "k", 2), Some("v2".to_string()), "version at the first floor survives");

@@ -5,7 +5,7 @@
 #   - missing or broken regression guard in build_upsert_current_sql
 #   - a sweep writing an older version over the newer one already in persistent
 #
-# Coupled-flush sequence (single watermark W=3):
+# Coupled-flush sequence (single flush floor W=3):
 #   1. Commit at v=3 (commit tier current).
 #   2. Sweep -> persists (k, v=3, "high"), evicts v3 from the commit tier.
 #   3. Commit at v=1 (older; the commit tier no longer holds v3, so this is the
@@ -16,7 +16,7 @@
 #      at (k, v=3, "high"); v1 is evicted from the commit tier.
 
 set k=high   version=3
-watermark 3
+flush_floor 3
 flush
 ---
 ok

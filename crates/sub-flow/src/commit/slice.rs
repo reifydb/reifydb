@@ -868,7 +868,7 @@ mod integration {
 		commit::{
 			queue::{CommitPull, CommitQueue},
 			tracker::WriteTracker,
-			watermark::ReaderWatermark,
+			position::ReaderPosition,
 		},
 		common::TimeDomain,
 		flow::{
@@ -924,7 +924,7 @@ mod integration {
 		let committer = Committer::new(
 			engine.clone(),
 			FlowPositionTracker::new(),
-			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
+			FlowMaterialization::new(ReaderPosition::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
 		);
 		engine.spawner().spawn_flow("slice-test-committer", CommitterActor::new(committer))
@@ -1806,7 +1806,7 @@ mod integration {
 	}
 
 	fn spawn_observed_committer(engine: &StandardEngine) -> (CommitterHandle, FlowMaterialization) {
-		let materialization = FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new());
+		let materialization = FlowMaterialization::new(ReaderPosition::new(), FlowPositionTracker::new());
 		let committer = Committer::new(
 			engine.clone(),
 			FlowPositionTracker::new(),

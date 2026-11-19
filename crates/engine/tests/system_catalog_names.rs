@@ -16,7 +16,7 @@ const RENAMES: [(&str, &str); 15] = [
 	("system::virtual_table_columns", "system::virtual_table::columns"),
 	("system::row_shape_fields", "system::row_shape::fields"),
 	("system::policy_operations", "system::policy::operations"),
-	("system::subscription_watermarks", "system::subscription::watermarks"),
+	("system::subscription_watermarks", "system::subscription::positions"),
 	("system::primary_key_columns", "system::primary_key::columns"),
 	("system::column_properties", "system::column::properties"),
 	("system::identity_attributes", "system::identity::attributes"),

@@ -12,7 +12,7 @@ use reifydb_core::{
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},
 		metrics::{ClassSnapshot, RetentionMetrics, StuckOnset},
-		watermark::EvictionWatermark,
+		floor::FlushFloor,
 	},
 };
 use reifydb_engine::engine::StandardEngine;
@@ -125,21 +125,21 @@ impl RetentionPlane {
 		self.inner.metrics.report()
 	}
 
-	pub fn eviction_watermark(&self, clock: Clock) -> Arc<dyn EvictionWatermark> {
-		Arc::new(PlaneEvictionWatermark {
+	pub fn flush_floor(&self, clock: Clock) -> Arc<dyn FlushFloor> {
+		Arc::new(PlaneFlushFloor {
 			plane: self.clone(),
 			clock,
 		})
 	}
 }
 
-struct PlaneEvictionWatermark {
+struct PlaneFlushFloor {
 	plane: RetentionPlane,
 	clock: Clock,
 }
 
-impl EvictionWatermark for PlaneEvictionWatermark {
-	fn watermark(&self) -> CommitVersion {
+impl FlushFloor for PlaneFlushFloor {
+	fn floor(&self) -> CommitVersion {
 		let now = self.clock.now();
 		match self.plane.cutoff(RetentionClass::PersistentFlush, now, None) {
 			Some(Floor::Version(version)) => version,

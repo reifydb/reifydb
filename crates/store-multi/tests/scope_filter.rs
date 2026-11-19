@@ -87,7 +87,7 @@ fn single_key_scope_filter() {
 	};
 	let rows: Vec<_> =
 		store.range(&system_ctx(), EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
-	assert!(rows.is_empty(), "expected no rows above watermark = 10, got {rows:?}");
+	assert!(rows.is_empty(), "expected no rows above floor = 10, got {rows:?}");
 
 	let scope = MultiVersionScope::Between {
 		after: CommitVersion(4),

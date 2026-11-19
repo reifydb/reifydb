@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::CommitVersion, interface::subscription::SubscriptionWatermarkRow};
+use reifydb_core::{common::CommitVersion, interface::subscription::SubscriptionPositionRow};
 
 use crate::{
 	store::SubscriptionStore,
 	tracker::{SubscriptionPositionTracker, SubscriptionSourceTracker},
 };
 
-pub(crate) fn compute_subscription_watermarks(
+pub(crate) fn compute_subscription_positions(
 	source_tracker: &SubscriptionSourceTracker,
 	position_tracker: &SubscriptionPositionTracker,
 	store: &SubscriptionStore,
-) -> Vec<SubscriptionWatermarkRow> {
+) -> Vec<SubscriptionPositionRow> {
 	let source_versions = source_tracker.all();
 	let positions = position_tracker.all();
 
@@ -23,7 +23,7 @@ pub(crate) fn compute_subscription_watermarks(
 
 		for (object_id, version) in &source_versions {
 			let lag = version.0.saturating_sub(subscription_version);
-			rows.push(SubscriptionWatermarkRow {
+			rows.push(SubscriptionPositionRow {
 				subscription_id,
 				object_id: *object_id,
 				lag,

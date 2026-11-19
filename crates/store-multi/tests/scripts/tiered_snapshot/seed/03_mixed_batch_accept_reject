@@ -19,7 +19,7 @@ set b=b2 version=2
 ---
 ok
 
-watermark 2
+flush_floor 2
 flush
 ---
 ok

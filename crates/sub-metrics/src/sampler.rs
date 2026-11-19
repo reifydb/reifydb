@@ -7,7 +7,7 @@ use reifydb_core::{
 	default,
 	interface::catalog::id::ViewId,
 	internal_error,
-	lifecycle::{metrics::RetentionMetrics, watermark::ConsumerPositions},
+	lifecycle::{metrics::RetentionMetrics, floor::ConsumerPositions},
 	marker::{LatencyReader, MarkerSweep, ViewLatency},
 	metrics::sample::{MetricKind, MetricsSample, Reading},
 };

@@ -168,9 +168,9 @@ impl TestDb {
 	}
 
 	pub fn await_all_flows(&self, timeout: impl Into<ValueDuration>) -> bool {
-		let watermarks = self.db.watermarks();
+		let progress = self.db.progress();
 		let target = watermarks.tx().current().expect("current commit version");
-		watermarks
+		progress
 			.reader()
 			.wait_for_flow_caught_up(target, timeout.into())
 			.unwrap_or_else(|e| panic!("awaiting deferred flows failed: {e}"))

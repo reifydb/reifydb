@@ -27,7 +27,7 @@ persistent_get k version=3
 
 # Pin W=3 and sweep. The latest-<=W value (v3="C") moves to persistent and every
 # <=W version is evicted from the commit tier.
-watermark 3
+flush_floor 3
 flush
 ---
 ok

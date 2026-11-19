@@ -158,9 +158,9 @@ fn a_dispatch_publishes_nothing_until_every_worker_has_finished() {
 		 be pollable yet"
 	);
 
-	let target = db.watermarks().tx().current().expect("current version");
+	let target = db.progress().tx().current().expect("current version");
 	assert!(
-		db.watermarks().reader().wait_for_subscription(target, Duration::from_seconds(10).unwrap()),
+		db.progress().reader().wait_for_subscription(target, Duration::from_seconds(10).unwrap()),
 		"the subscription consumer must finish the dispatch once the held worker is released"
 	);
 	assert_eq!(drained_ids(subsystem, free), vec![1], "the free subscription's row must be published");

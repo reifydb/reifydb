@@ -16,7 +16,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::store::{EntryKind, WalCheckpoint, storage_key_of},
 	key::any::TaggedKey,
-	lifecycle::watermark::EvictionWatermark,
+	lifecycle::floor::FlushFloor,
 	metrics::collect::MetricsCollector,
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -102,7 +102,7 @@ pub struct StandardMultiStoreInner {
 	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	pub(crate) wal_checkpoint: Arc<OnceLock<Arc<dyn WalCheckpoint>>>,
 	#[allow(dead_code)]
-	pub(crate) eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
+	pub(crate) flush_floor: Arc<RwLock<Option<Arc<dyn FlushFloor>>>>,
 
 	pub(crate) event_bus: EventBus,
 
@@ -126,7 +126,7 @@ impl StandardMultiStore {
 
 		let wal_checkpoint: Arc<OnceLock<Arc<dyn WalCheckpoint>>> = Arc::new(OnceLock::new());
 
-		let eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
+		let flush_floor: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
 
 		let point = config.persistent.is_some().then(|| config.point.and_then(MultiPointTier::new)).flatten();
 
@@ -154,7 +154,7 @@ impl StandardMultiStore {
 						persistent_storage.clone(),
 						row_settings_provider.clone(),
 						wal_checkpoint.clone(),
-						eviction_watermark.clone(),
+						flush_floor.clone(),
 						config.clock.clone(),
 						config.event_bus.clone(),
 					)
@@ -184,7 +184,7 @@ impl StandardMultiStore {
 			flush_engine,
 			row_settings_provider,
 			wal_checkpoint,
-			eviction_watermark,
+			flush_floor,
 			event_bus: config.event_bus,
 			persistent_probes: AtomicU64::new(0),
 			persistent_absent: AtomicU64::new(0),
@@ -226,12 +226,12 @@ impl StandardMultiStore {
 		}
 	}
 
-	pub fn set_eviction_watermark(&self, watermark: Arc<dyn EvictionWatermark>) {
-		*self.eviction_watermark.write() = Some(watermark);
+	pub fn set_flush_floor(&self, floor: Arc<dyn FlushFloor>) {
+		*self.flush_floor.write() = Some(floor);
 	}
 
-	pub fn clear_eviction_watermark(&self) {
-		*self.eviction_watermark.write() = None;
+	pub fn clear_flush_floor(&self) {
+		*self.flush_floor.write() = None;
 	}
 
 	#[cfg(feature = "testing")]

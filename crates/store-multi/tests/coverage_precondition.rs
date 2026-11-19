@@ -20,7 +20,7 @@ use reifydb_core::{
 		store::MultiVersionCommit,
 	},
 	key::{any::TaggedKey, row::RowKey},
-	lifecycle::watermark::EvictionWatermark,
+	lifecycle::floor::FlushFloor,
 };
 use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::MultiVersionScope;
@@ -38,10 +38,10 @@ const STORAGE: StorageId = StorageId::Table(TableId(1));
 /// The default shift of 16 keeps rows 0..65535 in bucket 0, so a full scan materializes that page's coverage.
 const BUCKET_ROWS: u64 = 200;
 
-struct StaticWatermark(CommitVersion);
+struct StaticFloor(CommitVersion);
 
-impl EvictionWatermark for StaticWatermark {
-	fn watermark(&self) -> CommitVersion {
+impl FlushFloor for StaticFloor {
+	fn floor(&self) -> CommitVersion {
 		self.0
 	}
 }
@@ -76,7 +76,7 @@ fn commit_remove(store: &StandardMultiStore, row: u64, version: u64) {
 /// Drives the genuine flush engine sweep, not a stand-in, so the persist -> refresh-read-tier -> drop-from-commit
 /// ordering under test is the one production runs.
 fn flush(store: &StandardMultiStore, cutoff: u64) {
-	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(cutoff))));
+	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(cutoff))));
 	store.flush_pending_blocking();
 }
 
@@ -255,7 +255,7 @@ fn run_interleaving(seed_value: u64) {
 	// per row. Every scan reads at the newest version, which is at or above every claim the read tier can
 	// hold, so any divergence is a key the reader missed because a span was claimed without it. The oracle
 	// is only ever consulted at the newest version because the sweep legitimately discards versions below
-	// the eviction watermark.
+	// the flush floor.
 	let (store, _g) = store();
 	let mut rng = Rng(seed_value);
 	let mut oracle: HashMap<Vec<u8>, (Vec<u8>, CommitVersion)> = HashMap::new();

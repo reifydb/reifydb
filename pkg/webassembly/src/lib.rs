@@ -29,7 +29,7 @@ use reifydb_core::{
 	CoreVersion,
 	commit::{
 		queue::{CommitQueue, FlowQueueFloor},
-		watermark::FlowCaughtUpWatermark,
+		position::FlowCaughtUpPosition,
 	},
 	common::CommitVersion,
 	event::{EventBus, transaction::PostCommitEvent},
@@ -525,7 +525,7 @@ impl WasmDB {
 
 	#[wasm_bindgen(js_name = flowsCaughtUpStep)]
 	pub fn flows_caught_up_step(&self, target: u64) -> Result<bool, JsValue> {
-		let Some(watermark) = self.inner.ioc().try_resolve::<FlowCaughtUpWatermark>() else {
+		let Some(watermark) = self.inner.ioc().try_resolve::<FlowCaughtUpPosition>() else {
 			return Err(JsError::from_message("flow caught up watermark not registered"));
 		};
 		watermark.ensure_healthy().map_err(|e| JsError::from_error(&e))?;

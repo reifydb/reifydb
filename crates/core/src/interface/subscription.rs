@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::interface::catalog::{id::SubscriptionId, object::ObjectId};
 
 #[derive(Debug, Clone)]
-pub struct SubscriptionWatermarkRow {
+pub struct SubscriptionPositionRow {
 	pub subscription_id: SubscriptionId,
 
 	pub object_id: ObjectId,
@@ -15,21 +15,21 @@ pub struct SubscriptionWatermarkRow {
 }
 
 #[derive(Clone)]
-pub struct SubscriptionWatermarkSampler {
-	fetch: Arc<dyn Fn() -> Vec<SubscriptionWatermarkRow> + Send + Sync>,
+pub struct SubscriptionPositionSampler {
+	fetch: Arc<dyn Fn() -> Vec<SubscriptionPositionRow> + Send + Sync>,
 }
 
-impl SubscriptionWatermarkSampler {
+impl SubscriptionPositionSampler {
 	pub fn new<F>(fetch: F) -> Self
 	where
-		F: Fn() -> Vec<SubscriptionWatermarkRow> + Send + Sync + 'static,
+		F: Fn() -> Vec<SubscriptionPositionRow> + Send + Sync + 'static,
 	{
 		Self {
 			fetch: Arc::new(fetch),
 		}
 	}
 
-	pub fn all(&self) -> Vec<SubscriptionWatermarkRow> {
+	pub fn all(&self) -> Vec<SubscriptionPositionRow> {
 		(self.fetch)()
 	}
 }

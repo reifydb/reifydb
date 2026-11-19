@@ -17,7 +17,7 @@ pub mod event_variants;
 pub mod events;
 pub mod flow_edges;
 pub mod flow_units;
-pub mod flow_watermarks;
+pub mod flow_positions;
 pub mod flows;
 pub mod functions;
 pub mod granted_roles;
@@ -46,7 +46,7 @@ pub mod row_shape_fields;
 pub mod row_shapes;
 pub mod sequence;
 pub mod series;
-pub mod subscription_watermarks;
+pub mod subscription_positions;
 pub mod subscriptions;
 pub mod tables;
 pub mod tables_virtual;
@@ -69,7 +69,7 @@ use event_variants::event_variants;
 use events::events;
 use flow_edges::flow_edges;
 use flow_units::flow_units;
-use flow_watermarks::flow_watermarks;
+use flow_positions::flow_positions;
 use flows::flows;
 use functions::functions;
 use granted_roles::granted_roles;
@@ -98,7 +98,7 @@ use row_shape_fields::row_shape_fields;
 use row_shapes::row_shapes;
 use sequence::sequences;
 use series::series;
-use subscription_watermarks::subscription_watermarks;
+use subscription_positions::subscription_positions;
 use subscriptions::subscriptions;
 use tables::tables;
 use tables_virtual::virtual_tables;
@@ -701,7 +701,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 2] = [FLOW_ID, UNIT];
 		}
 
-		pub mod flow_watermarks {
+		pub mod flow_positions {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const FLOW_ID: ColumnId = ColumnId(1);
@@ -712,7 +712,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 4] = [FLOW_ID, OBJECT_ID, LAG, OUTSTANDING];
 		}
 
-		pub mod subscription_watermarks {
+		pub mod subscription_positions {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const SUBSCRIPTION_ID: ColumnId = ColumnId(1);
@@ -944,7 +944,7 @@ pub mod ids {
 		pub const OPERATOR_LIBRARY_INPUTS: VTableId = VTableId(19);
 		pub const OPERATOR_LIBRARY_OUTPUTS: VTableId = VTableId(20);
 		pub const RINGBUFFERS: VTableId = VTableId(21);
-		pub const FLOW_WATERMARKS: VTableId = VTableId(29);
+		pub const FLOW_POSITIONS: VTableId = VTableId(29);
 		pub const SHAPES: VTableId = VTableId(30);
 		pub const SHAPE_FIELDS: VTableId = VTableId(31);
 		pub const ENUMS: VTableId = VTableId(32);
@@ -963,7 +963,7 @@ pub mod ids {
 		pub const ENUM_VARIANTS: VTableId = VTableId(47);
 		pub const EVENT_VARIANTS: VTableId = VTableId(48);
 		pub const SUBSCRIPTIONS: VTableId = VTableId(50);
-		pub const SUBSCRIPTION_WATERMARKS: VTableId = VTableId(59);
+		pub const SUBSCRIPTION_POSITIONS: VTableId = VTableId(59);
 		pub const IDENTITY_ATTRIBUTES: VTableId = VTableId(60);
 		pub const IDENTITY_ATTRIBUTE_VALUES: VTableId = VTableId(61);
 		pub const QUEUES: VTableId = VTableId(62);
@@ -1000,7 +1000,7 @@ pub mod ids {
 
 		pub const ALL: [VTableId; 66] = [
 			SEQUENCES,
-			SUBSCRIPTION_WATERMARKS,
+			SUBSCRIPTION_POSITIONS,
 			NAMESPACES,
 			TABLES,
 			VIEWS,
@@ -1022,7 +1022,7 @@ pub mod ids {
 			RINGBUFFERS,
 			QUEUES,
 			QUEUE_PARTITIONS,
-			FLOW_WATERMARKS,
+			FLOW_POSITIONS,
 			FLOW_UNITS,
 			SHAPES,
 			SHAPE_FIELDS,
@@ -1108,16 +1108,16 @@ impl SystemCatalog {
 		flows()
 	}
 
-	pub fn get_system_flow_watermarks_table() -> Arc<VTable> {
-		flow_watermarks()
+	pub fn get_system_flow_positions_table() -> Arc<VTable> {
+		flow_positions()
 	}
 
 	pub fn get_system_flow_units_table() -> Arc<VTable> {
 		flow_units()
 	}
 
-	pub fn get_system_subscription_watermarks_table() -> Arc<VTable> {
-		subscription_watermarks()
+	pub fn get_system_subscription_positions_table() -> Arc<VTable> {
+		subscription_positions()
 	}
 
 	pub fn get_system_subscriptions_table() -> Arc<VTable> {

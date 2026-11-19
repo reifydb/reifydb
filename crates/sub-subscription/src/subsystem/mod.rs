@@ -20,14 +20,14 @@ use reifydb_core::{
 	commit::{
 		loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 		queue::{CommitQueue, SubscriptionQueueFloor},
-		watermark::ReaderWatermark,
+		position::ReaderPosition,
 	},
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			subscription::SubscriptionInspectorRef,
 		},
-		subscription::SubscriptionWatermarkSampler,
+		subscription::SubscriptionPositionSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	metrics::registry::MetricsRegistry,
@@ -66,7 +66,7 @@ use crate::{
 	reader::{SubscriptionReader, SubscriptionReaderMessage},
 	store::SubscriptionStore,
 	tracker::{SubscribedObjects, SubscriptionPositionTracker, SubscriptionSourceTracker},
-	watermark::compute_subscription_watermarks,
+	position::compute_subscription_positions,
 	worker::{SubscriptionWorkerActor, SubscriptionWorkerMessage, worker_name},
 };
 
@@ -95,7 +95,7 @@ impl SubscriptionSubsystem {
 		floor: SubscriptionQueueFloor,
 		store: Arc<SubscriptionStore>,
 		_runtime_context: RuntimeContext,
-		consumer_watermark: ReaderWatermark,
+		consumer_position: ReaderPosition,
 		source_tracker: SubscriptionSourceTracker,
 		position_tracker: SubscriptionPositionTracker,
 		loader_metrics: CommitLoaderMetrics,
@@ -151,7 +151,7 @@ impl SubscriptionSubsystem {
 			queue,
 			floor.clone(),
 			commit_log_consumer,
-			consumer_watermark,
+			consumer_position,
 			start,
 			start_lsn,
 			loader_handle.actor_ref().clone(),
@@ -311,17 +311,17 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 			.build();
 		let store = Arc::new(SubscriptionStore::new(1024));
 
-		let consumer_watermark = ReaderWatermark::new();
-		ioc.register_service::<ReaderWatermark>(consumer_watermark.clone());
+		let consumer_position = ReaderPosition::new();
+		ioc.register_service::<ReaderPosition>(consumer_position.clone());
 
 		let source_tracker = SubscriptionSourceTracker::new();
 		let position_tracker = SubscriptionPositionTracker::new();
 
-		ioc.register_service::<SubscriptionWatermarkSampler>(SubscriptionWatermarkSampler::new({
+		ioc.register_service::<SubscriptionPositionSampler>(SubscriptionPositionSampler::new({
 			let source_tracker = source_tracker.clone();
 			let position_tracker = position_tracker.clone();
 			let store = store.clone();
-			move || compute_subscription_watermarks(&source_tracker, &position_tracker, &store)
+			move || compute_subscription_positions(&source_tracker, &position_tracker, &store)
 		}));
 
 		let loader_metrics = CommitLoaderMetrics::new("subscription_loader");
@@ -333,7 +333,7 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 			floor,
 			store.clone(),
 			runtime_context,
-			consumer_watermark,
+			consumer_position,
 			source_tracker,
 			position_tracker,
 			loader_metrics,

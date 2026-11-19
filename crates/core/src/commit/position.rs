@@ -11,11 +11,11 @@ use reifydb_value::error::ValueError;
 use crate::{common::CommitVersion, error::diagnostic::flow::flow_error, interface::catalog::flow::FlowId};
 
 #[derive(Debug, Clone, Default)]
-pub struct ReaderWatermark {
+pub struct ReaderPosition {
 	progress: Arc<AtomicU64>,
 }
 
-impl ReaderWatermark {
+impl ReaderPosition {
 	pub fn new() -> Self {
 		Self {
 			progress: Arc::new(AtomicU64::new(0)),
@@ -32,13 +32,13 @@ impl ReaderWatermark {
 }
 
 #[derive(Clone)]
-pub struct FlowCaughtUpWatermark {
+pub struct FlowCaughtUpPosition {
 	sample: Arc<dyn Fn() -> CommitVersion + Send + Sync>,
 	poisoned: Arc<dyn Fn() -> Result<Vec<(FlowId, String)>, ValueError> + Send + Sync>,
 	stalled: Arc<dyn Fn() -> Vec<FlowId> + Send + Sync>,
 }
 
-impl FlowCaughtUpWatermark {
+impl FlowCaughtUpPosition {
 	pub fn new<F, P, S>(sample: F, poisoned: P, stalled: S) -> Self
 	where
 		F: Fn() -> CommitVersion + Send + Sync + 'static,

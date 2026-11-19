@@ -64,7 +64,7 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 		let catalog = engine.catalog();
 
 		let plane = RetentionPlane::for_engine(&engine, ioc.resolve::<RetentionMetrics>()?);
-		store.set_eviction_watermark(plane.eviction_watermark(engine.clock().clone()));
+		store.set_flush_floor(plane.flush_floor(engine.clock().clone()));
 
 		let gate = RetentionStartupGate::arm(
 			engine.clock().clone(),

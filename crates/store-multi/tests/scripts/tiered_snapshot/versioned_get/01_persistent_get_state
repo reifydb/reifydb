@@ -6,10 +6,10 @@
 # absent key and a deleted key are the same answer here; the buffer, which still holds
 # versions, is what distinguishes Tombstone.
 #
-# Coupled-flush model: a single watermark W=2 governs every sweep below. The first
+# Coupled-flush model: a single flush floor W=2 governs every sweep below. The first
 # sweep persists the live v1 row; the second sweep (after the delete) removes it.
 
-watermark 2
+flush_floor 2
 ---
 ok
 

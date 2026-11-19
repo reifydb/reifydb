@@ -1636,7 +1636,7 @@ mod pull_protocol {
 			loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 			queue::{CommitQueueFloor, FlowQueueFloor},
 			tracker::WriteTracker,
-			watermark::ReaderWatermark,
+			position::ReaderPosition,
 		},
 		default::flow::LOOKUP_TRACKER_ENTRIES_TESTING,
 		delta::{Delta, RemoveAnnounce, SetPre},
@@ -1768,7 +1768,7 @@ mod pull_protocol {
 		let committer = Committer::new(
 			engine.clone(),
 			tracker.clone(),
-			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
+			FlowMaterialization::new(ReaderPosition::new(), FlowPositionTracker::new()),
 			substrate.operators.clone().expect("the test substrate carries an operator store"),
 		);
 		let committer_handle =
@@ -3056,7 +3056,7 @@ mod pull_protocol {
 		let committer2 = Committer::new(
 			h.engine.clone(),
 			h.tracker.clone(),
-			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
+			FlowMaterialization::new(ReaderPosition::new(), FlowPositionTracker::new()),
 			operators2.clone(),
 		);
 		let committer2_handle =

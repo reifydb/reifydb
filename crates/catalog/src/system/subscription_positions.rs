@@ -10,20 +10,20 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
-use super::ids::{columns::flow_watermarks::*, vtable::FLOW_WATERMARKS};
+use super::ids::{columns::subscription_positions::*, vtable::SUBSCRIPTION_POSITIONS};
 
-pub fn flow_watermarks() -> Arc<VTable> {
+pub fn subscription_positions() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
-			id: FLOW_WATERMARKS,
-			namespace: NamespaceId::SYSTEM_FLOW,
-			name: "watermarks".to_string(),
+			id: SUBSCRIPTION_POSITIONS,
+			namespace: NamespaceId::SYSTEM_SUBSCRIPTION,
+			name: "positions".to_string(),
 			columns: vec![
 				Column {
-					id: FLOW_ID,
-					name: "flow_id".to_string(),
+					id: SUBSCRIPTION_ID,
+					name: "subscription_id".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(0),
@@ -45,15 +45,6 @@ pub fn flow_watermarks() -> Arc<VTable> {
 					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(2),
-					auto_increment: false,
-					dictionary_id: None,
-				},
-				Column {
-					id: OUTSTANDING,
-					name: "outstanding".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
-					properties: vec![],
-					index: ColumnIndex(3),
 					auto_increment: false,
 					dictionary_id: None,
 				},

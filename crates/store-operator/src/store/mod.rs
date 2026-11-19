@@ -20,7 +20,7 @@ use std::{ops::Deref, sync::Arc};
 use reifydb_core::default;
 use reifydb_core::{
 	common::CommitVersion,
-	lifecycle::watermark::CheckpointFloor,
+	lifecycle::floor::CheckpointFloor,
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_filter::adaptive::FilterMetrics;

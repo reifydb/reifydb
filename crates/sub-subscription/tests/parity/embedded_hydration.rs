@@ -57,9 +57,9 @@ fn drain_collect(sub: &Subscription) -> Vec<StagedBatch> {
 }
 
 fn wait_caught_up(db: &TestDb) {
-	let target = db.watermarks().tx().current().expect("current version");
+	let target = db.progress().tx().current().expect("current version");
 	assert!(
-		db.watermarks().reader().wait_for_subscription(target, Duration::from_seconds(10).unwrap()),
+		db.progress().reader().wait_for_subscription(target, Duration::from_seconds(10).unwrap()),
 		"commit log consumer did not catch up to {:?}",
 		target
 	);

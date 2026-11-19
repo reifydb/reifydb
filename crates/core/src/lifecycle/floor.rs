@@ -5,11 +5,11 @@ use reifydb_value::error::ValueError;
 
 use crate::common::CommitVersion;
 
-pub trait EvictionWatermark: Send + Sync + 'static {
-	fn watermark(&self) -> CommitVersion;
+pub trait FlushFloor: Send + Sync + 'static {
+	fn floor(&self) -> CommitVersion;
 }
 
-pub trait QueryWatermark: Send + Sync + 'static {
+pub trait QueryFloor: Send + Sync + 'static {
 	fn effective_gc_cutoff(&self) -> CommitVersion;
 }
 

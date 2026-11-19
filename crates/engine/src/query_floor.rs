@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::CommitVersion, lifecycle::watermark::QueryWatermark};
+use reifydb_core::{common::CommitVersion, lifecycle::floor::QueryFloor};
 
 use crate::engine::StandardEngine;
 
-impl QueryWatermark for StandardEngine {
+impl QueryFloor for StandardEngine {
 	fn effective_gc_cutoff(&self) -> CommitVersion {
 		let qdu = self.query_done_until();
 		let lease_min = self.multi().leases().min_active().unwrap_or(CommitVersion(u64::MAX));
@@ -23,7 +23,7 @@ mod tests {
 			object::ObjectId,
 		},
 		key::catalog::IndexEntryKey,
-		lifecycle::watermark::QueryWatermark,
+		lifecycle::floor::QueryFloor,
 		value::index::encoded::EncodedIndexKey,
 	};
 	use reifydb_test_harness::engine::TestEngine;

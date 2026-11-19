@@ -21,7 +21,7 @@ use reifydb_catalog::vtable::{
 		events::SystemEvents,
 		flow_edges::SystemFlowEdges,
 		flow_units::SystemFlowUnits,
-		flow_watermarks::SystemFlowWatermarks,
+		flow_positions::SystemFlowPositions,
 		flows::SystemFlowFlows,
 		functions::{FunctionRow, SystemFunctions},
 		granted_roles::SystemGrantedRoles,
@@ -54,7 +54,7 @@ use reifydb_catalog::vtable::{
 		row_shapes::SystemRowShapes,
 		sequences::SystemSequences,
 		series::SystemSeries,
-		subscription_watermarks::SystemSubscriptionWatermarks,
+		subscription_positions::SystemSubscriptionPositions,
 		subscriptions::SystemSubscriptions,
 		tables::SystemTables,
 		tables_virtual::SystemTablesVirtual,
@@ -190,7 +190,7 @@ fn compile_flow_vtable(name: &str, context: &QueryContext) -> Option<VTables> {
 		"operators" => VTables::Operators(SystemOperators::new()),
 		"edges" => VTables::FlowEdges(SystemFlowEdges::new()),
 		"units" => VTables::FlowUnits(SystemFlowUnits::new(context.services.ioc.clone())),
-		"watermarks" => VTables::FlowWatermarks(SystemFlowWatermarks::new(context.services.ioc.clone())),
+		"positions" => VTables::FlowPositions(SystemFlowPositions::new(context.services.ioc.clone())),
 		_ => return None,
 	})
 }
@@ -291,8 +291,8 @@ fn compile_policy_vtable(name: &str) -> Option<VTables> {
 
 fn compile_subscription_vtable(name: &str, context: &QueryContext) -> Option<VTables> {
 	Some(match name {
-		"watermarks" => {
-			VTables::SubscriptionWatermarks(SystemSubscriptionWatermarks::new(context.services.ioc.clone()))
+		"positions" => {
+			VTables::SubscriptionPositions(SystemSubscriptionPositions::new(context.services.ioc.clone()))
 		}
 		_ => return None,
 	})

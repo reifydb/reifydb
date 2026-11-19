@@ -15,9 +15,9 @@ fn waiting_on_a_poisoned_flow_fails_fast_naming_the_cause() {
 	db.admin("create table test::src { id: int4 }");
 	db.admin("create deferred view test::broken { v: int4 } as { from test::src map { v: missing } }");
 	db.command("insert test::src [{ id: 1 }]");
-	let target = db.watermarks().tx().current().unwrap();
+	let target = db.progress().tx().current().unwrap();
 	let started = Clock::Real.instant();
-	let result = db.watermarks().reader().wait_for_flow_caught_up(target, ValueDuration::from_seconds(30).unwrap());
+	let result = db.progress().reader().wait_for_flow_caught_up(target, ValueDuration::from_seconds(30).unwrap());
 	let elapsed = started.elapsed();
 	let err = result.expect_err("a poisoned flow must make the wait an error, never a plain timeout");
 	assert!(

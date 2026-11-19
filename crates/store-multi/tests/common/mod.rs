@@ -27,7 +27,7 @@ use reifydb_core::{
 		store::{MultiVersionCommit, MultiVersionGet, MultiVersionRow, WalCheckpoint, classify_key},
 	},
 	key::{any::TaggedKey, catalog::IndexEntryKey},
-	lifecycle::watermark::EvictionWatermark,
+	lifecycle::floor::FlushFloor,
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
@@ -337,14 +337,14 @@ impl testscript::runner::Runner for Runner {
 				self.maybe_flush();
 			}
 
-			"watermark" => {
+			"flush_floor" => {
 				let mut args = command.consume_args();
 				let version = CommitVersion(
-					args.next_pos().ok_or("watermark version not given")?.value.parse()?,
+					args.next_pos().ok_or("flush floor version not given")?.value.parse()?,
 				);
 				args.reject_rest()?;
 
-				self.store.set_eviction_watermark(Arc::new(FixedWatermark(version)));
+				self.store.set_flush_floor(Arc::new(FixedFloor(version)));
 				writeln!(output, "ok")?;
 			}
 
@@ -496,8 +496,8 @@ impl testscript::runner::Runner for Runner {
 	}
 }
 
-/// Constant eviction cutoff injected by the `watermark` testscript command, letting a script pin W before
-/// issuing `flush`. The store keeps it in a `OnceLock`, so only the first `watermark` per script takes effect.
+/// Constant eviction cutoff injected by the `flush_floor` testscript command, letting a script pin W before
+/// issuing `flush`. The store keeps it in a `OnceLock`, so only the first `flush_floor` per script takes effect.
 pub struct NoWalCheckpoint;
 
 impl WalCheckpoint for NoWalCheckpoint {
@@ -516,10 +516,10 @@ pub fn without_wal(store: StandardMultiStore) -> StandardMultiStore {
 	store
 }
 
-struct FixedWatermark(CommitVersion);
+struct FixedFloor(CommitVersion);
 
-impl EvictionWatermark for FixedWatermark {
-	fn watermark(&self) -> CommitVersion {
+impl FlushFloor for FixedFloor {
+	fn floor(&self) -> CommitVersion {
 		self.0
 	}
 }

@@ -402,7 +402,7 @@ mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		actors::pending::PendingWrite,
-		commit::{tracker::WriteTracker, watermark::ReaderWatermark},
+		commit::{tracker::WriteTracker, position::ReaderPosition},
 		common::{JoinType, TimeDomain},
 		flow::operator::LookupObject,
 		interface::catalog::{flow::FlowEdge, id::TableId},
@@ -475,7 +475,7 @@ mod tests {
 			.expect("compute backfill");
 		drop(snapshot);
 
-		let materialization = FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new());
+		let materialization = FlowMaterialization::new(ReaderPosition::new(), FlowPositionTracker::new());
 		let committer = Committer::new(
 			engine.clone(),
 			FlowPositionTracker::new(),

@@ -43,7 +43,7 @@ pub fn from_bitmask(mask: u32) -> Vec<OperatorCapability> {
 }
 
 #[derive(Debug, Clone)]
-pub struct FlowWatermarkRow {
+pub struct FlowPositionRow {
 	pub flow_id: FlowId,
 
 	pub object_id: ObjectId,
@@ -54,21 +54,21 @@ pub struct FlowWatermarkRow {
 }
 
 #[derive(Clone)]
-pub struct FlowWatermarkSampler {
-	fetch: Arc<dyn Fn() -> Vec<FlowWatermarkRow> + Send + Sync>,
+pub struct FlowPositionSampler {
+	fetch: Arc<dyn Fn() -> Vec<FlowPositionRow> + Send + Sync>,
 }
 
-impl FlowWatermarkSampler {
+impl FlowPositionSampler {
 	pub fn new<F>(fetch: F) -> Self
 	where
-		F: Fn() -> Vec<FlowWatermarkRow> + Send + Sync + 'static,
+		F: Fn() -> Vec<FlowPositionRow> + Send + Sync + 'static,
 	{
 		Self {
 			fetch: Arc::new(fetch),
 		}
 	}
 
-	pub fn all(&self) -> Vec<FlowWatermarkRow> {
+	pub fn all(&self) -> Vec<FlowPositionRow> {
 		(self.fetch)()
 	}
 }

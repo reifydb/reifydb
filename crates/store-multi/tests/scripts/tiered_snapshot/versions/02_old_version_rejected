@@ -6,7 +6,7 @@
 #     (would falsely show a value at a snapshot before it existed)
 
 set k=v3   version=3
-watermark 3
+flush_floor 3
 flush
 ---
 ok

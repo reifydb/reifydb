@@ -14,7 +14,7 @@ use std::{cell::Cell, fmt};
 #[cfg(reifydb_dst)]
 use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{
-	commit::watermark::FlowCaughtUpWatermark, common::CommitVersion,
+	commit::position::FlowCaughtUpPosition, common::CommitVersion,
 	error::diagnostic::subscription::subscription_lagged, interface::catalog::id::SubscriptionId, internal,
 };
 use reifydb_sub_subscription::{store::SubscriptionStore, subsystem::SubscriptionSubsystem};
@@ -79,7 +79,7 @@ struct SettleState {
 	/// Highest committed version, the version flow output has to reach.
 	target: CommitVersion,
 	/// How far every deferred flow has materialized. `None` when no flow subsystem published a
-	/// watermark, in which case there is nothing to wait for.
+	/// position, in which case there is nothing to wait for.
 	flow_caught_up: Option<CommitVersion>,
 	released: CommitVersion,
 	subscription: CommitVersion,
@@ -244,10 +244,10 @@ impl Database {
 		let engine = self.engine();
 		SettleState {
 			actors_pending: self.spawner().system().has_pending(),
-			target: self.watermarks().tx().current().unwrap_or(CommitVersion(0)),
-			flow_caught_up: engine.ioc().try_resolve::<FlowCaughtUpWatermark>().map(|w| w.get()),
+			target: self.progress().tx().current().unwrap_or(CommitVersion(0)),
+			flow_caught_up: engine.ioc().try_resolve::<FlowCaughtUpPosition>().map(|w| w.get()),
 			released: engine.commit_released(),
-			subscription: engine.reader_watermark(),
+			subscription: engine.reader_position(),
 			pending_batches: store.pending_batches(),
 		}
 	}
@@ -281,7 +281,7 @@ impl Database {
 			});
 		};
 		let store = subsystem.store().clone();
-		let target = self.watermarks().tx().current().unwrap_or(CommitVersion(0));
+		let target = self.progress().tx().current().unwrap_or(CommitVersion(0));
 
 		let passes = self.reach(target)?;
 		refuse_lagged(&store)?;
@@ -326,13 +326,13 @@ impl Database {
 		}
 	}
 
-	/// The commit log consumer and the flow actors have their own threads, so only the watermarks matter.
+	/// The commit log consumer and the flow actors have their own threads, so only the positions matter.
 	#[cfg(not(reifydb_dst))]
 	fn reach(&self, target: CommitVersion) -> Result<u32, ValueError> {
-		let watermarks = self.watermarks();
-		let reader = watermarks.reader();
+		let progress = self.progress();
+		let reader = progress.reader();
 
-		if self.engine().ioc().try_resolve::<FlowCaughtUpWatermark>().is_some()
+		if self.engine().ioc().try_resolve::<FlowCaughtUpPosition>().is_some()
 			&& !reader.wait_for_flow_caught_up(target, DEFAULT_WAIT)?
 		{
 			return Err(ValueError(Box::new(internal!(
@@ -537,8 +537,8 @@ mod tests {
 	}
 
 	#[test]
-	fn an_absent_flow_watermark_is_not_treated_as_a_lagging_one() {
-		// Without a flow subsystem nobody publishes the materialization watermark. Reading that
+	fn an_absent_flow_caught_up_is_not_treated_as_a_lagging_one() {
+		// Without a flow subsystem nobody publishes the caught-up position. Reading that
 		// absence as version zero would make the loop wait forever for output that no one is
 		// producing.
 		let mut state = quiescent_state();

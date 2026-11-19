@@ -13,7 +13,7 @@ set k=v5 version=5
 ---
 ok
 
-watermark 2
+flush_floor 2
 flush
 ---
 ok

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::CommitVersion, lifecycle::watermark::CheckpointFloor};
+use reifydb_core::{common::CommitVersion, lifecycle::floor::CheckpointFloor};
 use reifydb_runtime::sync::mutex::Mutex;
 
 use super::{FLOW_A, FLOW_B, flush, store_fixture};

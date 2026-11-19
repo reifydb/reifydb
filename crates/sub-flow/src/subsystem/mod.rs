@@ -29,16 +29,16 @@ use reifydb_core::{
 	commit::{
 		loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 		queue::{CommitQueue, FlowQueueFloor},
-		watermark::{FlowCaughtUpWatermark, ReaderWatermark},
+		position::{FlowCaughtUpPosition, ReaderPosition},
 	},
 	event::operator::OperatorLoadedEvent,
 	interface::{
 		WithEventBus,
 		catalog::config::{ConfigKey, GetConfig},
-		flow::{FlowTickSampler, FlowUnitRow, FlowUnitSampler, FlowWatermarkSampler},
+		flow::{FlowTickSampler, FlowUnitRow, FlowUnitSampler, FlowPositionSampler},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	lifecycle::watermark::ConsumerPositions,
+	lifecycle::floor::ConsumerPositions,
 	marker::LatencyConsumer,
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
@@ -73,7 +73,7 @@ use crate::{
 	progress::{
 		pull_limit::PullLimit,
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
-		watermark::compute_flow_watermarks,
+		position::compute_flow_positions,
 	},
 	subsystem::shutdown::FlowShutdownState,
 };
@@ -116,7 +116,7 @@ impl FlowSubsystem {
 
 		let flow_scope = spawner.scope();
 
-		let polled_through = ReaderWatermark::default();
+		let polled_through = ReaderPosition::default();
 		let materialization = FlowMaterialization::new(polled_through.clone(), flow_tracker.clone());
 		let markers = ioc.try_resolve::<LatencyConsumer>().map(|_| MarkerPlane::register(ioc));
 		let committer = Committer::new(
@@ -195,13 +195,13 @@ impl FlowSubsystem {
 			}),
 		);
 
-		Self::register_watermark_sampler(ioc, &engine, &object_tracker, &flow_tracker, &materialization);
+		Self::register_position_sampler(ioc, &engine, &object_tracker, &flow_tracker, &materialization);
 		Self::register_unit_sampler(ioc, &flow_tracker);
 		Self::register_tick_sampler(ioc, &flow_tracker);
 
 		let poisoned_engine = engine.clone();
 		let stalled_health = health.clone();
-		ioc.register_service::<FlowCaughtUpWatermark>(FlowCaughtUpWatermark::new(
+		ioc.register_service::<FlowCaughtUpPosition>(FlowCaughtUpPosition::new(
 			move || materialization.caught_up(),
 			move || stored_poisoned(&poisoned_engine),
 			move || stalled_health.stalled(),
@@ -303,20 +303,20 @@ impl FlowSubsystem {
 	}
 
 	#[inline]
-	fn register_watermark_sampler(
+	fn register_position_sampler(
 		ioc: &IocContainer,
 		engine: &StandardEngine,
 		object_tracker: &ObjectVersionTracker,
 		flow_tracker: &FlowPositionTracker,
 		materialization: &FlowMaterialization,
 	) {
-		ioc.register_service::<FlowWatermarkSampler>(FlowWatermarkSampler::new({
+		ioc.register_service::<FlowPositionSampler>(FlowPositionSampler::new({
 			let engine = engine.clone();
 			let tracker = object_tracker.clone();
 			let flow_tracker = flow_tracker.clone();
 			let materialization = materialization.clone();
 			move || {
-				compute_flow_watermarks(&tracker, &flow_tracker, || {
+				compute_flow_positions(&tracker, &flow_tracker, || {
 					engine.done_until().max(materialization.materialized_through())
 				})
 			}

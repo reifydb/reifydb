@@ -466,8 +466,8 @@ fn lookup_identity(db: &TestDb, name: &str) -> IdentityId {
 }
 
 fn drain_live(db: &TestDb, sub_id: SubscriptionId) -> Vec<StagedBatch> {
-	let target = db.watermarks().tx().current().expect("current version");
-	let caught_up = db.watermarks().reader().wait_for_subscription(target, Duration::from_seconds(10).unwrap());
+	let target = db.progress().tx().current().expect("current version");
+	let caught_up = db.progress().reader().wait_for_subscription(target, Duration::from_seconds(10).unwrap());
 	assert!(caught_up, "commit log consumer did not reach {:?}", target);
 	let subsystem = db.subsystem::<SubscriptionSubsystem>().expect("subscription subsystem present");
 	subsystem.store().drain(&sub_id, usize::MAX)

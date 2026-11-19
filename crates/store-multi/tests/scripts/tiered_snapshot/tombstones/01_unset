@@ -6,7 +6,7 @@
 #   - tombstone not persisted as the latest-<=W value (persistent reports stale "alive")
 #   - cascade resurrecting a deleted key from an evicted pre-delete version
 
-watermark 2
+flush_floor 2
 ---
 ok
 

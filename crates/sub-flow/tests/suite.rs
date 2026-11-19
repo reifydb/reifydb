@@ -37,8 +37,8 @@ mod flow_isolation;
 mod flow_materialization;
 #[path = "flow_routing.rs"]
 mod flow_routing;
-#[path = "flow_watermark.rs"]
-mod flow_watermark;
+#[path = "flow_caught_up.rs"]
+mod flow_caught_up;
 #[path = "output_watermark_propagation.rs"]
 mod output_watermark_propagation;
 #[path = "output_watermark_shutdown.rs"]

@@ -66,7 +66,7 @@ use crate::{
 	health::{ComponentHealth, HealthMonitor},
 	session::Session,
 	subsystem::Subsystems,
-	watermarks::Watermarks,
+	progress::Progress,
 };
 
 #[cfg(feature = "sub_flow")]
@@ -166,8 +166,8 @@ impl Database {
 		self.engine.catalog()
 	}
 
-	pub fn watermarks(&self) -> Watermarks<'_> {
-		Watermarks::new(self)
+	pub fn watermarks(&self) -> Progress<'_> {
+		Progress::new(self)
 	}
 
 	/// `None` unless an actor for `M` was registered during engine construction.
@@ -320,7 +320,7 @@ impl Database {
 		let mut plateaued = 0u32;
 		loop {
 			let producer = self.engine.commit_released().0;
-			let consumer = self.engine.reader_watermark().0;
+			let consumer = self.engine.reader_position().0;
 
 			if consumer >= producer && producer == last_producer {
 				caught_up += 1;

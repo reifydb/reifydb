@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Flush+evict (RAM-bounding) behaviour through the full StandardMultiStore: at watermark W the sweep
+//! Flush+evict (RAM-bounding) behaviour through the full StandardMultiStore: at flush floor W the sweep
 //! persists the latest-<=W value of persistent objects and drops all <=W versions from the commit tier,
 //! so snapshots older than W are deliberately not preserved.
 
@@ -17,7 +17,7 @@ use reifydb_core::{
 		store::{EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet},
 	},
 	key::{any::TaggedKey, row::RowKey},
-	lifecycle::watermark::EvictionWatermark,
+	lifecycle::floor::FlushFloor,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -47,7 +47,7 @@ fn store_with_persistent() -> (StandardMultiStore, impl Drop) {
 }
 
 fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
-	// The flush engine is wired so a set watermark plus flush_pending_blocking drives the genuine sweep.
+	// The flush engine is wired so a set flush floor plus flush_pending_blocking drives the genuine sweep.
 	let pools = Pools::new(PoolConfig::default());
 	let clock = Clock::Real;
 	let actor_system = ActorSystem::new(pools, clock.clone());
@@ -136,7 +136,7 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 	if !persistent_object {
 		store.set_row_settings_provider(Arc::new(NonePersistent));
 	}
-	store.set_eviction_watermark(Arc::new(StaticWatermark(cutoff)));
+	store.set_flush_floor(Arc::new(StaticFloor(cutoff)));
 	store.flush_pending_blocking();
 }
 
@@ -300,9 +300,9 @@ fn versions_above_w_are_left_entirely_resident() {
 	);
 }
 
-struct StaticWatermark(CommitVersion);
-impl EvictionWatermark for StaticWatermark {
-	fn watermark(&self) -> CommitVersion {
+struct StaticFloor(CommitVersion);
+impl FlushFloor for StaticFloor {
+	fn floor(&self) -> CommitVersion {
 		self.0
 	}
 }
@@ -324,7 +324,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
-	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(2))));
+	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(2))));
 
 	commit(&store, &k, 1, "v1");
 	commit(&store, &k, 2, "v2");
@@ -372,7 +372,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	assert_eq!(
 		get(&store, &k, 2).as_deref(),
 		Some(b"v2".as_slice()),
-		"a read at the eviction watermark must resolve to the latest-<=W value from persistent, not NotFound"
+		"a read at the flush floor must resolve to the latest-<=W value from persistent, not NotFound"
 	);
 }
 
@@ -385,7 +385,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
-	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(2))));
+	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(2))));
 
 	commit(&store, &k, 1, "v1");
 	commit(&store, &k, 2, "v2");
@@ -437,7 +437,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
-	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(2))));
+	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(2))));
 
 	commit(&store, &k, 1, "v1");
 	commit(&store, &k, 2, "v2");

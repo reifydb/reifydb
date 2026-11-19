@@ -2,12 +2,12 @@
 # This file is licensed under the Apache-2.0, see license.md file
 
 # Defect targets (coupled-flush model):
-#   - a repeated sweep at the same watermark mutating persistent a second time
+#   - a repeated sweep at the same flush floor mutating persistent a second time
 #   - panic / error when a sweep finds nothing left to evict below W
 #   - re-persisting a value the previous sweep already evicted from the commit tier
 
 set k=1   version=1
-watermark 1
+flush_floor 1
 flush
 flush
 flush

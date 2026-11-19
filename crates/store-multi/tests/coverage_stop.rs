@@ -19,7 +19,7 @@ use reifydb_core::{
 		store::{EntryKind, EntryLayout, MultiVersionCommit},
 	},
 	key::{any::TaggedKey, row::RowKey},
-	lifecycle::watermark::EvictionWatermark,
+	lifecycle::floor::FlushFloor,
 };
 use reifydb_runtime::{
 	context::{RuntimeContext, transaction::TransactionContext},
@@ -44,10 +44,10 @@ const CHUNK: u64 = 32;
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
-struct StaticWatermark(CommitVersion);
+struct StaticFloor(CommitVersion);
 
-impl EvictionWatermark for StaticWatermark {
-	fn watermark(&self) -> CommitVersion {
+impl FlushFloor for StaticFloor {
+	fn floor(&self) -> CommitVersion {
 		self.0
 	}
 }
@@ -73,7 +73,7 @@ fn commit_set(store: &StandardMultiStore, row: u64, version: u64) {
 /// Drives the real flush engine so the rows leave the commit buffer and only the persistent tier still
 /// answers for them; a scan that never reaches persistent proves nothing about what persistent claimed.
 fn flush(store: &StandardMultiStore, cutoff: u64) {
-	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(cutoff))));
+	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(cutoff))));
 	store.flush_pending_blocking();
 }
 

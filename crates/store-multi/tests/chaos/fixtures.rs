@@ -8,7 +8,7 @@ use std::sync::Arc;
 use reifydb_codec::row::bytes::{EncodedBytes, SHAPE_HEADER_SIZE};
 use reifydb_core::{
 	common::CommitVersion, event::EventBus, interface::store::WalCheckpoint,
-	lifecycle::watermark::EvictionWatermark,
+	lifecycle::floor::FlushFloor,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -76,16 +76,16 @@ pub fn tiny_tiers(kib: u64) -> (MultiPointConfig, MultiRangeConfig) {
 	)
 }
 
-struct FixedWatermark(CommitVersion);
+struct FixedFloor(CommitVersion);
 
-impl EvictionWatermark for FixedWatermark {
-	fn watermark(&self) -> CommitVersion {
+impl FlushFloor for FixedFloor {
+	fn floor(&self) -> CommitVersion {
 		self.0
 	}
 }
 
 pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-	store.set_eviction_watermark(Arc::new(FixedWatermark(cutoff)));
+	store.set_flush_floor(Arc::new(FixedFloor(cutoff)));
 	store.flush_pending_blocking();
 }
 

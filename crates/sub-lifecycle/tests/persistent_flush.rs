@@ -23,7 +23,7 @@ use reifydb_core::{
 		store::{MultiVersionCommit, WalCheckpoint},
 	},
 	key::queue::QueueDeduplicationKey,
-	lifecycle::{progress::Progress, task::LifecycleTask, watermark::EvictionWatermark},
+	lifecycle::{progress::Progress, task::LifecycleTask, floor::FlushFloor},
 };
 use reifydb_runtime::{context::clock::Clock, version_epoch::VersionEpoch};
 use reifydb_store_multi::{
@@ -72,10 +72,10 @@ impl FloorSource for Unpinned {
 	}
 }
 
-struct StaticWatermark(CommitVersion);
+struct StaticFloor(CommitVersion);
 
-impl EvictionWatermark for StaticWatermark {
-	fn watermark(&self) -> CommitVersion {
+impl FlushFloor for StaticFloor {
+	fn floor(&self) -> CommitVersion {
 		self.0
 	}
 }
@@ -121,7 +121,7 @@ fn seeded_task(store: &StandardMultiStore, budget: u64) -> PersistentFlushTask {
 		)
 		.unwrap();
 	}
-	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(u64::MAX))));
+	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(u64::MAX))));
 	store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
 
 	let plane = RetentionPlane::new(Arc::new(Unpinned), VersionEpoch::new());

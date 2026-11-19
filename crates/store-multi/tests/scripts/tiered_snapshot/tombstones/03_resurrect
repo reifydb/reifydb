@@ -10,13 +10,13 @@
 
 set k=A     version=1
 remove_with_pre k=A   version=2
-watermark 2
+flush_floor 2
 flush
 ---
 ok
 ok
 
-# Resurrect ABOVE the watermark: v3 stays resident in the commit tier (v3 > W=2).
+# Resurrect ABOVE the floor: v3 stays resident in the commit tier (v3 > W=2).
 set k=B     version=3
 ---
 ok

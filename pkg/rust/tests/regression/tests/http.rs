@@ -77,7 +77,7 @@ impl testscript::runner::Runner for HttpRunner {
 			}
 			"await" => {
 				let instance = self.instance.as_ref().ok_or("No instance available")?;
-				let watermarks = instance.watermarks();
+				let progress = instance.progress();
 				let target = watermarks.tx().current()?;
 				if !watermarks.reader().wait_for_flow_caught_up(
 					target,

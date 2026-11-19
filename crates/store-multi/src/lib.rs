@@ -195,9 +195,9 @@ impl MultiStore {
 		}
 	}
 
-	pub fn clear_eviction_watermark(&self) {
+	pub fn clear_flush_floor(&self) {
 		match self {
-			MultiStore::Standard(store) => store.clear_eviction_watermark(),
+			MultiStore::Standard(store) => store.clear_flush_floor(),
 		}
 	}
 }

@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},
-		watermark::ConsumerPositions,
+		floor::ConsumerPositions,
 	},
 };
 use reifydb_engine::engine::StandardEngine;

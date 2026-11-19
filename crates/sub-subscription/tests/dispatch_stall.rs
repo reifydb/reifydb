@@ -188,7 +188,7 @@ fn run_stall_child() -> ! {
 	let held = subscribe(&db, "from app::t filter { latch::pass(v) > 0 }");
 	latch.closed.store(true, Ordering::Release);
 	db.command("INSERT app::t [{id: 1, v: 10}]");
-	let insert_version = db.watermarks().tx().current().expect("current version");
+	let insert_version = db.progress().tx().current().expect("current version");
 	entered_rx
 		.recv_timeout(Duration::from_seconds(10).unwrap().to_std())
 		.expect("the held worker must reach the latch while evaluating the insert");

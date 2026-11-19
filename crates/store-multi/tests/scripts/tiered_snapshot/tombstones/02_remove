@@ -6,7 +6,7 @@
 #     must persist as None when it is the latest-<=W value)
 #   - Remove tombstones not persisted, leaving a stale live value behind
 
-watermark 2
+flush_floor 2
 ---
 ok
 

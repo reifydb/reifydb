@@ -19,7 +19,7 @@ use reifydb_core::{
 		store::MultiVersionCommit,
 	},
 	key::{any::TaggedKey, queue::QueueDeduplicationKey, row::RowKey},
-	lifecycle::watermark::EvictionWatermark,
+	lifecycle::floor::FlushFloor,
 };
 use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::MultiVersionScope;
@@ -60,16 +60,16 @@ fn commit(store: &StandardMultiStore, n: u64, version: u64, value: &str) {
 	.unwrap();
 }
 
-struct FixedWatermark(CommitVersion);
+struct FixedFloor(CommitVersion);
 
-impl EvictionWatermark for FixedWatermark {
-	fn watermark(&self) -> CommitVersion {
+impl FlushFloor for FixedFloor {
+	fn floor(&self) -> CommitVersion {
 		self.0
 	}
 }
 
 fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-	store.set_eviction_watermark(Arc::new(FixedWatermark(cutoff)));
+	store.set_flush_floor(Arc::new(FixedFloor(cutoff)));
 	store.flush_pending_blocking();
 }
 

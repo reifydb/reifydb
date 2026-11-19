@@ -11,9 +11,9 @@ persistent_get k version=1
 ---
 "k" => None
 
-# Pin the eviction watermark at W=1. v1 <= W, so the coupled sweep both persists
+# Pin the flush floor at W=1. v1 <= W, so the coupled sweep both persists
 # the latest-<=W value AND evicts it from the commit tier.
-watermark 1
+flush_floor 1
 flush
 ---
 ok

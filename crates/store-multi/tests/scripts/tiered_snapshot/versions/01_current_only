@@ -10,7 +10,7 @@
 set k=A   version=1
 set k=B   version=2
 set k=C   version=3
-watermark 3
+flush_floor 3
 flush
 ---
 ok
@@ -27,7 +27,7 @@ buffer_get k version=3
 ---
 "k" => None
 
-# Reads at the watermark resolve to the persisted latest value from persistent.
+# Reads at the flush floor resolve to the persisted latest value from persistent.
 get k version=3
 ---
 "k" => "C"
