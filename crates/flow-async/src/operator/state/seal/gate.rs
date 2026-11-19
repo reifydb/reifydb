@@ -172,7 +172,7 @@ mod tests {
 
 	#[test]
 	fn an_index_that_empties_disarms_without_arming_anything_new() {
-		// A hand-rolled `horizon + span` would miss the seal step and orphan the entry arming wrote.
+		// A hand-rolled `anchor_order + span` would miss the seal step and orphan the entry arming wrote.
 		let mut store = MockStore::recording_timers();
 
 		rearm_seal(&mut store, rule(), &key(), None, Some(order(5_000))).unwrap();

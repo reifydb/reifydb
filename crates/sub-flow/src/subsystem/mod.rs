@@ -29,7 +29,7 @@ use reifydb_core::{
 	commit::{
 		loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 		position::{FlowCaughtUpPosition, ReaderPosition},
-		queue::{CommitQueue, FlowQueueFloor},
+		queue::{CommitQueue, FlowQueuePosition},
 	},
 	event::operator::OperatorLoadedEvent,
 	interface::{
@@ -148,8 +148,8 @@ impl FlowSubsystem {
 		let view_lineage = engine.view_lineage();
 
 		let queue = ioc.resolve::<CommitQueue>().expect("CommitQueue must be registered");
-		let FlowQueueFloor(queue_floor) =
-			ioc.resolve::<FlowQueueFloor>().expect("FlowQueueFloor must be registered");
+		let FlowQueuePosition(queue_position) =
+			ioc.resolve::<FlowQueuePosition>().expect("FlowQueuePosition must be registered");
 		let loader_metrics = CommitLoaderMetrics::default();
 		metrics_registry.register_collector(Arc::new(loader_metrics.clone()));
 		metrics_registry.register_collector(Arc::new(health.clone()));
@@ -170,10 +170,10 @@ impl FlowSubsystem {
 				committers: committer_refs,
 				terminal_committers: terminal_committer_refs,
 				queue: queue.clone(),
-				queue_floor,
+				queue_position,
 				loader: loader_handle.actor_ref().clone(),
 				log: flow_wal.log.clone(),
-				floor: flow_wal.floor.clone(),
+				log_floor: flow_wal.floor.clone(),
 				control,
 				polled_through: polled_through.clone(),
 				view_lineage: view_lineage.clone(),

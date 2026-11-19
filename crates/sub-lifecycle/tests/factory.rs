@@ -169,7 +169,7 @@ fn tasks_registered_by_other_crates_are_adopted_by_the_plane() {
 
 #[test]
 fn every_registered_class_has_a_distinct_name() {
-	// Names identify a class in the boot report, in metrics and in a stuck-horizon alarm, so a duplicate makes
+	// Names identify a class in the boot report, in metrics and in a stuck-floor alarm, so a duplicate makes
 	// one class invisible exactly when you are trying to find which one stopped.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();

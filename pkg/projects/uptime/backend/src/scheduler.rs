@@ -210,7 +210,8 @@ mod tests {
 
 	#[test]
 	fn a_directly_written_one_nanosecond_interval_is_held_to_five_seconds() {
-		// A direct write skips the RQL interval check; without the floor a 1ns monitor is enqueued every tick.
+		// A direct write skips the RQL interval check; without the minimum a 1ns monitor is enqueued every
+		// tick.
 		let mut m = monitor(60, None);
 		m.interval = Duration::from_nanoseconds(1).unwrap();
 		let monitors = HashMap::from([(m.id, m.clone())]);

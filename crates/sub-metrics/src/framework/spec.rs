@@ -618,7 +618,7 @@ impl MetricsDomain {
 					level("coverage", ValueType::Duration),
 					level("guaranteed_coverage", ValueType::Duration),
 					counter("pruned", ValueType::Uint8),
-					counter("floor_none_returns", ValueType::Uint8),
+					counter("unresolved_lookups", ValueType::Uint8),
 				],
 				has_total: true,
 			},

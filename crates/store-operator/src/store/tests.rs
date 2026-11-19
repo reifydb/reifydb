@@ -431,25 +431,25 @@ fn a_flush_between_the_two_tier_reads_cannot_hide_a_buffered_checkpoint_delete()
 }
 
 #[test]
-fn a_flush_between_the_two_tier_reads_cannot_raise_the_floor_over_a_buffered_checkpoint() {
+fn a_flush_between_the_two_tier_reads_cannot_raise_the_lowest_checkpoint_over_a_buffered_checkpoint() {
 	let (store, _guard) = store_fixture();
 
 	store.checkpoint_set(FLOW_A, checkpoint_at(100)).unwrap();
 	flush(&store);
 	assert_eq!(
-		store.checkpoint_floor().unwrap(),
+		store.lowest_checkpoint().unwrap(),
 		Some(CommitVersion(100)),
-		"the durable checkpoint sets the floor"
+		"the durable checkpoint sets the lowest checkpoint"
 	);
 
 	store.checkpoint_set(FLOW_B, checkpoint_at(50)).unwrap();
 	store.attach_checkpoint_interlock(flush_once_interlock());
 
 	assert_eq!(
-		store.checkpoint_floor().unwrap(),
+		store.lowest_checkpoint().unwrap(),
 		Some(CommitVersion(50)),
 		"the lower checkpoint is buffered and the interlock flushes it mid-merge; reading the persistent \
-		 tier first would miss it in both reads and leave the floor at 100, over a checkpoint at 50"
+		 tier first would miss it in both reads and leave the lowest checkpoint at 100, over a checkpoint at 50"
 	);
 }
 
@@ -464,10 +464,10 @@ fn a_checkpoint_merge_without_an_interlock_is_unaffected() {
 
 	assert_eq!(store.checkpoint_list().unwrap(), vec![FLOW_B], "a buffered delete must mask the durable row");
 	assert_eq!(
-		store.checkpoint_floor().unwrap(),
+		store.lowest_checkpoint().unwrap(),
 		Some(CommitVersion(10)),
-		"the floor must hold at the durable version of a flow whose delete is still buffered, because a \
-		 crash loses the buffer and sends that flow back to 10; raising the floor to 20 would let gc \
+		"the lowest checkpoint must hold at the durable version of a flow whose delete is still buffered, because a \
+		 crash loses the buffer and sends that flow back to 10; raising the lowest checkpoint to 20 would let gc \
 		 collect the versions the restart needs"
 	);
 }

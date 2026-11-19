@@ -45,7 +45,7 @@ fn a_window_cannot_seal_ahead_of_the_slowest_source_feeding_it() {
 	db.command(r#"INSERT app::fast [{ id: 1, g: 1, v: 5, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_row_count("FROM app::w FILTER { total == 5 }", 1, TIMEOUT);
 
-	// app::fast runs past bucket 0's horizon, but min(10s, 0) is still 0, so nothing may seal.
+	// app::fast runs past bucket 0's seal instant, but min(10s, 0) is still 0, so nothing may seal.
 	db.command(r#"INSERT app::fast [{ id: 2, g: 1, v: 7, ts: "2026-01-01T00:00:10Z" }]"#);
 	db.await_row_count("FROM app::w FILTER { total == 7 }", 1, TIMEOUT);
 
@@ -70,7 +70,7 @@ fn a_window_cannot_seal_ahead_of_the_slowest_source_feeding_it() {
 	assert_eq!(
 		sealed,
 		1,
-		"bucket 0 must seal once every source has passed its horizon, refusing the 1000 instead of \
+		"bucket 0 must seal once every source has passed its seal instant, refusing the 1000 instead of \
 		 folding it in; view now: {:?}",
 		db.query_as_root("FROM app::w", ())
 	);
@@ -103,7 +103,7 @@ fn a_source_that_never_reports_holds_every_window_open() {
 }
 
 /// One table feeding a tumbling window, with the lateness left to the caller so a corpus can be run
-/// either entirely inside the windows' horizons or past them.
+/// either entirely inside the windows' seal spans or past them.
 fn ordering_pair(lateness: &str) -> (TestDb, TestDb) {
 	let pair = (setup(), setup());
 	for db in [&pair.0, &pair.1] {
@@ -138,7 +138,7 @@ fn view_rows(db: &TestDb) -> Vec<reifydb::Frame> {
 fn two_arrival_orders_of_the_same_corpus_produce_the_same_open_windows() {
 	// Bucketing, grouping, aggregation and the #time stamp must be pure functions of the data, so
 	// a different arrival order lands the same windows with the same stamps. The 10s lateness holds
-	// every horizon open, so admission cannot depend on order either.
+	// every window open, so admission cannot depend on order either.
 	let (forward, reverse) = ordering_pair("10s");
 
 	for row in ORDERING_CORPUS {
@@ -206,7 +206,7 @@ fn a_transaction_is_one_arrival_so_no_row_in_it_is_late_against_its_own_siblings
 #[test]
 fn whether_a_sealed_bucket_was_published_at_all_depends_on_arrival_order() {
 	// A sealed window keeps the aggregate it already published, so whether a bucket was published
-	// before its horizon passed follows the commit log. Determinism is per-log: a different commit
+	// before its seal instant passed follows the commit log. Determinism is per-log: a different commit
 	// order is a different input, and only late data makes that difference visible.
 	let (forward, reverse) = ordering_pair("0s");
 
@@ -222,7 +222,7 @@ fn whether_a_sealed_bucket_was_published_at_all_depends_on_arrival_order() {
 	assert_eq!(
 		forward.await_exact_row_count("FROM app::w FILTER { total == 7 }", 1, TIMEOUT),
 		1,
-		"forward admitted bucket 0 before its 1.001s horizon, so its sealed window must still hold 7; \
+		"forward admitted bucket 0 before its 1.001s seal instant, so its sealed window must still hold 7; \
 		 view now: {:?}",
 		timed_rows(&view_rows(&forward))
 	);

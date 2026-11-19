@@ -44,23 +44,23 @@ struct QueueInner {
 	entries: BTreeMap<CommitVersion, (u64, Arc<CommitEntry>)>,
 	bytes: u64,
 	cover_from: CommitVersion,
-	floor_from: CommitVersion,
+	freed_through: CommitVersion,
 	released: CommitVersion,
 	released_lsn: Lsn,
-	floors: BTreeMap<u64, CommitVersion>,
+	positions: BTreeMap<u64, CommitVersion>,
 }
 
 type Waker = Box<dyn Fn() + Send + Sync>;
 
-struct FloorWaker {
+struct PositionWaker {
 	armed: AtomicBool,
 	wake: Option<Waker>,
 }
 
 pub(crate) struct QueueShared {
 	inner: RwLock<QueueInner>,
-	wakers: RwLock<BTreeMap<u64, FloorWaker>>,
-	next_floor: AtomicU64,
+	wakers: RwLock<BTreeMap<u64, PositionWaker>>,
+	next_position: AtomicU64,
 	limit: u64,
 	wal_enabled: bool,
 	released_through: AtomicU64,
@@ -87,13 +87,13 @@ impl CommitQueue {
 					entries: BTreeMap::new(),
 					bytes: 0,
 					cover_from: seed,
-					floor_from: seed,
+					freed_through: seed,
 					released: seed,
 					released_lsn: Lsn::new(0),
-					floors: BTreeMap::new(),
+					positions: BTreeMap::new(),
 				}),
 				wakers: RwLock::new(BTreeMap::new()),
-				next_floor: AtomicU64::new(0),
+				next_position: AtomicU64::new(0),
 				limit: limit.as_bytes().max(1),
 				wal_enabled,
 				released_through: AtomicU64::new(seed.0),
@@ -131,22 +131,22 @@ impl CommitQueue {
 		inner.bytes += bytes;
 	}
 
-	pub fn floor(&self, name: &str) -> CommitQueueFloor {
-		let id = self.shared.next_floor.fetch_add(1, Ordering::Relaxed);
+	pub fn position(&self, name: &str) -> CommitQueuePosition {
+		let id = self.shared.next_position.fetch_add(1, Ordering::Relaxed);
 		{
 			let mut inner = self.shared.inner.write();
 			let held = inner.released;
-			inner.floors.insert(id, held);
+			inner.positions.insert(id, held);
 		}
 		self.shared.wakers.write().insert(
 			id,
-			FloorWaker {
+			PositionWaker {
 				armed: AtomicBool::new(false),
 				wake: None,
 			},
 		);
-		CommitQueueFloor {
-			handle: Arc::new(FloorHandle {
+		CommitQueuePosition {
+			handle: Arc::new(PositionHandle {
 				queue: self.clone(),
 				id,
 				name: name.to_string(),
@@ -166,12 +166,12 @@ impl CommitQueue {
 		}
 	}
 
-	fn free_below_floors(&self, inner: &mut QueueInner) -> FreedEntries {
-		let floor = inner.floors.values().min().copied().unwrap_or(inner.released).min(inner.released);
-		let kept = inner.entries.split_off(&next_version(floor));
+	fn free_through_positions(&self, inner: &mut QueueInner) -> FreedEntries {
+		let lowest = inner.positions.values().min().copied().unwrap_or(inner.released).min(inner.released);
+		let kept = inner.entries.split_off(&next_version(lowest));
 		let freed = replace(&mut inner.entries, kept);
-		inner.cover_from = inner.cover_from.max(floor);
-		inner.floor_from = inner.floor_from.max(floor);
+		inner.cover_from = inner.cover_from.max(lowest);
+		inner.freed_through = inner.freed_through.max(lowest);
 		self.shared.evicted_floor.fetch_add(freed.len() as u64, Ordering::Relaxed);
 		if freed.len() < FREE_INLINE_ENTRIES {
 			inner.bytes -= freed.values().map(|(bytes, _)| bytes).sum::<u64>();
@@ -255,7 +255,7 @@ impl CommitQueue {
 		if released {
 			self.shared.tracker.release(inner.released);
 			self.shared.released_through.store(inner.released.0, Ordering::Release);
-			let freed = self.free_below_floors(&mut inner);
+			let freed = self.free_through_positions(&mut inner);
 			self.enforce_cap(&mut inner);
 			drop(inner);
 			self.release_freed(freed);
@@ -323,43 +323,43 @@ impl CommitQueue {
 	}
 }
 
-struct FloorHandle {
+struct PositionHandle {
 	queue: CommitQueue,
 	id: u64,
 	name: String,
 }
 
-impl Drop for FloorHandle {
+impl Drop for PositionHandle {
 	fn drop(&mut self) {
 		self.queue.shared.wakers.write().remove(&self.id);
 		let mut inner = self.queue.shared.inner.write();
-		inner.floors.remove(&self.id);
-		let freed = self.queue.free_below_floors(&mut inner);
+		inner.positions.remove(&self.id);
+		let freed = self.queue.free_through_positions(&mut inner);
 		drop(inner);
 		self.queue.release_freed(freed);
 	}
 }
 
 #[derive(Clone)]
-pub struct CommitQueueFloor {
-	handle: Arc<FloorHandle>,
+pub struct CommitQueuePosition {
+	handle: Arc<PositionHandle>,
 }
 
-impl CommitQueueFloor {
+impl CommitQueuePosition {
 	pub fn adopt(&self, start: CommitVersion, waker: impl Fn() + Send + Sync + 'static) {
 		let handle = &self.handle;
 		let shared = &handle.queue.shared;
 		{
 			let mut inner = shared.inner.write();
-			if start < inner.floor_from {
+			if start < inner.freed_through {
 				panic!(
-					"commit queue floor {} adopted at version {} but the floors already let go of commits \
-					 through {}, so the commits between were freed before their reader took this floor",
-					handle.name, start.0, inner.floor_from.0
+					"commit queue position {} adopted at version {} but the positions already let go of commits \
+					 through {}, so the commits between were freed before their reader took this position",
+					handle.name, start.0, inner.freed_through.0
 				);
 			}
-			inner.floors.insert(handle.id, start);
-			let freed = handle.queue.free_below_floors(&mut inner);
+			inner.positions.insert(handle.id, start);
+			let freed = handle.queue.free_through_positions(&mut inner);
 			drop(inner);
 			handle.queue.release_freed(freed);
 		}
@@ -372,14 +372,14 @@ impl CommitQueueFloor {
 		let handle = &self.handle;
 		let mut inner = handle.queue.shared.inner.write();
 		let target = version.min(inner.released);
-		let Some(held) = inner.floors.get_mut(&handle.id) else {
+		let Some(held) = inner.positions.get_mut(&handle.id) else {
 			return;
 		};
 		if target <= *held {
 			return;
 		}
 		*held = target;
-		let freed = handle.queue.free_below_floors(&mut inner);
+		let freed = handle.queue.free_through_positions(&mut inner);
 		drop(inner);
 		handle.queue.release_freed(freed);
 	}
@@ -392,10 +392,10 @@ impl CommitQueueFloor {
 }
 
 #[derive(Clone)]
-pub struct FlowQueueFloor(pub CommitQueueFloor);
+pub struct FlowQueuePosition(pub CommitQueuePosition);
 
 #[derive(Clone)]
-pub struct SubscriptionQueueFloor(pub CommitQueueFloor);
+pub struct SubscriptionQueuePosition(pub CommitQueuePosition);
 
 pub fn lsn_through(
 	entries: &[Arc<CommitEntry>],

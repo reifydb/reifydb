@@ -59,7 +59,7 @@ impl SourceWatermarks {
 			assert!(
 				!sources.is_empty(),
 				"a flow watermark was read with no sources; the min-merge over nothing would \
-				 pin the watermark at zero and hold every horizon open, so the caller failed \
+				 pin the watermark at zero and hold every window open, so the caller failed \
 				 to wire the flow's source list"
 			);
 		}
@@ -84,7 +84,7 @@ impl SourceWatermarks {
 				sources = sources.len(),
 				pinned_by = ?pinning,
 				"flow watermark merged to the epoch while other sources have advanced; the min-merge \
-				 holds every horizon open until each listed source reports, so no window can seal"
+				 holds every window open until each listed source reports, so no window can seal"
 			);
 		}
 		Ok(DateTime::from_millis(merged))

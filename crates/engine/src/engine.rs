@@ -660,7 +660,7 @@ impl StandardEngine {
 		let mut query = self.begin_query(IdentityId::system())?;
 		let flows = self.catalog().list_flow_dags_asc(&mut Transaction::Query(&mut query))?;
 		let operators = self.operator_state();
-		let mut floor = None;
+		let mut version_floor = None;
 		for flow in flows {
 			let has_lookup = flow.get_operator_ids().any(|id| {
 				flow.get_operator(&id).is_some_and(|node| matches!(node.ty, OperatorDef::Lookup { .. }))
@@ -670,10 +670,11 @@ impl StandardEngine {
 			}
 			let saved = operators.checkpoint_get(flow.id)?.map(|checkpoint| checkpoint.version);
 			if let Some(saved) = saved.filter(|saved| *saved > CommitVersion::BEFORE_FIRST) {
-				floor = Some(floor.map_or(saved, |held: CommitVersion| held.min(saved)));
+				version_floor =
+					Some(version_floor.map_or(saved, |held: CommitVersion| held.min(saved)));
 			}
 		}
-		Ok(floor)
+		Ok(version_floor)
 	}
 
 	pub fn operator_state(&self) -> OperatorStore {

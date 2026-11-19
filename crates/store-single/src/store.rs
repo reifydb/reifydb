@@ -719,7 +719,8 @@ mod tests {
 
 	#[test]
 	fn a_flush_that_cannot_persist_never_moves_the_commit_log_floor() {
-		// A floor moved before sqlite holds the rows lets gc drop the only durable copy, so a crash loses them.
+		// A log floor moved before sqlite holds the rows lets gc drop the only durable copy, so a crash loses
+		// them.
 		let wal = Arc::new(RecordingWal {
 			calls: Mutex::new(Vec::new()),
 		});
@@ -742,7 +743,7 @@ mod tests {
 		assert_eq!(
 			*wal.calls.lock(),
 			vec![("make_durable", 4)],
-			"the log must be made durable but its floor must stay put while sqlite has not saved lsn 4"
+			"the log must be made durable but its log floor must stay put while sqlite has not saved lsn 4"
 		);
 	}
 
@@ -791,7 +792,8 @@ mod tests {
 
 	#[test]
 	fn a_held_commit_guard_keeps_a_quiet_flush_from_advancing() {
-		// A floor moved past a commit still between its log append and the dirty map lets gc drop that record.
+		// A log floor moved past a commit still between its log append and the dirty map lets gc drop that
+		// record.
 		let wal = DurableHeadWal::at(7);
 		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn WalFloorCheckpoint>);
 
@@ -800,7 +802,7 @@ mod tests {
 
 		assert!(
 			wal.saved.lock().is_empty(),
-			"a quiet flush must not move the single floor while a commit is in flight, otherwise gc drops a \
+			"a quiet flush must not move the single log floor while a commit is in flight, otherwise gc drops a \
 			 record the store never saved"
 		);
 	}
@@ -817,21 +819,21 @@ mod tests {
 
 		assert!(
 			wal.saved.lock().is_empty(),
-			"the commit that started while the head was read must keep the floor put, otherwise the floor \
+			"the commit that started while the head was read must keep the log floor put, otherwise the log floor \
 			 passes lsn 8 before the store holds it"
 		);
 	}
 
 	#[test]
 	fn a_dropped_guard_lets_the_next_quiet_flush_advance() {
-		// A guard that never releases its count pins the single floor forever, so gc never drops a segment
+		// A guard that never releases its count pins the single log floor forever, so gc never drops a segment
 		// again.
 		let wal = DurableHeadWal::at(7);
 		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn WalFloorCheckpoint>);
 
 		let held = store.begin_commit();
 		assert!(store.flush_pending_blocking());
-		assert!(wal.saved.lock().is_empty(), "the held guard must keep the floor put");
+		assert!(wal.saved.lock().is_empty(), "the held guard must keep the log floor put");
 
 		drop(held);
 		assert!(store.flush_pending_blocking());
@@ -839,7 +841,7 @@ mod tests {
 		assert_eq!(
 			*wal.saved.lock(),
 			vec![7],
-			"once the commit finished, a quiet flush must move the single floor to the log head"
+			"once the commit finished, a quiet flush must move the single log floor to the log head"
 		);
 	}
 
@@ -1190,7 +1192,7 @@ mod tests {
 				}
 			});
 			while removed.load(Ordering::SeqCst) < KEYS {
-				let floor = removed.load(Ordering::SeqCst);
+				let removed_before = removed.load(Ordering::SeqCst);
 				let batch = SingleVersionRangeRev::range_rev_batch(
 					&store,
 					&system_ctx(),
@@ -1201,8 +1203,8 @@ mod tests {
 				for row in &batch.items {
 					let position = keys.binary_search_by(|key| row.key.cmp(key)).unwrap();
 					assert!(
-						position >= floor,
-						"key {position} came back after {floor} were removed"
+						position >= removed_before,
+						"key {position} came back after {removed_before} were removed"
 					);
 				}
 			}

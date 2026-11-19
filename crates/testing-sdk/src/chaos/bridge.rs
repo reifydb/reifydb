@@ -142,7 +142,7 @@ pub struct ReplayModel {
 	batches: Vec<ChaosBatch>,
 	pending: Vec<ChaosEvent>,
 	claim: Option<OracleClaim>,
-	drain_floor_ms: u64,
+	high_water: u64,
 	ledger_ms: u64,
 }
 
@@ -158,7 +158,7 @@ impl ReplayModel {
 			batches: Vec::new(),
 			pending: Vec::new(),
 			claim: None,
-			drain_floor_ms: 0,
+			high_water: 0,
 			ledger_ms: 0,
 		}
 	}
@@ -191,7 +191,7 @@ impl ReplayModel {
 
 	fn observe(&mut self, row: &Row) {
 		if let Some(at) = row.shape.time(&row.encoded).map(|time| time.to_epoch_millis()).filter(|&ms| ms > 0) {
-			self.drain_floor_ms = self.drain_floor_ms.max(at as u64);
+			self.high_water = self.high_water.max(at as u64);
 		}
 	}
 }
@@ -255,8 +255,8 @@ impl Model<GuestRow> for ReplayModel {
 		self.close_batch();
 	}
 
-	fn drain_floor(&self) -> u64 {
-		self.drain_floor_ms
+	fn high_water(&self) -> u64 {
+		self.high_water
 	}
 }
 

@@ -84,7 +84,7 @@ fn entries(db: &TestDb, after: CommitVersion, target: CommitVersion) -> Vec<Arc<
 			entries,
 			..
 		} => entries,
-		CommitPull::Behind => panic!("the held floor must keep every commit after {after:?}"),
+		CommitPull::Behind => panic!("the held position must keep every commit after {after:?}"),
 	}
 }
 
@@ -94,7 +94,7 @@ fn a_batch_sent_to_an_unreachable_worker_fails_naming_the_worker() {
 	let db = TestDb::memory();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4 }");
-	let _floor = queue(&db).floor("test");
+	let _position = queue(&db).position("test");
 	let before = db.progress().tx().current().expect("current version");
 	db.command("INSERT app::t [{id: 1}]");
 	let target = wait_for_consumer_caught_up(&db);

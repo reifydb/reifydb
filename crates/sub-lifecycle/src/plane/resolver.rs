@@ -25,12 +25,12 @@ pub trait FloorSource: Send + Sync + 'static {
 	fn consumer_position(&self) -> CommitVersion;
 }
 
-pub struct HorizonLedger {
+pub struct FloorResolver {
 	source: Arc<dyn FloorSource>,
 	epoch: VersionEpoch,
 }
 
-impl HorizonLedger {
+impl FloorResolver {
 	pub fn new(source: Arc<dyn FloorSource>, epoch: VersionEpoch) -> Self {
 		Self {
 			source,
@@ -40,7 +40,7 @@ impl HorizonLedger {
 
 	pub fn expiry_cutoff(&self, now: DateTime, ttl: Duration) -> Option<CommitVersion> {
 		let expires_before = now.checked_sub(ttl)?;
-		self.epoch.floor_version_at(EpochSeconds::from_datetime(expires_before)).map(CommitVersion)
+		self.epoch.version_at_or_before(EpochSeconds::from_datetime(expires_before)).map(CommitVersion)
 	}
 
 	pub fn expiry_instant(&self, now: DateTime, ttl: Duration) -> Option<DateTime> {
@@ -156,11 +156,11 @@ mod tests {
 		}
 	}
 
-	fn ledger() -> HorizonLedger {
+	fn resolver() -> FloorResolver {
 		let epoch = VersionEpoch::new();
 		epoch.backfill(ONE_HOUR_IN, 1_000);
 		epoch.record(TWO_HOURS_IN, 5_000);
-		HorizonLedger::new(Arc::new(ScriptedFloors), epoch)
+		FloorResolver::new(Arc::new(ScriptedFloors), epoch)
 	}
 
 	fn now() -> DateTime {
@@ -177,12 +177,12 @@ mod tests {
 		// reported as pinned, because `now - ttl` is arithmetic no other party contributes to. A
 		// version floor is somebody else's progress - a reader, a lease, a consumer, an unflushed
 		// write - and classifying one of those as clock-driven would silently disable the only alarm
-		// that catches it being held down. This ties the classification to what the ledger actually
+		// that catches it being held down. This ties the classification to what the resolver actually
 		// returns, so the two cannot drift apart.
-		let ledger = ledger();
+		let resolver = resolver();
 
 		for term in FloorTerm::all() {
-			let resolved = ledger.term(*term, now(), Some(one_hour()));
+			let resolved = resolver.term(*term, now(), Some(one_hour()));
 			match resolved {
 				Some(Floor::Instant(_)) => assert!(
 					term.is_clock_driven(),
@@ -245,9 +245,9 @@ mod tests {
 	fn a_lease_taken_between_the_floor_reads_is_never_below_the_cutoff() {
 		// A cutoff above a lease taken mid-read lets gc collect the version that reader holds.
 		for class in [LifecycleClass::BufferHistoricalGc, LifecycleClass::PersistentFlush] {
-			let ledger = HorizonLedger::new(Arc::new(RacingFloors::new()), VersionEpoch::new());
+			let resolver = FloorResolver::new(Arc::new(RacingFloors::new()), VersionEpoch::new());
 
-			let cutoff = ledger.cutoff(class, now(), None);
+			let cutoff = resolver.cutoff(class, now(), None);
 
 			assert!(
 				matches!(cutoff, Some(Floor::Version(version)) if version <= CommitVersion(10)),

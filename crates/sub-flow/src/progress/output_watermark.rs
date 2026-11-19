@@ -109,7 +109,7 @@ mod tests {
 
 	#[test]
 	fn a_output_watermark_round_trips_through_the_value_encoding() {
-		// A truncated stamp silently rewinds an output watermark, which re-opens a horizon that already sealed.
+		// A truncated stamp silently rewinds an output watermark, which re-opens a window that already sealed.
 		let entry = OutputWatermarkEntry {
 			output: OUTPUT,
 			output_watermark: at_millis(1_700_000_000_123),

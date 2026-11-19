@@ -342,7 +342,7 @@ impl testscript::runner::Runner for Runner {
 				);
 				args.reject_rest()?;
 
-				self.store.set_flush_floor(Arc::new(FixedFloor(version)));
+				self.store.set_flush_floor(Arc::new(FixedFlushFloor(version)));
 				writeln!(output, "ok")?;
 			}
 
@@ -514,9 +514,9 @@ pub fn without_wal(store: StandardMultiStore) -> StandardMultiStore {
 	store
 }
 
-struct FixedFloor(CommitVersion);
+struct FixedFlushFloor(CommitVersion);
 
-impl FlushFloor for FixedFloor {
+impl FlushFloor for FixedFlushFloor {
 	fn floor(&self) -> CommitVersion {
 		self.0
 	}

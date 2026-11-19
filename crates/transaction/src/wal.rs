@@ -42,7 +42,7 @@ use reifydb_value::{byte_size::ByteSize, error::ValueError, reifydb_assertions, 
 use reifydb_wal::{
 	device::{Append, Device, Flush, Mark, ReadFrom, Reclaim, RecordCursor},
 	error::WalError,
-	floor::Floor,
+	log_floor::LogFloor,
 	lsn::Lsn,
 	nop::{NopCursor, NopDevice},
 	sync::WalMode,
@@ -241,9 +241,9 @@ impl MetricsCollector for CommitLogMetrics {
 		out.push(MetricsSample::count("commit_log", "appended", appended));
 		out.push(MetricsSample::count("commit_log", "durable", cursors.durable.map(Lsn::as_u64).unwrap_or(0)));
 		out.push(MetricsSample::bytes("commit_log", "kept_bytes", cursors.bytes));
-		for (name, floor) in cursors.floors {
+		for (name, log_floor) in cursors.floors {
 			let scope = format!("commit_log::floor::{name}");
-			let held = floor.map(Lsn::as_u64).unwrap_or(start);
+			let held = log_floor.map(Lsn::as_u64).unwrap_or(start);
 			out.push(MetricsSample::count(scope.clone(), "lsn", held));
 			out.push(MetricsSample::count(scope, "lag", appended.saturating_sub(held)));
 		}
@@ -336,7 +336,7 @@ pub enum CheckpointedStore {
 }
 
 impl CheckpointedStore {
-	pub(crate) fn floor_name(self) -> &'static str {
+	pub(crate) fn log_floor_name(self) -> &'static str {
 		match self {
 			Self::Multi => "multi",
 			Self::Single => "single",
@@ -347,23 +347,23 @@ impl CheckpointedStore {
 
 pub(crate) struct StoreCheckpoint {
 	shared: Weak<CommitShared<StandardVersionProvider>>,
-	floor: Floor<WalRecord, CommitDevice>,
+	log_floor: LogFloor<WalRecord, CommitDevice>,
 }
 
 impl StoreCheckpoint {
 	pub(crate) fn new(
 		shared: Weak<CommitShared<StandardVersionProvider>>,
-		floor: Floor<WalRecord, CommitDevice>,
+		log_floor: LogFloor<WalRecord, CommitDevice>,
 	) -> Self {
 		Self {
 			shared,
-			floor,
+			log_floor,
 		}
 	}
 
 	fn shared(&self) -> Arc<CommitShared<StandardVersionProvider>> {
 		self.shared.upgrade().unwrap_or_else(|| {
-			panic!("commit log checkpoint for {} outlived its transaction manager", self.floor.name())
+			panic!("commit log checkpoint for {} outlived its transaction manager", self.log_floor.name())
 		})
 	}
 }
@@ -375,7 +375,7 @@ impl WalCheckpoint for StoreCheckpoint {
 		shared.wal.sync().unwrap_or_else(|err| {
 			panic!(
 				"commit log failed to flush for the {} checkpoint at version {}: {err}",
-				self.floor.name(),
+				self.log_floor.name(),
 				version.0
 			)
 		});
@@ -387,18 +387,18 @@ impl WalCheckpoint for StoreCheckpoint {
 		let Some(lsn) = shared.inner.write().lsn_through(version) else {
 			return Ok(());
 		};
-		self.floor.advance(lsn).unwrap_or_else(|err| {
+		self.log_floor.advance(lsn).unwrap_or_else(|err| {
 			panic!(
 				"commit log floor {} failed to advance to lsn {} for version {}: {err}",
-				self.floor.name(),
+				self.log_floor.name(),
 				lsn.as_u64(),
 				version.0
 			)
 		});
 		shared.wal.gc().unwrap_or_else(|err| {
 			panic!(
-				"commit log gc failed after floor {} reached lsn {} for version {}: {err}",
-				self.floor.name(),
+				"commit log gc failed after log floor {} reached lsn {} for version {}: {err}",
+				self.log_floor.name(),
 				lsn.as_u64(),
 				version.0
 			)
@@ -416,17 +416,17 @@ pub fn replay(
 	wal: &CommitWal,
 	store: &CommitStore,
 	saved_through: CommitVersion,
-	persisted_high: CommitVersion,
+	persisted_high_water: CommitVersion,
 ) -> Recovery {
-	let floor_name = CheckpointedStore::Multi.floor_name();
+	let log_floor_name = CheckpointedStore::Multi.log_floor_name();
 	let cursors = wal.cursors().unwrap_or_else(|err| panic!("commit log cursors could not be read at boot: {err}"));
 	let from = cursors
 		.floors
 		.into_iter()
-		.find(|(name, _)| name == floor_name)
+		.find(|(name, _)| name == log_floor_name)
 		.and_then(|(_, lsn)| lsn)
 		.map_or(Lsn::FIRST, |lsn| Lsn::new(lsn.as_u64() + 1));
-	let mut last = saved_through.max(persisted_high);
+	let mut last = saved_through.max(persisted_high_water);
 	#[cfg(reifydb_assertions)]
 	let mut previous: Option<CommitVersion> = None;
 	let mut lsns = VecDeque::new();
@@ -572,17 +572,18 @@ pub fn replay_operator(wal: &CommitWal, store: &OperatorStore, saved_lsn: Option
 }
 
 pub fn floor_checkpoint(wal: &CommitWal, store: CheckpointedStore) -> Arc<dyn WalFloorCheckpoint> {
-	let name = store.floor_name();
-	let floor = wal.floor(name).unwrap_or_else(|err| panic!("commit log floor {name} could not be taken: {err}"));
+	let name = store.log_floor_name();
+	let log_floor =
+		wal.floor(name).unwrap_or_else(|err| panic!("commit log floor {name} could not be taken: {err}"));
 	Arc::new(WalFloorCheckpointer {
 		wal: wal.clone(),
-		floor,
+		floor: log_floor,
 	})
 }
 
 struct WalFloorCheckpointer {
 	wal: CommitWal,
-	floor: Floor<WalRecord, CommitDevice>,
+	floor: LogFloor<WalRecord, CommitDevice>,
 }
 
 impl WalFloorCheckpoint for WalFloorCheckpointer {
@@ -607,7 +608,7 @@ impl WalFloorCheckpoint for WalFloorCheckpointer {
 		});
 		self.wal.gc().unwrap_or_else(|err| {
 			panic!(
-				"commit log gc failed after floor {} reached lsn {}: {err}",
+				"commit log gc failed after log floor {} reached lsn {}: {err}",
 				self.floor.name(),
 				through.as_u64()
 			)
@@ -639,21 +640,21 @@ impl WalFloorCheckpoint for WalFloorCheckpointer {
 const FLOW_READER: &str = "flow";
 
 pub fn flow_wal(wal: &CommitWal) -> FlowWal {
-	let floor = wal
+	let log_floor = wal
 		.floor(FLOW_READER)
 		.unwrap_or_else(|err| panic!("commit log floor {FLOW_READER} could not be taken: {err}"));
 	FlowWal {
 		log: Arc::new(WalCommitLog::new(wal.clone(), FLOW_READER)),
 		floor: Arc::new(WalCommitFloor {
 			wal: wal.clone(),
-			floor,
+			floor: log_floor,
 		}),
 	}
 }
 
 struct WalCommitFloor {
 	wal: CommitWal,
-	floor: Floor<WalRecord, CommitDevice>,
+	floor: LogFloor<WalRecord, CommitDevice>,
 }
 
 impl CommitFloor for WalCommitFloor {
@@ -663,7 +664,7 @@ impl CommitFloor for WalCommitFloor {
 
 	fn advance(&self, lsn: Lsn) {
 		let cursors = self.wal.cursors().unwrap_or_else(|err| {
-			panic!("commit log cursors could not be read for the {} floor: {err}", self.floor.name())
+			panic!("commit log cursors could not be read for the {} log floor: {err}", self.floor.name())
 		});
 		let Some(target) = cursors.durable.map(|durable| durable.min(lsn)) else {
 			return;
@@ -680,7 +681,7 @@ impl CommitFloor for WalCommitFloor {
 		});
 		self.wal.gc().unwrap_or_else(|err| {
 			panic!(
-				"commit log gc failed after floor {} reached lsn {}: {err}",
+				"commit log gc failed after log floor {} reached lsn {}: {err}",
 				self.floor.name(),
 				target.as_u64()
 			)

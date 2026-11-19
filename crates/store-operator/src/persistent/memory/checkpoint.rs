@@ -31,13 +31,13 @@ impl Checkpoint for MemoryPersistent {
 		Ok(())
 	}
 
-	#[instrument(name = "store::operator::persistent::memory::checkpoint_floor", level = "trace", skip_all)]
-	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
+	#[instrument(name = "store::operator::persistent::memory::lowest_checkpoint", level = "trace", skip_all)]
+	fn lowest_checkpoint(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
 		Ok(self.0.checkpoints.lock().values().map(|checkpoint| checkpoint.version).min())
 	}
 
-	#[instrument(name = "store::operator::persistent::memory::checkpoint_lsn_floor", level = "trace", skip_all)]
-	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError> {
+	#[instrument(name = "store::operator::persistent::memory::lowest_checkpoint_lsn", level = "trace", skip_all)]
+	fn lowest_checkpoint_lsn(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		Ok(self.0.checkpoints.lock().values().map(|checkpoint| checkpoint.lsn).min())
 	}
 

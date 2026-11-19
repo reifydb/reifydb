@@ -66,7 +66,7 @@ impl EpochLog {
 		let mut samples = Vec::new();
 
 		let txn = self.engine.begin_query(IdentityId::system())?;
-		for entry in txn.range(VersionEpochKey::floor_scan(now), RangeScope::All, RANGE_BATCH) {
+		for entry in txn.range(VersionEpochKey::at_or_before(now), RangeScope::All, RANGE_BATCH) {
 			let entry = entry?;
 			let TaggedKey::VersionEpoch(key) = &entry.key else {
 				continue;
@@ -114,7 +114,7 @@ impl EpochLog {
 		let txn = self.engine.begin_query(IdentityId::system())?;
 		let mut count = 0u64;
 		for entry in txn.range(
-			VersionEpochKey::floor_scan(EpochSeconds::new(u64::MAX)),
+			VersionEpochKey::at_or_before(EpochSeconds::new(u64::MAX)),
 			RangeScope::All,
 			RANGE_BATCH,
 		) {

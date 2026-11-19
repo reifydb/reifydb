@@ -57,7 +57,7 @@ pub fn version_of<F: Filesystem + Open>(fs: &F, dir: &Path, id: &str) -> Result<
 	hint_or_start(fs, &path_of(dir, id)?)
 }
 
-pub fn floor<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Option<LogVersion>, StoreLogError> {
+pub fn log_floor<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Option<LogVersion>, StoreLogError> {
 	let entries = match fs.read_dir(&dir.join(DIR_NAME)) {
 		Ok(entries) => entries,
 		Err(FsError::NotFound(_)) => return Ok(None),
@@ -197,7 +197,7 @@ mod tests {
 	fn an_id_that_is_not_a_usable_file_name_is_refused() {
 		// the id becomes a path segment under readers/, so a separator or a parent reference
 		// writes the hint outside the partition, and an id ending in the staging suffix would be
-		// skipped by floor and pin nothing at all.
+		// skipped by the log floor and pin nothing at all.
 		for id in ["", ".", "..", "a/b", "../escape", "flow 3", "x.staging"] {
 			assert!(matches!(path_of(dir(), id), Err(StoreLogError::InvalidReaderId { .. })), "{id}");
 		}
@@ -214,15 +214,15 @@ mod tests {
 		let fs = fixture();
 		register(&fs, dir(), "flow-3").unwrap();
 
-		assert_eq!(floor(&fs, dir()).unwrap(), Some(LogVersion::ZERO));
+		assert_eq!(log_floor(&fs, dir()).unwrap(), Some(LogVersion::ZERO));
 
 		record(&fs, dir(), "flow-3", LogVersion::new(900)).unwrap();
 
-		assert_eq!(floor(&fs, dir()).unwrap(), Some(LogVersion::new(900)));
+		assert_eq!(log_floor(&fs, dir()).unwrap(), Some(LogVersion::new(900)));
 	}
 
 	#[test]
-	fn the_floor_is_the_minimum_over_every_reader() {
+	fn the_log_floor_is_the_minimum_over_every_reader() {
 		// one lagging reader has to hold the segment for all of them; taking anything but the
 		// minimum unlinks a segment a slower reader has not read.
 		let fs = fixture();
@@ -231,21 +231,21 @@ mod tests {
 		record(&fs, dir(), "flow-3", LogVersion::new(900)).unwrap();
 		record(&fs, dir(), "operator", LogVersion::new(400)).unwrap();
 
-		assert_eq!(floor(&fs, dir()).unwrap(), Some(LogVersion::new(400)));
+		assert_eq!(log_floor(&fs, dir()).unwrap(), Some(LogVersion::new(400)));
 	}
 
 	#[test]
-	fn no_readers_directory_at_all_means_no_floor() {
+	fn no_readers_directory_at_all_means_no_log_floor() {
 		// decision 233: an empty set is "nobody is pinning", not "everybody is pinned at zero".
 		// Reading it as zero would stop a log with no readers from ever purging.
 		let fs = fixture();
 
-		assert_eq!(floor(&fs, dir()).unwrap(), None);
+		assert_eq!(log_floor(&fs, dir()).unwrap(), None);
 
 		register(&fs, dir(), "flow-3").unwrap();
 		unregister(&fs, dir(), "flow-3").unwrap();
 
-		assert_eq!(floor(&fs, dir()).unwrap(), None);
+		assert_eq!(log_floor(&fs, dir()).unwrap(), None);
 	}
 
 	#[test]
@@ -260,7 +260,7 @@ mod tests {
 		let file = fs.open_mut(&path_of(dir(), "flow-3").unwrap()).unwrap();
 		file.pwrite(0, &[0u8; HINT_BYTES]).unwrap();
 
-		assert_eq!(floor(&fs, dir()).unwrap(), Some(LogVersion::ZERO));
+		assert_eq!(log_floor(&fs, dir()).unwrap(), Some(LogVersion::ZERO));
 	}
 
 	#[test]
@@ -275,7 +275,7 @@ mod tests {
 		let file = fs.create(&staged, HINT_BYTES as u64).unwrap();
 		file.pwrite(0, &Hint::new(LogVersion::ZERO).encode()).unwrap();
 
-		assert_eq!(floor(&fs, dir()).unwrap(), Some(LogVersion::new(900)));
+		assert_eq!(log_floor(&fs, dir()).unwrap(), Some(LogVersion::new(900)));
 	}
 
 	#[test]
@@ -285,7 +285,7 @@ mod tests {
 		let fs = fixture();
 
 		assert!(matches!(record(&fs, dir(), "flow-3", LogVersion::new(900)), Err(StoreLogError::NotFound(_))));
-		assert_eq!(floor(&fs, dir()).unwrap(), None);
+		assert_eq!(log_floor(&fs, dir()).unwrap(), None);
 	}
 
 	#[test]
@@ -297,6 +297,6 @@ mod tests {
 		record(&fs, dir(), "flow-3", LogVersion::new(900)).unwrap();
 
 		assert!(matches!(register(&fs, dir(), "flow-3"), Err(StoreLogError::AlreadyExists(_))));
-		assert_eq!(floor(&fs, dir()).unwrap(), Some(LogVersion::new(900)));
+		assert_eq!(log_floor(&fs, dir()).unwrap(), Some(LogVersion::new(900)));
 	}
 }

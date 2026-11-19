@@ -289,14 +289,14 @@ impl Checkpoint for TestingPersistent {
 		}
 	}
 
-	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
+	fn lowest_checkpoint(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
 		self.call();
-		self.0.durable.checkpoint_floor()
+		self.0.durable.lowest_checkpoint()
 	}
 
-	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError> {
+	fn lowest_checkpoint_lsn(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		self.call();
-		self.0.durable.checkpoint_lsn_floor()
+		self.0.durable.lowest_checkpoint_lsn()
 	}
 
 	fn checkpoint_list(&self) -> Result<Vec<FlowId>, StoreOperatorError> {

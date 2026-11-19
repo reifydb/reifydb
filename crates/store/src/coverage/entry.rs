@@ -147,8 +147,8 @@ mod tests {
 	}
 
 	#[test]
-	fn insert_charges_a_removal_against_the_pinned_floor() {
-		// A budget that cannot see the floor would keep asking for victims that do not exist.
+	fn insert_charges_a_removal_against_the_pinned_count() {
+		// A budget that cannot see the pinned count would keep asking for victims that do not exist.
 		let mut count = PinnedCount::new();
 		count.insert(&deleted());
 		assert_eq!(count.removals(), 1);
@@ -181,7 +181,7 @@ mod tests {
 
 	#[test]
 	fn replace_between_two_evictable_states_changes_nothing() {
-		// An overwrite of a live row must not disturb the pinned floor.
+		// An overwrite of a live row must not disturb the pinned count.
 		let mut count = PinnedCount::new();
 		count.insert(&row(7));
 		count.replace(&row(7), &row(9));
@@ -190,7 +190,7 @@ mod tests {
 
 	#[test]
 	fn pinned_count_returns_to_zero_across_a_full_cycle() {
-		// Any leak in the arithmetic leaves a phantom floor eviction can never clear.
+		// Any leak in the arithmetic leaves a phantom pinned count eviction can never clear.
 		let mut count = PinnedCount::new();
 		count.insert(&row(7));
 		count.insert(&absent());
@@ -208,7 +208,7 @@ mod tests {
 
 	#[test]
 	fn remove_releases_the_pin_of_a_removal_it_drops() {
-		// A pin outliving its entry wedges the shard on a floor with nothing behind it.
+		// A pin outliving its entry wedges the shard on a pinned count with nothing behind it.
 		let mut count = PinnedCount::new();
 		count.insert(&deleted());
 		count.remove(&deleted());

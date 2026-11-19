@@ -43,7 +43,7 @@ pub struct JoinDueEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DueStart {
 	Bottom,
-	Floor(DateTime),
+	From(DateTime),
 	After(JoinForgetDueKey),
 }
 
@@ -74,7 +74,7 @@ pub fn join_forget_range(group: GroupId) -> GroupStateRange {
 	}
 }
 
-pub fn join_due_floor(at: DateTime) -> JoinForgetDueKey {
+pub fn join_due_from(at: DateTime) -> JoinForgetDueKey {
 	JoinForgetDueKey {
 		at: Asc(at),
 		group: BoundedKey::low(),
@@ -208,8 +208,8 @@ pub trait JoinRowForgetExtension: FlowTransaction {
 		}
 		let (from, site) = match start {
 			DueStart::After(cursor) => (Bound::Excluded(cursor.to_suffix_bytes()), "join::due_page:resume"),
-			DueStart::Floor(floor) => {
-				(Bound::Included(join_due_floor(*floor).to_suffix_bytes()), "join::due_page:floor")
+			DueStart::From(earliest) => {
+				(Bound::Included(join_due_from(*earliest).to_suffix_bytes()), "join::due_page:from")
 			}
 			DueStart::Bottom => (Bound::Unbounded, "join::due_page:restart"),
 		};

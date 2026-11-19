@@ -916,7 +916,7 @@ impl StandardMultiStore {
 		else {
 			return Ok(());
 		};
-		if at < persistent.install_floor()? {
+		if at < persistent.persisted_high_water()? {
 			return Ok(());
 		}
 		let range_start = EncodedKey::new(scan.start);
@@ -1465,16 +1465,16 @@ mod cache_tests {
 		.unwrap();
 	}
 
-	struct FixedFloor(CommitVersion);
+	struct FixedFlushFloor(CommitVersion);
 
-	impl FlushFloor for FixedFloor {
+	impl FlushFloor for FixedFlushFloor {
 		fn floor(&self) -> CommitVersion {
 			self.0
 		}
 	}
 
 	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-		store.set_flush_floor(Arc::new(FixedFloor(cutoff)));
+		store.set_flush_floor(Arc::new(FixedFlushFloor(cutoff)));
 		store.flush_pending_blocking();
 	}
 

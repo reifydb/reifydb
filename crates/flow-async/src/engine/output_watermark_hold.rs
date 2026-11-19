@@ -196,7 +196,7 @@ mod tests {
 
 	struct Sealing {
 		operator: OperatorId,
-		horizon: Option<Duration>,
+		seal_span: Option<Duration>,
 	}
 
 	impl HostOperator for Sealing {
@@ -213,7 +213,7 @@ mod tests {
 		}
 
 		fn seal_span(&self) -> Option<Duration> {
-			self.horizon
+			self.seal_span
 		}
 	}
 
@@ -320,12 +320,12 @@ mod tests {
 			self
 		}
 
-		fn sealing(mut self, id: u64, horizon: Duration) -> Self {
+		fn sealing(mut self, id: u64, seal_span: Duration) -> Self {
 			self.inner.operators.insert(
 				(FLOW, OperatorId(id)),
 				Box::new(Sealing {
 					operator: OperatorId(id),
-					horizon: Some(horizon),
+					seal_span: Some(seal_span),
 				}),
 			);
 			self
@@ -339,7 +339,7 @@ mod tests {
 					OperatorId(id),
 					Box::new(Sealing {
 						operator: OperatorId(id),
-						horizon: None,
+						seal_span: None,
 					}),
 					&with,
 				)),

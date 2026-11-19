@@ -46,9 +46,9 @@ impl MemoryRows {
 		self.active.write()
 	}
 
-	fn merge_run(&self, fan_in: usize, cap: ByteSize, floor: ByteSize) -> bool {
+	fn merge_run(&self, fan_in: usize, cap: ByteSize, close_threshold: ByteSize) -> bool {
 		let snapshot: Vec<Arc<ClosedRows>> = self.closed.read().iter().cloned().collect();
-		let Some(run) = mergeable_run(&snapshot, fan_in, cap.as_bytes(), floor.as_bytes()) else {
+		let Some(run) = mergeable_run(&snapshot, fan_in, cap.as_bytes(), close_threshold.as_bytes()) else {
 			return false;
 		};
 		let inputs = &snapshot[run];
@@ -214,10 +214,10 @@ impl Write for MemoryRows {
 		self.closed.write().push_back(Arc::new(closing.close()));
 	}
 
-	fn merge(&self, fan_in: usize, cap: ByteSize, floor: ByteSize, backlog: usize) {
+	fn merge(&self, fan_in: usize, cap: ByteSize, close_threshold: ByteSize, backlog: usize) {
 		if backlog == 0 {
 			let _merging = self.merging.lock();
-			while self.merge_run(fan_in, cap, floor) {}
+			while self.merge_run(fan_in, cap, close_threshold) {}
 			return;
 		}
 		let cap_tier = tier(cap.as_bytes(), fan_in);
@@ -229,7 +229,7 @@ impl Write for MemoryRows {
 		let Some(_merging) = self.merging.try_lock() else {
 			return;
 		};
-		self.merge_run(fan_in, cap, floor);
+		self.merge_run(fan_in, cap, close_threshold);
 	}
 }
 
@@ -283,9 +283,9 @@ fn chunks_by_key(pairs: Vec<(EncodedKey, CommitVersion)>, limit: usize) -> Vec<V
 	chunks
 }
 
-fn mergeable_run(maps: &[Arc<ClosedRows>], fan_in: usize, cap: u64, floor: u64) -> Option<Range<usize>> {
+fn mergeable_run(maps: &[Arc<ClosedRows>], fan_in: usize, cap: u64, close_threshold: u64) -> Option<Range<usize>> {
 	let cap_tier = tier(cap, fan_in);
-	let floor_tier = tier(floor, fan_in);
+	let close_tier = tier(close_threshold, fan_in);
 	let tiers: Vec<u32> = maps.iter().map(|map| tier(map.rows().bytes(), fan_in)).collect();
 	let bytes = |run: &Range<usize>| -> u64 { maps[run.clone()].iter().map(|map| map.rows().bytes()).sum() };
 	let runs = || (fan_in..=maps.len()).map(|end| end - fan_in..end);
@@ -295,8 +295,8 @@ fn mergeable_run(maps: &[Arc<ClosedRows>], fan_in: usize, cap: u64, floor: u64) 
 	.or_else(|| {
 		runs().filter(|run| {
 			let window = &tiers[run.clone()];
-			window.iter().all(|tier| *tier <= floor_tier)
-				&& window.iter().any(|tier| *tier < floor_tier)
+			window.iter().all(|tier| *tier <= close_tier)
+				&& window.iter().any(|tier| *tier < close_tier)
 				&& tier(bytes(run), fan_in) <= cap_tier
 		})
 		.min_by_key(|run| bytes(run))

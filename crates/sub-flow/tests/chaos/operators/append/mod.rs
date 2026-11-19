@@ -58,7 +58,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 
 	driver::drive(
 		seed,
-		// Append has no clock and nothing in flight, so there is no tick share and no drain horizon.
+		// Append has no clock and nothing in flight, so there is no tick share and no high water.
 		Scenario::mixed(params.steps)
 			.with_batch(BatchSize::Geometric {
 				p: 0.45,

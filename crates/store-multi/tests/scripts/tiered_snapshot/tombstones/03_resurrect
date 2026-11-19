@@ -16,7 +16,7 @@ flush
 ok
 ok
 
-# Resurrect ABOVE the floor: v3 stays resident in the commit tier (v3 > W=2).
+# Resurrect ABOVE the flush floor: v3 stays resident in the commit tier (v3 > W=2).
 set k=B     version=3
 ---
 ok

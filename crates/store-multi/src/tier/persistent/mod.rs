@@ -282,9 +282,9 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn install_floor(&self) -> Result<CommitVersion, ValueError> {
+	pub fn persisted_high_water(&self) -> Result<CommitVersion, ValueError> {
 		match self {
-			Self::Sqlite(s) => s.install_floor(),
+			Self::Sqlite(s) => s.persisted_high_water(),
 		}
 	}
 }
@@ -333,7 +333,7 @@ impl MultiPersistentTier {
 		match *self {}
 	}
 
-	pub fn install_floor(&self) -> Result<CommitVersion, ValueError> {
+	pub fn persisted_high_water(&self) -> Result<CommitVersion, ValueError> {
 		match *self {}
 	}
 }

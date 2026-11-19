@@ -279,19 +279,19 @@ impl FlowProgress {
 		self.prune_completions(flow_id);
 	}
 
-	fn reader_floor(&self, flow_id: FlowId) -> Option<CommitVersion> {
+	fn lowest_reader_position(&self, flow_id: FlowId) -> Option<CommitVersion> {
 		let readers = self.readers.get(&flow_id)?;
 		readers.iter().map(|reader| self.positions.get(reader).copied().unwrap_or(CommitVersion(0))).min()
 	}
 
 	fn prune_completions(&mut self, flow_id: FlowId) {
-		let Some(floor) = self.reader_floor(flow_id) else {
+		let Some(lowest) = self.lowest_reader_position(flow_id) else {
 			return;
 		};
 		let Some(history) = self.completions.get_mut(&flow_id) else {
 			return;
 		};
-		let above = history.partition_point(|entry| entry.commit <= floor);
+		let above = history.partition_point(|entry| entry.commit <= lowest);
 		history.drain(..above.saturating_sub(1));
 	}
 

@@ -56,7 +56,7 @@ fn a_row_round_trip_through_bytes_preserves_time() {
 
 #[test]
 fn timeless_rows_sort_above_every_cutoff() {
-	// Absence is DateTime::MAX, which must outrank any cutoff a floor sweep can propose.
+	// Absence is DateTime::MAX, which must outrank any cutoff an instant floor sweep can propose.
 	let row = EncodedOperatorRow::timeless(&[]);
 	assert_eq!(row.time(), DateTime::MAX);
 	assert!(row.time() > at_nanos(i64::MAX - 1));

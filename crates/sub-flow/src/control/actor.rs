@@ -1647,7 +1647,7 @@ mod pull_protocol {
 		commit::{
 			loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 			position::ReaderPosition,
-			queue::{CommitQueueFloor, FlowQueueFloor},
+			queue::{CommitQueuePosition, FlowQueuePosition},
 			tracker::WriteTracker,
 		},
 		default::flow::LOOKUP_TRACKER_ENTRIES_TESTING,
@@ -1711,7 +1711,7 @@ mod pull_protocol {
 		te: TestEngine,
 		engine: StandardEngine,
 		queue: CommitQueue,
-		flow_floor: CommitQueueFloor,
+		flow_position: CommitQueuePosition,
 		control: PullLimit,
 		tracker: FlowPositionTracker,
 		committer_handle: CommitterHandle,
@@ -1794,16 +1794,16 @@ mod pull_protocol {
 		);
 
 		let queue = engine.ioc().resolve::<CommitQueue>().expect("test harness must register the commit queue");
-		let FlowQueueFloor(flow_floor) = engine
+		let FlowQueuePosition(flow_position) = engine
 			.ioc()
-			.resolve::<FlowQueueFloor>()
-			.expect("test harness must register the flow queue floor");
+			.resolve::<FlowQueuePosition>()
+			.expect("test harness must register the flow queue position");
 
 		Harness {
 			te,
 			engine,
 			queue,
-			flow_floor,
+			flow_position,
 			control: PullLimit::new(),
 			tracker,
 			committer_handle,
@@ -2031,14 +2031,14 @@ mod pull_protocol {
 			}
 		}
 
-		fn await_position_at_least(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
+		fn await_position_at_least(&self, target: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
 			self.poll_until(timeout, || {
-				self.tracker.all().get(&self.flow_id).copied().filter(|got| *got >= floor)
+				self.tracker.all().get(&self.flow_id).copied().filter(|got| *got >= target)
 			})
 		}
 
-		fn await_version_beyond(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
-			self.poll_until(timeout, || self.engine.current_version().ok().filter(|got| *got > floor))
+		fn await_version_beyond(&self, after: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
+			self.poll_until(timeout, || self.engine.current_version().ok().filter(|got| *got > after))
 		}
 
 		fn persisted_checkpoint(&self) -> Option<CommitVersion> {
@@ -2049,8 +2049,8 @@ mod pull_protocol {
 				.map(|checkpoint| checkpoint.version)
 		}
 
-		fn await_checkpoint_beyond(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
-			self.poll_until(timeout, || self.persisted_checkpoint().filter(|got| *got > floor))
+		fn await_checkpoint_beyond(&self, after: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
+			self.poll_until(timeout, || self.persisted_checkpoint().filter(|got| *got > after))
 		}
 
 		fn advance_source_watermarks(&self, substrate: &FlowSubstrate, at: DateTime) {
@@ -2097,13 +2097,13 @@ mod pull_protocol {
 				.entries
 		}
 
-		fn view_change_beyond(&self, floor: CommitVersion) -> Option<Change> {
+		fn view_change_beyond(&self, after: CommitVersion) -> Option<Change> {
 			let catalog = self.engine.catalog();
 			let mut query = self.engine.begin_query(IdentityId::system()).expect("query transaction");
 			let mut txn = Transaction::Query(&mut query);
 			self.logged_entries()
 				.into_iter()
-				.filter(|entry| entry.version.commit > floor)
+				.filter(|entry| entry.version.commit > after)
 				.flat_map(|entry| {
 					lift_entry_changes(&entry, &catalog, &mut txn, |_| true).expect("lift changes")
 				})
@@ -2250,7 +2250,7 @@ mod pull_protocol {
 		let target = h.engine.current_version().expect("current version");
 		h.await_readable_through(target);
 
-		h.flow_floor.advance(target);
+		h.flow_position.advance(target);
 		h.wake(&actor);
 
 		let rows = h.await_view_rows(total, seconds(15));
@@ -2309,12 +2309,12 @@ mod pull_protocol {
 			Some(1),
 			"the reader must handle the view row stamped with the first insert"
 		);
-		let floor = h
+		let position = h
 			.poll_until(seconds(10), || h.flow_position(reader_id).filter(|position| *position >= first))
 			.expect("the reader must publish the position its first commit reached");
 
 		let behinds = h.pull_behinds();
-		h.flow_floor.advance(floor);
+		h.flow_position.advance(position);
 
 		h.wake(&producer);
 		assert_eq!(h.await_view_rows(2, seconds(10)), 2, "the producer must emit the second row");
@@ -2503,7 +2503,7 @@ mod pull_protocol {
 			"precondition: the reader must not have consumed anything yet, or the eviction below proves nothing"
 		);
 
-		h.flow_floor.advance(produced);
+		h.flow_position.advance(produced);
 		h.wake(&consumer);
 
 		assert!(

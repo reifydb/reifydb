@@ -12,7 +12,7 @@ use reifydb_core::{common::CommitVersion, lifecycle::task::LifecycleTask};
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_sub_lifecycle::{
 	gc::historical::actor::HistoricalGcTask,
-	plane::{LifecyclePlane, ledger::EngineFloors},
+	plane::{LifecyclePlane, resolver::EngineFloors},
 };
 use reifydb_value::value::duration::Duration;
 

@@ -137,8 +137,8 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 
 	driver::drive(
 		seed,
-		// An aggregate has no clock and holds nothing in flight, so there is no tick share and no drain
-		// horizon; the drain exists only to prove ticking changes nothing.
+		// An aggregate has no clock and holds nothing in flight, so there is no tick share and no high water;
+		// the drain exists only to prove ticking changes nothing.
 		Scenario::mixed(params.steps)
 			.with_batch(BatchSize::Geometric {
 				p: 0.45,

@@ -853,7 +853,7 @@ mod tests {
 
 	#[test]
 	fn an_entirely_pinned_partition_is_never_offered_as_a_victim() {
-		// The budget loop must stop at an all-pinned floor, or it spins forever on the same partition.
+		// The budget loop must stop at a fully pinned count, or it spins forever on the same partition.
 		let first = key(KeyspaceId::ACCUMULATOR, b"a");
 		let second = key(KeyspaceId::ACCUMULATOR, b"b");
 		let rows = vec![(first, Entry::deleted()), (second, Entry::deleted())];

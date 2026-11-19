@@ -43,8 +43,8 @@ impl Tracked {
 	}
 
 	fn last_write(&self, partition: Partition) -> CommitVersion {
-		let floor = self.seed.max(self.dropped);
-		self.writes.get(&partition).map_or(floor, |version| (*version).max(floor))
+		let version_floor = self.seed.max(self.dropped);
+		self.writes.get(&partition).map_or(version_floor, |version| (*version).max(version_floor))
 	}
 }
 
@@ -226,7 +226,7 @@ mod tests {
 
 	#[test]
 	fn an_evicted_partition_is_never_reported_older_than_its_write() {
-		// eviction must raise the floor, otherwise a dropped write reads as no write at all.
+		// eviction must raise the version floor, otherwise a dropped write reads as no write at all.
 		let tracker = WriteTracker::new(2, v(0));
 		let lease = tracker.register(VAULT);
 		tracker.record(v(100), &[set(VAULT, 1)]);

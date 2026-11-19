@@ -387,7 +387,7 @@ fn the_new_filter_is_sized_from_the_source_times_headroom() {
 #[test]
 fn an_empty_source_still_produces_a_usable_filter() {
 	// Zero keys times any headroom is zero, and a zero-sized filter is either a panic or a filter that
-	// answers for nothing. The floor is what keeps a table that is momentarily empty from producing one.
+	// answers for nothing. The minimum is what keeps a table that is momentarily empty from producing one.
 	let filter = Arc::new(AdaptiveKeyFilter::new());
 	let source = FakeSource::new(Vec::new());
 	let config = FilterConfig {
@@ -401,7 +401,7 @@ fn an_empty_source_still_produces_a_usable_filter() {
 
 	assert!(filter.is_enabled());
 	let size_bits = filter.metrics().size_bits;
-	assert_eq!(size_bits, 10_240, "an empty source did not fall back to the min_size_keys floor");
+	assert_eq!(size_bits, 10_240, "an empty source did not fall back to min_size_keys");
 	assert!(!filter.may_contain(key(7)), "a filter built from an empty source must rule everything out");
 }
 

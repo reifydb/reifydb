@@ -42,7 +42,7 @@ pub trait SealDomain: Coord {
 
 	fn operator_watermark(store: &mut dyn WindowStore) -> Result<Self, ValueError>;
 
-	fn horizon(operator_watermark: Self, seal_span: Self::SealSpan) -> Self;
+	fn first_admitted(operator_watermark: Self, seal_span: Self::SealSpan) -> Self;
 
 	fn rearm_decay(
 		store: &mut dyn WindowStore,
@@ -148,10 +148,10 @@ impl SealDomain for ByDateTime {
 		Ok(Self::from_order(ledger.max(flow_watermark)))
 	}
 
-	fn horizon(operator_watermark: Self, seal_span: Duration) -> Self {
-		Self(SealRule::of(seal_span)
-			.horizon_at(operator_watermark)
-			.map_or(DateTime::MIN, |horizon| horizon.0.saturating_add(Duration::from_nanoseconds_const(1))))
+	fn first_admitted(operator_watermark: Self, seal_span: Duration) -> Self {
+		Self(SealRule::of(seal_span).last_sealed(operator_watermark).map_or(DateTime::MIN, |last_sealed| {
+			last_sealed.0.saturating_add(Duration::from_nanoseconds_const(1))
+		}))
 	}
 
 	fn rearm_decay(
@@ -293,12 +293,16 @@ mod tests {
 	}
 
 	#[test]
-	fn a_wall_clock_horizon_is_the_operator_watermark_less_the_lateness_and_the_gate_step_and_may_go_pre_epoch() {
+	fn a_wall_clock_first_admitted_is_the_operator_watermark_less_lateness_and_the_gate_step_and_may_go_pre_epoch()
+	{
 		// wrapping high instead of going negative would report every window sealed
 		let step_past =
 			|millis| ByDateTime(at_millis(millis).saturating_add(Duration::from_nanoseconds_const(1)));
-		assert_eq!(ByDateTime::horizon(ByDateTime(at_millis(6_060_000)), ms(60_000)), step_past(5_999_999));
-		assert_eq!(ByDateTime::horizon(ByDateTime(at_millis(1_000)), ms(60_000)), step_past(-59_001));
+		assert_eq!(
+			ByDateTime::first_admitted(ByDateTime(at_millis(6_060_000)), ms(60_000)),
+			step_past(5_999_999)
+		);
+		assert_eq!(ByDateTime::first_admitted(ByDateTime(at_millis(1_000)), ms(60_000)), step_past(-59_001));
 	}
 
 	#[test]

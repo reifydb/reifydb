@@ -75,16 +75,16 @@ pub fn tiny_tiers(kib: u64) -> (MultiPointConfig, MultiRangeConfig) {
 	)
 }
 
-struct FixedFloor(CommitVersion);
+struct FixedFlushFloor(CommitVersion);
 
-impl FlushFloor for FixedFloor {
+impl FlushFloor for FixedFlushFloor {
 	fn floor(&self) -> CommitVersion {
 		self.0
 	}
 }
 
 pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-	store.set_flush_floor(Arc::new(FixedFloor(cutoff)));
+	store.set_flush_floor(Arc::new(FixedFlushFloor(cutoff)));
 	store.flush_pending_blocking();
 }
 

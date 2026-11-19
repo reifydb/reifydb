@@ -191,7 +191,7 @@ impl ConfigKey {
 			Self::ExpireMaxBatchesPerTick => Value::Uint8(default::lifecycle::EVICT_MAX_BATCHES_PER_TICK),
 			Self::EpochBucketInterval => Value::Duration(default::lifecycle::EPOCH_BUCKET_INTERVAL),
 			Self::LifecycleStartupDelay => Value::Duration(default::lifecycle::STARTUP_DELAY),
-			Self::MinHistoryHorizon => Value::Duration(default::lifecycle::MAX_HORIZON_FLOOR),
+			Self::MinHistoryHorizon => Value::Duration(default::lifecycle::MIN_HISTORY_HORIZON),
 			Self::HistoricalGcBatchSize => Value::Uint8(default::lifecycle::HISTORICAL_GC_BATCH_SIZE),
 			Self::HistoricalGcInterval => Value::Duration(default::lifecycle::HISTORICAL_GC_INTERVAL),
 			Self::MultiPointBufferTotalBytes => {
@@ -262,7 +262,7 @@ impl ConfigKey {
 			}
 			Self::EpochBucketInterval => Value::Duration(default::lifecycle::EPOCH_BUCKET_INTERVAL_TESTING),
 			Self::LifecycleStartupDelay => Value::Duration(default::lifecycle::STARTUP_DELAY_TESTING),
-			Self::MinHistoryHorizon => Value::Duration(default::lifecycle::MAX_HORIZON_FLOOR_TESTING),
+			Self::MinHistoryHorizon => Value::Duration(default::lifecycle::MIN_HISTORY_HORIZON_TESTING),
 			Self::HistoricalGcBatchSize => {
 				Value::Uint8(default::lifecycle::HISTORICAL_GC_BATCH_SIZE_TESTING)
 			}
@@ -373,7 +373,7 @@ impl ConfigKey {
 				 delay plus per-class budgets drain it over many ticks instead of one mass eviction."
 			}
 			Self::MinHistoryHorizon => {
-				"Lower bound on the history horizon. The horizon is the longest declared row ttl or join or lookup lateness, never less than this floor; epoch samples older than it are removed."
+				"Lower bound on the history horizon. The horizon is the longest declared row ttl or join or lookup lateness, never less than this minimum; epoch samples older than it are removed."
 			}
 			Self::HistoricalGcBatchSize => {
 				"Max historical (key, version) pairs scanned per object per historical GC tick."

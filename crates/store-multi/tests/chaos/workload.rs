@@ -273,7 +273,7 @@ pub fn drive(seed: u64, p: Params) {
 		vec![("memory", memory), ("persistent", persistent), ("tiny_cache", tiny)];
 
 	let mut version: u64 = 0;
-	let mut floor: u64 = 0;
+	let mut flush_floor: u64 = 0;
 
 	let steps = rng.random_range(p.min_steps..=p.max_steps);
 	for step in 0..steps {
@@ -310,14 +310,14 @@ pub fn drive(seed: u64, p: Params) {
 			}
 		} else if roll < p.commit_pct + p.flush_pct {
 			let cutoff = rng.random_range(1..=version);
-			floor = floor.max(cutoff);
+			flush_floor = flush_floor.max(cutoff);
 			for (_, store) in &configs {
 				if store.persistent().is_some() {
 					flush(store, CommitVersion(cutoff));
 				}
 			}
 		} else {
-			let read = rng.random_range(floor.max(1)..=version);
+			let read = rng.random_range(flush_floor.max(1)..=version);
 			match rng.random_range(0u32..6) {
 				0 => {
 					let row = rng.random_range(1..=p.keyspace);
@@ -340,7 +340,7 @@ pub fn drive(seed: u64, p: Params) {
 				3 => {
 					// before-1 must stay >= flush floor for the oracle's prev() to be sound; allow
 					// before = version+1 so "previous of the current version" is covered.
-					let before = rng.random_range((floor + 1)..=(version + 1));
+					let before = rng.random_range((flush_floor + 1)..=(version + 1));
 					let row = rng.random_range(1..=p.keyspace);
 					check_prev(&configs, &oracle, row, before, step);
 				}
@@ -350,7 +350,7 @@ pub fn drive(seed: u64, p: Params) {
 							read,
 						}
 					} else {
-						let after = rng.random_range(floor..=read);
+						let after = rng.random_range(flush_floor..=read);
 						Scope::Between {
 							after,
 							read,

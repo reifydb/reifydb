@@ -663,7 +663,7 @@ mod tests {
 	#[test]
 	fn distribution_routes_by_surface_and_the_window_clears_on_roll() {
 		// The window stream feeds ::current and must vanish when its window ends, otherwise a
-		// span that stopped firing looks alive forever; the long-horizon stream persists.
+		// span that stopped firing looks alive forever; the total stream persists.
 		let mut acc = MetricsAccumulator::new([MetricsDomain::Instruments.spec()]);
 		let dist = |value: u64| MetricsRow {
 			dimensions: vec![Value::Utf8("h".to_string())],

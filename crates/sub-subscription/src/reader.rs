@@ -13,7 +13,7 @@ use reifydb_core::{
 	commit::{
 		loader::CommitLoaderMessage,
 		position::ReaderPosition,
-		queue::{CommitPull, CommitQueue, CommitQueueFloor, lsn_through},
+		queue::{CommitPull, CommitQueue, CommitQueuePosition, lsn_through},
 	},
 	common::CommitVersion,
 	interface::{
@@ -83,7 +83,7 @@ pub struct SubscriptionReaderState {
 pub struct SubscriptionReader {
 	engine: StandardEngine,
 	queue: CommitQueue,
-	floor: CommitQueueFloor,
+	queue_position: CommitQueuePosition,
 	consumer: SubscriptionCommitLogConsumer,
 	position: ReaderPosition,
 	clock: Clock,
@@ -97,7 +97,7 @@ impl SubscriptionReader {
 	pub fn new(
 		engine: StandardEngine,
 		queue: CommitQueue,
-		floor: CommitQueueFloor,
+		queue_position: CommitQueuePosition,
 		consumer: SubscriptionCommitLogConsumer,
 		position: ReaderPosition,
 		start: CommitVersion,
@@ -108,7 +108,7 @@ impl SubscriptionReader {
 		Self {
 			engine,
 			queue,
-			floor,
+			queue_position,
 			consumer,
 			position,
 			clock,
@@ -134,7 +134,7 @@ impl SubscriptionReader {
 		if !matches!(state.phase, Phase::Ready) {
 			return;
 		}
-		self.floor.disarm();
+		self.queue_position.disarm();
 		let released = self.queue.released();
 		let released_version = released.0;
 		let done_until = self.engine.done_until();
@@ -274,7 +274,7 @@ impl SubscriptionReader {
 	fn moved(&self, state: &mut SubscriptionReaderState, to: CommitVersion, lsn: Lsn) {
 		state.cursor = to;
 		state.lsn = lsn;
-		self.floor.advance(to);
+		self.queue_position.advance(to);
 		self.position.store(to);
 	}
 

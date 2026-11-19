@@ -813,7 +813,7 @@ mod tests {
 
 	#[test]
 	fn overwrite_of_a_removal_restores_the_row_and_releases_its_pin() {
-		// A rewrite moves one entry across the pin; a leaked pin leaves a floor eviction never clears.
+		// A rewrite moves one entry across the pin; a leaked pin leaves a pinned count eviction never clears.
 		let tier = tier();
 		let id = partition(OP_A, CACHED);
 		let at = key(CACHED, b"m");

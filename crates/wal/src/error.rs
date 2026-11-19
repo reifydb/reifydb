@@ -59,14 +59,14 @@ impl Display for WalError {
 				kind,
 				reason,
 			} => write!(f, "record {} of kind {kind} failed to decode: {reason}", lsn.as_u64()),
-			Self::FloorHeld(name) => write!(f, "the floor {name} is already held"),
+			Self::FloorHeld(name) => write!(f, "the log floor {name} is already held"),
 			Self::FloorAhead {
 				floor,
 				requested,
 				durable,
 			} => write!(
 				f,
-				"the floor {floor} cannot move to {}, past the durable lsn {:?}",
+				"the log floor {floor} cannot move to {}, past the durable lsn {:?}",
 				requested.as_u64(),
 				durable.map(Lsn::as_u64)
 			),

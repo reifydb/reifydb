@@ -206,7 +206,7 @@ impl StandardMultiStore {
 	pub fn set_wal_checkpoint(&self, checkpoint: Arc<dyn WalCheckpoint>) {
 		if self.wal_checkpoint.set(checkpoint).is_err() {
 			panic!(
-				"the commit log checkpoint was attached twice; a second floor holder would fight the first"
+				"the commit log checkpoint was attached twice; a second log floor holder would fight the first"
 			);
 		}
 	}
@@ -226,8 +226,8 @@ impl StandardMultiStore {
 		}
 	}
 
-	pub fn set_flush_floor(&self, floor: Arc<dyn FlushFloor>) {
-		*self.flush_floor.write() = Some(floor);
+	pub fn set_flush_floor(&self, flush_floor: Arc<dyn FlushFloor>) {
+		*self.flush_floor.write() = Some(flush_floor);
 	}
 
 	pub fn clear_flush_floor(&self) {

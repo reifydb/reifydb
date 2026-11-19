@@ -188,7 +188,7 @@ mod tests {
 		);
 		assert!(
 			!is_sealed(ByDateTime(at_millis(0)), output_watermark(ByDateTime(at_millis(3)), lateness)),
-			"the epoch is still after a pre-epoch horizon"
+			"the epoch is still after a pre-epoch output watermark"
 		);
 		assert!(
 			is_sealed(ByDateTime(at_millis(4)), output_watermark(ByDateTime(at_millis(20)), lateness)),

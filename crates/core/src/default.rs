@@ -32,8 +32,8 @@ pub mod lifecycle {
 	pub const STARTUP_DELAY: Duration = Duration::from_seconds_const(300);
 	pub const STARTUP_DELAY_TESTING: Duration = Duration::from_seconds_const(300);
 
-	pub const MAX_HORIZON_FLOOR: Duration = Duration::from_hours_const(7 * 24);
-	pub const MAX_HORIZON_FLOOR_TESTING: Duration = Duration::from_hours_const(7 * 24);
+	pub const MIN_HISTORY_HORIZON: Duration = Duration::from_hours_const(7 * 24);
+	pub const MIN_HISTORY_HORIZON_TESTING: Duration = Duration::from_hours_const(7 * 24);
 
 	pub const EPOCH_BUCKET_INTERVAL: Duration = Duration::from_seconds_const(60);
 	pub const EPOCH_BUCKET_INTERVAL_TESTING: Duration = Duration::from_seconds_const(60);

@@ -58,20 +58,20 @@ impl StandardOperatorStore {
 		self.persistent.checkpoint_get(flow)
 	}
 
-	#[instrument(name = "store::operator::checkpoint_floor", level = "trace", skip(self))]
-	pub fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
+	#[instrument(name = "store::operator::lowest_checkpoint", level = "trace", skip(self))]
+	pub fn lowest_checkpoint(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
 		let pinned = self.pins.floor();
-		let buffered = self.resident.checkpoint_floor();
+		let buffered = self.resident.lowest_checkpoint();
 		self.checkpoint_interlock();
-		let durable = self.persistent.checkpoint_floor()?;
+		let durable = self.persistent.lowest_checkpoint()?;
 		Ok([pinned, buffered, durable].into_iter().flatten().min())
 	}
 
-	#[instrument(name = "store::operator::checkpoint_lsn_floor", level = "trace", skip(self))]
-	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError> {
-		let buffered = self.resident.checkpoint_lsn_floor();
+	#[instrument(name = "store::operator::lowest_checkpoint_lsn", level = "trace", skip(self))]
+	pub fn lowest_checkpoint_lsn(&self) -> Result<Option<Lsn>, StoreOperatorError> {
+		let buffered = self.resident.lowest_checkpoint_lsn();
 		self.checkpoint_interlock();
-		let durable = self.persistent.checkpoint_lsn_floor()?;
+		let durable = self.persistent.lowest_checkpoint_lsn()?;
 		Ok([buffered, durable].into_iter().flatten().min())
 	}
 
@@ -115,15 +115,15 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
+	pub fn lowest_checkpoint(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
 		match self {
-			Self::Standard(store) => store.checkpoint_floor(),
+			Self::Standard(store) => store.lowest_checkpoint(),
 		}
 	}
 
-	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError> {
+	pub fn lowest_checkpoint_lsn(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		match self {
-			Self::Standard(store) => store.checkpoint_lsn_floor(),
+			Self::Standard(store) => store.lowest_checkpoint_lsn(),
 		}
 	}
 

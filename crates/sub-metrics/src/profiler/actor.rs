@@ -46,7 +46,7 @@ pub struct ProfilerCollectorActor {
 	accumulator: Arc<RwLock<ProfilerAccumulator>>,
 	interner: Arc<DimInterner>,
 	instruments: Arc<ProfilerInstruments>,
-	horizon_capacity: usize,
+	total_capacity: usize,
 	clock: Clock,
 }
 
@@ -62,7 +62,7 @@ pub struct ProfilerActorState {
 	processed_summaries: u64,
 	processed_batches: u64,
 	processed_records: u64,
-	horizon: ProfilerAccumulator,
+	total: ProfilerAccumulator,
 	targets: Option<PublishTargets>,
 	last_snapshot: Option<DateTime>,
 }
@@ -72,14 +72,14 @@ impl ProfilerCollectorActor {
 		accumulator: Arc<RwLock<ProfilerAccumulator>>,
 		interner: Arc<DimInterner>,
 		instruments: Arc<ProfilerInstruments>,
-		horizon_capacity: usize,
+		total_capacity: usize,
 		clock: Clock,
 	) -> Self {
 		Self {
 			accumulator,
 			interner,
 			instruments,
-			horizon_capacity,
+			total_capacity,
 			clock,
 		}
 	}
@@ -117,10 +117,10 @@ impl ProfilerCollectorActor {
 		}
 		targets.current_cache.store(current_columns);
 		for (ident, record) in drained {
-			state.horizon.absorb(ident, record);
+			state.total.absorb(ident, record);
 		}
-		let mut horizon_records = state.horizon.all();
-		targets.total_cache.store(spans_columns(&mut horizon_records, now)?);
+		let mut total_records = state.total.all();
+		targets.total_cache.store(spans_columns(&mut total_records, now)?);
 		Ok(())
 	}
 
@@ -191,7 +191,7 @@ impl Actor for ProfilerCollectorActor {
 			processed_summaries: 0,
 			processed_batches: 0,
 			processed_records: 0,
-			horizon: ProfilerAccumulator::new(self.horizon_capacity, Arc::clone(&self.instruments)),
+			total: ProfilerAccumulator::new(self.total_capacity, Arc::clone(&self.instruments)),
 			targets: None,
 			last_snapshot: None,
 		}

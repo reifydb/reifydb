@@ -102,7 +102,7 @@ fn a_sliding_window_stamps_time_with_its_start_not_its_index() {
 
 #[test]
 fn a_sliding_window_seals_size_plus_lateness_after_its_start() {
-	// Each window's seal horizon is its own start plus size plus lateness, so overlapping windows
+	// Each window's seal instant is its own start plus size plus lateness, so overlapping windows
 	// holding the identical row seal at different times. A global seal cannot produce a partial
 	// result, so the 7-versus-107 split is what a count check would miss.
 	let db = setup();
@@ -139,7 +139,7 @@ fn a_sliding_window_seals_size_plus_lateness_after_its_start() {
 			Value::Int8(7)
 		],
 		"two of the first row's four windows must still admit a row at T0 while the other two refuse it, \
-		 because their starts are 30s apart and the flow watermark landed between their horizons"
+		 because their starts are 30s apart and the flow watermark landed between their seal instants"
 	);
 
 	let open = query_internal(&db, "FROM app::w FILTER { total == 107 } | map { g }");
@@ -148,7 +148,7 @@ fn a_sliding_window_seals_size_plus_lateness_after_its_start() {
 	assert_eq!(
 		stamped,
 		vec!["2025-12-31T23:59:45.000000000Z".to_string(), "2026-01-01T00:00:00.000000000Z".to_string(),],
-		"the two that took the row must be exactly the latest-starting windows, the ones whose horizons \
+		"the two that took the row must be exactly the latest-starting windows, the ones whose seal instants \
 		 the flow watermark has not yet reached"
 	);
 }

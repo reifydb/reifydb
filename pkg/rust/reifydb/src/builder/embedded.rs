@@ -62,7 +62,7 @@ fn pool_config_from_sources(
 	let multi_commit_store = factory.open_multi_commit_store();
 	let multi_persistent = factory.open_multi_persistent();
 	let (saved_through, persisted_high) = match multi_persistent.as_ref() {
-		Some(persistent) => (persistent.saved_through()?, persistent.install_floor()?),
+		Some(persistent) => (persistent.saved_through()?, persistent.persisted_high_water()?),
 		None => (CommitVersion(0), CommitVersion(0)),
 	};
 	let wal = commit_wal(factory, clock, wal_config, wal_fs);

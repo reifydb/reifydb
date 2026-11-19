@@ -88,7 +88,7 @@ fn wait_for_consumer_caught_up(db: &TestDb) {
 
 #[test]
 fn a_subscription_without_hydration_delivers_only_rows_after_registration() {
-	// A floor below the seeding version lets the pre-existing row reach the store once the consumer catches up.
+	// A gate below the seeding version lets the pre-existing row reach the store once the consumer catches up.
 	let db = make_db();
 	db.command("INSERT app::t [{id: 1}]");
 
@@ -130,7 +130,7 @@ fn a_subscription_with_hydration_delivers_every_row_once_across_the_hand_off() {
 
 #[test]
 fn the_gate_admits_changes_committed_after_registration_and_refuses_the_ones_before() {
-	// A floor set too high swallows the live stream, so the delivered set must be exact and not merely non-empty.
+	// A gate set too high swallows the live stream, so the delivered set must be exact and not merely non-empty.
 	let db = make_db();
 	db.command("INSERT app::t [{id: 1}]");
 

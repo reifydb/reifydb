@@ -25,7 +25,7 @@ pub trait Model<R> {
 
 	fn step_complete(&mut self) {}
 
-	fn drain_floor(&self) -> u64 {
+	fn high_water(&self) -> u64 {
 		0
 	}
 }

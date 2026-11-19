@@ -102,10 +102,10 @@ impl<S: Coord> OpenSessions<S> {
 		self.sealed_last
 	}
 
-	pub fn insert(&mut self, at: S, row: RowNumber, horizon: S) -> Insertion<S> {
+	pub fn insert(&mut self, at: S, row: RowNumber, first_admitted: S) -> Insertion<S> {
 		let reached: Vec<usize> =
 			(0..self.sessions.len()).filter(|&index| self.sessions[index].reach(at, self.gap)).collect();
-		if self.touches_sealed(at) || (reached.is_empty() && at < horizon) {
+		if self.touches_sealed(at) || (reached.is_empty() && at < first_admitted) {
 			return Insertion::Refused;
 		}
 		let member = Member {
@@ -185,9 +185,9 @@ impl<S: Coord> OpenSessions<S> {
 		}
 	}
 
-	pub fn close(&mut self, horizon: S) -> Vec<OpenSession<S>> {
+	pub fn close(&mut self, first_admitted: S) -> Vec<OpenSession<S>> {
 		let (closed, open): (Vec<_>, Vec<_>) =
-			take(&mut self.sessions).into_iter().partition(|session| session.last < horizon);
+			take(&mut self.sessions).into_iter().partition(|session| session.last < first_admitted);
 		self.sessions = open;
 		if let Some(last) = closed.iter().map(|session| session.last).max() {
 			self.sealed_last = Some(self.sealed_last.map_or(last, |sealed| sealed.max(last)));
@@ -399,7 +399,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_split_off_front_half_behind_the_horizon_closes_and_then_refuses_rows_near_it() {
+	fn a_split_off_front_half_behind_first_admitted_closes_and_then_refuses_rows_near_it() {
 		// A front half that stayed open past its close time would take rows a fresh run already finalised.
 		let mut open = seeded(&[(10_100, 1), (10_900, 2), (11_700, 3)]);
 
@@ -418,8 +418,9 @@ mod tests {
 	}
 
 	#[test]
-	fn a_row_behind_the_horizon_is_refused_even_with_no_closed_session_yet() {
-		// Opening a session behind the horizon creates a window that is already past its close time.
+	fn a_row_behind_first_admitted_is_refused_even_with_no_closed_session_yet() {
+		// Opening a session behind the first admitted point creates a window that is already past its close
+		// time.
 		let mut open = sessions();
 
 		assert_eq!(
@@ -467,7 +468,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_row_within_the_gap_after_a_closed_session_is_refused_even_ahead_of_the_horizon() {
+	fn a_row_within_the_gap_after_a_closed_session_is_refused_even_ahead_of_first_admitted() {
 		// Without sealed_last this row opens a session a fresh run would have merged into the closed one.
 		let mut open = seeded(&[(10_000, 1)]);
 		open.close(event_coord_at_millis(10_500));
@@ -480,7 +481,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_late_row_behind_the_horizon_extends_an_open_session_it_reaches() {
+	fn a_late_row_behind_first_admitted_extends_an_open_session_it_reaches() {
 		// The session closes on its last row, so refusing by the row's own time drops a row a fresh run keeps.
 		let mut open = seeded(&[(11_300, 1)]);
 

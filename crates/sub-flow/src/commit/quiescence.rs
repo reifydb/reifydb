@@ -137,8 +137,8 @@ mod tests {
 
 	#[test]
 	fn the_caught_up_position_never_regresses_when_new_output_lands() {
-		// A regressing caught-up position reads as the chain having gone backwards, and any floor derived
-		// from it would be unsound.
+		// A regressing caught-up position reads as the chain having gone backwards, and any version floor
+		// derived from it would be unsound.
 		let (poll, flows, materialization) = parts();
 		poll.store(CommitVersion(14));
 		flows.update(FlowId(1), CommitVersion(14));

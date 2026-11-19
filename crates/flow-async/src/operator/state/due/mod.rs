@@ -180,7 +180,7 @@ where
 pub(crate) fn due_entries<K, E>(
 	store: &mut dyn StateStore,
 	threshold: u64,
-	floor: Option<u64>,
+	earliest: Option<u64>,
 	limit: usize,
 ) -> Result<Vec<(GroupStateKey, E)>, ValueError>
 where
@@ -189,7 +189,9 @@ where
 	E: OperatorState,
 {
 	let from = K::Suffix::at_threshold(threshold).to_suffix_bytes();
-	let until = floor.filter(|floor| *floor > 0).map(|floor| K::Suffix::at_threshold(floor - 1).to_suffix_bytes());
+	let until = earliest
+		.filter(|earliest| *earliest > 0)
+		.map(|earliest| K::Suffix::at_threshold(earliest - 1).to_suffix_bytes());
 	let range = GroupStateRange::Keyspace {
 		group: GroupId::ROOT,
 		keyspace: K::ID,
@@ -330,8 +332,8 @@ where
 			let grounded = due_earliest::<K>(store)?.unwrap_or(u64::MAX);
 			assert!(
 				earliest <= grounded,
-				"the pass drained through {} and settled the due floor at {earliest}, but the \
-				 keyspace still holds a live row at {grounded}; a floor above the earliest live \
+				"the pass drained through {} and settled the cached earliest at {earliest}, but the \
+				 keyspace still holds a live row at {grounded}; a cached earliest above the earliest live \
 				 threshold cuts that row out of every later due scan",
 				scan.threshold
 			);
@@ -578,9 +580,9 @@ mod tests {
 	}
 
 	#[test]
-	fn a_scan_bounded_by_the_settled_floor_still_reaches_an_entry_at_the_floor() {
-		// settle puts the floor one past the threshold it drained and the next scan ends there, so an
-		// entry armed exactly at the floor is the boundary the range's high edge has to include.
+	fn a_scan_bounded_by_the_settled_earliest_still_reaches_an_entry_at_the_cached_earliest() {
+		// settle puts the cached earliest one past the threshold it drained and the next scan ends there, so an
+		// entry armed exactly at the cached earliest is the boundary the range's high edge has to include.
 		let mut store = MockStore::default();
 		let mut index = DueIndex::<RollingAgeOut>::default();
 
@@ -609,14 +611,14 @@ mod tests {
 		.unwrap();
 
 		let due = index.due::<Entry>(&mut store, 100, 16).unwrap();
-		assert_eq!(due.len(), 1, "the entry armed at the floor must stay inside the bounded scan");
+		assert_eq!(due.len(), 1, "the entry armed at the cached earliest must stay inside the bounded scan");
 		assert_eq!(due[0].1.row, 2);
 	}
 
 	#[test]
-	fn a_drained_pass_settles_the_floor_on_the_next_live_entry_not_one_past_its_threshold() {
-		// The floor comes from a reverse scan bounded to stop where the drained rows begin, so it lands
-		// on the next live entry. Settling one past the threshold instead would be sound but loose, and
+	fn a_drained_pass_settles_the_cached_earliest_on_the_next_live_entry_not_one_past_its_threshold() {
+		// The cached earliest comes from a reverse scan bounded to stop where the drained rows begin, so it
+		// lands on the next live entry. Settling one past the threshold instead would be sound but loose, and
 		// every tick between the two would pay for a scan. The planted entry is invisible to the index,
 		// so finding it would prove the scan ran.
 		let mut store = MockStore::default();
@@ -649,13 +651,13 @@ mod tests {
 
 		assert!(
 			index.due::<Entry>(&mut store, 40, 16).unwrap().is_empty(),
-			"the floor must sit on the entry at 50, so a threshold of 40 skips the store entirely"
+			"the cached earliest must sit on the entry at 50, so a threshold of 40 skips the store entirely"
 		);
 	}
 
 	#[test]
 	fn a_drained_pass_leaves_an_entry_above_its_threshold_reachable() {
-		// The floor is derived from the drain instead of scanned for, so it is only sound when the
+		// The cached earliest is derived from the drain instead of scanned for, so it is only sound when the
 		// caller dropped every row the scan returned. What it never returned must stay reachable.
 		let mut store = MockStore::default();
 		let mut index = DueIndex::<RollingAgeOut>::default();
@@ -678,11 +680,11 @@ mod tests {
 
 		assert!(
 			index.due::<Entry>(&mut store, 20, 16).unwrap().is_empty(),
-			"the floor sits one past the drained threshold, so 20 must not scan again"
+			"the cached earliest sits one past the drained threshold, so 20 must not scan again"
 		);
 
 		let due = index.due::<Entry>(&mut store, 30, 16).unwrap();
-		assert_eq!(due.len(), 1, "the entry at 30 was never drained and sits above the floor");
+		assert_eq!(due.len(), 1, "the entry at 30 was never drained and sits above the cached earliest");
 		assert_eq!(due[0].1.row, 3);
 	}
 

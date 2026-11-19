@@ -19,7 +19,7 @@ use reifydb_catalog::{
 	},
 };
 use reifydb_core::{
-	commit::queue::{CommitPull, CommitQueue, FlowQueueFloor},
+	commit::queue::{CommitPull, CommitQueue, FlowQueuePosition},
 	common::{CommitVersion, TimeSource},
 	default::wal::SEGMENT_BYTES,
 	event::{EventBus, transaction::PostCommitEvent},
@@ -406,7 +406,7 @@ impl TestEngineBuilder {
 				queue_seed.0,
 				engine.multi().config().get_config_uint8(ConfigKey::FlowLookupTrackerEntries) as usize,
 			);
-			ioc_for_queue.register_service(FlowQueueFloor(commit_queue.floor("flow")));
+			ioc_for_queue.register_service(FlowQueuePosition(commit_queue.position("flow")));
 			ioc_for_queue.register_service(commit_queue.clone());
 			ioc_for_queue.register_service(flow_wal(engine.multi().wal()));
 			eventbus.register::<PostCommitEvent, _>(commit_queue);

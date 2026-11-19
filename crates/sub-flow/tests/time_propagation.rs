@@ -6,7 +6,7 @@
 //
 // This is the invariant the production stall violated: a flow re-stamped #time to arrival on
 // entry, so rows carrying July event timestamps reached the windowed operators claiming to be from
-// August. The window coordinate and the seal horizon then disagreed about which clock they were on
+// August. The window coordinate and the seal instant then disagreed about which clock they were on
 // and every bucket was discarded. A declaration check could not see that; only reading the value
 // back at the end of the chain can.
 

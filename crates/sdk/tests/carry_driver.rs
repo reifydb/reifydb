@@ -214,7 +214,7 @@ fn window_order(millis: u64) -> u64 {
 
 #[test]
 fn a_late_row_inside_lateness_lands_in_a_window_older_than_immutable() {
-	// The view admits any row above the lateness horizon, so folding a window on immutable alone silently loses it.
+	// The view admits any row from the first admitted instant on, so folding a window on immutable alone loses it.
 	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<LateCarry>>::new()
 		.with(with(WINDOW, 60_000, 59_000))
 		.build()
@@ -240,7 +240,7 @@ fn a_late_row_inside_lateness_lands_in_a_window_older_than_immutable() {
 
 #[test]
 fn a_carry_view_with_immutable_stays_bounded_while_the_flow_watermark_tracks_the_feed() {
-	// Admitting late rows must not unbound state: windows past the lateness horizon must still fold.
+	// Admitting late rows must not unbound state: windows the first admitted instant has passed must still fold.
 	let feed = |windows: u64| {
 		let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<LateCarry>>::new()
 			.with(with(60, 60, 59))
@@ -291,8 +291,8 @@ fn a_group_idle_past_window_and_lateness_carries_its_close_into_its_next_window(
 }
 
 #[test]
-fn a_retention_drops_an_idle_group_only_once_it_is_idle_past_the_horizon_by_more_than_retention() {
-	// Dropping at the horizon would lose the carry retention exists to keep, and never dropping would leak it.
+fn a_retention_drops_an_idle_group_only_once_it_is_idle_past_the_first_admitted_instant_by_more_than_retention() {
+	// Dropping at the first admitted instant would lose the carry retention keeps, and never dropping leaks it.
 	let mut within = idle_harness(Some(300_000));
 	within.apply(insert(1, 0, 10.0)).expect("apply");
 	within.advance_flow_watermark(DateTime::from_millis(400_000)).expect("advance flow watermark");
@@ -306,12 +306,12 @@ fn a_retention_drops_an_idle_group_only_once_it_is_idle_past_the_horizon_by_more
 	assert_eq!(
 		carry_in_of(&kept, 420_000),
 		Some(10.0),
-		"idle by less than the retention past the horizon keeps the carry"
+		"idle by less than the retention past the first admitted instant keeps the carry"
 	);
 	assert_eq!(
 		carry_in_of(&dropped, 660_000),
 		Some(0.0),
-		"idle by more than the retention past the horizon drops it"
+		"idle by more than the retention past the first admitted instant drops it"
 	);
 }
 

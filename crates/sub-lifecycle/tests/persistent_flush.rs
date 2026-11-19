@@ -31,7 +31,7 @@ use reifydb_store_multi::{
 	store::StandardMultiStore,
 };
 use reifydb_sub_lifecycle::{
-	plane::{LifecyclePlane, ledger::FloorSource},
+	plane::{LifecyclePlane, resolver::FloorSource},
 	store::flush::PersistentFlushTask,
 };
 use reifydb_value::{
@@ -72,9 +72,9 @@ impl FloorSource for Unpinned {
 	}
 }
 
-struct StaticFloor(CommitVersion);
+struct StaticFlushFloor(CommitVersion);
 
-impl FlushFloor for StaticFloor {
+impl FlushFloor for StaticFlushFloor {
 	fn floor(&self) -> CommitVersion {
 		self.0
 	}
@@ -121,7 +121,7 @@ fn seeded_task(store: &StandardMultiStore, budget: u64) -> PersistentFlushTask {
 		)
 		.unwrap();
 	}
-	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(u64::MAX))));
+	store.set_flush_floor(Arc::new(StaticFlushFloor(CommitVersion(u64::MAX))));
 	store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
 
 	let plane = LifecyclePlane::new(Arc::new(Unpinned), VersionEpoch::new());

@@ -37,12 +37,12 @@ pub struct Mix {
 /// shares are drawn against a shrinking remainder: drawn independently they can sum past 100, and a
 /// sweep that seals and retracts more often than it inserts runs against a mostly empty operator.
 pub fn mix(rng: &mut StdRng) -> Mix {
-	const INSERT_FLOOR_PCT: u32 = 15;
+	const MIN_INSERT_PCT: u32 = 15;
 	const MAX_ROWS: u32 = 240;
 
 	let max_batch = rng.random_range(1..=6u32);
 	let steps = rng.random_range(20..=80u32).min((MAX_ROWS / max_batch).max(20));
-	let budget = 100 - INSERT_FLOOR_PCT;
+	let budget = 100 - MIN_INSERT_PCT;
 	let seal_pct = rng.random_range(5..=40u32.min(budget));
 	let remove_pct = rng.random_range(0..=30u32.min(budget - seal_pct));
 	let update_pct = rng.random_range(0..=25u32.min(budget - seal_pct - remove_pct));

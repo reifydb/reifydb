@@ -36,13 +36,13 @@ impl FlowEngineInner {
 		let topo = flow.topological_order();
 
 		reifydb_assertions! {
-			if let Some(floor) = txn.lookup_floor() {
+			if let Some(version_floor) = txn.lookup_floor() {
 				assert!(
-					cursor >= floor,
+					cursor >= version_floor,
 					"flow {} ticked at {} below its lookup lease floor {}: a lookup downstream reads history that may be gone",
 					flow_id.0,
 					cursor.0,
-					floor.0
+					version_floor.0
 				);
 			}
 		}

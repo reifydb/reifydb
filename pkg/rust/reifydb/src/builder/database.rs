@@ -16,7 +16,7 @@ use reifydb_catalog::{
 	system::SystemCatalog,
 };
 #[cfg(feature = "sub_flow")]
-use reifydb_core::commit::queue::{FlowQueueFloor, SubscriptionQueueFloor};
+use reifydb_core::commit::queue::{FlowQueuePosition, SubscriptionQueuePosition};
 use reifydb_core::{
 	CoreVersion,
 	commit::queue::CommitQueue,
@@ -415,11 +415,11 @@ impl DatabaseBuilder {
 		self.ioc = self.ioc.register(commit_queue.clone());
 		#[cfg(feature = "sub_flow")]
 		if self.flow_factory.is_some() {
-			self.ioc = self.ioc.register(FlowQueueFloor(commit_queue.floor("flow")));
+			self.ioc = self.ioc.register(FlowQueuePosition(commit_queue.position("flow")));
 		}
 		#[cfg(feature = "sub_flow")]
 		{
-			self.ioc = self.ioc.register(SubscriptionQueueFloor(commit_queue.floor("subscription")));
+			self.ioc = self.ioc.register(SubscriptionQueuePosition(commit_queue.position("subscription")));
 		}
 
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");

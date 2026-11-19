@@ -183,7 +183,7 @@ fn a_value_whose_entry_was_forgotten_republishes_over_the_row_the_sink_still_hol
 			.next()
 			.unwrap()
 			.is_some(),
-		"precondition: the floor must leave the mapping behind, or there is nothing to collide with"
+		"precondition: compaction must leave the mapping behind, or there is nothing to collide with"
 	);
 
 	op = make_op(6, &engine);

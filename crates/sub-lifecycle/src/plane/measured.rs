@@ -56,7 +56,7 @@ mod tests {
 	use reifydb_value::value::duration::Duration;
 
 	use super::Measured;
-	use crate::plane::{LifecyclePlane, ledger::FloorSource};
+	use crate::plane::{LifecyclePlane, resolver::FloorSource};
 
 	struct NoFloors;
 

@@ -498,9 +498,9 @@ mod tests {
 		consumed
 	}
 
-	struct StaticFloor(CommitVersion);
+	struct StaticFlushFloor(CommitVersion);
 
-	impl FlushFloor for StaticFloor {
+	impl FlushFloor for StaticFlushFloor {
 		fn floor(&self) -> CommitVersion {
 			self.0
 		}
@@ -524,15 +524,15 @@ mod tests {
 
 	fn build_engine(
 		persistence: Arc<dyn ObjectPersistence>,
-		floor: Option<CommitVersion>,
+		flush_floor: Option<CommitVersion>,
 	) -> (FlushEngine, SqliteTempPathGuard) {
 		let buffer = CommitStore::new();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
-		let floor_lock: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
-		if let Some(w) = floor {
-			*floor_lock.write() = Some(Arc::new(StaticFloor(w)));
+		let flush_floor_lock: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
+		if let Some(w) = flush_floor {
+			*flush_floor_lock.write() = Some(Arc::new(StaticFlushFloor(w)));
 		}
 		(
 			FlushEngine::new(
@@ -540,7 +540,7 @@ mod tests {
 				persistent,
 				persistence_lock,
 				no_wal_checkpoint(),
-				floor_lock,
+				flush_floor_lock,
 				Clock::Real,
 				testing_event_bus(),
 			),
@@ -548,20 +548,20 @@ mod tests {
 		)
 	}
 
-	fn build_engine_over(persistent: MultiPersistentTier, floor: Option<CommitVersion>) -> FlushEngine {
+	fn build_engine_over(persistent: MultiPersistentTier, flush_floor: Option<CommitVersion>) -> FlushEngine {
 		let buffer = CommitStore::new();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(Arc::new(AllPersistent));
-		let floor_lock: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
-		if let Some(w) = floor {
-			*floor_lock.write() = Some(Arc::new(StaticFloor(w)));
+		let flush_floor_lock: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
+		if let Some(w) = flush_floor {
+			*flush_floor_lock.write() = Some(Arc::new(StaticFlushFloor(w)));
 		}
 		FlushEngine::new(
 			buffer,
 			persistent,
 			persistence_lock,
 			no_wal_checkpoint(),
-			floor_lock,
+			flush_floor_lock,
 			Clock::Real,
 			testing_event_bus(),
 		)
@@ -619,14 +619,14 @@ mod tests {
 
 	fn build_engine_watching_sweeps(
 		persistence: Arc<dyn ObjectPersistence>,
-		floor: CommitVersion,
+		flush_floor: CommitVersion,
 	) -> (FlushEngine, SqliteTempPathGuard, SweepCollector) {
 		let buffer = CommitStore::new();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
-		let floor_lock: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
-		*floor_lock.write() = Some(Arc::new(StaticFloor(floor)));
+		let flush_floor_lock: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
+		*flush_floor_lock.write() = Some(Arc::new(StaticFlushFloor(flush_floor)));
 
 		let event_bus = testing_event_bus();
 		let collector = SweepCollector::default();
@@ -638,7 +638,7 @@ mod tests {
 				persistent,
 				persistence_lock,
 				no_wal_checkpoint(),
-				floor_lock,
+				flush_floor_lock,
 				Clock::Real,
 				event_bus,
 			),
@@ -703,22 +703,22 @@ mod tests {
 
 	fn build_engine_with_point(
 		persistence: Arc<dyn ObjectPersistence>,
-		floor: CommitVersion,
+		flush_floor: CommitVersion,
 		point: MultiPointTier,
 	) -> (FlushEngine, SqliteTempPathGuard) {
 		let buffer = CommitStore::new();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
-		let floor_lock: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
-		*floor_lock.write() = Some(Arc::new(StaticFloor(floor)));
+		let flush_floor_lock: Arc<RwLock<Option<Arc<dyn FlushFloor>>>> = Arc::new(RwLock::new(None));
+		*flush_floor_lock.write() = Some(Arc::new(StaticFlushFloor(flush_floor)));
 		(
 			FlushEngine::new(
 				buffer,
 				persistent,
 				persistence_lock,
 				no_wal_checkpoint(),
-				floor_lock,
+				flush_floor_lock,
 				Clock::Real,
 				testing_event_bus(),
 			)
@@ -752,7 +752,7 @@ mod tests {
 		assert_eq!(outcome.reclaimed, 0, "nothing is below the pinned cutoff, so nothing can be reclaimed");
 		assert_eq!(
 			outcome.backlog, 8,
-			"the entries the cutoff could not release must still be reported, or a pinned floor \
+			"the entries the cutoff could not release must still be reported, or a pinned flush floor \
 			 looks exactly like an idle one"
 		);
 		assert!(
@@ -1206,7 +1206,7 @@ mod tests {
 		assert_eq!(
 			*checkpoint.saved.lock(),
 			Some(CommitVersion(100)),
-			"the floor must not pass the durable mark"
+			"the log floor must not pass the durable mark"
 		);
 	}
 
@@ -1271,9 +1271,9 @@ mod tests {
 		);
 	}
 
-	struct MovingFloor(AtomicU64);
+	struct MovingFlushFloor(AtomicU64);
 
-	impl FlushFloor for MovingFloor {
+	impl FlushFloor for MovingFlushFloor {
 		fn floor(&self) -> CommitVersion {
 			CommitVersion(self.0.load(Ordering::SeqCst))
 		}
@@ -1283,16 +1283,16 @@ mod tests {
 	fn a_pass_whose_cutoff_falls_mid_way_never_marks_rows_it_did_not_write_as_saved() {
 		// The marker must be the lowest cutoff of the pass, otherwise replay skips rows sqlite never got.
 		let (persistent, _guard) = MultiPersistentTier::sqlite_in_memory();
-		let moving = Arc::new(MovingFloor(AtomicU64::new(5)));
+		let moving = Arc::new(MovingFlushFloor(AtomicU64::new(5)));
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(Arc::new(AllPersistent));
-		let floor: Arc<dyn FlushFloor> = moving.clone();
+		let flush_floor: Arc<dyn FlushFloor> = moving.clone();
 		let engine = FlushEngine::new(
 			CommitStore::new(),
 			persistent,
 			persistence_lock,
 			no_wal_checkpoint(),
-			Arc::new(RwLock::new(Some(floor))),
+			Arc::new(RwLock::new(Some(flush_floor))),
 			Clock::Real,
 			testing_event_bus(),
 		);

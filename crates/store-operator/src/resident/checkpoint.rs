@@ -40,16 +40,16 @@ impl Resident {
 		merged.into_iter().collect()
 	}
 
-	pub fn checkpoint_floor(&self) -> Option<CommitVersion> {
+	pub fn lowest_checkpoint(&self) -> Option<CommitVersion> {
 		let global = self.shared().global.lock();
-		let mut floor: Option<CommitVersion> = None;
+		let mut lowest: Option<CommitVersion> = None;
 		for checkpoint in global.in_flight_checkpoints.values().chain(global.checkpoints.values()).flatten() {
-			floor = Some(floor.map_or(checkpoint.version, |current| current.min(checkpoint.version)));
+			lowest = Some(lowest.map_or(checkpoint.version, |current| current.min(checkpoint.version)));
 		}
-		floor
+		lowest
 	}
 
-	pub fn checkpoint_lsn_floor(&self) -> Option<Lsn> {
+	pub fn lowest_checkpoint_lsn(&self) -> Option<Lsn> {
 		self.shared().global.lock().first_unflushed.values().min().copied()
 	}
 }

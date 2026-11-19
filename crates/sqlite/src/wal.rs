@@ -197,7 +197,7 @@ mod tests {
 
 	#[test]
 	fn a_commit_is_not_reported_checkpointed_until_a_checkpoint_covers_it() {
-		// A floor that moves on commit alone loses data on power loss under NORMAL.
+		// A log floor that moves on commit alone loses data on power loss under NORMAL.
 		let path = scratch("commit");
 		let wal = WalConnection::new(open(&path), 1).unwrap();
 		write(&wal, 4);

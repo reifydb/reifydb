@@ -62,7 +62,7 @@ mod tests {
 
 	#[test]
 	fn compile_ttl_accepts_a_sub_second_ttl() {
-		// The 1s floor existed while expiry resolved through the version epoch a whole second at a time.
+		// The 1s minimum existed while expiry resolved through the version epoch a whole second at a time.
 		// Expiry now compares each row's own timestamp against the cutoff, so sub-second spans are honoured.
 		assert!(compile("500ms").is_ok(), "a sub-second ttl must compile now that expiry is per-row");
 		assert!(compile("1ms").is_ok(), "and precision goes well below that");

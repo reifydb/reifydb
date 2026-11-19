@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Historical GC task: reclaiming superseded versions without ever passing the reader floor.
+//! Historical GC task: reclaiming superseded versions without ever passing the version floor.
 //!
 //! Dropping a version at or above `effective_gc_cutoff` loses a row from a live reader's snapshot; treating a zero
-//! floor as "sweep everything" leaks in the other direction. `store-multi` covers the tier primitive, so what
-//! is testable here is the task around it: the floor it honours, the zero case, and its cursor across slices.
+//! version floor as "sweep everything" leaks in the other direction. `store-multi` covers the tier primitive, so what
+//! is testable here is the task around it: the version floor it honours, the zero case, and its cursor across slices.
 
 use std::{
 	collections::HashMap,
@@ -38,7 +38,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_sub_lifecycle::{
 	gc::historical::actor::HistoricalGcTask,
-	plane::{LifecyclePlane, ledger::FloorSource},
+	plane::{LifecyclePlane, resolver::FloorSource},
 };
 use reifydb_value::{util::cowvec::CowVec, value::Value};
 
@@ -47,9 +47,9 @@ const SHAPE: EntryKind = EntryKind::Source(StorageId::Table(TableId(1)), EntryLa
 /// Only `query_done_until` is scripted; the other reader terms sit wide open, so each test drives the
 /// BufferHistoricalGc cutoff through exactly one term.
 #[derive(Clone)]
-struct ScriptedFloor(Arc<AtomicU64>);
+struct ScriptedQueryFloors(Arc<AtomicU64>);
 
-impl FloorSource for ScriptedFloor {
+impl FloorSource for ScriptedQueryFloors {
 	fn query_done_until(&self) -> CommitVersion {
 		CommitVersion(self.0.load(Ordering::SeqCst))
 	}
@@ -114,19 +114,19 @@ fn visible_at(store: &StandardMultiStore, name: &str, version: u64) -> Option<St
 		.map(|v| String::from_utf8_lossy(v.as_ref()).to_string())
 }
 
-fn task(store: StandardMultiStore, floor: ScriptedFloor) -> HistoricalGcTask {
-	let plane = LifecyclePlane::new(Arc::new(floor), VersionEpoch::new());
+fn task(store: StandardMultiStore, version_floor: ScriptedQueryFloors) -> HistoricalGcTask {
+	let plane = LifecyclePlane::new(Arc::new(version_floor), VersionEpoch::new());
 	HistoricalGcTask::new(store, plane, Clock::testing(), Arc::new(StubConfig))
 }
 
 #[test]
-fn a_zero_floor_reclaims_nothing_rather_than_everything() {
-	// Zero is the "no floor established yet" state - during boot, or before any reader has registered. Reading it
+fn a_zero_version_floor_reclaims_nothing_rather_than_everything() {
+	// Zero is the "no version floor yet" state - during boot, or before any reader has registered. Reading it
 	// as an unbounded cutoff would reclaim the entire version space of a freshly started database.
 	let store = store();
 	write_versions(&store, "k", 5);
-	let floor = ScriptedFloor(Arc::new(AtomicU64::new(0)));
-	let mut task = task(store.clone(), floor);
+	let version_floor = ScriptedQueryFloors(Arc::new(AtomicU64::new(0)));
+	let mut task = task(store.clone(), version_floor);
 
 	assert_eq!(task.run_slice(), Progress::Exhausted);
 
@@ -134,40 +134,41 @@ fn a_zero_floor_reclaims_nothing_rather_than_everything() {
 		assert_eq!(
 			visible_at(&store, "k", v),
 			Some(format!("v{v}")),
-			"a zero floor must leave version {v} untouched"
+			"a zero version floor must leave version {v} untouched"
 		);
 	}
 }
 
 #[test]
-fn never_reclaims_a_version_a_reader_at_the_floor_can_still_reach() {
-	// The floor is inclusive: a reader holding version 3 must still resolve version 3 after the sweep. Dropping
-	// at the cutoff instead of strictly below it is the classic off-by-one that loses a live snapshot's row.
+fn never_reclaims_a_version_a_reader_at_the_version_floor_can_still_reach() {
+	// The version floor is inclusive: a reader holding version 3 must still resolve version 3 after the sweep.
+	// Dropping at the cutoff instead of strictly below it is the classic off-by-one that loses a live snapshot's
+	// row.
 	let store = store();
 	write_versions(&store, "k", 5);
-	let floor = ScriptedFloor(Arc::new(AtomicU64::new(3)));
-	let mut task = task(store.clone(), floor);
+	let version_floor = ScriptedQueryFloors(Arc::new(AtomicU64::new(3)));
+	let mut task = task(store.clone(), version_floor);
 
 	task.run_slice();
 
 	assert_eq!(
 		visible_at(&store, "k", 3),
 		Some("v3".to_string()),
-		"the version at the floor must survive - a reader pinned there is still using it"
+		"the version at the version floor must survive - a reader pinned there is still using it"
 	);
-	assert_eq!(visible_at(&store, "k", 5), Some("v5".to_string()), "versions above the floor must survive");
+	assert_eq!(visible_at(&store, "k", 5), Some("v5".to_string()), "versions above the version floor must survive");
 }
 
 #[test]
-fn raising_the_floor_reclaims_the_versions_it_releases() {
+fn raising_the_version_floor_reclaims_the_versions_it_releases() {
 	// The liveness half: once readers move on, the superseded versions must actually go. A task that honours
-	// the floor but never reclaims anything is indistinguishable from the leak it is meant to prevent.
+	// the version floor but never reclaims anything is indistinguishable from the leak it is meant to prevent.
 	let store = store();
 	write_versions(&store, "k", 5);
-	let floor = Arc::new(AtomicU64::new(0));
-	let mut task = task(store.clone(), ScriptedFloor(floor.clone()));
+	let version_floor = Arc::new(AtomicU64::new(0));
+	let mut task = task(store.clone(), ScriptedQueryFloors(version_floor.clone()));
 
-	floor.store(5, Ordering::SeqCst);
+	version_floor.store(5, Ordering::SeqCst);
 	task.run_slice();
 
 	assert_eq!(
@@ -178,7 +179,7 @@ fn raising_the_floor_reclaims_the_versions_it_releases() {
 	assert_eq!(
 		visible_at(&store, "k", 1),
 		None,
-		"a superseded version released by the floor must actually be reclaimed"
+		"a superseded version released by the version floor must actually be reclaimed"
 	);
 }
 
@@ -187,7 +188,7 @@ fn reports_exhausted_so_the_lane_does_not_spin_on_a_drained_store() {
 	// This class drains its whole backlog per slice. Reporting Yielded would make the lane immediately schedule
 	// a catch-up tick that has nothing to do, burning the lane other classes are queued behind.
 	let store = store();
-	let mut task = task(store, ScriptedFloor(Arc::new(AtomicU64::new(10))));
+	let mut task = task(store, ScriptedQueryFloors(Arc::new(AtomicU64::new(10))));
 
 	assert_eq!(
 		task.run_slice(),
@@ -197,24 +198,24 @@ fn reports_exhausted_so_the_lane_does_not_spin_on_a_drained_store() {
 }
 
 #[test]
-fn a_second_slice_after_the_floor_advances_reclaims_the_newly_released_versions() {
+fn a_second_slice_after_the_version_floor_advances_reclaims_the_newly_released_versions() {
 	// A cursor left exhausted and never reset makes the next sweep skip the shape entirely, so versions released
 	// later are never collected - a leak that only appears after the first successful sweep.
 	let store = store();
 	write_versions(&store, "k", 6);
-	let floor = Arc::new(AtomicU64::new(2));
-	let mut task = task(store.clone(), ScriptedFloor(floor.clone()));
+	let version_floor = Arc::new(AtomicU64::new(2));
+	let mut task = task(store.clone(), ScriptedQueryFloors(version_floor.clone()));
 
 	task.run_slice();
-	assert_eq!(visible_at(&store, "k", 2), Some("v2".to_string()), "version at the first floor survives");
+	assert_eq!(visible_at(&store, "k", 2), Some("v2".to_string()), "version at the first version floor survives");
 
-	floor.store(6, Ordering::SeqCst);
+	version_floor.store(6, Ordering::SeqCst);
 	task.run_slice();
 
 	assert_eq!(
 		visible_at(&store, "k", 2),
 		None,
-		"raising the floor and sweeping again must reclaim what the first sweep had to keep"
+		"raising the version floor and sweeping again must reclaim what the first sweep had to keep"
 	);
 	assert_eq!(visible_at(&store, "k", 6), Some("v6".to_string()), "the current value still survives");
 }

@@ -445,11 +445,11 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		version: CommitVersion,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>, ValueError> {
-		if let Some(floor) = self.txn.lookup_floor()
-			&& version < floor
+		if let Some(version_floor) = self.txn.lookup_floor()
+			&& version < version_floor
 		{
 			panic!("lookup of storage {storage:?} must read at version {version:?}, below the held lease \
-				 floor {floor:?}: that version may be collected, so the read could return a different row");
+				 floor {version_floor:?}: that version may be collected, so the read could return a different row");
 		}
 		let ctx = self.txn.context().clone();
 		let mut query = self.txn.query();
@@ -474,16 +474,17 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 	}
 
 	fn lookup_view_read(&self, view: ViewId, source: SourceVersion) -> LookupAt {
-		let Some(floor) = self.txn.lookup_floor() else {
+		let Some(version_floor) = self.txn.lookup_floor() else {
 			return LookupAt::Commit(CommitVersion(source.0).min(self.version()));
 		};
 		let read = self.txn.lookup_view_read(view, source);
 		let commit = read.map(LookupAt::commit);
-		if floor.0 > source.0
-			&& commit.is_none_or(|commit| self.txn.lookup_view_commit_through(view, floor) != Some(commit))
-		{
+		if version_floor.0 > source.0
+			&& commit.is_none_or(|commit| {
+				self.txn.lookup_view_commit_through(view, version_floor) != Some(commit)
+			}) {
 			panic!(
-				"lookup of view {view:?} for source {source:?} sits below the held lease floor {floor:?} and its \
+				"lookup of view {view:?} for source {source:?} sits below the held lease floor {version_floor:?} and its \
 				 producer committed after {commit:?}: the producer commit it needs may be collected"
 			);
 		}
@@ -494,7 +495,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 			);
 		};
 		match read {
-			LookupAt::Commit(commit) => LookupAt::Commit(commit.max(floor)),
+			LookupAt::Commit(commit) => LookupAt::Commit(commit.max(version_floor)),
 			LookupAt::Layered {
 				..
 			} => read,
@@ -528,12 +529,12 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 			}
 			written.entry(key.partition).or_default().insert(key.row, row.clone());
 		}
-		if let Some(floor) = self.txn.lookup_floor()
-			&& base < floor
+		if let Some(version_floor) = self.txn.lookup_floor()
+			&& base < version_floor
 		{
 			panic!(
 				"lookup of view {view:?} must read below commit {commit:?} at {base:?}, below the held lease \
-				 floor {floor:?}: that version may be collected, so the read could return a different row"
+				 floor {version_floor:?}: that version may be collected, so the read could return a different row"
 			);
 		}
 		let ctx = self.txn.context().clone();

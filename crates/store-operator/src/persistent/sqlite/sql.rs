@@ -8,9 +8,9 @@ pub(super) const CHECKPOINT_SET_SQL: &str = r#"INSERT INTO "flow_checkpoint" ("f
 
 pub(super) const CHECKPOINT_REMOVE_SQL: &str = r#"DELETE FROM "flow_checkpoint" WHERE "flow" = ?1"#;
 
-pub(super) const CHECKPOINT_FLOOR_SQL: &str = r#"SELECT MIN("version") FROM "flow_checkpoint""#;
+pub(super) const LOWEST_CHECKPOINT_SQL: &str = r#"SELECT MIN("version") FROM "flow_checkpoint""#;
 
-pub(super) const CHECKPOINT_LSN_FLOOR_SQL: &str = r#"SELECT MIN("lsn") FROM "flow_checkpoint""#;
+pub(super) const LOWEST_CHECKPOINT_LSN_SQL: &str = r#"SELECT MIN("lsn") FROM "flow_checkpoint""#;
 
 pub(super) const CHECKPOINT_LIST_SQL: &str = r#"SELECT "flow" FROM "flow_checkpoint" ORDER BY "flow" ASC"#;
 

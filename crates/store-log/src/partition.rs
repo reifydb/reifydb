@@ -27,7 +27,7 @@ use crate::{
 	cursor::Cursor,
 	error::StoreLogError,
 	index::{Index, find_at, header, read},
-	reader::{clamp, floor, record, register, unregister, version_of},
+	reader::{clamp, log_floor, record, register, unregister, version_of},
 	segment::{STAGING_SUFFIX, Scan, Segment, Torn, parent, scan, sync_path},
 	vote::Vote,
 };
@@ -268,7 +268,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		if self.bases.len() <= 1 {
 			return Ok(Vec::new());
 		}
-		let pinned = floor(&self.fs, &self.dir)?;
+		let pinned = log_floor(&self.fs, &self.dir)?;
 		let mut dropped = Vec::new();
 		while self.bases.len() > 1 {
 			let base = self.bases[0];
@@ -1123,7 +1123,7 @@ mod tests {
 
 	#[test]
 	fn an_index_below_the_oldest_segment_costs_no_syscall_at_all() {
-		// answering absent is not enough: without the floor check the lookup clamps to the oldest
+		// answering absent is not enough: without the log floor check the lookup clamps to the oldest
 		// segment and scans it whole, because an index below every entry resolves to position zero.
 		// A lagging follower probes exactly this range, so the cost would be a full segment read per
 		// probe, and the answer would be identical either way.
@@ -1150,7 +1150,7 @@ mod tests {
 
 		assert!(partition.record_at(LogIndex::new(3)).unwrap().is_none());
 
-		assert_eq!(fs.calls(), before, "a lookup below the floor reached the filesystem");
+		assert_eq!(fs.calls(), before, "a lookup below the log floor reached the filesystem");
 	}
 
 	#[test]
@@ -1284,7 +1284,7 @@ mod tests {
 
 	#[test]
 	fn a_segment_inside_the_ttl_is_kept() {
-		// without the age test purge would unlink on the reader floor alone, and a log with no
+		// without the age test purge would unlink on the log floor alone, and a log with no
 		// readers registered would drop every sealed segment the moment it rolled.
 		let (_, _, mut partition) = rolled();
 
@@ -1433,9 +1433,9 @@ mod tests {
 	fn a_truncation_below_the_oldest_surviving_index_is_refused() {
 		// the records the caller wants gone are already gone, so the request cannot be
 		// honoured: a follower this far behind needs a snapshot, and emptying the log would
-		// hide that behind something that looks healthy. GC only ever raises the floor
+		// hide that behind something that looks healthy. GC only ever raises the log floor
 		// past entries the compaction point covers, and the point never passes the commit
-		// index, so a cut below the floor is always a cut into the committed prefix and it is
+		// index, so a cut below the log floor is always a cut into the committed prefix and it is
 		// the commit guard that refuses it.
 		let (_, _, mut partition) = rolled();
 		let tail = partition.last_index().unwrap();
@@ -1731,7 +1731,7 @@ mod tests {
 	#[test]
 	fn a_rebase_empties_the_log_and_restarts_it_above_the_snapshot() {
 		// a follower installing a snapshot at 20 has no use for anything it holds, and the next
-		// entry its leader sends is 21: the floor, the tail and the commit index all move there.
+		// entry its leader sends is 21: the log floor, the tail and the commit index all move there.
 		let (fs, _, mut partition) = rolled();
 
 		partition.rebase(LogIndex::new(20), Term::new(5)).unwrap();
@@ -1777,10 +1777,10 @@ mod tests {
 
 	#[test]
 	fn a_rebase_survives_a_reopen() {
-		// the new floor lives in the index header and the tail in the vote file; a reopen that read
+		// the new log floor lives in the index header and the tail in the vote file; a reopen that read
 		// either from the old segment would demand index 1 next and refuse the leader's 21. The
 		// entry appended first is what makes this a real reopen: an empty log behind its snapshot
-		// is healed on open, so it would hide a floor that never reached the header.
+		// is healed on open, so it would hide a log floor that never reached the header.
 		let (fs, mock, mut partition) = rolled();
 		partition.rebase(LogIndex::new(20), Term::new(5)).unwrap();
 		let mut next = at_index(600, 21);

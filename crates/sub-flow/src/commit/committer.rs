@@ -1937,11 +1937,11 @@ mod commit_integration {
 	}
 
 	#[derive(Default)]
-	struct RecordingFloor {
+	struct RecordingWalFloor {
 		saved: Mutex<Vec<Lsn>>,
 	}
 
-	impl WalFloorCheckpoint for RecordingFloor {
+	impl WalFloorCheckpoint for RecordingWalFloor {
 		fn make_durable(&self, _through: Lsn) -> Result<(), ValueError> {
 			Ok(())
 		}
@@ -1965,10 +1965,10 @@ mod commit_integration {
 		// A marker saved at any lsn but the record's own replays that record twice or skips one after a crash.
 		let te = logged_engine();
 		let engine = te.inner().clone();
-		let floor = Arc::new(RecordingFloor::default());
+		let wal_floor = Arc::new(RecordingWalFloor::default());
 		let (storage, _guard) = PersistentTier::sqlite_in_memory();
 		let store = OperatorStore::standard(OperatorStoreConfig::sqlite(
-			OperatorPersistentConfig::opened_with_checkpoint(storage, floor.clone()),
+			OperatorPersistentConfig::opened_with_checkpoint(storage, wal_floor.clone()),
 			engine.spawner(),
 		));
 		let committer = plain_committer(&engine, store.clone());
@@ -1979,7 +1979,7 @@ mod commit_integration {
 
 		let records = logged_sections(&engine);
 		assert_eq!(records.len(), 1, "one record carries the slice: {records:?}");
-		assert_eq!(*floor.saved.lock(), vec![records[0].0], "the flush must save exactly the record's lsn");
+		assert_eq!(*wal_floor.saved.lock(), vec![records[0].0], "the flush must save exactly the record's lsn");
 	}
 
 	struct HeadAtGuard {
@@ -2013,13 +2013,13 @@ mod commit_integration {
 		// A guard taken after the append lets an idle pass mark past a logged section that is not applied yet.
 		let te = logged_engine();
 		let engine = te.inner().clone();
-		let floor = Arc::new(HeadAtGuard {
+		let wal_floor = Arc::new(HeadAtGuard {
 			wal: engine.multi().wal().clone(),
 			heads: Mutex::new(Vec::new()),
 		});
 		let (storage, _guard) = PersistentTier::sqlite_in_memory();
 		let store = OperatorStore::standard(OperatorStoreConfig::sqlite(
-			OperatorPersistentConfig::opened_with_checkpoint(storage, floor.clone()),
+			OperatorPersistentConfig::opened_with_checkpoint(storage, wal_floor.clone()),
 			engine.spawner(),
 		));
 		let committer = plain_committer(&engine, store);
@@ -2029,7 +2029,7 @@ mod commit_integration {
 
 		let records = logged_sections(&engine);
 		assert_eq!(records.len(), 1, "one record carries the slice: {records:?}");
-		let heads = floor.heads.lock().clone();
+		let heads = wal_floor.heads.lock().clone();
 		assert_eq!(heads.len(), 1, "one commit takes exactly one operator guard: {heads:?}");
 		assert!(
 			heads[0].is_none_or(|head| head < records[0].0),

@@ -393,7 +393,7 @@ impl OperatorStore {
 
 impl CheckpointFloor for OperatorStore {
 	fn floor(&self) -> Result<Option<CommitVersion>, ValueError> {
-		Ok(self.checkpoint_floor()?)
+		Ok(self.lowest_checkpoint()?)
 	}
 }
 

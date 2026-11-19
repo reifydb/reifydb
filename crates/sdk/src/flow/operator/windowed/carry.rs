@@ -195,10 +195,12 @@ where
 	fn seal_through<C: GuestContext>(
 		engine: &mut CarryEngine<A>,
 		store: &mut GuestAsHost<'_, C>,
-		horizon: A::Coord,
+		first_admitted: A::Coord,
 	) -> Result<(), SdkError> {
-		if horizon > <A::Coord as Coord>::from_order(0) {
-			engine.seal_due(store, horizon, |group, window_start| Self::row_key(group, window_start))?;
+		if first_admitted > <A::Coord as Coord>::from_order(0) {
+			engine.seal_due(store, first_admitted, |group, window_start| {
+				Self::row_key(group, window_start)
+			})?;
 		}
 		Ok(())
 	}
@@ -219,11 +221,11 @@ where
 			}
 		}
 		let operator_watermark = operator_watermark::<A::Coord>(&mut store)?;
-		let horizon = <A::Coord as SealDomain>::horizon(operator_watermark, seal_span);
-		Self::seal_through(&mut self.engine, &mut store, horizon)?;
+		let first_admitted = <A::Coord as SealDomain>::first_admitted(operator_watermark, seal_span);
+		Self::seal_through(&mut self.engine, &mut store, first_admitted)?;
 		let mut dropped = 0u64;
 		buckets.retain(|(_, span), events| {
-			if is_sealed(span.start, horizon) {
+			if is_sealed(span.start, first_admitted) {
 				dropped += events.len() as u64;
 				false
 			} else {
@@ -335,8 +337,8 @@ where
 		let Some(operator_watermark) = timer_operator_watermark::<A::Coord>(&mut store, timer)? else {
 			return Ok(());
 		};
-		let horizon = <A::Coord as SealDomain>::horizon(operator_watermark, seal_span);
-		Self::seal_through(&mut self.engine, &mut store, horizon)
+		let first_admitted = <A::Coord as SealDomain>::first_admitted(operator_watermark, seal_span);
+		Self::seal_through(&mut self.engine, &mut store, first_admitted)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<(), SdkError> {

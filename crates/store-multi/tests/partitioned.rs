@@ -47,9 +47,9 @@ fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
 	EncodedBytes(CowVec::new(bytes.to_vec()))
 }
 
-struct FixedFloor(CommitVersion);
+struct FixedFlushFloor(CommitVersion);
 
-impl FlushFloor for FixedFloor {
+impl FlushFloor for FixedFlushFloor {
 	fn floor(&self) -> CommitVersion {
 		self.0
 	}
@@ -104,7 +104,7 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	)
 	.unwrap();
 	// Pin the eviction cutoff at v1 so the flush actually moves the v1 rows to the persistent tier.
-	store.set_flush_floor(Arc::new(FixedFloor(CommitVersion(1))));
+	store.set_flush_floor(Arc::new(FixedFlushFloor(CommitVersion(1))));
 	store.flush_pending_blocking();
 
 	// This third row is deliberately left unflushed so the reads below straddle both tiers.

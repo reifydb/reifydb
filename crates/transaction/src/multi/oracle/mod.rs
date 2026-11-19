@@ -1485,7 +1485,7 @@ mod tests {
 
 	#[test]
 	fn lsn_through_errs_low_keeps_its_answer_and_drops_only_older_entries() {
-		// A floor picked above the saved version lets gc drop records a crash still needs.
+		// A log floor picked above the saved version lets gc drop records a crash still needs.
 		let mut state = OracleState {
 			time_windows: BTreeMap::new(),
 			evicted_up_through: CommitVersion(0),

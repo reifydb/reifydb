@@ -19,7 +19,7 @@ use reifydb_core::{
 	commit::{
 		loader::CommitLoaderMessage,
 		position::ReaderPosition,
-		queue::{CommitPull, CommitQueue, CommitQueueFloor, lsn_through},
+		queue::{CommitPull, CommitQueue, CommitQueuePosition, lsn_through},
 	},
 	common::{CommitVersion, SourceVersion},
 	flow::{dag::FlowDag, operator::OperatorDef},
@@ -148,10 +148,10 @@ pub struct FlowSupervisorParams {
 	pub committers: Vec<ActorRef<CommitterMessage>>,
 	pub terminal_committers: Vec<ActorRef<CommitterMessage>>,
 	pub queue: CommitQueue,
-	pub queue_floor: CommitQueueFloor,
+	pub queue_position: CommitQueuePosition,
 	pub loader: ActorRef<CommitLoaderMessage>,
 	pub log: Arc<dyn CommitLog>,
-	pub floor: Arc<dyn CommitFloor>,
+	pub log_floor: Arc<dyn CommitFloor>,
 	pub control: PullLimit,
 	pub polled_through: ReaderPosition,
 	pub view_lineage: ViewLineage,
@@ -176,10 +176,10 @@ pub struct FlowSupervisor {
 	committers: Vec<ActorRef<CommitterMessage>>,
 	terminal_committers: Vec<ActorRef<CommitterMessage>>,
 	queue: CommitQueue,
-	queue_floor: CommitQueueFloor,
+	queue_position: CommitQueuePosition,
 	loader: ActorRef<CommitLoaderMessage>,
 	log: Arc<dyn CommitLog>,
-	floor: Arc<dyn CommitFloor>,
+	log_floor: Arc<dyn CommitFloor>,
 	control: PullLimit,
 	polled_through: ReaderPosition,
 	view_lineage: ViewLineage,
@@ -210,7 +210,7 @@ pub struct SupervisorState {
 	scan_lease: Option<VersionLeaseGuard>,
 	loading: bool,
 	start_lsns: BTreeMap<FlowId, Lsn>,
-	last_floor_at: DateTime,
+	last_log_floor_at: DateTime,
 	wake_sets: BTreeMap<ObjectId, BTreeSet<FlowId>>,
 	full_wake_armed: bool,
 	stall_watches: BTreeMap<FlowId, StallWatch>,
@@ -234,10 +234,10 @@ impl FlowSupervisor {
 			committers: params.committers,
 			terminal_committers: params.terminal_committers,
 			queue: params.queue,
-			queue_floor: params.queue_floor,
+			queue_position: params.queue_position,
 			loader: params.loader,
 			log: params.log,
-			floor: params.floor,
+			log_floor: params.log_floor,
 			control: params.control,
 			polled_through: params.polled_through,
 			view_lineage: params.view_lineage,
@@ -267,7 +267,7 @@ impl FlowSupervisor {
 		scan_lease: VersionLeaseGuard,
 	) {
 		let self_ref = ctx.self_ref().clone();
-		self.queue_floor.adopt(scan_from, move || {
+		self.queue_position.adopt(scan_from, move || {
 			let _ = self_ref.send(FlowSupervisorMessage::Wake);
 		});
 		let mut query = match self.engine.begin_query_at_version(&scan_lease, IdentityId::system()) {
@@ -331,11 +331,11 @@ impl FlowSupervisor {
 		self.hydrate_output_watermarks();
 
 		let scan_cursor = scan_from;
-		let scan_lsn = self.floor.position().unwrap_or(Lsn::new(0));
+		let scan_lsn = self.log_floor.position().unwrap_or(Lsn::new(0));
 		state.scan_cursor = scan_cursor;
 		state.scan_lsn = scan_lsn;
 		state.scan_lease = Some(scan_lease.clone());
-		state.last_floor_at = self.clock.now();
+		state.last_log_floor_at = self.clock.now();
 		self.control.store(scan_cursor);
 
 		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
@@ -433,7 +433,7 @@ impl FlowSupervisor {
 	}
 
 	fn handle_wake(&self, state: &mut SupervisorState, ctx: &Context<FlowSupervisorMessage>) {
-		self.queue_floor.disarm();
+		self.queue_position.disarm();
 		if state.loading || state.joining || state.stops_in_flight > 0 {
 			return;
 		}
@@ -534,10 +534,10 @@ impl FlowSupervisor {
 		self.polled_through.store(advance_to);
 
 		let now = self.clock.now();
-		if now - state.last_floor_at >= self.checkpoint_max_age {
+		if now - state.last_log_floor_at >= self.checkpoint_max_age {
 			self.evict_queue(state);
-			self.advance_flow_floor(state);
-			state.last_floor_at = now;
+			self.advance_flow_log_floor(state);
+			state.last_log_floor_at = now;
 		}
 
 		let mut targets = wake_targets(&state.wake_sets, &changed);
@@ -554,12 +554,12 @@ impl FlowSupervisor {
 	}
 
 	fn evict_queue(&self, state: &SupervisorState) {
-		let floor = match self.engine.operator_state().checkpoint_floor() {
+		let position = match self.engine.operator_state().lowest_checkpoint() {
 			Ok(Some(checkpoint)) => checkpoint.min(state.scan_cursor),
 			Ok(None) => state.scan_cursor,
-			Err(e) => panic!("flow supervisor cannot read the flow checkpoint floor: {e}"),
+			Err(e) => panic!("flow supervisor cannot read the lowest flow checkpoint: {e}"),
 		};
-		self.queue_floor.advance(floor);
+		self.queue_position.advance(position);
 	}
 
 	fn handle_poisoned(
@@ -703,12 +703,12 @@ impl FlowSupervisor {
 		self.publish_lineage(state);
 	}
 
-	fn advance_flow_floor(&self, state: &mut SupervisorState) {
+	fn advance_flow_log_floor(&self, state: &mut SupervisorState) {
 		let operators = self.engine.operator_state();
-		let (floor, waiting) = flow_lsn_floor(&operators, state.scan_lsn, take(&mut state.start_lsns));
+		let (log_floor, waiting) = flow_log_floor(&operators, state.scan_lsn, take(&mut state.start_lsns));
 		state.start_lsns = waiting;
-		if floor > Lsn::new(0) {
-			self.floor.advance(floor);
+		if log_floor > Lsn::new(0) {
+			self.log_floor.advance(log_floor);
 		}
 	}
 
@@ -1750,7 +1750,7 @@ impl Actor for FlowSupervisor {
 			scan_lease: None,
 			loading: false,
 			start_lsns: BTreeMap::new(),
-			last_floor_at: self.clock.now(),
+			last_log_floor_at: self.clock.now(),
 			wake_sets: BTreeMap::new(),
 			full_wake_armed: false,
 			stall_watches: BTreeMap::new(),
@@ -1827,46 +1827,46 @@ fn downstream_units(state: &SupervisorState, flows: &[FlowId]) -> Vec<(Vec<FlowI
 	units.into_values().collect()
 }
 
-fn flow_lsn_floor(
+fn flow_log_floor(
 	operators: &OperatorStore,
 	scan_lsn: Lsn,
 	start_lsns: BTreeMap<FlowId, Lsn>,
 ) -> (Lsn, BTreeMap<FlowId, Lsn>) {
-	let mut floor = scan_lsn;
+	let mut log_floor = scan_lsn;
 	let mut waiting = BTreeMap::new();
 	for (flow_id, lsn) in start_lsns {
 		match operators.checkpoint_get(flow_id) {
 			Ok(Some(_)) => {}
 			Ok(None) => {
-				floor = floor.min(lsn);
+				log_floor = log_floor.min(lsn);
 				waiting.insert(flow_id, lsn);
 			}
-			Err(e) => panic!("flow {} checkpoint unreadable for the flow floor: {e}", flow_id.0),
+			Err(e) => panic!("flow {} checkpoint unreadable for the flow log floor: {e}", flow_id.0),
 		}
 	}
-	floor_interlock();
-	match operators.checkpoint_lsn_floor() {
-		Ok(Some(lsn)) => floor = floor.min(lsn),
+	log_floor_interlock();
+	match operators.lowest_checkpoint_lsn() {
+		Ok(Some(lsn)) => log_floor = log_floor.min(lsn),
 		Ok(None) => {}
-		Err(e) => panic!("flow supervisor cannot read the flow checkpoint lsn floor: {e}"),
+		Err(e) => panic!("flow supervisor cannot read the lowest flow checkpoint lsn: {e}"),
 	}
-	(floor, waiting)
+	(log_floor, waiting)
 }
 
 #[cfg(test)]
 thread_local! {
-	static FLOOR_INTERLOCK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+	static LOG_FLOOR_INTERLOCK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
 }
 
 #[cfg(test)]
-fn floor_interlock() {
-	if let Some(interlock) = FLOOR_INTERLOCK.with(|slot| slot.borrow_mut().take()) {
+fn log_floor_interlock() {
+	if let Some(interlock) = LOG_FLOOR_INTERLOCK.with(|slot| slot.borrow_mut().take()) {
 		interlock();
 	}
 }
 
 #[cfg(not(test))]
-fn floor_interlock() {}
+fn log_floor_interlock() {}
 
 #[cfg(test)]
 mod tests {
@@ -1913,7 +1913,7 @@ mod tests {
 	use rustc_hash::{FxHashMap, FxHashSet};
 
 	use super::{
-		FLOOR_INTERLOCK, flow_lsn_floor, owned_queues_of, queues_at_spawn, remove_orphan_checkpoints,
+		LOG_FLOOR_INTERLOCK, flow_log_floor, owned_queues_of, queues_at_spawn, remove_orphan_checkpoints,
 		retire_flow, stored_checkpoint, wake_sets, wake_targets,
 	};
 	use crate::progress::tracker::FlowPositionTracker;
@@ -1954,27 +1954,31 @@ mod tests {
 	}
 
 	#[test]
-	fn a_flow_stopped_for_a_reform_keeps_its_start_lsn_in_the_floor_until_it_checkpoints() {
+	fn a_flow_stopped_for_a_reform_keeps_its_start_lsn_in_the_log_floor_until_it_checkpoints() {
 		// Absent from the live map is not gone: its backfill checkpoint lands after the stop, below the scan
 		// lsn.
 		let store = OperatorStore::testing_memory();
 		let flow = FlowId(7);
 		let start_lsns = BTreeMap::from([(flow, Lsn::new(100))]);
 
-		let (floor, waiting) = flow_lsn_floor(&store, Lsn::new(500), start_lsns);
+		let (log_floor, waiting) = flow_log_floor(&store, Lsn::new(500), start_lsns);
 
-		assert_eq!(floor, Lsn::new(100), "the floor must stay at the start lsn of a flow with no checkpoint");
+		assert_eq!(
+			log_floor,
+			Lsn::new(100),
+			"the log floor must stay at the start lsn of a flow with no checkpoint"
+		);
 		assert_eq!(waiting.get(&flow), Some(&Lsn::new(100)), "the start lsn must be kept for the next round");
 	}
 
 	#[test]
-	fn a_first_checkpoint_landing_between_the_floor_reads_never_lets_the_floor_pass_it() {
-		// A checkpoint in neither floor term lets gc drop records its flow still needs, and a floor never moves
-		// back.
+	fn a_first_checkpoint_landing_between_the_log_floor_reads_never_lets_the_log_floor_pass_it() {
+		// A checkpoint in neither log floor term lets gc drop records its flow still needs, and a log floor
+		// never moves back.
 		let store = OperatorStore::testing_memory();
 		let flow = FlowId(7);
 		let landing = store.clone();
-		FLOOR_INTERLOCK.with(|slot| {
+		LOG_FLOOR_INTERLOCK.with(|slot| {
 			*slot.borrow_mut() = Some(Box::new(move || {
 				landing.checkpoint_set(
 					flow,
@@ -1988,16 +1992,16 @@ mod tests {
 		});
 		let start_lsns = BTreeMap::from([(flow, Lsn::new(100))]);
 
-		let (floor, waiting) = flow_lsn_floor(&store, Lsn::new(500), start_lsns);
+		let (log_floor, waiting) = flow_log_floor(&store, Lsn::new(500), start_lsns);
 
 		assert!(
-			floor <= Lsn::new(150),
-			"the floor passed the checkpoint lsn the flow resumes from: floor={} checkpoint=150",
-			floor.as_u64()
+			log_floor <= Lsn::new(150),
+			"the log floor passed the checkpoint lsn the flow resumes from: log_floor={} checkpoint=150",
+			log_floor.as_u64()
 		);
 		assert!(
-			!waiting.contains_key(&flow) || floor <= Lsn::new(100),
-			"a kept start lsn must bound the floor"
+			!waiting.contains_key(&flow) || log_floor <= Lsn::new(100),
+			"a kept start lsn must bound the log floor"
 		);
 	}
 
@@ -2059,7 +2063,7 @@ mod tests {
 
 	#[test]
 	fn bootstrap_removes_a_checkpoint_whose_flow_the_catalog_no_longer_lists() {
-		// the gc floor is the minimum over these rows, so one orphan pins commit log truncation forever
+		// the flow log floor is the minimum over these rows, so one orphan pins commit log truncation forever
 		let store = OperatorStore::testing_memory();
 		store.checkpoint_set(FlowId(1), checkpoint_at(10)).unwrap();
 		store.checkpoint_set(FlowId(2), checkpoint_at(20)).unwrap();
@@ -2074,7 +2078,7 @@ mod tests {
 		);
 		assert!(
 			store.checkpoint_get(FlowId(2)).unwrap().is_none(),
-			"the orphan must be deleted, otherwise its version stays the floor and no commit log entry in the \
+			"the orphan must be deleted, otherwise it stays the lowest checkpoint and no commit log entry in the \
 			 database is ever collected again"
 		);
 	}

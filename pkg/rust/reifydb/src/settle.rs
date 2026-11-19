@@ -464,7 +464,7 @@ mod tests {
 
 	#[test]
 	fn a_settled_pipeline_stays_settled_for_one_confirming_pass() {
-		// Quiescence is "the last pass produced nothing", so one confirming pass is the floor and
+		// Quiescence is "the last pass produced nothing", so one confirming pass is the minimum and
 		// also the ceiling once the pipeline is quiet. More than that would mean the predicate
 		// keeps seeing work that is not there, and every caller would pay for it on every call.
 		let db = with_table();

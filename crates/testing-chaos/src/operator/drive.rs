@@ -264,7 +264,7 @@ where
 		}
 	}
 
-	let drain_at_ms = scenario.drain_at_ms.max(model.drain_floor());
+	let drain_at_ms = scenario.drain_at_ms.max(model.high_water());
 	model.advance_ledger(drain_at_ms);
 
 	let ticks = session.drain(drain_at_ms, 256).expect("drain tick must succeed");
@@ -274,7 +274,7 @@ where
 	{
 		dump(&trace);
 		let report = format!(
-			"repeated ticks past every horizon must leave exactly what the model says survives, but \
+			"repeated ticks past every due instant must leave exactly what the model says survives, but \
 			 after {ticks} ticks: {report}"
 		);
 		return stopped(fingerprint, &trace, session, report);

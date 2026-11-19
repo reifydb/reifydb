@@ -238,7 +238,7 @@ impl SqlitePersistentStorage {
 		}
 	}
 
-	pub fn install_floor(&self) -> Result<CommitVersion, ValueError> {
+	pub fn persisted_high_water(&self) -> Result<CommitVersion, ValueError> {
 		let opened = match self.inner.opened_high_water.get() {
 			Some(opened) => *opened,
 			None => {
@@ -273,7 +273,7 @@ impl SqlitePersistentStorage {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Err(error!(internal(
-				"Persistent storage is shut down; refusing to probe the install floor, whose \
+				"Persistent storage is shut down; refusing to probe the persisted high water, whose \
 				 fallback would gate coverage materializes on a version no read ever observed"
 					.to_string()
 			)));

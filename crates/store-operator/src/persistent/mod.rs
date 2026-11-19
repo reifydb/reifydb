@@ -200,9 +200,9 @@ pub trait Checkpoint: Persistent {
 
 	fn checkpoint_remove(&self, flow: FlowId) -> Result<(), StoreOperatorError>;
 
-	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError>;
+	fn lowest_checkpoint(&self) -> Result<Option<CommitVersion>, StoreOperatorError>;
 
-	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError>;
+	fn lowest_checkpoint_lsn(&self) -> Result<Option<Lsn>, StoreOperatorError>;
 
 	fn checkpoint_list(&self) -> Result<Vec<FlowId>, StoreOperatorError>;
 }
@@ -400,23 +400,23 @@ impl Checkpoint for PersistentTier {
 		}
 	}
 
-	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
+	fn lowest_checkpoint(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(None),
-			Self::Memory(memory) => Checkpoint::checkpoint_floor(memory),
-			Self::Testing(testing) => Checkpoint::checkpoint_floor(testing),
+			Self::Memory(memory) => Checkpoint::lowest_checkpoint(memory),
+			Self::Testing(testing) => Checkpoint::lowest_checkpoint(testing),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => storage.checkpoint_floor(),
+			Self::Sqlite(storage) => storage.lowest_checkpoint(),
 		}
 	}
 
-	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError> {
+	fn lowest_checkpoint_lsn(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(None),
-			Self::Memory(memory) => Checkpoint::checkpoint_lsn_floor(memory),
-			Self::Testing(testing) => Checkpoint::checkpoint_lsn_floor(testing),
+			Self::Memory(memory) => Checkpoint::lowest_checkpoint_lsn(memory),
+			Self::Testing(testing) => Checkpoint::lowest_checkpoint_lsn(testing),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => storage.checkpoint_lsn_floor(),
+			Self::Sqlite(storage) => storage.lowest_checkpoint_lsn(),
 		}
 	}
 

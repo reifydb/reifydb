@@ -36,7 +36,7 @@ fn open() -> Wal<Ping, NopDevice> {
 
 #[test]
 fn nop_lsns_count_up_by_one_per_append() {
-	// Floors and the per-version lsn map key on these numbers, so a gap or a reuse breaks single and multi
+	// Log floors and the per-version lsn map key on these numbers, so a gap or a reuse breaks single and multi
 	// checkpoints.
 	let wal = open();
 	let lsns: Vec<u64> = (0..3).map(|n| wal.append(DateTime::from_millis(1), &Ping(n)).unwrap().as_u64()).collect();
@@ -55,15 +55,15 @@ fn nop_durable_follows_the_last_append() {
 }
 
 #[test]
-fn nop_floor_advances_without_floor_ahead() {
-	// A store flush moves its floor to the lsn it saved; a FloorAhead here panics every flush with the wal
+fn nop_log_floor_advances_without_floor_ahead() {
+	// A store flush moves its log floor to the lsn it saved; a FloorAhead here panics every flush with the wal
 	// disabled.
 	let wal = open();
-	let floor = wal.floor("multi").unwrap();
+	let log_floor = wal.floor("multi").unwrap();
 	let lsn = wal.append(DateTime::from_millis(1), &Ping(1)).unwrap();
 	wal.sync().unwrap();
-	floor.advance(lsn).unwrap();
-	assert_eq!(floor.position(), Some(lsn));
+	log_floor.advance(lsn).unwrap();
+	assert_eq!(log_floor.position(), Some(lsn));
 	wal.gc().unwrap();
 }
 

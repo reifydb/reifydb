@@ -54,9 +54,9 @@ const ROWS: u64 = 160;
 
 const BATCH: u64 = 64;
 
-struct StaticFloor(CommitVersion);
+struct StaticFlushFloor(CommitVersion);
 
-impl FlushFloor for StaticFloor {
+impl FlushFloor for StaticFlushFloor {
 	fn floor(&self) -> CommitVersion {
 		self.0
 	}
@@ -138,7 +138,7 @@ fn commit_remove(store: &StandardMultiStore, storage: StorageId, row: u64, versi
 }
 
 fn flush(store: &StandardMultiStore, cutoff: u64) {
-	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(cutoff))));
+	store.set_flush_floor(Arc::new(StaticFlushFloor(CommitVersion(cutoff))));
 	store.flush_pending_blocking();
 }
 

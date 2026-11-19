@@ -9,7 +9,7 @@ use reifydb_core::{
 use reifydb_value::value::duration::Duration;
 
 pub fn history_horizon(catalog: &Catalog) -> Duration {
-	let floor = catalog.get_config_duration(ConfigKey::MinHistoryHorizon);
+	let minimum = catalog.get_config_duration(ConfigKey::MinHistoryHorizon);
 
 	let rows = catalog
 		.list_row_settings()
@@ -19,5 +19,5 @@ pub fn history_horizon(catalog: &Catalog) -> Duration {
 
 	let operators = catalog.list_operator_horizon().into_iter().map(|(_, horizon)| horizon.duration);
 
-	rows.chain(operators).fold(floor, |longest, declared| longest.max(declared))
+	rows.chain(operators).fold(minimum, |longest, declared| longest.max(declared))
 }

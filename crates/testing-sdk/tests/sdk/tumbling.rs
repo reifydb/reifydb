@@ -624,7 +624,7 @@ fn late_event_while_lateness_is_open_is_accepted() {
 
 #[test]
 fn remove_within_seal_is_applied_and_sealed_remove_is_dropped() {
-	// Grace is the single mutability horizon for every mutation kind, retractions included: a
+	// Grace is the single mutability span for every mutation kind, retractions included: a
 	// remove is honored while the window is open and dropped once it seals, because the sealed
 	// value is final by contract.
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()

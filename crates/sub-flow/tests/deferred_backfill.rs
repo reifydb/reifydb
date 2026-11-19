@@ -445,25 +445,25 @@ impl ScanHooks for Probe {
 	}
 }
 
-struct Floors {
+struct LowestCheckpoints {
 	engine: Mutex<Option<StandardEngine>>,
 	seen: Mutex<Vec<Result<Option<CommitVersion>, String>>>,
 }
 
-impl Floors {
+impl LowestCheckpoints {
 	fn record(&self) {
 		let engine = self.engine.lock().clone();
 		let seen = match engine {
 			Some(engine) => {
-				engine.operator_state().checkpoint_floor().map_err(|error| format!("{error:?}"))
+				engine.operator_state().lowest_checkpoint().map_err(|error| format!("{error:?}"))
 			}
-			None => Err("the floor probe ran after its engine handle was released".to_string()),
+			None => Err("the lowest checkpoint probe ran after its engine handle was released".to_string()),
 		};
 		self.seen.lock().push(seen);
 	}
 }
 
-impl ScanHooks for Floors {
+impl ScanHooks for LowestCheckpoints {
 	fn during_open(&self, _source: ObjectId) {
 		self.record();
 	}
@@ -2059,28 +2059,28 @@ fn a_source_write_committed_with_the_create_is_counted_exactly_once() {
 	probe.engine.lock().take();
 }
 
-fn floor(db: &TestDb) -> Option<CommitVersion> {
-	db.engine().operator_state().checkpoint_floor().expect("the checkpoint floor")
+fn lowest_checkpoint(db: &TestDb) -> Option<CommitVersion> {
+	db.engine().operator_state().lowest_checkpoint().expect("the lowest checkpoint")
 }
 
 #[test]
-fn a_backfill_holds_the_checkpoint_floor_at_v_until_its_checkpoint_commits() {
-	// With no floor at V between the snapshot and the checkpoint, commit log gc can collect the changes after
-	// V.
+fn a_backfill_holds_the_lowest_checkpoint_at_v_until_its_checkpoint_commits() {
+	// With no lowest checkpoint at V between the snapshot and the checkpoint, commit log gc can collect the changes
+	// after V.
 	let db = memory();
 	run(&db, &bulk("bf::src"));
-	let floors = Arc::new(Floors {
+	let lowest_checkpoints = Arc::new(LowestCheckpoints {
 		engine: Mutex::new(Some(db.engine().clone())),
 		seen: Mutex::new(Vec::new()),
 	});
-	db.engine().ioc().register_service(InstalledScanHooks(floors.clone()));
+	db.engine().ioc().register_service(InstalledScanHooks(lowest_checkpoints.clone()));
 	let stop = Arc::new(AtomicBool::new(false));
 	let (started, sampling) = channel();
 	let sampler = {
 		let store = db.engine().operator_state();
 		let stop = stop.clone();
 		spawn(move || {
-			let sample = || store.checkpoint_floor().map_err(|error| format!("{error:?}"));
+			let sample = || store.lowest_checkpoint().map_err(|error| format!("{error:?}"));
 			let mut changes = vec![sample()];
 			started.send(()).expect("the test waits for the first sample");
 			while !stop.load(Ordering::SeqCst) {
@@ -2093,46 +2093,48 @@ fn a_backfill_holds_the_checkpoint_floor_at_v_until_its_checkpoint_commits() {
 			changes
 		})
 	};
-	sampling.recv_timeout(TIMEOUT.to_std()).expect("precondition: the floor sampler must run before the create");
+	sampling.recv_timeout(TIMEOUT.to_std())
+		.expect("precondition: the lowest checkpoint sampler must run before the create");
 	db.admin(&format!("CREATE DEFERRED VIEW bf::late {{ {COLUMNS} }} AS {{ FROM bf::src }}"));
 	follows_the_source(&db, "bf::late", "FROM bf::src", Cols::WithRownum, "right after the late create");
 	let flow = only_flow(&db);
 	let committed =
 		poll_until(|| checkpoint(&db, flow), TIMEOUT).expect("the backfill never committed a checkpoint");
 	stop.store(true, Ordering::SeqCst);
-	let changes = sampler.join().expect("the floor sampler");
-	floors.engine.lock().take();
+	let changes = sampler.join().expect("the lowest checkpoint sampler");
+	lowest_checkpoints.engine.lock().take();
 
 	let late = view_object(&db, "late");
 	let first = poll_until(|| stamps(&db, late).first().copied(), TIMEOUT)
 		.expect("the backfill commit never reached the commit queue");
 	let v = CommitVersion(first.source.0);
 	assert!(committed >= v, "precondition: the checkpoint {committed:?} must be at or past V {v:?}");
-	let seen = floors.seen.lock().clone();
+	let seen = lowest_checkpoints.seen.lock().clone();
 	assert!(!seen.is_empty(), "precondition: the backfill must have opened and pulled its source");
 	assert!(
-		seen.iter().all(|read| matches!(read, Ok(Some(floor)) if *floor <= v)),
-		"while the backfill scans, the checkpoint floor must hold at or below V {v:?}: {seen:?}"
+		seen.iter().all(|read| matches!(read, Ok(Some(lowest)) if *lowest <= v)),
+		"while the backfill scans, the lowest checkpoint must hold at or below V {v:?}: {seen:?}"
 	);
 	assert_eq!(
 		changes.first(),
 		Some(&Ok(None)),
-		"precondition: before the create no flow holds a floor: {changes:?}"
+		"precondition: before the create no flow holds a lowest checkpoint: {changes:?}"
 	);
 	assert!(
 		changes.iter().skip(1).all(|read| matches!(read, Ok(Some(_)))),
-		"once held, the floor must never lapse before the checkpoint commits: {changes:?}"
+		"once held, the lowest checkpoint must never lapse before the checkpoint commits: {changes:?}"
 	);
 
 	db.command("INSERT bf::src [{ id: 99, g: 1, sym: 'z', v: 99 }]");
 	settle(&db);
 	let moved = await_value(true, TIMEOUT, || {
-		checkpoint(&db, flow).is_some_and(|checkpoint| checkpoint > v && floor(&db) == Some(checkpoint))
+		checkpoint(&db, flow)
+			.is_some_and(|checkpoint| checkpoint > v && lowest_checkpoint(&db) == Some(checkpoint))
 	});
 	assert!(
 		moved,
-		"after the backfill commits, the floor must follow the checkpoint past V {v:?}: floor {:?}, checkpoint {:?}",
-		floor(&db),
+		"after the backfill commits, the lowest checkpoint must follow the checkpoint past V {v:?}: lowest checkpoint {:?}, checkpoint {:?}",
+		lowest_checkpoint(&db),
 		checkpoint(&db, flow)
 	);
 }
@@ -2172,7 +2174,7 @@ impl ManagedOperator for Tally {
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> Result<(), SdkError> {
-		// A ROOT key no group owns must survive every sweep, so the census floor is exactly one key.
+		// A ROOT key no group owns must survive every sweep, so the census minimum is exactly one key.
 		ctx.state()
 			.set(&[(managed_key_in(GroupId::ROOT, &[]).expect("an empty id fits the keyspace"), 1i64)])?;
 		for i in 0..change.diff_count() {

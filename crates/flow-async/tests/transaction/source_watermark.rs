@@ -61,7 +61,7 @@ fn commit_pending(engine: &TestEngine, txn: &mut impl FlowTransaction) {
 #[test]
 fn the_source_watermark_never_moves_backwards() {
 	// The per-source watermark is a running max over #time. Late rows arrive with older stamps
-	// routinely; dragging it backwards would move derived cutoffs back and re-open horizons
+	// routinely; dragging it backwards would move derived cutoffs back and re-open windows
 	// that have already sealed.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine, MockClock::from_millis(0));

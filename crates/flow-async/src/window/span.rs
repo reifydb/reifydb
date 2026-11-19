@@ -205,8 +205,8 @@ mod tests {
 
 	#[test]
 	fn a_time_coordinate_can_only_have_a_duration_subtracted_from_it() {
-		// A seal horizon is operator watermark - lateness; with both sides a bare u64 nothing stopped a
-		// millisecond span reaching a nanosecond coordinate, yielding a horizon a million times too
+		// An output watermark is operator watermark - lateness; with both sides a bare u64 nothing stopped a
+		// millisecond span reaching a nanosecond coordinate, yielding an output watermark a million times too
 		// small. Pairing a coordinate with its own Span makes the wrong subtraction fail to compile.
 		let operator_watermark =
 			ByDateTime(DateTime::from_epoch_millis(6_060_000).expect("representable instant"));
@@ -233,13 +233,14 @@ mod tests {
 		// span behind the operator watermark is still reachable by a late event, so sealing it would discard a
 		// legitimate retraction; sealing nothing would let state grow without bound.
 		let operator_watermark = ByDateTime(DateTime::from_epoch_millis(6_060_000).expect("representable"));
-		let horizon = output_watermark(operator_watermark, Duration::from_seconds(60).expect("representable"));
+		let sealed_below =
+			output_watermark(operator_watermark, Duration::from_seconds(60).expect("representable"));
 
 		let at_boundary = ByDateTime(DateTime::from_epoch_millis(6_000_000).expect("representable"));
 		let before_boundary = ByDateTime(DateTime::from_epoch_millis(5_999_999).expect("representable"));
 
-		assert!(!is_sealed(at_boundary, horizon), "the boundary window is still live");
-		assert!(is_sealed(before_boundary, horizon), "anything older is sealed");
+		assert!(!is_sealed(at_boundary, sealed_below), "the boundary window is still live");
+		assert!(is_sealed(before_boundary, sealed_below), "anything older is sealed");
 	}
 
 	#[test]

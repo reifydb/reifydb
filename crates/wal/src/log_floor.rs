@@ -6,13 +6,13 @@ use reifydb_value::reifydb_assertions;
 
 use crate::{device::Mark, error::WalError, lsn::Lsn, wal::Wal};
 
-pub struct Floor<T, L> {
+pub struct LogFloor<T, L> {
 	wal: Wal<T, L>,
 	name: String,
 	position: Mutex<Option<Lsn>>,
 }
 
-impl<T, L> Floor<T, L> {
+impl<T, L> LogFloor<T, L> {
 	pub(crate) fn new(wal: Wal<T, L>, name: String, position: Option<Lsn>) -> Self {
 		Self {
 			wal,
@@ -30,13 +30,13 @@ impl<T, L> Floor<T, L> {
 	}
 }
 
-impl<T, L: Mark> Floor<T, L> {
+impl<T, L: Mark> LogFloor<T, L> {
 	pub fn advance(&self, lsn: Lsn) -> Result<(), WalError> {
 		let mut position = self.position.lock();
 		reifydb_assertions! {
 			assert!(
 				position.is_none_or(|held| lsn >= held),
-				"the floor {} was moved back from {:?} to {lsn:?}, so gc is free to drop records the \
+				"the log floor {} was moved back from {:?} to {lsn:?}, so gc is free to drop records the \
 				 reader behind it has not read",
 				self.name,
 				*position
@@ -59,7 +59,7 @@ impl<T, L: Mark> Floor<T, L> {
 	}
 }
 
-impl<T, L> Drop for Floor<T, L> {
+impl<T, L> Drop for LogFloor<T, L> {
 	fn drop(&mut self) {
 		self.wal.release(&self.name);
 	}

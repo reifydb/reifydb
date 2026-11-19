@@ -276,7 +276,7 @@ pub(crate) struct SessionPass<'a, G, C: Coord, X: Contributions> {
 	routing: Routing<G, C, X>,
 	groups: HashMap<Hash128, GroupSessions<C>>,
 	events: Vec<IndexEvent<G>>,
-	horizon: C,
+	first_admitted: C,
 	gap: C::Span,
 }
 
@@ -295,14 +295,14 @@ where
 	X: Contributions,
 	X::Item: StateCodec,
 {
-	pub(crate) fn new(identities: &'a HashMap<G, (Hash128, EncodedKey)>, horizon: C, gap: C::Span) -> Self {
+	pub(crate) fn new(identities: &'a HashMap<G, (Hash128, EncodedKey)>, first_admitted: C, gap: C::Span) -> Self {
 		Self {
 			meta: WindowMeta::new(),
 			identities,
 			routing: Routing::sessions(gap),
 			groups: HashMap::new(),
 			events: Vec::new(),
-			horizon,
+			first_admitted,
 			gap,
 		}
 	}
@@ -342,7 +342,7 @@ where
 		};
 		if !group.touched {
 			group.touched = true;
-			for closed in group.open.close(self.horizon) {
+			for closed in group.open.close(self.first_admitted) {
 				for member in &closed.members {
 					self.meta.drop_session_member(
 						store,
@@ -424,8 +424,8 @@ where
 		contribution: X::Item,
 	) -> Result<bool, ValueError> {
 		let hash = self.hash(group)?;
-		let horizon = self.horizon;
-		let target = match self.group(store, hash)?.insert(at, row, horizon) {
+		let first_admitted = self.first_admitted;
+		let target = match self.group(store, hash)?.insert(at, row, first_admitted) {
 			Insertion::Refused => return Ok(false),
 			Insertion::Opened(id) | Insertion::Extended(id) => id,
 			Insertion::Merged {
@@ -565,7 +565,7 @@ pub fn gate_sessions<G, C, X>(
 	store: &mut dyn StateStore,
 	routed: &mut Routed<G, C, X>,
 	identities: &HashMap<G, (Hash128, EncodedKey)>,
-	horizon: C,
+	first_admitted: C,
 ) -> Result<(GatedMeta<G, C>, HashSet<(G, WindowSpan<C>)>, u64), ValueError>
 where
 	G: Clone + Eq + Ord + Hash + Debug,
@@ -598,7 +598,7 @@ where
 		let Some(last) = SealAnchor::LastEvent.of(key.1.start.to_order(), prior_last.max(batch_last)) else {
 			continue;
 		};
-		if is_sealed(C::from_order(last), horizon) {
+		if is_sealed(C::from_order(last), first_admitted) {
 			dropped += events.len() as u64;
 			sealed.insert(key.clone());
 		}
@@ -812,7 +812,7 @@ where
 pub fn forget_trackers<C: Coord>(
 	store: &mut dyn StateStore,
 	hashes: &[Hash128],
-	horizon: C,
+	first_admitted: C,
 	gap: C::Span,
 ) -> Result<Vec<(Hash128, Option<u64>, Option<u64>)>, ValueError> {
 	let loaded = load_open_sessions::<C>(store, hashes, gap)?;
@@ -821,7 +821,7 @@ pub fn forget_trackers<C: Coord>(
 	let mut moves = Vec::new();
 	for (hash, mut open) in hashes.iter().copied().zip(loaded) {
 		let partition = GroupId::hashed(hash);
-		for closed in open.close(horizon) {
+		for closed in open.close(first_admitted) {
 			for member in &closed.members {
 				removes.push((&SessionMemberKey(GroupId::window(hash, closed.id), member.row))
 					.into_group_state_key());

@@ -134,7 +134,7 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 	if !persistent_object {
 		store.set_row_settings_provider(Arc::new(NonePersistent));
 	}
-	store.set_flush_floor(Arc::new(StaticFloor(cutoff)));
+	store.set_flush_floor(Arc::new(StaticFlushFloor(cutoff)));
 	store.flush_pending_blocking();
 }
 
@@ -298,8 +298,8 @@ fn versions_above_w_are_left_entirely_resident() {
 	);
 }
 
-struct StaticFloor(CommitVersion);
-impl FlushFloor for StaticFloor {
+struct StaticFlushFloor(CommitVersion);
+impl FlushFloor for StaticFlushFloor {
 	fn floor(&self) -> CommitVersion {
 		self.0
 	}
@@ -322,7 +322,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
-	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(2))));
+	store.set_flush_floor(Arc::new(StaticFlushFloor(CommitVersion(2))));
 
 	commit(&store, &k, 1, "v1");
 	commit(&store, &k, 2, "v2");
@@ -383,7 +383,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
-	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(2))));
+	store.set_flush_floor(Arc::new(StaticFlushFloor(CommitVersion(2))));
 
 	commit(&store, &k, 1, "v1");
 	commit(&store, &k, 2, "v2");
@@ -435,7 +435,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
-	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(2))));
+	store.set_flush_floor(Arc::new(StaticFlushFloor(CommitVersion(2))));
 
 	commit(&store, &k, 1, "v1");
 	commit(&store, &k, 2, "v2");

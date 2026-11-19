@@ -534,7 +534,7 @@ fn epoch_rows(engine: &StandardEngine, gauge: &EpochGauge) -> Vec<MetricsRow> {
 				kind: MetricKind::Level,
 			},
 			counter_count("pruned", pruned),
-			counter_count("floor_none_returns", stats.floor_none_returns),
+			counter_count("unresolved_lookups", stats.unresolved_lookups),
 		],
 	}]
 }
@@ -571,9 +571,9 @@ fn lifecycle_rows(metrics: &LifecycleMetrics) -> Vec<MetricsRow> {
 fn sweep_markers(engine: &StandardEngine) {
 	let ioc = engine.ioc();
 	if let Some(markers) = ioc.try_resolve::<Arc<dyn MarkerSweep>>() {
-		let floor =
+		let version_floor =
 			ioc.try_resolve::<Arc<dyn ConsumerPositions>>().and_then(|positions| positions.min_position());
-		markers.sweep(floor);
+		markers.sweep(version_floor);
 	}
 }
 

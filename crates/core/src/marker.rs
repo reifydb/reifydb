@@ -36,7 +36,7 @@ pub trait MarkerSink: Send + Sync + 'static {
 }
 
 pub trait MarkerSweep: Send + Sync + 'static {
-	fn sweep(&self, floor: Option<CommitVersion>) -> usize;
+	fn sweep(&self, version_floor: Option<CommitVersion>) -> usize;
 }
 
 pub trait LatencyReader: Send + Sync + 'static {

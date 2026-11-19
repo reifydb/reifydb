@@ -16,7 +16,7 @@ use crate::{
 	cursors::Cursors,
 	device::{Append, Flush, Mark, ReadFrom, Reclaim},
 	error::WalError,
-	floor::Floor,
+	log_floor::LogFloor,
 	lsn::Lsn,
 	recovered::Recovered,
 	replay::Replay,
@@ -113,12 +113,12 @@ impl<T, L> Wal<T, L> {
 }
 
 impl<T, L: Mark> Wal<T, L> {
-	pub fn floor(&self, name: &str) -> Result<Floor<T, L>, WalError> {
+	pub fn floor(&self, name: &str) -> Result<LogFloor<T, L>, WalError> {
 		if !self.0.held.lock().insert(name.to_string()) {
 			return Err(WalError::FloorHeld(name.to_string()));
 		}
 		match self.position_of(name) {
-			Ok(position) => Ok(Floor::new(self.clone(), name.to_string(), position)),
+			Ok(position) => Ok(LogFloor::new(self.clone(), name.to_string(), position)),
 			Err(error) => {
 				self.release(name);
 				Err(error)
@@ -146,8 +146,8 @@ impl<T, L: Reclaim + Mark> Wal<T, L> {
 				let appended = self.0.appender.lock().last;
 				assert!(
 					appended.is_some_and(|last| lowest <= last),
-					"the lowest floor is past the last appended lsn, so gc would drop every sealed \
-					 segment under a reader position no record ever had (floor={lowest:?}, \
+					"the lowest log floor is past the last appended lsn, so gc would drop every sealed \
+					 segment under a reader position no record ever had (log_floor={lowest:?}, \
 					 appended={appended:?})"
 				);
 			}

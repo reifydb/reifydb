@@ -51,7 +51,7 @@ impl Fold {
 }
 
 /// Which fixed-grid windows a coordinate belongs to. This is the only thing that differs between
-/// tumbling and sliding: both anchor their seal horizon on the window start, both close at
+/// tumbling and sliding: both anchor their seal instant on the window start, both close at
 /// `start + size + lateness`, and both accumulate the same way.
 pub trait Grid {
 	fn windows_of(&self, coord_ms: u64) -> Vec<i64>;

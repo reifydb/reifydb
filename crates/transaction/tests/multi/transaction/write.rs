@@ -108,7 +108,7 @@ fn commit_self_lease_keeps_own_version_leasable_after_cutoff_advances() {
 }
 
 #[test]
-fn a_carried_lease_chains_the_floor_across_batches() {
+fn a_carried_lease_chains_the_version_floor_across_batches() {
 	// An ephemeral consumer holds no done-until mark, so a lease carried from one batch into the next is
 	// its only protection; without the chain it reads reclaimed history instead of failing loudly.
 	let engine = test_multi();
@@ -137,13 +137,13 @@ fn a_carried_lease_chains_the_floor_across_batches() {
 	assert_eq!(next.version(), CommitVersion(carry_at.0 + 3));
 	drop(carry);
 
-	// The floor is now the new lease, not zero: the carry must not have opened all history.
+	// The version floor is now the new lease, not zero: the carry must not have opened all history.
 	let err = engine
 		.acquire_version_lease(CommitVersion(carry_at.0 + 2))
 		.expect_err("a version below the carried lease must not be leasable");
 	assert_eq!(err.0.code, "TXN_012");
 
-	// Breaking the chain snaps the floor back to the query done until.
+	// Breaking the chain snaps the version floor back to the query done until.
 	drop(next);
 	let err = engine
 		.acquire_version_lease(CommitVersion(carry_at.0 + 3))

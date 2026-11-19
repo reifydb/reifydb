@@ -363,10 +363,10 @@ impl MultiTransaction {
 
 	pub fn store_checkpoint(&self, store: CheckpointedStore) -> Result<Arc<dyn WalCheckpoint>, ValueError> {
 		let oracle = self.0.tm.oracle();
-		let floor = oracle.wal.floor(store.floor_name()).unwrap_or_else(|err| {
-			panic!("commit log floor {} could not be taken: {err}", store.floor_name())
+		let log_floor = oracle.wal.floor(store.log_floor_name()).unwrap_or_else(|err| {
+			panic!("commit log floor {} could not be taken: {err}", store.log_floor_name())
 		});
-		Ok(Arc::new(StoreCheckpoint::new(Arc::downgrade(oracle.shared()), floor)))
+		Ok(Arc::new(StoreCheckpoint::new(Arc::downgrade(oracle.shared()), log_floor)))
 	}
 
 	#[instrument(name = "transaction::query_done_until", level = "trace", skip(self))]

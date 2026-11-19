@@ -243,8 +243,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_uniform_batch_never_draws_below_its_floor() {
-		// A floor above one is how a suite forces batches that span a boundary; ignoring it would
+	fn a_uniform_batch_never_draws_below_its_min() {
+		// A min above one is how a suite forces batches that span a boundary; ignoring it would
 		// collapse the draw to 1..=max and spend most steps on the single-row path.
 		let mut stream = rng(2024);
 		let drawn: Vec<u32> = (0..400)
@@ -256,13 +256,13 @@ mod tests {
 				.draw(&mut stream)
 			})
 			.collect();
-		assert!(drawn.iter().all(|n| (5..=20).contains(n)), "a draw escaped the floor: {drawn:?}");
+		assert!(drawn.iter().all(|n| (5..=20).contains(n)), "a draw escaped the min: {drawn:?}");
 		assert!(drawn.iter().any(|n| *n < 20), "the draw must vary, not pin to the ceiling");
 	}
 
 	#[test]
-	fn an_inverted_uniform_bound_still_draws_its_floor() {
-		// max below min is a caller mistake, and the honest response is the floor rather than a panic
+	fn an_inverted_uniform_bound_still_draws_its_min() {
+		// max below min is a caller mistake, and the honest response is the min rather than a panic
 		// deep inside a chaos run that would read as a driver defect.
 		let mut stream = rng(5);
 		assert_eq!(

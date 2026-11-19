@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc, thread::sleep};
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
-	commit::queue::{CommitQueue, FlowQueueFloor},
+	commit::queue::{CommitQueue, FlowQueuePosition},
 	common::{OperatorClass, WindowRequirements, WindowSizeDomain},
 	interface::{
 		catalog::flow::OperatorId,
@@ -53,7 +53,7 @@ impl SubsystemFactory for FlowWithAPanickingOperator {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let queue = ioc.resolve::<CommitQueue>()?;
-		ioc.register_service(FlowQueueFloor(queue.floor("flow")));
+		ioc.register_service(FlowQueuePosition(queue.position("flow")));
 		let entry = CustomOperatorEntry {
 			factory: Arc::new(|operator, _params, _with| {
 				Ok(Box::new(PanicsOnApply {

@@ -66,6 +66,6 @@ fn epoch_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 		series_col("coverage", ValueType::Duration),
 		series_col("guaranteed_coverage", ValueType::Duration),
 		series_col("pruned", ValueType::Uint8),
-		series_col("floor_none_returns", ValueType::Uint8),
+		series_col("unresolved_lookups", ValueType::Uint8),
 	]
 }

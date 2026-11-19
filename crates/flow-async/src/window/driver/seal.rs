@@ -34,11 +34,11 @@ where
 	C: SealDomain + WindowAnchor + Hash,
 	A: WindowAccumulator,
 {
-	let horizon = C::horizon(operator_watermark, seal_span);
-	if horizon <= C::from_order(0) {
+	let first_admitted = C::first_admitted(operator_watermark, seal_span);
+	if first_admitted <= C::from_order(0) {
 		return Ok(false);
 	}
-	let due = engine.seal_due_within(store, horizon.to_order().saturating_sub(1), budget)?;
+	let due = engine.seal_due_within(store, first_admitted.to_order().saturating_sub(1), budget)?;
 	let groups: Vec<GroupId> = due.iter().map(|window| window.group_id).collect();
 	if may_forget && store.state_forgets_groups() {
 		enqueue_forgotten(store, &groups)?;
@@ -63,7 +63,7 @@ where
 {
 	SealLedger::advance(store, fired)?;
 	let operator_watermark = C::from_order(fired.at().to_order());
-	if C::horizon(operator_watermark, seal_span) <= C::from_order(0) {
+	if C::first_admitted(operator_watermark, seal_span) <= C::from_order(0) {
 		return Ok(());
 	}
 	if close_through(engine, store, operator_watermark, seal_span, budget, may_forget)? {

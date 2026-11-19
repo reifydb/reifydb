@@ -424,8 +424,8 @@ impl JoinOperator {
 		let (Some(lateness), Some(flow_watermark)) = (self.lateness_of(side), host.flow_watermark()?) else {
 			return Ok((pre, post));
 		};
-		let horizon = <ByDateTime as SealDomain>::horizon(ByDateTime(flow_watermark), lateness).0;
-		let kept = time_at_or_after(&post, horizon)?;
+		let first_admitted = <ByDateTime as SealDomain>::first_admitted(ByDateTime(flow_watermark), lateness).0;
+		let kept = time_at_or_after(&post, first_admitted)?;
 		if kept.false_count() == 0 {
 			return Ok((pre, post));
 		}
@@ -522,7 +522,7 @@ impl JoinOperator {
 		let mut emptied: Vec<GroupId> = Vec::new();
 		let mut seen: HashSet<GroupId> = HashSet::new();
 		let mut start = match self.forget.min(host)? {
-			Some(floor) => DueStart::Floor(floor),
+			Some(earliest) => DueStart::From(earliest),
 			None => DueStart::Bottom,
 		};
 		let earliest = loop {
@@ -1905,9 +1905,9 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_row_armed_below_a_settled_floor_is_still_forgotten() {
-		// a pass settles the floor at the earliest live forget entry and the next pass starts its due scan
-		// there, so a backfilled row arming beneath that floor is reachable only because arming lowers it
+	fn a_row_armed_below_a_settled_scan_start_is_still_forgotten() {
+		// a pass settles the scan start at the earliest live forget entry and the next pass starts its due scan
+		// there, so a backfilled row arming beneath that scan start is reachable only because arming lowers it
 		let engine = TestEngine::new();
 		let mut op = join(1, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1919,14 +1919,14 @@ mod seal_tests {
 		assert_eq!(
 			join_forget_of(&op, &mut txn, group, JoinSide::Left, 1),
 			Some(at_millis(15_001)),
-			"the pass must settle its floor on this forget entry, which outlives the fire"
+			"the pass must settle its scan start on this forget entry, which outlives the fire"
 		);
 
 		insert(&mut op, &mut txn, JoinSide::Left, &rows(&[7], &[2], at_millis(1_000)));
 		assert_eq!(
 			join_forget_of(&op, &mut txn, group, JoinSide::Left, 2),
 			Some(at_millis(11_001)),
-			"the backfilled row must arm below the settled floor or this test proves nothing"
+			"the backfilled row must arm below the settled scan start or this test proves nothing"
 		);
 
 		fire(&mut op, &mut txn, at_millis(12_000));
@@ -1934,7 +1934,7 @@ mod seal_tests {
 		assert_eq!(
 			join_forget_of(&op, &mut txn, group, JoinSide::Left, 2),
 			None,
-			"a due scan that starts at a floor above the backfilled row leaves it unforgotten forever"
+			"a due scan that starts above the backfilled row leaves it unforgotten forever"
 		);
 		assert_eq!(
 			join_forget_of(&op, &mut txn, group, JoinSide::Left, 1),

@@ -38,7 +38,7 @@ impl LookupCache {
 		&self,
 		lease: &TrackerLease,
 		at: LookupAt,
-		floor: Option<CommitVersion>,
+		version_floor: Option<CommitVersion>,
 		partitions: &[Partition],
 	) -> Vec<Option<CachedRow>> {
 		let (read, seen) = match at {
@@ -50,7 +50,7 @@ impl LookupCache {
 			} => (base, commit),
 		};
 		let mut hits = vec![None; partitions.len()];
-		if floor.is_some_and(|floor| read < floor) {
+		if version_floor.is_some_and(|version_floor| read < version_floor) {
 			return hits;
 		}
 		let released_through = lease.released_through();
@@ -238,7 +238,7 @@ mod tests {
 
 	#[test]
 	fn a_version_below_the_lease_floor_goes_to_storage() {
-		// a read below the floor must reach the storage read, which refuses it loudly.
+		// a read below the lookup floor must reach the storage read, which refuses it loudly.
 		let queue = queue();
 		let lease = queue.write_tracker().register(VAULT);
 		let mut cache = LookupCache::new(16);
@@ -298,8 +298,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_layered_read_whose_base_is_below_the_floor_goes_to_storage() {
-		// a base below the floor must reach the storage read, which refuses it loudly.
+	fn a_layered_read_whose_base_is_below_the_lookup_floor_goes_to_storage() {
+		// a base below the lookup floor must reach the storage read, which refuses it loudly.
 		let queue = queue();
 		let lease = queue.write_tracker().register(VAULT);
 		let mut cache = LookupCache::new(16);

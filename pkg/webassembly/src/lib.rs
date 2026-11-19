@@ -29,7 +29,7 @@ use reifydb_core::{
 	CoreVersion,
 	commit::{
 		position::FlowCaughtUpPosition,
-		queue::{CommitQueue, FlowQueueFloor},
+		queue::{CommitQueue, FlowQueuePosition},
 	},
 	common::CommitVersion,
 	event::{EventBus, transaction::PostCommitEvent},
@@ -335,7 +335,7 @@ impl WasmDB {
 			multi.current_version().map_err(|e| JsError::from_error(&e))?,
 			multi.config().get_config_uint8(ConfigKey::FlowLookupTrackerEntries) as usize,
 		);
-		ioc = ioc.register(FlowQueueFloor(commit_queue.floor("flow")));
+		ioc = ioc.register(FlowQueuePosition(commit_queue.position("flow")));
 		ioc = ioc.register(commit_queue.clone());
 
 		let routines = {

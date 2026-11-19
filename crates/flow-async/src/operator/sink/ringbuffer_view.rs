@@ -1443,7 +1443,7 @@ mod tests {
 		assert_eq!(
 			row_entry_count(&engine, &op, &base("us")),
 			2,
-			"an output watermark younger than the horizon may evict nothing"
+			"an output watermark younger than row time plus ttl may evict nothing"
 		);
 		assert_eq!(metadata(&engine, &base("us")).unwrap().count, 2);
 	}

@@ -20,7 +20,7 @@ fn entry(output_watermark: i64, at: u64) -> OutputWatermarkEntry {
 
 #[test]
 fn a_lower_publish_never_regresses_the_output_watermark_or_its_stamp() {
-	// A regression re-opens a sealed horizon, and a rejected publish must never raise the stamp.
+	// A regression re-opens a sealed window, and a rejected publish must never raise the stamp.
 	let output_watermarks = OutputWatermarks::default();
 
 	output_watermarks.publish(OUTPUT, at_millis(5_000), CommitVersion(10));

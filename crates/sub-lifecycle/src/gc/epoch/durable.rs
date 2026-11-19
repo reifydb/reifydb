@@ -147,7 +147,7 @@ impl LifecycleTask for EpochLogTask {
 		debug!(
 			samples = stats.samples,
 			coverage_seconds = stats.coverage.seconds(),
-			floor_none_returns = stats.floor_none_returns,
+			unresolved_lookups = stats.unresolved_lookups,
 			"version epoch coverage"
 		);
 

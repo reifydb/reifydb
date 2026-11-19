@@ -212,8 +212,8 @@ fn sealed_window_with(lateness: u64) -> ApplyWith {
 }
 
 #[test]
-fn a_carry_window_folds_past_the_lateness_horizon_and_drops_its_accumulator_rows() {
-	// Without a fold past the lateness horizon, the store grows with every window the feed crosses.
+fn a_carry_window_folds_past_the_first_admitted_instant_and_drops_its_accumulator_rows() {
+	// Without a fold past the first admitted instant, the store grows with every window the feed crosses.
 	let feed = |windows: u64| {
 		let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<Probe>>::new()
 			.with(sealed_window_with(120))
@@ -231,7 +231,7 @@ fn a_carry_window_folds_past_the_lateness_horizon_and_drops_its_accumulator_rows
 
 	assert!(
 		long <= short + 2,
-		"twice the windows must not mean more state past the lateness horizon, but 20 windows left {short} rows and 40 left {long}"
+		"twice the windows must not mean more state past the first admitted instant, but 20 windows left {short} rows and 40 left {long}"
 	);
 	assert!(long < 20, "40 windows past a 2-window lateness must leave few rows, but left {long}");
 }

@@ -14,7 +14,7 @@ use crate::{
 	persistent::sqlite::{
 		SqlitePersistent,
 		sql::{
-			CHECKPOINT_FLOOR_SQL, CHECKPOINT_GET_SQL, CHECKPOINT_LIST_SQL, CHECKPOINT_LSN_FLOOR_SQL,
+			CHECKPOINT_GET_SQL, CHECKPOINT_LIST_SQL, LOWEST_CHECKPOINT_LSN_SQL, LOWEST_CHECKPOINT_SQL,
 			SAVED_LSN_GET_SQL,
 		},
 	},
@@ -38,13 +38,13 @@ impl SqlitePersistent {
 		}))
 	}
 
-	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_floor", level = "trace", skip(self))]
-	pub fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
+	#[instrument(name = "store::operator::persistent::sqlite::lowest_checkpoint", level = "trace", skip(self))]
+	pub fn lowest_checkpoint(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Err(StoreOperatorError::Closed);
 		};
-		let mut stmt = conn.prepare_cached(CHECKPOINT_FLOOR_SQL)?;
+		let mut stmt = conn.prepare_cached(LOWEST_CHECKPOINT_SQL)?;
 		let mut rows = stmt.query([])?;
 		let Some(row) = rows.next()? else {
 			return Ok(None);
@@ -53,13 +53,13 @@ impl SqlitePersistent {
 		Ok(version.map(|version| CommitVersion(version as u64)))
 	}
 
-	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_lsn_floor", level = "trace", skip(self))]
-	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError> {
+	#[instrument(name = "store::operator::persistent::sqlite::lowest_checkpoint_lsn", level = "trace", skip(self))]
+	pub fn lowest_checkpoint_lsn(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Err(StoreOperatorError::Closed);
 		};
-		let mut stmt = conn.prepare_cached(CHECKPOINT_LSN_FLOOR_SQL)?;
+		let mut stmt = conn.prepare_cached(LOWEST_CHECKPOINT_LSN_SQL)?;
 		let mut rows = stmt.query([])?;
 		let Some(row) = rows.next()? else {
 			return Ok(None);

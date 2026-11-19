@@ -136,7 +136,7 @@ struct Inner {
 	sealed: RwLock<BTreeMap<EpochSeconds, u64>>,
 	sampling: RwLock<EpochSampling>,
 	open: Mutex<OpenBucket>,
-	floor_none_returns: AtomicU64,
+	unresolved_lookups: AtomicU64,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -146,7 +146,7 @@ struct OpenBucket {
 }
 
 impl OpenBucket {
-	fn floor_at(&self, target: EpochSeconds) -> Option<u64> {
+	fn at_or_before(&self, target: EpochSeconds) -> Option<u64> {
 		(self.max != 0 && target >= self.bucket.end()).then_some(self.max)
 	}
 
@@ -169,7 +169,7 @@ impl OpenBucket {
 pub struct EpochStats {
 	pub samples: usize,
 	pub coverage: EpochSpan,
-	pub floor_none_returns: u64,
+	pub unresolved_lookups: u64,
 }
 
 impl Default for VersionEpoch {
@@ -189,7 +189,7 @@ impl VersionEpoch {
 				sealed: RwLock::new(BTreeMap::new()),
 				sampling: RwLock::new(sampling),
 				open: Mutex::new(OpenBucket::default()),
-				floor_none_returns: AtomicU64::new(0),
+				unresolved_lookups: AtomicU64::new(0),
 			}),
 		}
 	}
@@ -237,13 +237,13 @@ impl VersionEpoch {
 		}
 	}
 
-	pub fn floor_version_at(&self, target: EpochSeconds) -> Option<u64> {
-		if let Some(version) = self.inner.open.lock().floor_at(target) {
+	pub fn version_at_or_before(&self, target: EpochSeconds) -> Option<u64> {
+		if let Some(version) = self.inner.open.lock().at_or_before(target) {
 			return Some(version);
 		}
 		let resolved = self.inner.sealed.read().range(..=target).next_back().map(|(_, version)| *version);
 		if resolved.is_none() {
-			self.inner.floor_none_returns.fetch_add(1, Ordering::Relaxed);
+			self.inner.unresolved_lookups.fetch_add(1, Ordering::Relaxed);
 		}
 		resolved
 	}
@@ -267,7 +267,7 @@ impl VersionEpoch {
 		EpochStats {
 			samples: sealed.len(),
 			coverage,
-			floor_none_returns: self.inner.floor_none_returns.load(Ordering::Relaxed),
+			unresolved_lookups: self.inner.unresolved_lookups.load(Ordering::Relaxed),
 		}
 	}
 }
@@ -320,7 +320,7 @@ mod tests {
 
 	fn record_sealed(epoch: &VersionEpoch, at: EpochSeconds, version: u64) {
 		// Commits seal the previous bucket, so recording only once would assert against a
-		// permanently open bucket that no floor lookup at `at` can see.
+		// permanently open bucket that no lookup at `at` can see.
 		epoch.record(at, version);
 		epoch.record(at.plus(BUCKET_WIDTH), version);
 	}
@@ -329,23 +329,27 @@ mod tests {
 	fn cold_epoch_returns_none_so_gc_deletes_nothing() {
 		let epoch = VersionEpoch::new();
 		assert_eq!(
-			epoch.floor_version_at(sec(1_000)),
+			epoch.version_at_or_before(sec(1_000)),
 			None,
 			"an empty epoch must yield no cutoff; otherwise a cold start would evict the whole store"
 		);
 	}
 
 	#[test]
-	fn floor_returns_latest_sample_at_or_before_target() {
+	fn lookup_returns_latest_sample_at_or_before_target() {
 		let epoch = VersionEpoch::new();
 		epoch.record(sec(10), 10);
 		epoch.record(sec(20), 20);
 		epoch.record(sec(30), 30);
 
-		assert_eq!(epoch.floor_version_at(sec(5)), None, "target older than every sample -> no cutoff");
-		assert_eq!(epoch.floor_version_at(sec(15)), Some(10), "floor is the newest sample at or before");
-		assert_eq!(epoch.floor_version_at(sec(25)), Some(20), "floor advances with the target");
-		assert_eq!(epoch.floor_version_at(sec(9_999)), Some(30), "target after all samples -> newest");
+		assert_eq!(epoch.version_at_or_before(sec(5)), None, "target older than every sample -> no cutoff");
+		assert_eq!(
+			epoch.version_at_or_before(sec(15)),
+			Some(10),
+			"the lookup is the newest sample at or before"
+		);
+		assert_eq!(epoch.version_at_or_before(sec(25)), Some(20), "the lookup advances with the target");
+		assert_eq!(epoch.version_at_or_before(sec(9_999)), Some(30), "target after all samples -> newest");
 	}
 
 	#[test]
@@ -357,12 +361,12 @@ mod tests {
 		epoch.record(sec(10), 42);
 
 		assert_eq!(
-			epoch.floor_version_at(sec(10)),
+			epoch.version_at_or_before(sec(10)),
 			None,
 			"an instant inside the open bucket must not resolve to that bucket's version"
 		);
 		assert_eq!(
-			epoch.floor_version_at(sec(10).plus(BUCKET_WIDTH)),
+			epoch.version_at_or_before(sec(10).plus(BUCKET_WIDTH)),
 			Some(42),
 			"once the target clears the bucket end every commit it holds is known to be older"
 		);
@@ -370,14 +374,14 @@ mod tests {
 
 	#[test]
 	fn a_stale_timestamp_never_rewrites_a_newer_bucket() {
-		// Wall clocks step backwards (NTP). Accepting the older reading would move the floor
+		// Wall clocks step backwards (NTP). Accepting the older reading would move the version floor
 		// backwards and strand rows that were already eligible to expire.
 		let epoch = VersionEpoch::new();
 		record_sealed(&epoch, sec(30), 30);
 		epoch.record(sec(10), 5);
 
 		assert_eq!(
-			epoch.floor_version_at(sec(40)),
+			epoch.version_at_or_before(sec(40)),
 			Some(30),
 			"a backwards clock reading must be dropped, not applied"
 		);
@@ -395,7 +399,7 @@ mod tests {
 		epoch.record(sec(20), 20);
 
 		assert_eq!(
-			epoch.floor_version_at(sec(15)),
+			epoch.version_at_or_before(sec(15)),
 			Some(9),
 			"the highest version committed in the bucket wins, and a lower one cannot undo it"
 		);
@@ -412,7 +416,7 @@ mod tests {
 		epoch.record(sec(20), 1_001);
 
 		assert_eq!(epoch.sample_count(), 1, "a thousand commits in one bucket must seal a single sample");
-		assert_eq!(epoch.floor_version_at(sec(15)), Some(1_000), "and it must carry the highest version");
+		assert_eq!(epoch.version_at_or_before(sec(15)), Some(1_000), "and it must carry the highest version");
 	}
 
 	#[test]
@@ -425,15 +429,15 @@ mod tests {
 		}
 
 		assert!(epoch.sample_count() <= 50, "the map must stay inside its budget");
-		assert!(epoch.floor_version_at(sec(400)).is_some(), "precondition: the newest end resolves");
+		assert!(epoch.version_at_or_before(sec(400)).is_some(), "precondition: the newest end resolves");
 		assert!(
-			epoch.floor_version_at(sec(20)).is_some(),
+			epoch.version_at_or_before(sec(20)).is_some(),
 			"a target 380 samples back must still resolve; uniform eviction would have dropped it"
 		);
 	}
 
 	#[test]
-	fn thinning_never_reports_a_version_newer_than_the_true_floor() {
+	fn thinning_never_reports_a_version_newer_than_the_exact_lookup() {
 		// A cutoff that is too NEW deletes rows a reader can still resolve. Thinning must therefore only ever
 		// answer with an older version, never a newer one, so coarsening over-keeps instead of over-deleting.
 		let exact = VersionEpoch::with_sampling(EpochSampling {
@@ -448,11 +452,11 @@ mod tests {
 		}
 
 		for target in (1..=400u64).map(sec) {
-			let truth = exact.floor_version_at(target);
-			if let Some(version) = thinned.floor_version_at(target) {
+			let truth = exact.version_at_or_before(target);
+			if let Some(version) = thinned.version_at_or_before(target) {
 				assert!(
 					Some(version) <= truth,
-					"thinned floor {version:?} exceeded the true floor {truth:?} at {target:?}"
+					"thinned lookup {version:?} exceeded the exact lookup {truth:?} at {target:?}"
 				);
 			}
 		}
@@ -467,8 +471,8 @@ mod tests {
 			epoch.record(sec(i), i);
 		}
 
-		assert_eq!(epoch.floor_version_at(sec(400)), Some(399), "the newest sealed sample is exact");
-		assert_eq!(epoch.floor_version_at(sec(399)), Some(398), "one second back is still exact");
+		assert_eq!(epoch.version_at_or_before(sec(400)), Some(399), "the newest sealed sample is exact");
+		assert_eq!(epoch.version_at_or_before(sec(399)), Some(398), "one second back is still exact");
 	}
 
 	#[test]
@@ -493,21 +497,21 @@ mod tests {
 		});
 
 		assert!(epoch.sample_count() <= 50, "the narrowed budget must apply to samples already held");
-		assert!(epoch.floor_version_at(sec(400)).is_some(), "compaction must not empty the map");
+		assert!(epoch.version_at_or_before(sec(400)).is_some(), "compaction must not empty the map");
 	}
 
 	#[test]
-	fn an_unresolvable_floor_is_counted() {
+	fn an_unresolved_lookup_is_counted() {
 		// A ttl the epoch cannot answer reclaims nothing and reports success. This counter is the only direct
 		// evidence that a TTL is silently not firing.
 		let epoch = VersionEpoch::new();
 		epoch.record(sec(100), 1);
 
-		assert_eq!(epoch.stats().floor_none_returns, 0, "a resolvable floor must not count");
-		epoch.floor_version_at(sec(50));
-		epoch.floor_version_at(sec(50));
+		assert_eq!(epoch.stats().unresolved_lookups, 0, "a resolved lookup must not count");
+		epoch.version_at_or_before(sec(50));
+		epoch.version_at_or_before(sec(50));
 
-		assert_eq!(epoch.stats().floor_none_returns, 2, "every unanswerable lookup must be counted");
+		assert_eq!(epoch.stats().unresolved_lookups, 2, "every unanswerable lookup must be counted");
 	}
 
 	#[test]
@@ -524,7 +528,7 @@ mod tests {
 
 	#[test]
 	fn guaranteed_coverage_exceeds_the_default_min_history_horizon() {
-		// The horizon floor promises 7 days of enforceable ttl. Coverage below it means the promise is a
+		// The min history horizon promises 7 days of enforceable ttl. Coverage below it means the promise is a
 		// silent no-op for every ttl in between.
 		let week = EpochSpan::new(7 * 24 * 60 * 60);
 

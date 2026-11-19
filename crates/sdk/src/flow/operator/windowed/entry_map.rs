@@ -169,16 +169,16 @@ where
 		operator_watermark: A::Coord,
 		seal_span: SealSpan<A>,
 	) -> Result<(), SdkError> {
-		let horizon = <A::Coord as SealDomain>::horizon(operator_watermark, seal_span);
-		if horizon <= <A::Coord as Coord>::from_order(0) {
+		let first_admitted = <A::Coord as SealDomain>::first_admitted(operator_watermark, seal_span);
+		if first_admitted <= <A::Coord as Coord>::from_order(0) {
 			return Ok(());
 		}
 		let store_queue_empty = *forget_pass_queue_empty;
-		let closing = engine.seal_due(store, horizon.to_order().saturating_sub(1))?;
+		let closing = engine.seal_due(store, first_admitted.to_order().saturating_sub(1))?;
 		let due: Vec<GroupId> = closing.iter().map(|window| window.group_id).collect();
 		if StateStore::state_forgets_groups(store) {
 			enqueue_forgotten(store, &due)?;
-			engine.forget_meta(store, horizon.to_order())?;
+			engine.forget_meta(store, first_admitted.to_order())?;
 			*forget_pass_queue_empty = true;
 			return Ok(());
 		}
@@ -186,7 +186,7 @@ where
 		if !due.is_empty() {
 			*forget_pass_queue_empty = false;
 		}
-		engine.forget_meta(store, horizon.to_order())?;
+		engine.forget_meta(store, first_admitted.to_order())?;
 		if *forget_pass_queue_empty {
 			reifydb_assertions! {
 				let pending = reifydb_flow_async::operator::state::forget_pass::queued(store, 1)?;
@@ -227,10 +227,10 @@ where
 				observe_batch(&mut store, newest, seal_span)?;
 			}
 			let operator_watermark = operator_watermark::<A::Coord>(&mut store)?;
-			let horizon = <A::Coord as SealDomain>::horizon(operator_watermark, seal_span);
+			let first_admitted = <A::Coord as SealDomain>::first_admitted(operator_watermark, seal_span);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
-				if is_sealed(span.start, horizon) {
+				if is_sealed(span.start, first_admitted) {
 					dropped += events.len() as u64;
 					false
 				} else {

@@ -61,7 +61,7 @@ fn commit_a_version(engine: &StandardEngine, consumer: &str, at: u64) {
 fn durable_samples(engine: &StandardEngine) -> Vec<(u64, u64, u64)> {
 	let txn = engine.begin_query(IdentityId::system()).expect("system query transaction");
 	let mut samples: Vec<(u64, u64, u64)> = txn
-		.range(VersionEpochKey::floor_scan(EpochSeconds::new(u64::MAX)), RangeScope::All, 256)
+		.range(VersionEpochKey::at_or_before(EpochSeconds::new(u64::MAX)), RangeScope::All, 256)
 		.filter_map(|entry| {
 			let entry = entry.ok()?;
 			let TaggedKey::VersionEpoch(key) = &entry.key else {
@@ -127,7 +127,7 @@ fn hydration_restores_coverage_for_an_instant_that_precedes_this_process() {
 	// A cold map stands in for the restarted process.
 	let restored_epoch = VersionEpoch::new();
 	assert_eq!(
-		restored_epoch.floor_version_at(EpochSeconds::new(early_instant)),
+		restored_epoch.version_at_or_before(EpochSeconds::new(early_instant)),
 		None,
 		"precondition: a cold epoch resolves nothing, which is why a restart used to stop reclaiming"
 	);
@@ -137,7 +137,7 @@ fn hydration_restores_coverage_for_an_instant_that_precedes_this_process() {
 
 	assert!(restored >= 2, "hydration must find every sample inside the horizon; found {restored}");
 	assert_eq!(
-		restored_epoch.floor_version_at(EpochSeconds::new(early_instant)),
+		restored_epoch.version_at_or_before(EpochSeconds::new(early_instant)),
 		Some(early_version.0),
 		"the instant of the first sample must resolve to the version that was current then, restored \
 		 entirely from disk"
@@ -174,7 +174,7 @@ fn hydration_restores_history_even_though_the_sampler_already_recorded_now() {
 		.expect("hydration reads the durable log");
 
 	assert_eq!(
-		restored_epoch.floor_version_at(EpochSeconds::new(early_instant)),
+		restored_epoch.version_at_or_before(EpochSeconds::new(early_instant)),
 		Some(early_version.0),
 		"a sample already taken for the current instant must not block restoring older history"
 	);
@@ -183,7 +183,7 @@ fn hydration_restores_history_even_though_the_sampler_already_recorded_now() {
 #[test]
 fn a_sample_never_claims_a_version_was_current_before_it_was() {
 	// Filing a mid-bucket sample under the bucket start claims that version was reached up to a bucket earlier,
-	// so any reader of the map gets a floor newer than the truth for every instant in that bucket.
+	// so any reader of the map gets a version floor newer than the truth for every instant in that bucket.
 	let t = engine_without_epoch_listener();
 	let engine: StandardEngine = t.inner().clone();
 	let clock = t.mock_clock();
@@ -208,7 +208,7 @@ fn a_sample_never_claims_a_version_was_current_before_it_was() {
 	hydrate_into(&engine, Duration::from_days(7).unwrap(), &restored).expect("hydration reads the durable log");
 
 	assert_ne!(
-		restored.floor_version_at(EpochSeconds::new(bucket)),
+		restored.version_at_or_before(EpochSeconds::new(bucket)),
 		Some(version),
 		"the bucket start must not resolve to a version only reached later in the bucket"
 	);
@@ -242,7 +242,7 @@ fn a_sample_at_the_horizon_edge_survives_because_its_instant_is_still_covered() 
 	hydrate_into(&engine, horizon, &restored).expect("hydration reads the durable log");
 
 	assert_eq!(
-		restored.floor_version_at(EpochSeconds::new(at)),
+		restored.version_at_or_before(EpochSeconds::new(at)),
 		Some(version),
 		"a sample whose instant is inside the horizon must survive its bucket falling outside"
 	);
@@ -336,7 +336,7 @@ fn pruning_drops_samples_beyond_the_horizon_and_keeps_the_ones_inside_it() {
 	let engine: StandardEngine = t.inner().clone();
 	let clock = t.mock_clock();
 	let horizon = engine.catalog().get_config_duration(ConfigKey::MinHistoryHorizon);
-	assert_eq!(horizon, Duration::from_days(7).unwrap(), "precondition: the default horizon floor is seven days");
+	assert_eq!(horizon, Duration::from_days(7).unwrap(), "precondition: the default minimum horizon is seven days");
 
 	commit_a_version(&engine, "ingest", 1);
 	let mut task = EpochLogTask::new(engine.clone(), open_gate(&engine));
@@ -385,7 +385,7 @@ fn pruning_is_held_back_while_the_startup_gate_is_closed() {
 #[test]
 fn a_sample_never_anchors_an_instant_to_version_zero() {
 	// Anchoring an instant to version zero places "now" before every row in the database, so any reader of the
-	// map would resolve a floor above live data.
+	// map would resolve a version floor above live data.
 	let t = TestEngine::new();
 	let engine: StandardEngine = t.inner().clone();
 
@@ -400,8 +400,8 @@ fn a_sample_never_anchors_an_instant_to_version_zero() {
 
 #[test]
 fn hydrating_a_cold_database_leaves_the_epoch_resolving_nothing() {
-	// A fresh database has no samples, so the map must answer none rather than a floor; "no coverage" can never
-	// be allowed to read as "everything is below the floor".
+	// A fresh database has no samples, so the map must answer none rather than a version floor; "no coverage" can
+	// never be allowed to read as "everything is below the version floor".
 	let t = TestEngine::new();
 	let engine: StandardEngine = t.inner().clone();
 
@@ -409,7 +409,7 @@ fn hydrating_a_cold_database_leaves_the_epoch_resolving_nothing() {
 
 	assert_eq!(restored, 0, "a cold database has nothing to hydrate");
 	assert_eq!(
-		VersionEpoch::new().floor_version_at(EpochSeconds::from_datetime(engine.clock().now())),
+		VersionEpoch::new().version_at_or_before(EpochSeconds::from_datetime(engine.clock().now())),
 		None,
 		"a cold epoch must yield no cutoff, so gc deletes nothing"
 	);

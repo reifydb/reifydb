@@ -40,7 +40,7 @@ impl LifecycleTask for CommitLogCheckpointTask {
 		let version = self.checkpoint.make_durable().expect("commit log checkpoint failed to flush the log");
 		self.checkpoint
 			.saved_through(version)
-			.expect("commit log checkpoint failed to advance the multi floor");
+			.expect("commit log checkpoint failed to advance the multi log floor");
 		Progress::Exhausted
 	}
 }

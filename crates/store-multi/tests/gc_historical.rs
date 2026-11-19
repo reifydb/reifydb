@@ -99,7 +99,7 @@ fn memory_sweep_drops_only_versions_below_cutoff() {
 	assert_eq!(mid.as_deref(), Some(b"v60".as_slice()));
 
 	// MVCC resolves to the largest surviving version <= requested and none survive below 50. The
-	// flush floor contract means no production reader is ever pinned below the cutoff.
+	// version floor contract means no production reader is ever pinned below the cutoff.
 	let pruned = storage.get(object(), &k, CommitVersion(40)).value();
 	assert!(pruned.is_none());
 }

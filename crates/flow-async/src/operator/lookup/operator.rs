@@ -379,7 +379,7 @@ impl LookupOperator {
 			LookupObject::View(view) if self.config.deferred => host.lookup_view_read(view, source),
 			LookupObject::Table(_) | LookupObject::RingBuffer(_) | LookupObject::View(_) => {
 				let at = CommitVersion(source.0).min(host.version());
-				LookupAt::Commit(host.lookup_floor().map_or(at, |floor| at.max(floor)))
+				LookupAt::Commit(host.lookup_floor().map_or(at, |version_floor| at.max(version_floor)))
 			}
 		})
 	}
@@ -2461,8 +2461,9 @@ mod tests {
 	}
 
 	#[test]
-	fn a_table_lookup_below_the_floor_reads_at_the_floor() {
-		// A source under the lease may be collected, so the read is lifted to the floor instead of panicking.
+	fn a_table_lookup_below_the_lookup_floor_reads_at_the_lookup_floor() {
+		// A source under the lease may be collected, so the read is lifted to the lookup floor instead of
+		// panicking.
 		let engine = TestEngine::new();
 		let table = right_table(&engine, false);
 		let first = put_right(&engine, "a", 10);
@@ -2487,8 +2488,9 @@ mod tests {
 
 	#[test]
 	#[should_panic(expected = "sits below the held lease floor")]
-	fn a_view_read_for_a_source_below_the_floor_panics() {
-		// IP3: when the floor is above the source, no read at the floor can match what the source saw.
+	fn a_view_read_for_a_source_below_the_lookup_floor_panics() {
+		// IP3: when the lookup floor is above the source, no read at the lookup floor can match what the source
+		// saw.
 		let engine = TestEngine::new();
 		let mut txn = txn_at(&engine, CommitVersion(10));
 		txn.lookup = Some(LookupContext {
@@ -2515,7 +2517,7 @@ mod tests {
 
 	struct Producer {
 		for_source: CommitVersion,
-		through_floor: CommitVersion,
+		through_lookup_floor: CommitVersion,
 	}
 
 	impl LookupVersions for Producer {
@@ -2524,20 +2526,20 @@ mod tests {
 		}
 
 		fn view_commit_through(&self, _view: ViewId, _commit: CommitVersion) -> Option<CommitVersion> {
-			Some(self.through_floor)
+			Some(self.through_lookup_floor)
 		}
 	}
 
 	#[test]
-	fn a_view_read_below_the_floor_reads_at_the_floor_when_the_producer_has_not_committed_since() {
-		// With no producer commit between the source's commit and the floor, the floor read is exact and must
-		// never panic.
+	fn a_view_read_below_the_lookup_floor_reads_at_the_lookup_floor_when_the_producer_has_not_committed_since() {
+		// With no producer commit between the source's commit and the lookup floor, a read there is exact and
+		// must never panic.
 		let engine = TestEngine::new();
 		let mut txn = txn_at(&engine, CommitVersion(40));
 		txn.lookup = Some(LookupContext {
 			versions: Arc::new(Producer {
 				for_source: CommitVersion(20),
-				through_floor: CommitVersion(20),
+				through_lookup_floor: CommitVersion(20),
 			}),
 			floor: CommitVersion(32),
 		});
@@ -2548,14 +2550,14 @@ mod tests {
 
 	#[test]
 	#[should_panic(expected = "sits below the held lease floor")]
-	fn a_view_read_below_the_floor_panics_when_the_producer_committed_since() {
-		// A producer commit between the source's commit and the floor changed the rows the floor shows.
+	fn a_view_read_below_the_lookup_floor_panics_when_the_producer_committed_since() {
+		// A producer commit between the source's commit and the lookup floor changed the rows it shows.
 		let engine = TestEngine::new();
 		let mut txn = txn_at(&engine, CommitVersion(40));
 		txn.lookup = Some(LookupContext {
 			versions: Arc::new(Producer {
 				for_source: CommitVersion(20),
-				through_floor: CommitVersion(25),
+				through_lookup_floor: CommitVersion(25),
 			}),
 			floor: CommitVersion(32),
 		});

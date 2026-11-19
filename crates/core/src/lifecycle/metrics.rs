@@ -239,7 +239,7 @@ mod tests {
 	const BASE: i64 = 10 * HOUR_NANOS;
 
 	fn expiry_floor(nanos: i64) -> Option<(Floor, FloorTerm)> {
-		// Every clock-driven floor in the ledger is `now - ttl` rendered as an instant, so a test
+		// Every clock-driven floor in the resolver is `now - ttl` rendered as an instant, so a test
 		// exercising that path has to hand the same shape over: a version floor would take the pinned
 		// branch and prove nothing about the branch under test.
 		Some((Floor::Instant(DateTime::from_nanos(nanos)), FloorTerm::RowExpiry))
@@ -256,11 +256,11 @@ mod tests {
 		let class = LifecycleClass::RowTtl;
 
 		for step in 0..20i64 {
-			let floor = match step % 2 {
+			let instant_floor = match step % 2 {
 				0 => BASE,
 				_ => BASE - HOUR_NANOS,
 			};
-			let onset = metrics.record_reclamation(class, expiry_floor(floor), 0, 2);
+			let onset = metrics.record_reclamation(class, expiry_floor(instant_floor), 0, 2);
 
 			assert!(
 				!matches!(onset, StuckOnset::FloorPinned { .. }),

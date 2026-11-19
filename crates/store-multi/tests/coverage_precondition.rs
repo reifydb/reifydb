@@ -38,9 +38,9 @@ const STORAGE: StorageId = StorageId::Table(TableId(1));
 /// The default shift of 16 keeps rows 0..65535 in bucket 0, so a full scan materializes that page's coverage.
 const BUCKET_ROWS: u64 = 200;
 
-struct StaticFloor(CommitVersion);
+struct StaticFlushFloor(CommitVersion);
 
-impl FlushFloor for StaticFloor {
+impl FlushFloor for StaticFlushFloor {
 	fn floor(&self) -> CommitVersion {
 		self.0
 	}
@@ -76,7 +76,7 @@ fn commit_remove(store: &StandardMultiStore, row: u64, version: u64) {
 /// Drives the genuine flush engine sweep, not a stand-in, so the persist -> refresh-read-tier -> drop-from-commit
 /// ordering under test is the one production runs.
 fn flush(store: &StandardMultiStore, cutoff: u64) {
-	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(cutoff))));
+	store.set_flush_floor(Arc::new(StaticFlushFloor(CommitVersion(cutoff))));
 	store.flush_pending_blocking();
 }
 

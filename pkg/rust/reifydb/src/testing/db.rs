@@ -12,7 +12,7 @@ use std::{
 };
 
 use reifydb_core::{
-	commit::queue::{CommitPull, CommitQueue, CommitQueueFloor},
+	commit::queue::{CommitPull, CommitQueue, CommitQueuePosition},
 	common::CommitVersion,
 	interface::commit::{CommitEntry, CommitLog},
 };
@@ -38,7 +38,7 @@ use crate::{Database, Frame, SqliteConfig, WithSubsystem, embedded};
 pub struct TestDb {
 	db: Database,
 	_guard: Option<SqliteTempPathGuard>,
-	held: Option<(CommitQueueFloor, CommitVersion, Lsn)>,
+	held: Option<(CommitQueuePosition, CommitVersion, Lsn)>,
 }
 
 impl TestDb {
@@ -57,7 +57,7 @@ impl TestDb {
 				.resolve::<CommitQueue>()
 				.expect("the builder registers the commit queue");
 		let (start, start_lsn) = queue.released();
-		self.held = Some((queue.floor("test-history"), start, start_lsn));
+		self.held = Some((queue.position("test-history"), start, start_lsn));
 	}
 
 	pub fn commit_history(&self) -> Vec<Arc<CommitEntry>> {

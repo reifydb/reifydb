@@ -72,8 +72,8 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 
 	driver::drive(
 		seed,
-		// No clock and nothing in flight, so no tick share and no drain horizon; the drain runs only to
-		// prove that ticking past every horizon changes nothing.
+		// No clock and nothing in flight, so no tick share and no high water; the drain runs only to
+		// prove that ticking past every due instant changes nothing.
 		Scenario::mixed(params.steps)
 			.with_batch(BatchSize::Geometric {
 				p: 0.45,

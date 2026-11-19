@@ -107,7 +107,7 @@ fn a_silent_view_source_lifts_its_reader_across_the_hop() {
 	db.command(r#"INSERT sil::busy [{ id: 1, g: 1, v: 5, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_row_count("FROM sil::w FILTER { total == 5 }", 1, TIMEOUT);
 
-	// sil::busy runs past bucket 0's horizon, but sil::mid_quiet has never reported, so the min stays 0.
+	// sil::busy runs past bucket 0's seal instant, but sil::mid_quiet has never reported, so the min stays 0.
 	db.command(r#"INSERT sil::busy [{ id: 2, g: 1, v: 7, ts: "2026-01-01T00:00:10Z" }]"#);
 	db.await_row_count("FROM sil::w FILTER { total == 7 }", 1, TIMEOUT);
 

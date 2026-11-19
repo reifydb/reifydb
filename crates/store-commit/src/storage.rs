@@ -44,7 +44,7 @@ pub trait Write: Rows {
 
 	fn close(&self);
 
-	fn merge(&self, fan_in: usize, cap: ByteSize, floor: ByteSize, backlog: usize);
+	fn merge(&self, fan_in: usize, cap: ByteSize, close_threshold: ByteSize, backlog: usize);
 }
 
 pub trait Remove: Rows {

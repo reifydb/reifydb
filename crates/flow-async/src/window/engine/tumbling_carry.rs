@@ -144,19 +144,28 @@ where
 		}
 	}
 
-	pub fn seal_due<K>(&mut self, store: &mut dyn StateStore, horizon: S, row_key: K) -> Result<usize, ValueError>
+	pub fn seal_due<K>(
+		&mut self,
+		store: &mut dyn StateStore,
+		first_admitted: S,
+		row_key: K,
+	) -> Result<usize, ValueError>
 	where
 		K: Fn(&G, S) -> EncodedKey,
 	{
 		let family = self.family;
 		let idle_retention = self.idle_retention;
-		let threshold = horizon.to_order();
+		let threshold = first_admitted.to_order();
 		let mut doomed: Vec<GroupStateKey> = Vec::new();
 		let mut groups: Vec<GroupId> = Vec::new();
 		let dropped = self.meta_sweep.sweep_with(store, threshold, |store, key, bytes| {
 			let mut meta = decode::<CarryMeta<S, Carry, Output>>(bytes)?;
-			let sealed: Vec<S> =
-				meta.windows.keys().copied().take_while(|first| is_sealed(*first, horizon)).collect();
+			let sealed: Vec<S> = meta
+				.windows
+				.keys()
+				.copied()
+				.take_while(|first| is_sealed(*first, first_admitted))
+				.collect();
 			let folded = !sealed.is_empty();
 			if folded {
 				let recorded =
@@ -844,8 +853,8 @@ mod tests {
 
 	#[test]
 	fn immutable_folds_old_windows_and_forgets_accumulator_rows() {
-		// With a 2-window immutable horizon, older windows must fold into the O(1) carry scalar and
-		// drop their accumulator row, so the live row count stays bounded by the horizon rather
+		// With a 2-window immutable span, older windows must fold into the O(1) carry scalar and
+		// drop their accumulator row, so the live row count stays bounded by the span rather
 		// than growing with the number of windows seen.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(Some(millis(2 * WINDOW))));
@@ -969,7 +978,7 @@ mod tests {
 
 	#[test]
 	fn a_seal_folds_every_window_below_the_output_watermark_of_every_group_and_forgets_its_rows() {
-		// Without immutable only the seal can free a window; every group's windows below the horizon must
+		// Without immutable only the seal can free a window; every group's windows below first admitted must
 		// lose both the accumulator row and the row-number mapping, and later windows must be left alone.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
@@ -985,7 +994,7 @@ mod tests {
 
 		let dropped = engine.seal_due(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
 
-		assert_eq!(dropped, 0, "both groups still have windows at or past the horizon");
+		assert_eq!(dropped, 0, "both groups still have windows at or past first admitted");
 		assert_eq!(store.accumulator_count(), 10, "windows 5..9 of each group must keep their accumulators");
 		assert_eq!(store.row_mapping_count(), 0, "a seal must not mint a mapping for a folded window");
 		assert_eq!(store.meta_entry_count(), 2, "a group with live windows keeps its meta");
@@ -993,8 +1002,8 @@ mod tests {
 
 	#[test]
 	fn a_seal_keeps_the_window_that_starts_exactly_at_the_output_watermark() {
-		// A window is sealed only when it starts strictly below the horizon, the same test the driver applies
-		// to incoming rows; folding the boundary window would drop a window that still takes rows.
+		// A window is sealed only when it starts strictly below first admitted, the same test the driver
+		// applies to incoming rows; folding the boundary window would drop a window that still takes rows.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		for i in 0..3u64 {
@@ -1003,7 +1012,7 @@ mod tests {
 
 		engine.seal_due(&mut store, window_at(WINDOW), seal_key).unwrap();
 
-		assert_eq!(store.accumulator_count(), 2, "only the window below the horizon folds");
+		assert_eq!(store.accumulator_count(), 2, "only the window below first admitted folds");
 	}
 
 	#[test]
@@ -1052,8 +1061,8 @@ mod tests {
 	}
 
 	#[test]
-	fn an_idle_group_keeps_its_meta_until_it_is_idle_past_the_horizon_by_more_than_retention() {
-		// Dropping at the horizon loses the carry retention keeps, and never dropping leaks it.
+	fn an_idle_group_keeps_its_meta_until_it_is_idle_past_first_admitted_by_more_than_retention() {
+		// Dropping at first admitted loses the carry retention keeps, and never dropping leaks it.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(idle_config(millis(10 * WINDOW)));
 		for i in 0..10u64 {
@@ -1099,7 +1108,7 @@ mod tests {
 
 		engine.seal_due(&mut store, window_at(30 * WINDOW), seal_key).unwrap();
 
-		assert_eq!(store.accumulator_count(), 0, "ETH's windows are all below the horizon and must fold");
+		assert_eq!(store.accumulator_count(), 0, "ETH's windows are all below first admitted and must fold");
 	}
 
 	#[test]
@@ -1207,7 +1216,7 @@ mod tests {
 
 	#[test]
 	fn successive_seals_keep_folding_as_the_output_watermark_rises() {
-		// A pass that found nothing more to fold must not stop later passes: the horizon only moves up, and
+		// A pass that found nothing more to fold must not stop later passes: first admitted only moves up, and
 		// each move seals more of the same group's windows.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
@@ -1218,10 +1227,10 @@ mod tests {
 		engine.seal_due(&mut store, window_at(3 * WINDOW), seal_key).unwrap();
 		assert_eq!(store.accumulator_count(), 7);
 		engine.seal_due(&mut store, window_at(3 * WINDOW), seal_key).unwrap();
-		assert_eq!(store.accumulator_count(), 7, "a repeat at the same horizon changes nothing");
+		assert_eq!(store.accumulator_count(), 7, "a repeat at the same first admitted changes nothing");
 		engine.seal_due(&mut store, window_at(6 * WINDOW), seal_key).unwrap();
 
-		assert_eq!(store.accumulator_count(), 4, "a higher horizon must fold the newly sealed windows");
+		assert_eq!(store.accumulator_count(), 4, "a higher first admitted must fold the newly sealed windows");
 	}
 
 	#[test]

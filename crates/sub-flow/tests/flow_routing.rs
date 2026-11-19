@@ -3,7 +3,7 @@
 
 // The supervisor pushes each decoded commit log batch to every live flow; a flow the batch does not touch
 // consumes it as a pure cursor advance. An idle flow that is never advanced pins the caught-up
-// caught-up position and, through its durable checkpoint, the floor that gates commit log compaction.
+// caught-up position and, through its durable checkpoint, the flow log floor that gates commit log compaction.
 
 use std::thread;
 

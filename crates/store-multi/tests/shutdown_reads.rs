@@ -47,9 +47,9 @@ const STORAGE: StorageId = StorageId::Table(TableId(1));
 
 const WRITTEN_AT: u64 = 5;
 
-struct StaticFloor(CommitVersion);
+struct StaticFlushFloor(CommitVersion);
 
-impl FlushFloor for StaticFloor {
+impl FlushFloor for StaticFlushFloor {
 	fn floor(&self) -> CommitVersion {
 		self.0
 	}
@@ -76,7 +76,7 @@ fn commit_set(store: &StandardMultiStore, row: u64, version: u64) {
 /// Drives the real flush engine so the rows leave the commit buffer; without it a scan never reaches
 /// persistent and so never reaches the drained pool either.
 fn flush(store: &StandardMultiStore, cutoff: u64) {
-	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(cutoff))));
+	store.set_flush_floor(Arc::new(StaticFlushFloor(CommitVersion(cutoff))));
 	store.flush_pending_blocking();
 }
 
@@ -247,22 +247,23 @@ fn an_iteration_that_straddles_a_shutdown_yields_an_error_rather_than_ending() {
 }
 
 #[test]
-fn the_install_floor_of_a_drained_reader_pool_fails_instead_of_answering_the_max_version() {
-	// The u64::MAX fallback is memoized, so a first probe after the drain pins the floor forever.
+fn the_persisted_high_water_of_a_drained_reader_pool_fails_instead_of_answering_the_max_version() {
+	// The u64::MAX fallback is memoized, so a first probe after the drain pins the high water forever.
 	let (tier, _g) = tier_with_rows(CHUNK);
 	tier.shutdown().unwrap();
 
-	let error = tier.install_floor().expect_err("a floor probed against no connection answered a version");
+	let error =
+		tier.persisted_high_water().expect_err("a high water probed against no connection answered a version");
 	names_the_shutdown(&error);
 }
 
 #[test]
-fn the_install_floor_of_a_live_tier_answers_the_highest_version_on_disk() {
+fn the_persisted_high_water_of_a_live_tier_answers_the_highest_version_on_disk() {
 	// Erroring unconditionally would stop the read tier ever claiming a span again.
 	let (tier, _g) = tier_with_rows(CHUNK);
 
 	assert_eq!(
-		tier.install_floor().unwrap(),
+		tier.persisted_high_water().unwrap(),
 		CommitVersion(WRITTEN_AT),
 		"a live tier must report the highest version it holds"
 	);

@@ -145,7 +145,7 @@ impl VersionEpochKey {
 		TaggedKeyBound::prefix(Self::TAG, [Field::UDesc(Width::U64, bucket.seconds() as u128)])
 	}
 
-	pub fn floor_scan(target: EpochSeconds) -> TaggedKeyBoundRange {
+	pub fn at_or_before(target: EpochSeconds) -> TaggedKeyBoundRange {
 		TaggedKeyBoundRange {
 			start: Bound::Included(Self::bucket_bound(target)),
 			end: Bound::Included(Self::bucket_bound(EpochSeconds::new(0))),
@@ -186,14 +186,14 @@ mod version_epoch_key_tests {
 		let newer = VersionEpochKey::encoded(sec(200));
 		assert!(
 			newer < older,
-			"a newer (larger) bucket must encode to smaller key bytes so floor_scan can take the first entry at-or-after the target"
+			"a newer (larger) bucket must encode to smaller key bytes so at_or_before can take the first entry at-or-after the target"
 		);
 	}
 
 	#[test]
-	fn test_floor_scan_lower_bound_is_target_bucket() {
+	fn test_at_or_before_lower_bound_is_target_bucket() {
 		let target = sec(150);
-		let range = VersionEpochKey::floor_scan(target).encode();
+		let range = VersionEpochKey::at_or_before(target).encode();
 		assert_eq!(range.start, Bound::Included(VersionEpochKey::encoded(target)));
 		assert_eq!(range.end, Bound::Included(VersionEpochKey::encoded(sec(0))));
 		// A bucket exactly at the target is included; a bucket newer than the target is excluded.

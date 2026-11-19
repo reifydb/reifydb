@@ -61,16 +61,16 @@ fn commit(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str)
 	.unwrap();
 }
 
-struct FixedFloor(CommitVersion);
+struct FixedFlushFloor(CommitVersion);
 
-impl FlushFloor for FixedFloor {
+impl FlushFloor for FixedFlushFloor {
 	fn floor(&self) -> CommitVersion {
 		self.0
 	}
 }
 
 fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-	store.set_flush_floor(Arc::new(FixedFloor(cutoff)));
+	store.set_flush_floor(Arc::new(FixedFlushFloor(cutoff)));
 	store.flush_pending_blocking();
 }
 

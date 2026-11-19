@@ -20,7 +20,7 @@ use reifydb_core::{
 	commit::{
 		loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 		position::ReaderPosition,
-		queue::{CommitQueue, SubscriptionQueueFloor},
+		queue::{CommitQueue, SubscriptionQueuePosition},
 	},
 	interface::{
 		catalog::{
@@ -92,7 +92,7 @@ impl SubscriptionSubsystem {
 	pub fn new(
 		engine: StandardEngine,
 		queue: CommitQueue,
-		floor: SubscriptionQueueFloor,
+		queue_position: SubscriptionQueuePosition,
 		store: Arc<SubscriptionStore>,
 		_runtime_context: RuntimeContext,
 		consumer_position: ReaderPosition,
@@ -131,7 +131,7 @@ impl SubscriptionSubsystem {
 			subscribed,
 		);
 
-		let SubscriptionQueueFloor(floor) = floor;
+		let SubscriptionQueuePosition(queue_position) = queue_position;
 		let start = engine.current_version()?;
 		let wal = engine.multi().wal().clone();
 		let start_lsn = released_lsn(&wal);
@@ -141,7 +141,7 @@ impl SubscriptionSubsystem {
 		);
 		let reader_ref = Arc::new(OnceLock::<ActorRef<SubscriptionReaderMessage>>::new());
 		let wake_ref = reader_ref.clone();
-		floor.adopt(start, move || {
+		queue_position.adopt(start, move || {
 			if let Some(reader_ref) = wake_ref.get() {
 				let _ = reader_ref.send(SubscriptionReaderMessage::Wake);
 			}
@@ -149,7 +149,7 @@ impl SubscriptionSubsystem {
 		let reader = SubscriptionReader::new(
 			engine,
 			queue,
-			floor.clone(),
+			queue_position.clone(),
 			commit_log_consumer,
 			consumer_position,
 			start,
@@ -302,7 +302,7 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let queue = ioc.resolve::<CommitQueue>()?;
-		let floor = ioc.resolve::<SubscriptionQueueFloor>()?;
+		let queue_position = ioc.resolve::<SubscriptionQueuePosition>()?;
 		let clock = ioc.resolve::<Clock>()?;
 
 		let runtime_context = RuntimeContext::builder(engine.runtime_context().spawner.clone())
@@ -330,7 +330,7 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 		let subsystem = SubscriptionSubsystem::new(
 			engine,
 			queue,
-			floor,
+			queue_position,
 			store.clone(),
 			runtime_context,
 			consumer_position,

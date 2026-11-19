@@ -117,9 +117,9 @@ impl SealRule {
 		self.seal_instant(DateTime::from_order(event_order))
 	}
 
-	pub fn horizon_at(self, at: ByDateTime) -> Option<ByDateTime> {
+	pub fn last_sealed(self, at: ByDateTime) -> Option<ByDateTime> {
 		at.0.checked_sub(self.seal_span.0)
-			.and_then(|horizon| horizon.checked_sub(SEAL_GATE_STEP))
+			.and_then(|sealed_below| sealed_below.checked_sub(SEAL_GATE_STEP))
 			.map(ByDateTime)
 	}
 }
@@ -128,8 +128,8 @@ pub fn output_watermark<C: Coord>(operator_watermark: C, lateness: C::Span) -> C
 	operator_watermark.saturating_sub_span(lateness)
 }
 
-pub fn is_sealed<C: Coord>(event: C, horizon: C) -> bool {
-	event < horizon
+pub fn is_sealed<C: Coord>(event: C, first_admitted: C) -> bool {
+	event < first_admitted
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -183,33 +183,33 @@ mod tests {
 		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 		let ledger = at_millis(358_262);
 
-		let horizon = rule.horizon_at(ByDateTime(ledger)).expect("the ledger is past one seal span");
+		let last_sealed = rule.last_sealed(ByDateTime(ledger)).expect("the ledger is past one seal span");
 
-		assert_eq!(horizon.0, at_millis(283_261), "ledger - (size + lateness) - 1");
+		assert_eq!(last_sealed.0, at_millis(283_261), "ledger - (size + lateness) - 1");
 		assert!(
-			horizon.0 < ledger,
+			last_sealed.0 < ledger,
 			"an operator watermark at or past the ledger forgets windows that have not sealed"
 		);
 		assert_eq!(
-			rule.seal_instant(horizon.0).at(),
+			rule.seal_instant(last_sealed.0).at(),
 			ledger,
-			"and it is the exact inverse of arming, so a window at this horizon sealed at precisely \
+			"and it is the exact inverse of arming, so a window at this last sealed instant sealed at precisely \
 			 this ledger rather than one millisecond either side of it"
 		);
 	}
 
 	#[test]
 	fn a_ledger_short_of_one_seal_span_has_a_real_pre_epoch_output_watermark() {
-		// Wrapping through u64 would put the horizon near u64::MAX and report every window sealed
+		// Wrapping through u64 would put the last sealed instant near u64::MAX and report every window sealed
 		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 
-		assert_eq!(rule.horizon_at(ByDateTime(at_millis(0))), Some(ByDateTime(at_millis(-75_001))));
+		assert_eq!(rule.last_sealed(ByDateTime(at_millis(0))), Some(ByDateTime(at_millis(-75_001))));
 		assert_eq!(
-			rule.horizon_at(ByDateTime(at_millis(75_000))),
+			rule.last_sealed(ByDateTime(at_millis(75_000))),
 			Some(ByDateTime(at_millis(-1))),
-			"the horizon is 0 - 1, not 0"
+			"the last sealed instant is 0 - 1, not 0"
 		);
-		assert_eq!(rule.horizon_at(ByDateTime(at_millis(75_001))), Some(ByDateTime(at_millis(0))));
+		assert_eq!(rule.last_sealed(ByDateTime(at_millis(75_001))), Some(ByDateTime(at_millis(0))));
 	}
 
 	#[test]

@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod horizon;
-pub mod ledger;
 pub mod measured;
+pub mod resolver;
 
 use std::sync::Arc;
 
@@ -20,7 +20,7 @@ use reifydb_runtime::{context::clock::Clock, version_epoch::VersionEpoch};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use tracing::warn;
 
-use crate::plane::ledger::{EngineFloors, FloorSource, HorizonLedger};
+use crate::plane::resolver::{EngineFloors, FloorResolver, FloorSource};
 
 #[derive(Clone)]
 pub struct LifecyclePlane {
@@ -28,7 +28,7 @@ pub struct LifecyclePlane {
 }
 
 struct Inner {
-	ledger: HorizonLedger,
+	resolver: FloorResolver,
 	metrics: LifecycleMetrics,
 }
 
@@ -40,7 +40,7 @@ impl LifecyclePlane {
 	pub fn with_metrics(source: Arc<dyn FloorSource>, epoch: VersionEpoch, metrics: LifecycleMetrics) -> Self {
 		Self {
 			inner: Arc::new(Inner {
-				ledger: HorizonLedger::new(source, epoch),
+				resolver: FloorResolver::new(source, epoch),
 				metrics,
 			}),
 		}
@@ -51,7 +51,7 @@ impl LifecyclePlane {
 	}
 
 	pub fn cutoff(&self, class: LifecycleClass, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
-		self.inner.ledger.cutoff(class, now, ttl)
+		self.inner.resolver.cutoff(class, now, ttl)
 	}
 
 	pub fn cutoff_with_binding(
@@ -60,11 +60,11 @@ impl LifecyclePlane {
 		now: DateTime,
 		ttl: Option<Duration>,
 	) -> Option<(Floor, FloorTerm)> {
-		self.inner.ledger.cutoff_with_binding(class, now, ttl)
+		self.inner.resolver.cutoff_with_binding(class, now, ttl)
 	}
 
 	pub fn expiry_cutoff(&self, now: DateTime, ttl: Duration) -> Option<CommitVersion> {
-		self.inner.ledger.expiry_cutoff(now, ttl)
+		self.inner.resolver.expiry_cutoff(now, ttl)
 	}
 
 	pub fn record_liveness(&self, class: LifecycleClass) {

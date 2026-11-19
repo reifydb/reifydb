@@ -170,7 +170,7 @@ impl SealDomain for ByU8 {
 		Ok(Self::from_order(SealLedger::read_order(store)?.unwrap_or(0)))
 	}
 
-	fn horizon(operator_watermark: Self, seal_span: RowSpan) -> Self {
+	fn first_admitted(operator_watermark: Self, seal_span: RowSpan) -> Self {
 		operator_watermark.saturating_sub_span(seal_span)
 	}
 
@@ -352,7 +352,8 @@ mod tests {
 
 	#[test]
 	fn an_ordinal_operator_watermark_moves_inline_from_the_batch_and_only_forward() {
-		// nothing arms a timer here, so the batch itself must advance the ledger or the horizon never moves
+		// nothing arms a timer here, so the batch must advance the ledger or the first admitted point never
+		// moves
 		let mut store = MockStore::default();
 
 		assert_eq!(ByU8::operator_watermark(&mut store).unwrap(), ByU8(0));
@@ -361,7 +362,7 @@ mod tests {
 		ByU8::observe(&mut store, ByU8(30), RowSpan::ZERO).unwrap();
 
 		assert_eq!(ByU8::operator_watermark(&mut store).unwrap(), ByU8(90));
-		assert_eq!(ByU8::horizon(ByU8(90), RowSpan::of(64)), ByU8(26));
+		assert_eq!(ByU8::first_admitted(ByU8(90), RowSpan::of(64)), ByU8(26));
 	}
 
 	#[test]
@@ -503,16 +504,17 @@ mod tests {
 	}
 
 	#[test]
-	fn the_horizon_trails_the_operator_watermark_by_the_lag() {
-		// A horizon too close to the operator watermark seals windows that may still take late rows.
-		assert_eq!(<ByU8 as SealDomain>::horizon(ByU8(100), RowSpan::of(32)), ByU8(68));
-		assert_eq!(<ByU8 as SealDomain>::horizon(ByU8(100), RowSpan::ZERO), ByU8(100));
+	fn the_first_admitted_trails_the_operator_watermark_by_the_lag() {
+		// A first admitted point too close to the operator watermark seals windows that may still take late
+		// rows.
+		assert_eq!(<ByU8 as SealDomain>::first_admitted(ByU8(100), RowSpan::of(32)), ByU8(68));
+		assert_eq!(<ByU8 as SealDomain>::first_admitted(ByU8(100), RowSpan::ZERO), ByU8(100));
 	}
 
 	#[test]
-	fn the_horizon_clamps_at_genesis() {
+	fn the_first_admitted_clamps_at_genesis() {
 		// Wrapping below zero would land near u64::MAX and declare every window sealed.
-		assert_eq!(<ByU8 as SealDomain>::horizon(ByU8(5), RowSpan::of(32)), ByU8(0));
+		assert_eq!(<ByU8 as SealDomain>::first_admitted(ByU8(5), RowSpan::of(32)), ByU8(0));
 	}
 
 	#[test]

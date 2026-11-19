@@ -148,12 +148,12 @@ impl MarkerSink for MarkerMap {
 }
 
 impl MarkerSweep for MarkerMap {
-	fn sweep(&self, floor: Option<CommitVersion>) -> usize {
+	fn sweep(&self, version_floor: Option<CommitVersion>) -> usize {
 		let mut entries = self.inner.entries.write();
-		let keep_from = match floor {
-			Some(floor) => {
+		let keep_from = match version_floor {
+			Some(version_floor) => {
 				entries.idle_through = None;
-				Some(floor)
+				Some(version_floor)
 			}
 			None => {
 				let newest = entries.by_version.last_key_value().map(|(version, _)| *version);

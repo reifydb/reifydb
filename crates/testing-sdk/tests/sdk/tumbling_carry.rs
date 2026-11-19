@@ -417,10 +417,10 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
 	// Production stall this pins: solana::market::{twap,vwap,volume,ohlcv}::* published rows for
 	// the very first block of a replayed corpus and then never again. The corpus carries event
-	// timestamps but the flow watermark advanced on arrival, so from the second batch on the seal
-	// horizon sat weeks ahead of every window and `seal` discarded each bucket before it emitted.
+	// timestamps but the flow watermark advanced on arrival, so from the second batch on the first
+	// admitted instant sat weeks ahead of every window and `seal` discarded each bucket before it emitted.
 	//
-	// The window coordinate and the seal horizon must be read on the same clock. Here the
+	// The window coordinate and the first admitted instant must be read on the same clock. Here the
 	// flow watermark advances exactly as the feed does - from the rows' own #time, which is what
 	// `latest_row_time` feeds it in production - so a ladder that keeps receiving must keep
 	// publishing, however many windows it has crossed.

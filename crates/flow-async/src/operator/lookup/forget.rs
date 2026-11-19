@@ -76,7 +76,7 @@ impl LookupForget {
 			return Ok(());
 		}
 		let mut start = match self.index.min(host)? {
-			Some(floor) => DueStart::Floor(floor),
+			Some(earliest) => DueStart::From(earliest),
 			None => DueStart::Bottom,
 		};
 		let earliest = loop {

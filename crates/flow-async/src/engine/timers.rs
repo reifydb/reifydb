@@ -881,13 +881,13 @@ mod tests {
 	}
 
 	#[cfg(reifydb_assertions)]
-	fn floored(engine: &TestEngine, floor: u64) -> (FlowEngineInner, DeferredTransaction) {
+	fn with_lookup_floor(engine: &TestEngine, lookup_floor: u64) -> (FlowEngineInner, DeferredTransaction) {
 		let mut inner = engine_inner(engine);
 		inner.register_flow_dag(FlowDag::builder(FLOW).build());
 		let mut txn = engine.flow_txn().deferred();
 		txn.lookup = Some(LookupContext {
 			versions: Arc::new(NoVersions),
-			floor: CommitVersion(floor),
+			floor: CommitVersion(lookup_floor),
 		});
 		(inner, txn)
 	}
@@ -898,16 +898,17 @@ mod tests {
 	fn a_tick_below_the_lookup_floor_fails_at_the_engine() {
 		// Without this a stale tick stamp only surfaces once a lookup is downstream and its history is pruned.
 		let engine = TestEngine::new();
-		let (mut inner, mut txn) = floored(&engine, 9);
+		let (mut inner, mut txn) = with_lookup_floor(&engine, 9);
 		inner.process_tick(&mut txn, FLOW, CommitVersion(8)).unwrap();
 	}
 
 	#[cfg(reifydb_assertions)]
 	#[test]
 	fn a_tick_exactly_at_the_lookup_floor_passes() {
-		// A quiet flow ticks with its cursor equal to its floor, so an equal stamp must never trip the check.
+		// A quiet flow ticks with its cursor equal to its lookup floor, so an equal stamp must never trip the
+		// check.
 		let engine = TestEngine::new();
-		let (mut inner, mut txn) = floored(&engine, 9);
+		let (mut inner, mut txn) = with_lookup_floor(&engine, 9);
 		inner.process_tick(&mut txn, FLOW, CommitVersion(9)).unwrap();
 	}
 
@@ -915,9 +916,10 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "below its lookup lease floor")]
 	fn a_change_below_the_lookup_floor_fails_at_the_engine() {
-		// Without this a change stamped below the floor only surfaces when a lookup finds its history gone.
+		// Without this a change stamped below the lookup floor only surfaces when a lookup finds its history
+		// gone.
 		let engine = TestEngine::new();
-		let (mut inner, mut txn) = floored(&engine, 9);
+		let (mut inner, mut txn) = with_lookup_floor(&engine, 9);
 		let change = Change::from_flow(
 			OPERATOR,
 			ChangeVersion::from(CommitVersion(8)),

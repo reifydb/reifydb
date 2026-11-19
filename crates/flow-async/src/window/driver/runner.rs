@@ -123,10 +123,10 @@ where
 			C::observe(store, newest, seal_span)?;
 		}
 		let operator_watermark = C::operator_watermark(store)?;
-		let horizon = C::horizon(operator_watermark, seal_span);
+		let first_admitted = C::first_admitted(operator_watermark, seal_span);
 		let mut dropped = 0u64;
 		routed.buckets.retain(|(_, span), events| {
-			if is_sealed(span.start, horizon) {
+			if is_sealed(span.start, first_admitted) {
 				dropped += events.len() as u64;
 				false
 			} else {
@@ -206,7 +206,7 @@ where
 		let (Some(seal_span), Some(gap)) = (self.seal_span, self.gap) else {
 			return internal_err!("a session window runner needs a seal span and a gap");
 		};
-		let horizon = C::horizon(C::operator_watermark(store)?, seal_span);
+		let first_admitted = C::first_admitted(C::operator_watermark(store)?, seal_span);
 		let SessionRows {
 			ops,
 			mut refused,
@@ -239,7 +239,7 @@ where
 				}
 			}
 		}
-		let mut pass = SessionPass::<_, C, HookContributions<H>>::new(&identities, horizon, gap);
+		let mut pass = SessionPass::<_, C, HookContributions<H>>::new(&identities, first_admitted, gap);
 		{
 			let mut prefetched = Prefetched::read(store, keys)?;
 			pass.load(&mut prefetched)?;
@@ -301,7 +301,7 @@ where
 		}
 		self.refused.note(refused);
 		let mut routed = pass.take_routed();
-		let (gated, sealed, dropped) = gate_sessions(store, &mut routed, &identities, horizon)?;
+		let (gated, sealed, dropped) = gate_sessions(store, &mut routed, &identities, first_admitted)?;
 		self.sealed_drops.note(dropped);
 		if !sealed.is_empty() {
 			pass.withdraw_sealed(store, &sealed)?;
@@ -355,8 +355,8 @@ where
 		if hashes.is_empty() {
 			return Ok(());
 		}
-		let horizon = C::horizon(C::from_order(fired.at().to_order()), seal_span);
-		let moves = forget_trackers::<C>(store, &hashes, horizon, gap)?;
+		let first_admitted = C::first_admitted(C::from_order(fired.at().to_order()), seal_span);
+		let moves = forget_trackers::<C>(store, &hashes, first_admitted, gap)?;
 		store.rearm_timers(TimerKind::Seal, &tracker_moves::<C>(seal_span, moves))
 	}
 }

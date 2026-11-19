@@ -503,7 +503,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 }
 
 #[test]
-fn a_row_older_than_the_output_watermark_is_dropped_and_a_recent_one_is_kept() {
+fn a_row_older_than_the_seal_line_is_dropped_and_a_recent_one_is_kept() {
 	// Sealing is by pane time; if it never fired, late rows would silently reopen closed panes.
 	let mut h = harness!(TopVolume, rolling(3, Some(1), 10)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 7, 1.0)).build()).expect("apply");
@@ -513,7 +513,7 @@ fn a_row_older_than_the_output_watermark_is_dropped_and_a_recent_one_is_kept() {
 	let dropped = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 50, 9, 4.0)).build()).expect("apply");
 
 	assert!(!render(&kept).is_empty(), "a row inside the lateness window is still admitted");
-	assert!(render(&dropped).is_empty(), "a row below the horizon must be dropped");
+	assert!(render(&dropped).is_empty(), "a row below the seal line must be dropped");
 }
 
 #[test]
