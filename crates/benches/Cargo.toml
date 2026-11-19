@@ -52,7 +52,7 @@ path = "benches/scan_profile.rs"
 harness = false
 
 [[bench]]
-name = "watermark"
+name = "done_until"
 harness = false
 
 [[bench]]

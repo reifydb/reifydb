@@ -13,7 +13,7 @@ use hdrhistogram::Histogram;
 use reifydb_benches::{BenchReport, env_list_usize, env_opt, env_select, env_u64, latency_histogram, merge};
 use reifydb_core::common::CommitVersion;
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
-use reifydb_transaction::multi::watermark::watermark::WaterMark;
+use reifydb_transaction::multi::done_until::done_until::DoneUntil;
 use reifydb_value::value::duration::Duration as ValueDuration;
 
 static PIPELINE_OPS: LazyLock<u64> = LazyLock::new(|| env_u64("PIPELINE_OPS", 1_000_000));
@@ -21,13 +21,13 @@ static BURST_OPS_PER_THREAD: LazyLock<u64> = LazyLock::new(|| env_u64("BURST_OPS
 static WAIT_FAST_PATH_OPS: LazyLock<u64> = LazyLock::new(|| env_u64("WAIT_OPS", 1_000_000));
 
 fn pipeline(report: &mut BenchReport, threads: usize) {
-	let watermark = Arc::new(WaterMark::new("bench-pipeline".into()));
+	let done_until = Arc::new(DoneUntil::new("bench-pipeline".into()));
 	let counter = Arc::new(AtomicU64::new(0));
 
 	let start = Clock::Real.instant();
 	let mut handles = Vec::with_capacity(threads);
 	for _ in 0..threads {
-		let watermark = watermark.clone();
+		let done_until = done_until.clone();
 		let counter = counter.clone();
 		handles.push(thread::spawn(move || {
 			let mut histogram = latency_histogram();
@@ -37,8 +37,8 @@ fn pipeline(report: &mut BenchReport, threads: usize) {
 					break;
 				}
 				let op_start = Clock::Real.instant();
-				watermark.register_in_flight(CommitVersion(version));
-				watermark.mark_finished(CommitVersion(version));
+				done_until.register_in_flight(CommitVersion(version));
+				done_until.mark_finished(CommitVersion(version));
 				histogram.record(op_start.elapsed().as_nanos() as u64).expect("latency within bounds");
 			}
 			histogram
@@ -48,33 +48,33 @@ fn pipeline(report: &mut BenchReport, threads: usize) {
 	let elapsed = start.elapsed();
 
 	assert!(
-		watermark.wait_for_mark_timeout(CommitVersion(*PIPELINE_OPS), ValueDuration::from_seconds(30).unwrap()),
+		done_until.wait_for_mark_timeout(CommitVersion(*PIPELINE_OPS), ValueDuration::from_seconds(30).unwrap()),
 		"pipeline benchmark lost a mark: done_until={:?} expected {}",
-		watermark.done_until(),
+		done_until.done_until(),
 		*PIPELINE_OPS
 	);
 	report.record(&format!("pipeline threads={threads}"), *PIPELINE_OPS, elapsed, &histogram);
 }
 
 fn burst(report: &mut BenchReport, threads: usize) {
-	burst_against(report, threads, "burst", Arc::new(WaterMark::new("bench-burst".into())));
+	burst_against(report, threads, "burst", Arc::new(DoneUntil::new("bench-burst".into())));
 }
 
 fn burst_with_advancer(report: &mut BenchReport, threads: usize) {
 	let system = ActorSystem::testing(Clock::Real);
-	let watermark = Arc::new(WaterMark::with_advancer("bench-burst-advancer".into(), &system.spawner()));
-	burst_against(report, threads, "burst_advancer", watermark);
+	let done_until = Arc::new(DoneUntil::with_advancer("bench-burst-advancer".into(), &system.spawner()));
+	burst_against(report, threads, "burst_advancer", done_until);
 }
 
 fn pipeline_with_advancer(report: &mut BenchReport, threads: usize) {
 	let system = ActorSystem::testing(Clock::Real);
-	let watermark = Arc::new(WaterMark::with_advancer("bench-pipeline-advancer".into(), &system.spawner()));
+	let done_until = Arc::new(DoneUntil::with_advancer("bench-pipeline-advancer".into(), &system.spawner()));
 	let counter = Arc::new(AtomicU64::new(0));
 
 	let start = Clock::Real.instant();
 	let mut handles = Vec::with_capacity(threads);
 	for _ in 0..threads {
-		let watermark = watermark.clone();
+		let done_until = done_until.clone();
 		let counter = counter.clone();
 		handles.push(thread::spawn(move || {
 			let mut histogram = latency_histogram();
@@ -84,8 +84,8 @@ fn pipeline_with_advancer(report: &mut BenchReport, threads: usize) {
 					break;
 				}
 				let op_start = Clock::Real.instant();
-				watermark.register_in_flight(CommitVersion(version));
-				watermark.mark_finished(CommitVersion(version));
+				done_until.register_in_flight(CommitVersion(version));
+				done_until.mark_finished(CommitVersion(version));
 				histogram.record(op_start.elapsed().as_nanos() as u64).expect("latency within bounds");
 			}
 			histogram
@@ -95,29 +95,29 @@ fn pipeline_with_advancer(report: &mut BenchReport, threads: usize) {
 	let elapsed = start.elapsed();
 
 	assert!(
-		watermark.wait_for_mark_timeout(CommitVersion(*PIPELINE_OPS), ValueDuration::from_seconds(30).unwrap()),
+		done_until.wait_for_mark_timeout(CommitVersion(*PIPELINE_OPS), ValueDuration::from_seconds(30).unwrap()),
 		"pipeline_advancer benchmark lost a mark: done_until={:?} expected {}",
-		watermark.done_until(),
+		done_until.done_until(),
 		*PIPELINE_OPS
 	);
 	report.record(&format!("pipeline_advancer threads={threads}"), *PIPELINE_OPS, elapsed, &histogram);
 }
 
-fn burst_against(report: &mut BenchReport, threads: usize, label: &str, watermark: Arc<WaterMark>) {
+fn burst_against(report: &mut BenchReport, threads: usize, label: &str, done_until: Arc<DoneUntil>) {
 	let total = *BURST_OPS_PER_THREAD * threads as u64;
 
 	let start = Clock::Real.instant();
 	let mut handles = Vec::with_capacity(threads);
 	for thread_id in 0..threads as u64 {
-		let watermark = watermark.clone();
+		let done_until = done_until.clone();
 		handles.push(thread::spawn(move || {
 			let mut histogram = latency_histogram();
 			let first = thread_id * *BURST_OPS_PER_THREAD + 1;
 			let last = (thread_id + 1) * *BURST_OPS_PER_THREAD;
 			for version in first..=last {
 				let op_start = Clock::Real.instant();
-				watermark.register_in_flight(CommitVersion(version));
-				watermark.mark_finished(CommitVersion(version));
+				done_until.register_in_flight(CommitVersion(version));
+				done_until.mark_finished(CommitVersion(version));
 				histogram.record(op_start.elapsed().as_nanos() as u64).expect("latency within bounds");
 			}
 			histogram
@@ -127,18 +127,18 @@ fn burst_against(report: &mut BenchReport, threads: usize, label: &str, watermar
 	let elapsed = start.elapsed();
 
 	assert!(
-		watermark.wait_for_mark_timeout(CommitVersion(total), ValueDuration::from_seconds(30).unwrap()),
+		done_until.wait_for_mark_timeout(CommitVersion(total), ValueDuration::from_seconds(30).unwrap()),
 		"burst benchmark lost a mark: done_until={:?} expected {total}",
-		watermark.done_until()
+		done_until.done_until()
 	);
 	report.record(&format!("{label} threads={threads}"), total, elapsed, &histogram);
 }
 
 fn wait_fast_path(report: &mut BenchReport) {
-	let watermark = WaterMark::new("bench-wait".into());
+	let done_until = DoneUntil::new("bench-wait".into());
 	for version in 1..=1_000 {
-		watermark.register_in_flight(CommitVersion(version));
-		watermark.mark_finished(CommitVersion(version));
+		done_until.register_in_flight(CommitVersion(version));
+		done_until.mark_finished(CommitVersion(version));
 	}
 
 	let timeout = ValueDuration::from_seconds(1).unwrap();
@@ -146,7 +146,7 @@ fn wait_fast_path(report: &mut BenchReport) {
 	let start = Clock::Real.instant();
 	for _ in 0..*WAIT_FAST_PATH_OPS {
 		let op_start = Clock::Real.instant();
-		let reached = watermark.wait_for_mark_timeout(CommitVersion(1_000), timeout);
+		let reached = done_until.wait_for_mark_timeout(CommitVersion(1_000), timeout);
 		histogram.record(op_start.elapsed().as_nanos() as u64).expect("latency within bounds");
 		assert!(reached, "fast path wait must succeed for an already reached mark");
 	}
@@ -156,17 +156,17 @@ fn wait_fast_path(report: &mut BenchReport) {
 }
 
 fn mixed_poll(report: &mut BenchReport, worker_threads: usize) {
-	let watermark = Arc::new(WaterMark::new("bench-mixed".into()));
+	let done_until = Arc::new(DoneUntil::new("bench-mixed".into()));
 	let counter = Arc::new(AtomicU64::new(0));
 	let stop = Arc::new(AtomicBool::new(false));
 
 	let poller = {
-		let watermark = watermark.clone();
+		let done_until = done_until.clone();
 		let stop = stop.clone();
 		thread::spawn(move || {
 			let mut polls: u64 = 0;
 			while !stop.load(Ordering::Relaxed) {
-				let _ = watermark.done_until();
+				let _ = done_until.done_until();
 				polls += 1;
 			}
 			polls
@@ -176,7 +176,7 @@ fn mixed_poll(report: &mut BenchReport, worker_threads: usize) {
 	let start = Clock::Real.instant();
 	let mut handles = Vec::with_capacity(worker_threads);
 	for _ in 0..worker_threads {
-		let watermark = watermark.clone();
+		let done_until = done_until.clone();
 		let counter = counter.clone();
 		handles.push(thread::spawn(move || {
 			let mut histogram = latency_histogram();
@@ -186,8 +186,8 @@ fn mixed_poll(report: &mut BenchReport, worker_threads: usize) {
 					break;
 				}
 				let op_start = Clock::Real.instant();
-				watermark.register_in_flight(CommitVersion(version));
-				watermark.mark_finished(CommitVersion(version));
+				done_until.register_in_flight(CommitVersion(version));
+				done_until.mark_finished(CommitVersion(version));
 				histogram.record(op_start.elapsed().as_nanos() as u64).expect("latency within bounds");
 			}
 			histogram
@@ -233,7 +233,7 @@ fn main() {
 	let override_threads = env_opt("THREADS").is_some();
 	let threads_for = |default: &[usize]| env_list_usize("THREADS", default);
 
-	let mut report = BenchReport::new("watermark");
+	let mut report = BenchReport::new("done_until");
 	println!("phases={} threads_override={}", phases.len(), override_threads);
 
 	for phase in &phases {
@@ -242,35 +242,35 @@ fn main() {
 			Phase::Pipeline => {
 				for threads in threads_for(&[1, 2, 4, 8, 16, 32]) {
 					pipeline(&mut report, threads);
-					println!("repro= make bench-watermark PHASES={label} THREADS={threads}");
+					println!("repro= make bench-done-until PHASES={label} THREADS={threads}");
 				}
 			}
 			Phase::PipelineWithAdvancer => {
 				for threads in threads_for(&[1, 8, 16]) {
 					pipeline_with_advancer(&mut report, threads);
-					println!("repro= make bench-watermark PHASES={label} THREADS={threads}");
+					println!("repro= make bench-done-until PHASES={label} THREADS={threads}");
 				}
 			}
 			Phase::Burst => {
 				for threads in threads_for(&[8, 16]) {
 					burst(&mut report, threads);
-					println!("repro= make bench-watermark PHASES={label} THREADS={threads}");
+					println!("repro= make bench-done-until PHASES={label} THREADS={threads}");
 				}
 			}
 			Phase::BurstWithAdvancer => {
 				for threads in threads_for(&[8, 16]) {
 					burst_with_advancer(&mut report, threads);
-					println!("repro= make bench-watermark PHASES={label} THREADS={threads}");
+					println!("repro= make bench-done-until PHASES={label} THREADS={threads}");
 				}
 			}
 			Phase::WaitFastPath => {
 				wait_fast_path(&mut report);
-				println!("repro= make bench-watermark PHASES={label}");
+				println!("repro= make bench-done-until PHASES={label}");
 			}
 			Phase::MixedPoll => {
 				for threads in threads_for(&[4]) {
 					mixed_poll(&mut report, threads);
-					println!("repro= make bench-watermark PHASES={label} THREADS={threads}");
+					println!("repro= make bench-done-until PHASES={label} THREADS={threads}");
 				}
 			}
 		}

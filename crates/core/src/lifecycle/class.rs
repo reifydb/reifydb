@@ -285,7 +285,7 @@ mod tests {
 	}
 
 	#[test]
-	fn the_query_watermark_is_read_before_the_leases_in_every_class_that_reads_both() {
+	fn the_query_done_until_is_read_before_the_leases_in_every_class_that_reads_both() {
 		// Leases read first miss a lease the later watermark read passes, so gc collects it.
 		for class in RetentionClass::all() {
 			let terms = class.floor_terms();
@@ -294,7 +294,7 @@ mod tests {
 			if let (Some(query), Some(lease)) = (query, lease) {
 				assert!(
 					query < lease,
-					"{class} reads the leases before the query watermark: {terms:?}"
+					"{class} reads the leases before the query done until: {terms:?}"
 				);
 			}
 		}

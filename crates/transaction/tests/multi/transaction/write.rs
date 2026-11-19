@@ -94,7 +94,7 @@ fn commit_self_lease_keeps_own_version_leasable_after_cutoff_advances() {
 	drop(bump);
 	assert!(
 		engine.query_done_until().0 > version.0,
-		"precondition: query watermark must be advanced past the commit version to exercise the eviction path"
+		"precondition: query done until must be advanced past the commit version to exercise the eviction path"
 	);
 
 	engine.acquire_version_lease(version)
@@ -109,17 +109,17 @@ fn commit_self_lease_keeps_own_version_leasable_after_cutoff_advances() {
 
 #[test]
 fn a_carried_lease_chains_the_floor_across_batches() {
-	// An ephemeral consumer holds no watermark, so a lease carried from one batch into the next is
+	// An ephemeral consumer holds no done-until mark, so a lease carried from one batch into the next is
 	// its only protection; without the chain it reads reclaimed history instead of failing loudly.
 	let engine = test_multi();
 
-	// Batch N leases its floor version while the query watermark is still below it.
+	// Batch N leases its floor version while the query done until is still below it.
 	let carry_at = CommitVersion(engine.query_done_until().0 + 4);
 	let carry = engine
 		.acquire_version_lease(carry_at)
-		.expect("leasing at the current head must succeed before the watermark advances");
+		.expect("leasing at the current head must succeed before done until advances");
 
-	// The query watermark then passes both the carried version and the next batch's versions.
+	// The query done until then passes both the carried version and the next batch's versions.
 	while engine.query_done_until().0 < carry_at.0 + 6 {
 		let mut bump = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		bump.set(vec![(as_key!("bump"), as_values!("b".to_string()))]).unwrap();
@@ -127,7 +127,7 @@ fn a_carried_lease_chains_the_floor_across_batches() {
 	}
 	assert!(
 		engine.query_done_until().0 >= carry_at.0 + 6,
-		"precondition: the query watermark must be advanced past the carried lease"
+		"precondition: the query done until must be advanced past the carried lease"
 	);
 
 	// Batch N+1 must lease before the carry is released; the held carry keeps the cutoff at the carried version.
@@ -143,10 +143,10 @@ fn a_carried_lease_chains_the_floor_across_batches() {
 		.expect_err("a version below the carried lease must not be leasable");
 	assert_eq!(err.0.code, "TXN_012");
 
-	// Breaking the chain snaps the floor back to the query watermark.
+	// Breaking the chain snaps the floor back to the query done until.
 	drop(next);
 	let err = engine
 		.acquire_version_lease(CommitVersion(carry_at.0 + 3))
-		.expect_err("with no carried lease, a version below the query watermark must fail loudly");
+		.expect_err("with no carried lease, a version below the query done until must fail loudly");
 	assert_eq!(err.0.code, "TXN_012");
 }

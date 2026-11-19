@@ -49,7 +49,7 @@ use crate::{
 		conflict::{ConflictManager, PartitionMember},
 		lease::VersionLeases,
 		transaction::version::VersionProvider,
-		watermark::watermark::WaterMark,
+		done_until::done_until::DoneUntil,
 	},
 	wal::{CommitWal, check_record_size},
 };
@@ -214,8 +214,8 @@ where
 {
 	pub(crate) versions: L,
 	pub(crate) inner: OracleLock,
-	pub(crate) query: WaterMark,
-	pub(crate) command: WaterMark,
+	pub(crate) query: DoneUntil,
+	pub(crate) command: DoneUntil,
 	store: MultiStore,
 	clock: Clock,
 	version_epoch: VersionEpoch,
@@ -277,8 +277,8 @@ where
 				last_unchecked: CommitVersion(0),
 				lsns,
 			}),
-			query: WaterMark::with_advancer("txn-mark-query".into(), &spawner),
-			command: WaterMark::with_advancer("txn-mark-cmd".into(), &spawner),
+			query: DoneUntil::with_advancer("txn-mark-query".into(), &spawner),
+			command: DoneUntil::with_advancer("txn-mark-cmd".into(), &spawner),
 			store,
 			clock,
 			version_epoch,
@@ -1228,8 +1228,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_concurrent_commits_dont_skip_watermark_versions() {
-		// Versions must be registered on the watermark under the allocation lock; register out of
+	fn test_concurrent_commits_dont_skip_done_until_versions() {
+		// Versions must be registered on done until under the allocation lock; register out of
 		// order and done_until stalls one short, reporting a commit as unapplied forever.
 		const NUM_CONCURRENT: usize = 100;
 		const ITERATIONS: usize = 10;
@@ -1290,12 +1290,12 @@ mod tests {
 			// Wait on the event, not a sleep: a skipped version stalls the advance and times out.
 			let reached =
 				oracle.command.wait_for_mark_timeout(max_version, Duration::from_seconds(5).unwrap());
-			assert!(reached, "watermark did not reach {} within timeout", max_version.0);
+			assert!(reached, "done until did not reach {} within timeout", max_version.0);
 
 			let done_until = oracle.command.done_until();
 			assert_eq!(
 				done_until, max_version,
-				"Watermark race condition detected! done_until={} but max_version={}. \
+				"Done until race condition detected! done_until={} but max_version={}. \
 				 Some version was skipped.",
 				done_until.0, max_version.0
 			);
@@ -1363,17 +1363,17 @@ mod tests {
 		let reached = oracle
 			.command
 			.wait_for_mark_timeout(CommitVersion(expected), Duration::from_seconds(5).unwrap());
-		assert!(reached, "watermark did not reach {} within timeout", expected);
+		assert!(reached, "done until did not reach {} within timeout", expected);
 
 		let done_until = oracle.command.done_until();
-		assert_eq!(done_until.0, expected, "Watermark should be at highest committed version");
+		assert_eq!(done_until.0, expected, "Done until should be at highest committed version");
 	}
 
 	#[test]
-	fn sustained_concurrent_disjoint_commits_all_reach_the_watermark() {
+	fn sustained_concurrent_disjoint_commits_all_reach_done_until() {
 		// The commit queue parks requesters and may hand their work to the combiner or the
 		// sequencer thread; a lost unpark or a dropped queue node strands a committer
-		// forever and a skipped watermark registration wedges done_until, so both are
+		// forever and a skipped done-until registration wedges done_until, so both are
 		// exercised under sustained queue pressure rather than one commit per thread.
 		const THREADS: usize = 8;
 		const PER_THREAD: usize = 250;
@@ -1420,7 +1420,7 @@ mod tests {
 		assert!(
 			reached,
 			"done_until stalled below {}; a commit was serviced without registering on \
-			 the watermark or a waiter was never woken",
+			 done until or a waiter was never woken",
 			max_version.0
 		);
 	}

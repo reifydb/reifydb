@@ -5,7 +5,7 @@ use super::transaction::test_multi;
 use crate::{as_key, as_values};
 
 #[test]
-fn a_live_transaction_keeps_the_query_watermark_from_passing_its_snapshot() {
+fn a_live_transaction_keeps_the_query_done_until_from_passing_its_snapshot() {
 	let engine = test_multi();
 
 	let long_running = engine.begin_command(engine.generate_transaction_id()).unwrap();
@@ -21,10 +21,10 @@ fn a_live_transaction_keeps_the_query_watermark_from_passing_its_snapshot() {
 	assert!(
 		done <= base,
 		"query_done_until reached {done} while a transaction is still open at snapshot {base}. That \
-		 watermark is the cutoff for both conflict-history eviction and MVCC garbage collection, so once \
+		 done until is the cutoff for both conflict-history eviction and MVCC garbage collection, so once \
 		 it passes a live snapshot the open transaction can have its conflict history evicted (TXN_004) \
 		 and the versions it is still reading physically reclaimed underneath it. An open transaction must \
-		 hold the watermark at or below its own snapshot for as long as it lives"
+		 hold done until at or below its own snapshot for as long as it lives"
 	);
 
 	drop(long_running);

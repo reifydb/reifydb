@@ -12,18 +12,18 @@ use reifydb_runtime::{
 
 use super::{
 	ADVANCER_CHUNK,
-	state::{AdvanceOutcome, WatermarkShared, WatermarkState},
+	state::{AdvanceOutcome, DoneUntilShared, DoneUntilState},
 };
 
 pub struct AdvanceKick;
 
-pub struct WatermarkAdvancer {
-	state: Arc<Mutex<WatermarkState>>,
-	shared: Arc<WatermarkShared>,
+pub struct DoneUntilAdvancer {
+	state: Arc<Mutex<DoneUntilState>>,
+	shared: Arc<DoneUntilShared>,
 }
 
-impl WatermarkAdvancer {
-	pub fn new(state: Arc<Mutex<WatermarkState>>, shared: Arc<WatermarkShared>) -> Self {
+impl DoneUntilAdvancer {
+	pub fn new(state: Arc<Mutex<DoneUntilState>>, shared: Arc<DoneUntilShared>) -> Self {
 		Self {
 			state,
 			shared,
@@ -35,7 +35,7 @@ pub struct AdvancerScratch {
 	to_notify: Vec<Arc<WaiterHandle>>,
 }
 
-impl Actor for WatermarkAdvancer {
+impl Actor for DoneUntilAdvancer {
 	type State = AdvancerScratch;
 	type Message = AdvanceKick;
 

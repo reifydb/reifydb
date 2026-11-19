@@ -20,11 +20,11 @@ use reifydb_value::{reifydb_assertions, value::duration::Duration};
 use tracing::instrument;
 
 #[cfg(not(reifydb_single_threaded))]
-use super::advancer::WatermarkAdvancer;
+use super::advancer::DoneUntilAdvancer;
 use super::{
 	MAX_INLINE_ADVANCE,
 	advancer::AdvanceKick,
-	state::{AdvanceBudget, AdvanceOutcome, WatermarkShared, WatermarkState},
+	state::{AdvanceBudget, AdvanceOutcome, DoneUntilShared, DoneUntilState},
 };
 
 enum AdvancerHandle {
@@ -33,26 +33,26 @@ enum AdvancerHandle {
 	Actor(ActorRef<AdvanceKick>),
 }
 
-pub struct WaterMark {
-	state: Arc<Mutex<WatermarkState>>,
-	shared: Arc<WatermarkShared>,
+pub struct DoneUntil {
+	state: Arc<Mutex<DoneUntilState>>,
+	shared: Arc<DoneUntilShared>,
 	advancer: AdvancerHandle,
 }
 
-impl Debug for WaterMark {
+impl Debug for DoneUntil {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("WaterMark")
+		f.debug_struct("DoneUntil")
 			.field("done_until", &self.shared.done_until.load(Ordering::Relaxed))
 			.finish()
 	}
 }
 
-impl WaterMark {
-	#[instrument(name = "transaction::watermark::new", level = "debug", fields(task_name = %task_name))]
+impl DoneUntil {
+	#[instrument(name = "transaction::done_until::new", level = "debug", fields(task_name = %task_name))]
 	pub fn new(task_name: String) -> Self {
 		Self {
-			state: Arc::new(Mutex::new(WatermarkState::new())),
-			shared: Arc::new(WatermarkShared {
+			state: Arc::new(Mutex::new(DoneUntilState::new())),
+			shared: Arc::new(DoneUntilShared {
 				done_until: AtomicU64::new(0),
 			}),
 			advancer: AdvancerHandle::Inline,
@@ -62,12 +62,12 @@ impl WaterMark {
 	#[cfg(not(reifydb_single_threaded))]
 	pub fn with_advancer(task_name: String, spawner: &ActorSpawner) -> Self {
 		let advancer_name = format!("{task_name}-advancer");
-		let watermark = Self::new(task_name);
-		let actor = WatermarkAdvancer::new(watermark.state.clone(), watermark.shared.clone());
+		let done_until = Self::new(task_name);
+		let actor = DoneUntilAdvancer::new(done_until.state.clone(), done_until.shared.clone());
 		let actor_ref = spawner.spawn_coordination(&advancer_name, actor).actor_ref().clone();
 		Self {
 			advancer: AdvancerHandle::Actor(actor_ref),
-			..watermark
+			..done_until
 		}
 	}
 
@@ -113,7 +113,7 @@ impl WaterMark {
 		}
 	}
 
-	#[instrument(name = "transaction::watermark::register_in_flight", level = "trace", skip(self), fields(version = version.0))]
+	#[instrument(name = "transaction::done_until::register_in_flight", level = "trace", skip(self), fields(version = version.0))]
 	pub fn register_in_flight(&self, version: CommitVersion) {
 		let mut to_notify = Vec::new();
 		let outcome = {
@@ -139,7 +139,7 @@ impl WaterMark {
 		Ok(version)
 	}
 
-	#[instrument(name = "transaction::watermark::mark_finished", level = "trace", skip(self), fields(index = version.0))]
+	#[instrument(name = "transaction::done_until::mark_finished", level = "trace", skip(self), fields(index = version.0))]
 	pub fn mark_finished(&self, version: CommitVersion) {
 		let mut to_notify = Vec::new();
 		let outcome = {
@@ -218,59 +218,59 @@ pub mod tests {
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 
 	use super::*;
-	use crate::multi::watermark::OLD_VERSION_THRESHOLD;
+	use crate::multi::done_until::OLD_VERSION_THRESHOLD;
 
 	#[test]
 	fn test_basic() {
-		let _watermark = WaterMark::new("watermark".into());
+		let _done_until = DoneUntil::new("done_until".into());
 	}
 
 	#[test]
 	fn test_begin_done() {
-		let watermark = WaterMark::new("watermark".into());
-		watermark.register_in_flight(CommitVersion(1));
-		watermark.register_in_flight(CommitVersion(2));
-		watermark.register_in_flight(CommitVersion(3));
+		let done_until = DoneUntil::new("done_until".into());
+		done_until.register_in_flight(CommitVersion(1));
+		done_until.register_in_flight(CommitVersion(2));
+		done_until.register_in_flight(CommitVersion(3));
 
-		watermark.mark_finished(CommitVersion(1));
-		watermark.mark_finished(CommitVersion(2));
-		watermark.mark_finished(CommitVersion(3));
+		done_until.mark_finished(CommitVersion(1));
+		done_until.mark_finished(CommitVersion(2));
+		done_until.mark_finished(CommitVersion(3));
 
-		assert_eq!(watermark.done_until().0, 3);
+		assert_eq!(done_until.done_until().0, 3);
 	}
 
 	#[test]
 	fn register_in_flight_with_holds_done_until_below_the_acquired_version() {
-		let watermark = WaterMark::new("watermark".into());
-		watermark.register_in_flight(CommitVersion(1));
-		watermark.register_in_flight(CommitVersion(2));
-		watermark.register_in_flight(CommitVersion(3));
-		watermark.mark_finished(CommitVersion(1));
-		watermark.mark_finished(CommitVersion(2));
-		watermark.mark_finished(CommitVersion(3));
-		assert_eq!(watermark.done_until().0, 3);
+		let done_until = DoneUntil::new("done_until".into());
+		done_until.register_in_flight(CommitVersion(1));
+		done_until.register_in_flight(CommitVersion(2));
+		done_until.register_in_flight(CommitVersion(3));
+		done_until.mark_finished(CommitVersion(1));
+		done_until.mark_finished(CommitVersion(2));
+		done_until.mark_finished(CommitVersion(3));
+		assert_eq!(done_until.done_until().0, 3);
 
-		let acquired = watermark.register_in_flight_with(|| Ok::<_, ()>(CommitVersion(4))).unwrap();
+		let acquired = done_until.register_in_flight_with(|| Ok::<_, ()>(CommitVersion(4))).unwrap();
 		assert_eq!(acquired.0, 4, "the version computed inside the lock is returned");
 		assert!(
-			watermark.done_until().0 < 4,
+			done_until.done_until().0 < 4,
 			"a freshly acquired read snapshot must hold the done-until mark below it so its history cannot be evicted"
 		);
 
-		watermark.mark_finished(CommitVersion(4));
-		assert_eq!(watermark.done_until().0, 4, "the done-until mark advances once the snapshot finishes");
+		done_until.mark_finished(CommitVersion(4));
+		assert_eq!(done_until.done_until().0, 4, "the done-until mark advances once the snapshot finishes");
 	}
 
 	#[test]
 	fn test_done_until() {
-		let watermark = WaterMark::new("watermark".into());
-		watermark.shared.done_until.store(1, Ordering::SeqCst);
-		assert_eq!(watermark.done_until().0, 1);
+		let done_until = DoneUntil::new("done_until".into());
+		done_until.shared.done_until.store(1, Ordering::SeqCst);
+		assert_eq!(done_until.done_until().0, 1);
 	}
 
 	#[test]
 	fn test_high_concurrency() {
-		let watermark = Arc::new(WaterMark::new("concurrent".into()));
+		let done_until = Arc::new(DoneUntil::new("concurrent".into()));
 
 		const NUM_TASKS: usize = 50;
 		const OPS_PER_TASK: usize = 100;
@@ -278,7 +278,7 @@ pub mod tests {
 		let mut handles = vec![];
 
 		for task_id in 0..NUM_TASKS {
-			let wm = watermark.clone();
+			let wm = done_until.clone();
 			let handle = thread::spawn(move || {
 				for i in 0..OPS_PER_TASK {
 					let version = CommitVersion((task_id * OPS_PER_TASK + i) as u64 + 1);
@@ -293,23 +293,23 @@ pub mod tests {
 			handle.join().unwrap();
 		}
 
-		let final_done = watermark.done_until();
-		assert!(final_done.0 > 0, "Watermark should have progressed");
+		let final_done = done_until.done_until();
+		assert!(final_done.0 > 0, "Done until should have progressed");
 	}
 
 	#[test]
 	fn test_concurrent_wait_for_mark() {
-		let watermark = Arc::new(WaterMark::new("wait_concurrent".into()));
+		let done_until = Arc::new(DoneUntil::new("wait_concurrent".into()));
 		let success_count = Arc::new(AtomicUsize::new(0));
 
 		for i in 1..=10 {
-			watermark.register_in_flight(CommitVersion(i));
+			done_until.register_in_flight(CommitVersion(i));
 		}
 
 		let mut handles = vec![];
 
 		for version in 1..=10 {
-			let wm = watermark.clone();
+			let wm = done_until.clone();
 			let counter = success_count.clone();
 			let handle = thread::spawn(move || {
 				if wm.wait_for_mark_timeout(CommitVersion(version), Duration::from_seconds(5).unwrap())
@@ -323,7 +323,7 @@ pub mod tests {
 		sleep(Duration::from_milliseconds(50).unwrap().to_std());
 
 		for i in 1..=10 {
-			watermark.mark_finished(CommitVersion(i));
+			done_until.mark_finished(CommitVersion(i));
 		}
 
 		for handle in handles {
@@ -335,21 +335,21 @@ pub mod tests {
 
 	#[test]
 	fn test_old_version_rejection() {
-		let watermark = WaterMark::new("watermark".into());
+		let done_until = DoneUntil::new("done_until".into());
 
 		for i in 1..=100 {
-			watermark.register_in_flight(CommitVersion(i));
-			watermark.mark_finished(CommitVersion(i));
+			done_until.register_in_flight(CommitVersion(i));
+			done_until.mark_finished(CommitVersion(i));
 		}
 
-		let reached = watermark.wait_for_mark_timeout(CommitVersion(100), Duration::from_seconds(5).unwrap());
+		let reached = done_until.wait_for_mark_timeout(CommitVersion(100), Duration::from_seconds(5).unwrap());
 		assert!(reached, "Should have processed all 100 versions");
-		let done_until = watermark.done_until();
+		let done = done_until.done_until();
 
-		let very_old = done_until.0.saturating_sub(OLD_VERSION_THRESHOLD + 10);
+		let very_old = done.0.saturating_sub(OLD_VERSION_THRESHOLD + 10);
 		let clock = Clock::Real;
 		let start = clock.instant();
-		watermark.wait_for_mark_timeout(CommitVersion(very_old), Duration::from_seconds(30).unwrap());
+		done_until.wait_for_mark_timeout(CommitVersion(very_old), Duration::from_seconds(30).unwrap());
 		let elapsed = start.elapsed();
 
 		assert!(elapsed.as_millis() < 10, "Old version wait should return immediately");
@@ -357,13 +357,13 @@ pub mod tests {
 
 	#[test]
 	fn test_timeout_behavior() {
-		let watermark = WaterMark::new("watermark".into());
-		watermark.register_in_flight(CommitVersion(1));
+		let done_until = DoneUntil::new("done_until".into());
+		done_until.register_in_flight(CommitVersion(1));
 
 		let clock = Clock::Real;
 		let start = clock.instant();
 		let result =
-			watermark.wait_for_mark_timeout(CommitVersion(1), Duration::from_milliseconds(100).unwrap());
+			done_until.wait_for_mark_timeout(CommitVersion(1), Duration::from_milliseconds(100).unwrap());
 		let elapsed = start.elapsed();
 
 		assert!(!result, "Should timeout waiting for uncompleted version");
@@ -372,59 +372,59 @@ pub mod tests {
 
 	#[test]
 	fn test_out_of_order_begin() {
-		let watermark = WaterMark::new("watermark".into());
+		let done_until = DoneUntil::new("done_until".into());
 
-		watermark.register_in_flight(CommitVersion(3));
-		watermark.register_in_flight(CommitVersion(1));
-		watermark.register_in_flight(CommitVersion(2));
+		done_until.register_in_flight(CommitVersion(3));
+		done_until.register_in_flight(CommitVersion(1));
+		done_until.register_in_flight(CommitVersion(2));
 
-		watermark.mark_finished(CommitVersion(1));
-		watermark.mark_finished(CommitVersion(2));
-		watermark.mark_finished(CommitVersion(3));
+		done_until.mark_finished(CommitVersion(1));
+		done_until.mark_finished(CommitVersion(2));
+		done_until.mark_finished(CommitVersion(3));
 
-		let reached = watermark.wait_for_mark_timeout(CommitVersion(3), Duration::from_seconds(5).unwrap());
-		assert!(reached, "Timed out waiting for watermark to advance to 3");
-		assert_eq!(watermark.done_until().0, 3, "Watermark should advance to 3");
+		let reached = done_until.wait_for_mark_timeout(CommitVersion(3), Duration::from_seconds(5).unwrap());
+		assert!(reached, "Timed out waiting for done until to advance to 3");
+		assert_eq!(done_until.done_until().0, 3, "Done until should advance to 3");
 	}
 
 	#[test]
 	fn test_orphaned_done_before_begin() {
-		let watermark = WaterMark::new("watermark".into());
+		let done_until = DoneUntil::new("done_until".into());
 
-		// done() arrives before begin() - orphaned; watermark must NOT advance.
-		watermark.mark_finished(CommitVersion(1));
-		assert_eq!(watermark.done_until().0, 0);
+		// done() arrives before begin() - orphaned; done until must NOT advance.
+		done_until.mark_finished(CommitVersion(1));
+		assert_eq!(done_until.done_until().0, 0);
 
-		// begin() arrives; watermark advances synchronously.
-		watermark.register_in_flight(CommitVersion(1));
-		assert_eq!(watermark.done_until().0, 1, "Watermark should advance to 1 after begin");
+		// begin() arrives; done until advances synchronously.
+		done_until.register_in_flight(CommitVersion(1));
+		assert_eq!(done_until.done_until().0, 1, "Done until should advance to 1 after begin");
 	}
 
 	#[test]
 	fn test_mixed_out_of_order() {
-		let watermark = WaterMark::new("watermark".into());
+		let done_until = DoneUntil::new("done_until".into());
 
-		watermark.register_in_flight(CommitVersion(2));
-		watermark.mark_finished(CommitVersion(3)); // orphaned
-		watermark.register_in_flight(CommitVersion(1));
-		watermark.mark_finished(CommitVersion(1));
-		watermark.register_in_flight(CommitVersion(3));
-		watermark.mark_finished(CommitVersion(2));
+		done_until.register_in_flight(CommitVersion(2));
+		done_until.mark_finished(CommitVersion(3)); // orphaned
+		done_until.register_in_flight(CommitVersion(1));
+		done_until.mark_finished(CommitVersion(1));
+		done_until.register_in_flight(CommitVersion(3));
+		done_until.mark_finished(CommitVersion(2));
 
-		let reached = watermark.wait_for_mark_timeout(CommitVersion(3), Duration::from_seconds(5).unwrap());
-		assert!(reached, "Timed out waiting for watermark to advance to 3");
-		assert_eq!(watermark.done_until().0, 3, "Watermark should advance to 3");
+		let reached = done_until.wait_for_mark_timeout(CommitVersion(3), Duration::from_seconds(5).unwrap());
+		assert!(reached, "Timed out waiting for done until to advance to 3");
+		assert_eq!(done_until.done_until().0, 3, "Done until should advance to 3");
 	}
 
 	#[test]
 	fn test_notify_on_mark_event_driven() {
-		let watermark = Arc::new(WaterMark::new("notify_on_mark".into()));
+		let done_until = Arc::new(DoneUntil::new("notify_on_mark".into()));
 		let fired = Arc::new(AtomicUsize::new(0));
 
-		watermark.register_in_flight(CommitVersion(1));
+		done_until.register_in_flight(CommitVersion(1));
 
 		let f = fired.clone();
-		watermark.notify_on_mark(
+		done_until.notify_on_mark(
 			CommitVersion(1),
 			Box::new(move || {
 				f.fetch_add(1, Ordering::SeqCst);
@@ -433,11 +433,11 @@ pub mod tests {
 
 		assert_eq!(fired.load(Ordering::SeqCst), 0, "callback must not fire before the mark is reached");
 
-		watermark.mark_finished(CommitVersion(1));
+		done_until.mark_finished(CommitVersion(1));
 		assert_eq!(fired.load(Ordering::SeqCst), 1, "callback fires once when the mark advances");
 
 		let f2 = fired.clone();
-		watermark.notify_on_mark(
+		done_until.notify_on_mark(
 			CommitVersion(1),
 			Box::new(move || {
 				f2.fetch_add(1, Ordering::SeqCst);
@@ -456,27 +456,27 @@ pub mod tests {
 		// registering (or blocking on) a waiter; with a zero timeout, any accidental trip
 		// through the blocking path would return false and misreport an applied commit as
 		// unapplied.
-		let watermark = WaterMark::new("fast_path".into());
-		watermark.register_in_flight(CommitVersion(1));
-		watermark.mark_finished(CommitVersion(1));
+		let done_until = DoneUntil::new("fast_path".into());
+		done_until.register_in_flight(CommitVersion(1));
+		done_until.mark_finished(CommitVersion(1));
 
 		let reached =
-			watermark.wait_for_mark_timeout(CommitVersion(1), Duration::from_milliseconds(0).unwrap());
+			done_until.wait_for_mark_timeout(CommitVersion(1), Duration::from_milliseconds(0).unwrap());
 		assert!(reached, "a reached mark must be reported reached even with a zero timeout");
 	}
 
 	#[test]
 	fn test_notify_callback_reentrancy_no_deadlock() {
-		// A notify_on_mark callback that re-enters the same watermark must not
+		// A notify_on_mark callback that re-enters the same done-until mark must not
 		// deadlock: callbacks run after the state lock is released.
-		let watermark = Arc::new(WaterMark::new("reentrant".into()));
+		let done_until = Arc::new(DoneUntil::new("reentrant".into()));
 		let reentered = Arc::new(AtomicUsize::new(0));
 
-		watermark.register_in_flight(CommitVersion(1));
+		done_until.register_in_flight(CommitVersion(1));
 
-		let wm = watermark.clone();
+		let wm = done_until.clone();
 		let flag = reentered.clone();
-		watermark.notify_on_mark(
+		done_until.notify_on_mark(
 			CommitVersion(1),
 			Box::new(move || {
 				let _ = wm.done_until();
@@ -487,22 +487,22 @@ pub mod tests {
 		);
 
 		// Advancing to 1 fires the callback synchronously; a deadlock on the
-		// watermark lock would hang this call.
-		watermark.mark_finished(CommitVersion(1));
+		// done-until lock would hang this call.
+		done_until.mark_finished(CommitVersion(1));
 
 		assert_eq!(reentered.load(Ordering::SeqCst), 1, "re-entrant callback ran to completion");
-		assert_eq!(watermark.done_until().0, 2, "re-entrant version advanced the watermark");
+		assert_eq!(done_until.done_until().0, 2, "re-entrant version advanced done until");
 	}
 
 	#[cfg(not(reifydb_single_threaded))]
-	fn watermark_with_live_advancer(name: &str) -> (ActorSystem, WaterMark) {
+	fn done_until_with_live_advancer(name: &str) -> (ActorSystem, DoneUntil) {
 		// The returned ActorSystem must stay alive for the test's duration; dropping it
 		// kills the advancer and silently degrades every kick into the inline fallback,
 		// which would make the actor-path assertions vacuously pass.
 		let system = ActorSystem::testing(Clock::Real);
 		let spawner = system.spawner();
-		let watermark = WaterMark::with_advancer(name.into(), &spawner);
-		(system, watermark)
+		let done_until = DoneUntil::with_advancer(name.into(), &spawner);
+		(system, done_until)
 	}
 
 	#[cfg(not(reifydb_single_threaded))]
@@ -511,15 +511,15 @@ pub mod tests {
 		// Out-of-order bursts far beyond MAX_INLINE_ADVANCE force deferrals whose kicks
 		// coalesce in the capacity-1 mailbox. If Full-as-coalesced could drop the LAST
 		// kick, the done-until mark would stop short of the top and this wait would time out.
-		let (_system, watermark) = watermark_with_live_advancer("coalesced");
-		let watermark = Arc::new(watermark);
+		let (_system, done_until) = done_until_with_live_advancer("coalesced");
+		let done_until = Arc::new(done_until);
 		let threads = 8u64;
 		let per_thread = 2_000u64;
 		let total = threads * per_thread;
 
 		let mut handles = vec![];
 		for thread_id in 0..threads {
-			let wm = watermark.clone();
+			let wm = done_until.clone();
 			handles.push(thread::spawn(move || {
 				let first = thread_id * per_thread + 1;
 				let last = (thread_id + 1) * per_thread;
@@ -534,9 +534,9 @@ pub mod tests {
 		}
 
 		assert!(
-			watermark.wait_for_mark_timeout(CommitVersion(total), Duration::from_seconds(10).unwrap()),
+			done_until.wait_for_mark_timeout(CommitVersion(total), Duration::from_seconds(10).unwrap()),
 			"advancer never reached the done-until mark: done_until={:?} expected {total}",
-			watermark.done_until()
+			done_until.done_until()
 		);
 	}
 
@@ -546,20 +546,20 @@ pub mod tests {
 		// The finisher only advances MAX_INLINE_ADVANCE versions inline, so the waiter at
 		// the far end of a 300-version backlog can only ever be released by the advancer.
 		// A lost kick or a lost wakeup across drain chunks leaves it stuck until timeout.
-		let (_system, watermark) = watermark_with_live_advancer("beyond-budget");
+		let (_system, done_until) = done_until_with_live_advancer("beyond-budget");
 
 		for version in 1..=300 {
-			watermark.register_in_flight(CommitVersion(version));
+			done_until.register_in_flight(CommitVersion(version));
 		}
 		for version in 2..=300 {
-			watermark.mark_finished(CommitVersion(version));
+			done_until.mark_finished(CommitVersion(version));
 		}
-		assert_eq!(watermark.done_until().0, 0, "the done-until mark is blocked on version 1");
+		assert_eq!(done_until.done_until().0, 0, "the done-until mark is blocked on version 1");
 
-		watermark.mark_finished(CommitVersion(1));
+		done_until.mark_finished(CommitVersion(1));
 
 		assert!(
-			watermark.wait_for_mark_timeout(CommitVersion(300), Duration::from_seconds(5).unwrap()),
+			done_until.wait_for_mark_timeout(CommitVersion(300), Duration::from_seconds(5).unwrap()),
 			"the advancer must finish what the bounded inline advance left behind"
 		);
 	}
@@ -570,25 +570,25 @@ pub mod tests {
 		// Waiters registering concurrently with an in-progress advancer drain must be
 		// released no matter which side of a chunk boundary they land on; registration
 		// and collection are serialized by the same state lock.
-		let (_system, watermark) = watermark_with_live_advancer("mid-drain");
-		let watermark = Arc::new(watermark);
+		let (_system, done_until) = done_until_with_live_advancer("mid-drain");
+		let done_until = Arc::new(done_until);
 
 		for version in 1..=1_000 {
-			watermark.register_in_flight(CommitVersion(version));
+			done_until.register_in_flight(CommitVersion(version));
 		}
 		for version in 2..=1_000 {
-			watermark.mark_finished(CommitVersion(version));
+			done_until.mark_finished(CommitVersion(version));
 		}
 
 		let mut waiters = vec![];
 		for target in [65u64, 300, 700, 999, 1_000] {
-			let wm = watermark.clone();
+			let wm = done_until.clone();
 			waiters.push(thread::spawn(move || {
 				wm.wait_for_mark_timeout(CommitVersion(target), Duration::from_seconds(5).unwrap())
 			}));
 		}
 
-		watermark.mark_finished(CommitVersion(1));
+		done_until.mark_finished(CommitVersion(1));
 
 		for waiter in waiters {
 			assert!(waiter.join().unwrap(), "a waiter racing the drain must still be released");
@@ -597,24 +597,24 @@ pub mod tests {
 
 	#[cfg(not(reifydb_single_threaded))]
 	#[test]
-	fn callback_reentering_watermark_via_advancer_completes() {
+	fn callback_reentering_done_until_via_advancer_completes() {
 		// notify_on_mark callbacks fire on the advancer thread once the mark is past the
-		// inline budget; a callback that re-enters the watermark must not deadlock against
+		// inline budget; a callback that re-enters done until must not deadlock against
 		// the advancer's own state lock (it is released before notification).
-		let (_system, watermark) = watermark_with_live_advancer("reentrant-advancer");
-		let watermark = Arc::new(watermark);
+		let (_system, done_until) = done_until_with_live_advancer("reentrant-advancer");
+		let done_until = Arc::new(done_until);
 
 		for version in 1..=300 {
-			watermark.register_in_flight(CommitVersion(version));
+			done_until.register_in_flight(CommitVersion(version));
 		}
 		for version in 2..=300 {
-			watermark.mark_finished(CommitVersion(version));
+			done_until.mark_finished(CommitVersion(version));
 		}
 
-		let wm = watermark.clone();
+		let wm = done_until.clone();
 		let reentered = Arc::new(AtomicUsize::new(0));
 		let flag = reentered.clone();
-		watermark.notify_on_mark(
+		done_until.notify_on_mark(
 			CommitVersion(300),
 			Box::new(move || {
 				let _ = wm.done_until();
@@ -624,10 +624,10 @@ pub mod tests {
 			}),
 		);
 
-		watermark.mark_finished(CommitVersion(1));
+		done_until.mark_finished(CommitVersion(1));
 
 		assert!(
-			watermark.wait_for_mark_timeout(CommitVersion(301), Duration::from_seconds(5).unwrap()),
+			done_until.wait_for_mark_timeout(CommitVersion(301), Duration::from_seconds(5).unwrap()),
 			"the re-entrant callback must complete and its version must advance the done-until mark"
 		);
 		assert_eq!(reentered.load(Ordering::SeqCst), 1, "callback ran exactly once");
@@ -642,28 +642,28 @@ pub mod tests {
 		// registered but not yet finished, consumers treat that commit as applied before
 		// its writes exist - torn snapshots and permanently skipped commit log events. The
 		// tripwire must turn that silent downstream corruption into a loud local panic.
-		let watermark = WaterMark::new("advance-tripwire".into());
-		watermark.register_in_flight(CommitVersion(5));
-		watermark.advance_to(CommitVersion(10));
+		let done_until = DoneUntil::new("advance-tripwire".into());
+		done_until.register_in_flight(CommitVersion(5));
+		done_until.advance_to(CommitVersion(10));
 	}
 
 	#[test]
 	fn new_without_advancer_advances_fully_inline() {
-		// WaterMark::new is the no-advancer configuration (unit fixtures, single-threaded
+		// DoneUntil::new is the no-advancer configuration (unit fixtures, single-threaded
 		// builds); a burst far beyond MAX_INLINE_ADVANCE must be fully drained by the
 		// finishing call itself, synchronously, because there is nobody else to do it.
-		let watermark = WaterMark::new("inline-only".into());
+		let done_until = DoneUntil::new("inline-only".into());
 
 		for version in 1..=10_000 {
-			watermark.register_in_flight(CommitVersion(version));
+			done_until.register_in_flight(CommitVersion(version));
 		}
 		for version in (2..=10_000).rev() {
-			watermark.mark_finished(CommitVersion(version));
+			done_until.mark_finished(CommitVersion(version));
 		}
-		watermark.mark_finished(CommitVersion(1));
+		done_until.mark_finished(CommitVersion(1));
 
 		assert_eq!(
-			watermark.done_until().0,
+			done_until.done_until().0,
 			10_000,
 			"the inline path must reach the done-until mark synchronously, before mark_finished returns"
 		);
@@ -675,20 +675,20 @@ pub mod tests {
 		// After the actor system dies, kicks return Closed and mark_finished must degrade
 		// to the full inline drain; anything less leaves done_until frozen below versions
 		// that are fully finished, which freezes the GC cutoff for the process lifetime.
-		let (system, watermark) = watermark_with_live_advancer("post-shutdown");
+		let (system, done_until) = done_until_with_live_advancer("post-shutdown");
 		system.shutdown();
 		let _ = system.join();
 
 		for version in 1..=200 {
-			watermark.register_in_flight(CommitVersion(version));
+			done_until.register_in_flight(CommitVersion(version));
 		}
 		for version in 2..=200 {
-			watermark.mark_finished(CommitVersion(version));
+			done_until.mark_finished(CommitVersion(version));
 		}
-		watermark.mark_finished(CommitVersion(1));
+		done_until.mark_finished(CommitVersion(1));
 
 		assert_eq!(
-			watermark.done_until().0,
+			done_until.done_until().0,
 			200,
 			"a Closed kick must trigger the synchronous inline drain, not silently stall"
 		);
@@ -700,22 +700,22 @@ pub mod tests {
 		// Oracle::stop calls drain() after the runtime is gone; whatever the advancer did
 		// or did not get to, one drain must restore the done-until mark and release every waiter
 		// left in the map, or shutdown strands threads until their timeouts.
-		let (_system, watermark) = watermark_with_live_advancer("stop-drain");
+		let (_system, done_until) = done_until_with_live_advancer("stop-drain");
 
 		for version in 1..=1_000 {
-			watermark.register_in_flight(CommitVersion(version));
+			done_until.register_in_flight(CommitVersion(version));
 		}
 		for version in 2..=1_000 {
-			watermark.mark_finished(CommitVersion(version));
+			done_until.mark_finished(CommitVersion(version));
 		}
 
 		let waiter = Arc::new(WaiterHandle::new());
-		watermark.register_mark_waiter(CommitVersion(1_000), waiter.clone());
+		done_until.register_mark_waiter(CommitVersion(1_000), waiter.clone());
 
-		watermark.mark_finished(CommitVersion(1));
-		watermark.drain();
+		done_until.mark_finished(CommitVersion(1));
+		done_until.drain();
 
-		assert_eq!(watermark.done_until().0, 1_000, "drain must reach the true done-until mark before returning");
+		assert_eq!(done_until.done_until().0, 1_000, "drain must reach the true done-until mark before returning");
 		assert!(
 			waiter.wait_timeout(Duration::from_seconds(5).unwrap()),
 			"a waiter pending at drain time must be released"
@@ -728,14 +728,14 @@ pub mod tests {
 		// The done-until mark is advanced from two places at once (bounded inline pops and the
 		// advancer's chunks); a sampler must never observe it move backwards, because
 		// consumers treat done_until as a GC cutoff that only grows.
-		let (_system, watermark) = watermark_with_live_advancer("monotonic");
-		let watermark = Arc::new(watermark);
+		let (_system, done_until) = done_until_with_live_advancer("monotonic");
+		let done_until = Arc::new(done_until);
 		let counter = Arc::new(AtomicU64::new(0));
 		let stop = Arc::new(AtomicBool::new(false));
 		let total = 200_000u64;
 
 		let sampler = {
-			let wm = watermark.clone();
+			let wm = done_until.clone();
 			let stop = stop.clone();
 			thread::spawn(move || {
 				let mut previous = 0u64;
@@ -752,7 +752,7 @@ pub mod tests {
 
 		let mut handles = vec![];
 		for _ in 0..4 {
-			let wm = watermark.clone();
+			let wm = done_until.clone();
 			let counter = counter.clone();
 			handles.push(thread::spawn(move || {
 				loop {
@@ -769,7 +769,7 @@ pub mod tests {
 			handle.join().unwrap();
 		}
 		assert!(
-			watermark.wait_for_mark_timeout(CommitVersion(total), Duration::from_seconds(10).unwrap()),
+			done_until.wait_for_mark_timeout(CommitVersion(total), Duration::from_seconds(10).unwrap()),
 			"the done-until mark must reach the last version"
 		);
 		stop.store(true, Ordering::Relaxed);
@@ -783,9 +783,9 @@ pub mod tests {
 		// run handlers inline on the caller's stack there, and the RefCell-backed mutex
 		// would panic on the re-entrant state lock.
 		let system = ActorSystem::testing(Clock::Mock(MockClock::from_millis(0)));
-		let watermark = WaterMark::with_advancer("single-threaded".into(), &system.spawner());
+		let done_until = DoneUntil::with_advancer("single-threaded".into(), &system.spawner());
 		assert!(
-			matches!(watermark.advancer, AdvancerHandle::Inline),
+			matches!(done_until.advancer, AdvancerHandle::Inline),
 			"with_advancer must degrade to the inline configuration under reifydb_single_threaded"
 		);
 	}

@@ -7,7 +7,7 @@
 
 # Benchmark targets
 .PHONY: bench bench-all bench-query bench-query-help bench-txn bench-txn-help
-.PHONY: bench-watermark bench-watermark-help bench-queue bench-queue-help bench-ring
+.PHONY: bench-done-until bench-done-until-help bench-queue bench-queue-help bench-ring
 
 bench: bench-all
 
@@ -86,13 +86,13 @@ bench-txn-help:
 	@echo "  make bench-txn LAYOUTS=table_per_thread THREADS=8,16 ITERATIONS=5000"
 	@echo ""
 
-bench-watermark:
-	@echo "🏃‍♂️ Running watermark benchmarks..."
-	cargo bench -p reifydb-benches --bench watermark $(CARGO_OFFLINE)
+bench-done-until:
+	@echo "🏃‍♂️ Running done-until benchmarks..."
+	cargo bench -p reifydb-benches --bench done_until $(CARGO_OFFLINE)
 
-bench-watermark-help:
+bench-done-until-help:
 	@echo ""
-	@echo "  make bench-watermark [VAR=value ...]"
+	@echo "  make bench-done-until [VAR=value ...]"
 	@echo ""
 	@echo "  Matrix axes (comma-separated)"
 	@echo "  ───────────────────────────────────────────────────────────────"
@@ -108,8 +108,8 @@ bench-watermark-help:
 	@echo ""
 	@echo "  Examples"
 	@echo "  ───────────────────────────────────────────────────────────────"
-	@echo "  make bench-watermark PHASES=pipeline THREADS=16"
-	@echo "  make bench-watermark PHASES=burst,burst_with_advancer BURST_OPS=1000"
+	@echo "  make bench-done-until PHASES=pipeline THREADS=16"
+	@echo "  make bench-done-until PHASES=burst,burst_with_advancer BURST_OPS=1000"
 	@echo ""
 
 bench-ring:

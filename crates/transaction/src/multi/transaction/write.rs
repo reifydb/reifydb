@@ -1508,8 +1508,8 @@ mod tests {
 	}
 
 	#[test]
-	fn commit_version_stays_protected_from_query_watermark_race_until_finalized() {
-		// An allocated but unfinalized commit version must hold the query watermark down. If a
+	fn commit_version_stays_protected_from_query_done_until_race_until_finalized() {
+		// An allocated but unfinalized commit version must hold the query done until down. If a
 		// racing higher version can advance done_until past it, the historical-GC cutoff crosses
 		// a commit version whose own post-commit hooks have not run.
 		let engine = MultiTransaction::testing();
@@ -1532,7 +1532,7 @@ mod tests {
 			txn.oracle.query.wait_for_mark_timeout(racer, Duration::from_milliseconds(300).unwrap());
 		assert!(
 			!racer_observed,
-			"query watermark advanced to {} before commit_version {} was finalized - the \
+			"query done until advanced to {} before commit_version {} was finalized - the \
 			 historical-GC cutoff raced past our own not-yet-leased commit version",
 			racer.0, commit_version.0
 		);
@@ -1541,7 +1541,7 @@ mod tests {
 		assert_eq!(
 			result.unwrap(),
 			commit_version,
-			"commit of our own freshly-allocated version must succeed even under a racing query watermark"
+			"commit of our own freshly-allocated version must succeed even under a racing query done until"
 		);
 	}
 

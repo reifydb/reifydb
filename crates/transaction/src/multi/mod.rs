@@ -37,7 +37,7 @@ pub(crate) mod oracle;
 pub mod pending;
 pub mod transaction;
 pub mod types;
-pub mod watermark;
+pub mod done_until;
 
 impl MultiTransaction {
 	pub fn current_version(&self) -> Result<CommitVersion, ValueError> {

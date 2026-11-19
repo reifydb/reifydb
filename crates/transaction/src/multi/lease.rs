@@ -7,7 +7,7 @@ use reifydb_core::common::CommitVersion;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::error::ValueError;
 
-use crate::{error::TransactionError, multi::watermark::watermark::WaterMark};
+use crate::{error::TransactionError, multi::done_until::done_until::DoneUntil};
 
 #[derive(Debug)]
 pub struct VersionLeases {
@@ -33,9 +33,9 @@ impl VersionLeases {
 	pub fn try_acquire_at(
 		self: &Arc<Self>,
 		version: CommitVersion,
-		watermark: &WaterMark,
+		done_until: &DoneUntil,
 	) -> Result<VersionLeaseGuard, ValueError> {
-		self.try_acquire_with(|| Ok((version, watermark.done_until(), ()))).map(|(guard, ())| guard)
+		self.try_acquire_with(|| Ok((version, done_until.done_until(), ()))).map(|(guard, ())| guard)
 	}
 
 	pub fn restore_at(self: &Arc<Self>, version: CommitVersion) -> VersionLeaseGuard {
@@ -46,9 +46,9 @@ impl VersionLeases {
 		}))
 	}
 
-	pub fn try_acquire_at_cutoff(self: &Arc<Self>, watermark: &WaterMark) -> Result<VersionLeaseGuard, ValueError> {
+	pub fn try_acquire_at_cutoff(self: &Arc<Self>, done_until: &DoneUntil) -> Result<VersionLeaseGuard, ValueError> {
 		let mut leases = self.inner.lock();
-		let qdu = watermark.done_until();
+		let qdu = done_until.done_until();
 		let cutoff = leases.keys().next().copied().unwrap_or(CommitVersion(u64::MAX)).min(qdu);
 		Self::insert_locked(self, &mut leases, cutoff, qdu)
 	}

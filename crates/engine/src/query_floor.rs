@@ -62,7 +62,7 @@ mod tests {
 		drop(lease);
 		assert!(
 			t.effective_gc_cutoff().0 >= lagging.0 + 4,
-			"with no lease held, nothing may pin the cutoff below the query watermark"
+			"with no lease held, nothing may pin the cutoff below the query done until"
 		);
 	}
 }

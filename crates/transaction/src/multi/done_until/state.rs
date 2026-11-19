@@ -21,7 +21,7 @@ const ORPHAN_CLEANUP_THRESHOLD: u64 = 1000;
 const INITIAL_SLOTS: usize = 1024;
 
 #[repr(align(64))]
-pub struct WatermarkShared {
+pub struct DoneUntilShared {
 	pub done_until: AtomicU64,
 }
 
@@ -49,7 +49,7 @@ impl Slot {
 	}
 }
 
-pub struct WatermarkState {
+pub struct DoneUntilState {
 	ring: Box<[Slot]>,
 	tail: u64,
 	head: u64,
@@ -58,7 +58,7 @@ pub struct WatermarkState {
 	last_swept: u64,
 }
 
-impl Default for WatermarkState {
+impl Default for DoneUntilState {
 	fn default() -> Self {
 		Self {
 			ring: vec![Slot::default(); INITIAL_SLOTS].into_boxed_slice(),
@@ -71,7 +71,7 @@ impl Default for WatermarkState {
 	}
 }
 
-impl WatermarkState {
+impl DoneUntilState {
 	pub fn new() -> Self {
 		Self::default()
 	}
@@ -222,7 +222,7 @@ impl WatermarkState {
 		reifydb_assertions! {
 			assert!(
 				self.head - self.tail < self.ring.len() as u64,
-				"the watermark ring window {}..={} exceeds its {} slots; two distinct versions \
+				"the done-until ring window {}..={} exceeds its {} slots; two distinct versions \
 				 would alias onto one slot and merge their refcounts, letting the done-until mark pass \
 				 a version that still has a live holder",
 				self.tail,
@@ -235,7 +235,7 @@ impl WatermarkState {
 	fn grow(&mut self, span: u64) {
 		let mut slots = self.ring.len();
 		while (slots as u64) < span {
-			slots = slots.checked_mul(2).expect("watermark ring capacity overflowed usize");
+			slots = slots.checked_mul(2).expect("done-until ring capacity overflowed usize");
 		}
 
 		let old_mask = self.mask();
@@ -281,7 +281,7 @@ impl WatermarkState {
 				assert_eq!(
 					slot.refcount,
 					0,
-					"version {version} is being consumed by the watermark with a negative refcount, \
+					"version {version} is being consumed by done until with a negative refcount, \
 					 meaning mark_finished ran more often than register_in_flight for it; the \
 					 done-until mark may have advanced past a version that a later register believed \
 					 was still protected"
@@ -404,7 +404,7 @@ mod tests {
 		// refcount a single slot. Losing the second holder's count would let the done-until mark pass
 		// the version while that holder is still reading at it, exposing its snapshot to
 		// eviction; widening the window would leave a slot that nothing ever clears.
-		let mut state = WatermarkState::new();
+		let mut state = DoneUntilState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
 
@@ -424,11 +424,11 @@ mod tests {
 
 	#[test]
 	fn a_version_never_registered_here_does_not_wedge_the_done_until() {
-		// Each watermark sees its own subset of the version space, so the done-until mark must jump
+		// Each done-until mark sees its own subset of the version space, so the done-until mark must jump
 		// over version numbers that were allocated but never registered on it. Treating such a
 		// gap as a not-yet-begun version would freeze done_until below the true done-until mark
 		// forever, stalling every waiter above it and pinning GC at a version nobody reads.
-		let mut state = WatermarkState::new();
+		let mut state = DoneUntilState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
 
@@ -454,7 +454,7 @@ mod tests {
 		// version done_until already sits on. That registration is what stops GC evicting the
 		// snapshot out from under it, so the done-until mark must refuse to move past it even though
 		// the version is not above done_until.
-		let mut state = WatermarkState::new();
+		let mut state = DoneUntilState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
 
@@ -482,7 +482,7 @@ mod tests {
 		// capacity apart land on the same slot. Holding a low version open while the head runs
 		// past tail + capacity must grow the ring; without growth the newer version would
 		// silently inherit the older one's refcount and the done-until mark would skip a live holder.
-		let mut state = WatermarkState::new();
+		let mut state = DoneUntilState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
 
@@ -504,11 +504,11 @@ mod tests {
 
 	#[test]
 	fn a_done_arriving_before_its_begin_cancels_that_begin() {
-		// mark_finished can reach the watermark for a version that register_in_flight has not
+		// mark_finished can reach done until for a version that register_in_flight has not
 		// recorded yet. The done must be remembered and cancel the matching begin, otherwise
 		// that begin would wait forever for a completion that already happened and pin the
 		// done-until mark below it permanently.
-		let mut state = WatermarkState::new();
+		let mut state = DoneUntilState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
 
@@ -530,7 +530,7 @@ mod tests {
 		// reported as MoreWork so the caller kicks the advancer. Losing that signal would
 		// leave done_until stuck below the true done-until mark until an unrelated later operation
 		// happens to advance it, stalling every waiter in between.
-		let mut state = WatermarkState::new();
+		let mut state = DoneUntilState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
 
@@ -563,7 +563,7 @@ mod tests {
 		// exceeds its threshold it must report MoreWork even with zero pops available, so
 		// the advancer performs the cleanup. Without this trigger a stuck done-until mark (pops
 		// never reach the budget) would let the maps grow without bound.
-		let mut state = WatermarkState::new();
+		let mut state = DoneUntilState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
 
@@ -598,7 +598,7 @@ mod tests {
 	fn unlimited_advance_never_reports_more_work() {
 		// Unlimited is the no-advancer fallback (single-threaded builds, post-shutdown);
 		// it must always finish the job itself, because there is nobody to kick.
-		let mut state = WatermarkState::new();
+		let mut state = DoneUntilState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
 
@@ -621,7 +621,7 @@ mod tests {
 		// only thing that releases it. That sweep is skipped when the done-until mark has not moved
 		// since the previous sweep, so this pins the case where it HAS moved: skipping it here
 		// would park that caller forever.
-		let mut state = WatermarkState::new();
+		let mut state = DoneUntilState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
 
@@ -641,7 +641,7 @@ mod tests {
 		// done-until mark value. A waiter registered ahead of an unchanged done-until mark must survive every
 		// subsequent no-progress call rather than being released early, which would wake a
 		// reader before its snapshot version was actually durable.
-		let mut state = WatermarkState::new();
+		let mut state = DoneUntilState::new();
 		let done_until = AtomicU64::new(7);
 		let mut out = Vec::new();
 
