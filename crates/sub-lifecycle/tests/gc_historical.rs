@@ -120,7 +120,7 @@ fn task(store: StandardMultiStore, floor: ScriptedFloor) -> HistoricalGcTask {
 }
 
 #[test]
-fn a_zero_watermark_reclaims_nothing_rather_than_everything() {
+fn a_zero_floor_reclaims_nothing_rather_than_everything() {
 	// Zero is the "no floor established yet" state - during boot, or before any reader has registered. Reading it
 	// as an unbounded cutoff would reclaim the entire version space of a freshly started database.
 	let store = store();

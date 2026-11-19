@@ -75,9 +75,9 @@ mod tests {
 	}
 
 	#[test]
-	fn with_no_live_flows_the_polled_through_is_the_watermark() {
+	fn with_no_live_flows_the_polled_through_is_the_caught_up_position() {
 		// With no deferred flow nothing can lag, so gating on the empty set would pin a
-		// flow-less database's watermark at zero and hang every caller waiting on it.
+		// flow-less database's caught-up position at zero and hang every caller waiting on it.
 		let (poll, _flows, materialization) = parts();
 		poll.store(CommitVersion(7));
 
@@ -85,7 +85,7 @@ mod tests {
 	}
 
 	#[test]
-	fn the_slowest_flow_bounds_the_watermark() {
+	fn the_slowest_flow_bounds_the_caught_up_position() {
 		// Discovery running ahead of processing is normal under load, so the answer is what the
 		// slowest flow reached, never what the poll consumer merely saw.
 		let (poll, flows, materialization) = parts();
@@ -96,7 +96,7 @@ mod tests {
 		assert_eq!(
 			materialization.caught_up(),
 			CommitVersion(5),
-			"the watermark followed discovery or the fastest flow instead of the slowest one"
+			"the caught-up position followed discovery or the fastest flow instead of the slowest one"
 		);
 	}
 
@@ -114,13 +114,13 @@ mod tests {
 		assert_eq!(
 			materialization.caught_up(),
 			CommitVersion(0),
-			"unconsumed flow output did not hold the watermark back, so a chained view reads stale"
+			"unconsumed flow output did not hold the caught-up position back, so a chained view reads stale"
 		);
 	}
 
 	#[test]
-	fn the_watermark_advances_once_every_flow_passes_the_materialized_through() {
-		// The output gate must release once every flow has consumed it, or the watermark
+	fn the_caught_up_position_advances_once_every_flow_passes_the_materialized_through() {
+		// The output gate must release once every flow has consumed it, or the caught-up position
 		// deadlocks on its own gate and never advances again.
 		let (poll, flows, materialization) = parts();
 		poll.store(CommitVersion(14));
@@ -136,8 +136,8 @@ mod tests {
 	}
 
 	#[test]
-	fn the_watermark_never_regresses_when_new_output_lands() {
-		// A regressing watermark reads as the chain having gone backwards, and any floor derived
+	fn the_caught_up_position_never_regresses_when_new_output_lands() {
+		// A regressing caught-up position reads as the chain having gone backwards, and any floor derived
 		// from it would be unsound.
 		let (poll, flows, materialization) = parts();
 		poll.store(CommitVersion(14));
@@ -151,7 +151,7 @@ mod tests {
 		assert_eq!(
 			materialization.caught_up(),
 			CommitVersion(14),
-			"the watermark moved backwards while a fresh commit was in flight"
+			"the caught-up position moved backwards while a fresh commit was in flight"
 		);
 	}
 }

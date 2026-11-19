@@ -149,7 +149,7 @@ mod tests {
 	fn the_armed_seal_instant_reproduces_the_pre_timer_boundary() {
 		// The armed instant and the sealing gate must be the same expression, or a bucket is
 		// dropped before its timer fires or rebuilt from a late row after it did. The wheel fires
-		// at watermark >= at, so reproducing the strict gate needs the +1 seal_instant carries.
+		// at operator watermark >= at, so reproducing the strict gate needs the +1 seal_instant carries.
 		let cutoff_ms = 19u64;
 		let cutoff = Duration::from_milliseconds(cutoff_ms as i64).expect("representable span");
 		let rule = SealRule::tumbling(cutoff, Duration::from_milliseconds_const(0));
@@ -164,10 +164,10 @@ mod tests {
 			assert_eq!(
 				sealed(wm),
 				pre_timer_gate(wm),
-				"timer seal diverges from the gate at watermark {wm}"
+				"timer seal diverges from the gate at operator watermark {wm}"
 			);
 		}
-		assert!(!sealed(last + cutoff_ms), "watermark exactly cutoff past the last event is still mutable");
+		assert!(!sealed(last + cutoff_ms), "operator watermark exactly cutoff past the last event is still mutable");
 		assert!(sealed(last + cutoff_ms + 1), "one past the cutoff is sealed");
 	}
 
@@ -179,7 +179,7 @@ mod tests {
 		assert_eq!(
 			output_watermark(ByDateTime(at_millis(3)), lateness),
 			ByDateTime(at_millis(-7)),
-			"young watermark minus lateness is a real pre-epoch instant"
+			"young operator watermark minus lateness is a real pre-epoch instant"
 		);
 		assert!(
 			!is_sealed(ByDateTime(at_millis(0)), output_watermark(ByDateTime(at_millis(3)), lateness)),
@@ -187,7 +187,7 @@ mod tests {
 		);
 		assert!(
 			is_sealed(ByDateTime(at_millis(4)), output_watermark(ByDateTime(at_millis(20)), lateness)),
-			"anchor below watermark - lateness is sealed"
+			"anchor below operator watermark - lateness is sealed"
 		);
 	}
 }

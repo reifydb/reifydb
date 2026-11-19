@@ -178,7 +178,7 @@ mod tests {
 
 	#[test]
 	fn a_folded_arm_stays_armed_until_it_is_due() {
-		// arms must fold on every call, otherwise a timer armed ahead of the watermark dies with its
+		// arms must fold on every call, otherwise a timer armed ahead of the flow watermark dies with its
 		// transaction
 		let mut registry = TimerRegistry::default();
 
@@ -188,7 +188,7 @@ mod tests {
 	}
 
 	#[test]
-	fn an_entry_beyond_the_watermark_is_withheld_but_kept() {
+	fn an_entry_beyond_the_flow_watermark_is_withheld_but_kept() {
 		// withholding must never mean forgetting, otherwise the later round that could fire it never looks
 		let mut registry = TimerRegistry::default();
 
@@ -198,15 +198,15 @@ mod tests {
 	}
 
 	#[test]
-	fn an_entry_exactly_at_the_watermark_is_due() {
-		// the comparison must be inclusive, otherwise a timer the watermark has stopped exactly at never fires
+	fn an_entry_exactly_at_the_flow_watermark_is_due() {
+		// the comparison must be inclusive, otherwise a timer the flow watermark has stopped exactly at never fires
 		let mut registry = TimerRegistry::default();
 
 		assert_eq!(due_before(&mut registry, vec![armed(1, 5_000)], flow(1), 5_000), vec![armed(1, 5_000)]);
 	}
 
 	#[test]
-	fn an_operator_past_the_watermark_is_withheld_while_a_sibling_fires() {
+	fn an_operator_past_the_flow_watermark_is_withheld_while_a_sibling_fires() {
 		// an open flow gate must never promote every operator in it, otherwise the fan-out scan returns
 		// silently
 		let mut registry = TimerRegistry::default();
@@ -219,7 +219,7 @@ mod tests {
 
 	#[test]
 	fn one_flow_never_surfaces_another_flows_operators() {
-		// candidates must be keyed by flow, otherwise an operator is scanned against a watermark that is not
+		// candidates must be keyed by flow, otherwise an operator is scanned against a flow watermark that is not
 		// its own
 		let mut registry = TimerRegistry::default();
 

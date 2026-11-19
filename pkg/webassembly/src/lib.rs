@@ -526,7 +526,7 @@ impl WasmDB {
 	#[wasm_bindgen(js_name = flowsCaughtUpStep)]
 	pub fn flows_caught_up_step(&self, target: u64) -> Result<bool, JsValue> {
 		let Some(caught_up) = self.inner.ioc().try_resolve::<FlowCaughtUpPosition>() else {
-			return Err(JsError::from_message("flow caught up watermark not registered"));
+			return Err(JsError::from_message("flow caught-up position not registered"));
 		};
 		caught_up.ensure_healthy().map_err(|e| JsError::from_error(&e))?;
 		Ok(caught_up.get().0 >= target)

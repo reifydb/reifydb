@@ -461,7 +461,7 @@ mod tests {
 
 	#[test]
 	fn a_deleted_completeness_row_asserts_nothing() {
-		// A watermark never retracts, so a delete must not be read as an assertion of its old value.
+		// An output watermark never retracts, so a delete must not be read as an assertion of its old value.
 		let pre = from_rows(
 			&["object_id", "complete_through"],
 			&[vec![Value::Uint8(7), Value::DateTime(at_millis(9_000))]],
@@ -572,7 +572,7 @@ mod tests {
 
 	#[test]
 	fn a_table_source_no_flow_publishes_for_yields_no_arrival() {
-		// An unpublished object must fold nothing; folding it as the epoch drags the reader's watermark to
+		// An unpublished object must fold nothing; folding it as the epoch drags the reader's source watermark to
 		// zero.
 		let object = ObjectId::Table(TableId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
@@ -707,7 +707,7 @@ mod tests {
 	#[test]
 	fn process_version_folds_a_published_output_watermark_into_the_source_watermark() {
 		// A producer that emits no rows this version pins its reader at the epoch unless the published watermark
-		// reaches the watermark here.
+		// reaches the source watermark here.
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
@@ -743,7 +743,7 @@ mod tests {
 		assert_eq!(
 			SourceWatermarks::source_watermark(SOURCE, &mut txn).unwrap(),
 			at_millis(30_000),
-			"the published watermark must reach the watermark through process_version, not only the \
+			"the published watermark must reach the flow watermark through process_version, not only the \
 			 helper"
 		);
 	}
@@ -792,7 +792,7 @@ mod tests {
 
 	#[test]
 	fn a_lookup_on_a_deferred_view_holds_the_flow_watermark_at_the_views_output_watermark() {
-		// Without the view's output watermark hold the left side alone moves the watermark and a same-instant surface
+		// Without the view's output watermark hold the left side alone moves the flow watermark and a same-instant surface
 		// drops as late.
 		let engine = TestEngine::new();
 		let mut inner = lookup_engine(&engine);
@@ -813,7 +813,7 @@ mod tests {
 		assert_eq!(
 			SourceWatermarks::source_watermark(OperatorId(2), &mut txn).unwrap(),
 			at_millis(30_000),
-			"the view's published watermark must reach the lookup's own watermark"
+			"the view's published watermark must reach the lookup's own flow watermark"
 		);
 		assert_eq!(
 			SourceWatermarks::flow_watermark(&inner.flow_watermark_sources(&flow), &mut txn).unwrap(),
@@ -824,7 +824,7 @@ mod tests {
 
 	#[test]
 	fn a_lookup_on_a_table_never_holds_the_flow_watermark() {
-		// No flow publishes an output watermark for a table, so counting it would pin the watermark at the epoch
+		// No flow publishes an output watermark for a table, so counting it would pin the flow watermark at the epoch
 		// forever.
 		let engine = TestEngine::new();
 		let inner = lookup_engine(&engine);
@@ -834,7 +834,7 @@ mod tests {
 	}
 
 	#[test]
-	fn dropping_a_lookup_flow_forgets_its_watermark_source() {
+	fn dropping_a_lookup_flow_forgets_its_flow_watermark_source() {
 		// A stale registration would keep folding a removed flow's operator into a reused flow id.
 		let engine = TestEngine::new();
 		let mut inner = lookup_engine(&engine);
@@ -917,7 +917,7 @@ mod tests {
 	#[test]
 	fn a_versions_own_rows_do_not_move_the_flow_watermark_the_operators_gate_against() {
 		// The admit flow watermark is snapshotted BEFORE the version's own rows advance the source
-		// watermarks, so no row is judged late against a sibling committed alongside it. Reversed,
+		// flow watermarks, so no row is judged late against a sibling committed alongside it. Reversed,
 		// one transaction carrying an hour of history into a 1s window keeps only its last bucket.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);

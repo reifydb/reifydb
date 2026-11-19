@@ -386,7 +386,7 @@ impl CarryEmit for SealedCarry {
 #[test]
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// Carry windows prune relative to the newest window a group has seen, so a group that
-	// stops reporting freezes; only the watermark can drive its reclamation.
+	// stops reporting freezes; only the flow watermark can drive its reclamation.
 	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<SealedCarry>>::new()
 		.with(ApplyWith {
 			retention: Some(millis(60)),
@@ -402,9 +402,9 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 		.expect("apply");
 	let before = h.snapshot_state().len();
 
-	let fired = h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	let fired = h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance flow watermark");
 
-	assert!(fired > 0, "the insert must have armed a seal timer that the watermark then passes");
+	assert!(fired > 0, "the insert must have armed a seal timer that the flow watermark then passes");
 	assert!(
 		h.snapshot_state().len() < before,
 		"a fired seal timer must reclaim the meta of groups that stopped reporting, but the \
@@ -417,11 +417,11 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
 	// Production freeze this pins: solana::market::{twap,vwap,volume,ohlcv}::* published rows for
 	// the very first block of a replayed corpus and then never again. The corpus carries event
-	// timestamps but the watermark advanced on arrival, so from the second batch on the seal
+	// timestamps but the flow watermark advanced on arrival, so from the second batch on the seal
 	// horizon sat weeks ahead of every window and `seal` discarded each bucket before it emitted.
 	//
 	// The window coordinate and the seal horizon must be read on the same clock. Here the
-	// watermark advances exactly as the feed does - from the rows' own #time, which is what
+	// flow watermark advances exactly as the feed does - from the rows' own #time, which is what
 	// `max_input_time` feeds it in production - so a ladder that keeps receiving must keep
 	// publishing, however many windows it has crossed.
 	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<SealedCarry>>::new()
@@ -436,22 +436,22 @@ fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
 			.expect("apply");
 		assert!(
 			!out.diffs.is_empty(),
-			"the window at event_ts={ts} published nothing; a ladder whose watermark tracks its \
+			"the window at event_ts={ts} published nothing; a ladder whose flow watermark tracks its \
 			 own feed must never seal the window it is currently filling"
 		);
 		published += 1;
-		h.advance_flow_watermark(DateTime::from_millis(ts as i64)).expect("advance watermark");
+		h.advance_flow_watermark(DateTime::from_millis(ts as i64)).expect("advance flow watermark");
 	}
 
 	assert_eq!(published, 5, "every window in the ladder must publish, not just the first");
 }
 
 #[test]
-fn a_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
+fn a_flow_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
 	// The mirror of the freeze above, and the reason that one cannot simply be "never seal".
-	// Sealing is what bounds operator state: once the watermark is truly past window + lateness,
+	// Sealing is what bounds operator state: once the flow watermark is truly past window + lateness,
 	// late mutations for that window have to be refused, or a stalled group's buckets accumulate
-	// without limit. SealedCarry seals 120ms after a 60ms window, so a watermark at 10_000ms is
+	// without limit. SealedCarry seals 120ms after a 60ms window, so a flow watermark at 10_000ms is
 	// far outside the envelope of the window starting at 0.
 	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<SealedCarry>>::new()
 		.with(sealed_with())
@@ -461,12 +461,12 @@ fn a_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
 	let opened = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	assert!(!opened.diffs.is_empty(), "precondition: the window at 0 opened and published");
 
-	h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance flow watermark");
 
 	let late = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
 	assert!(
 		late.diffs.is_empty(),
-		"a row landing in a window the watermark has already sealed must be dropped, not merged; \
+		"a row landing in a window the flow watermark has already sealed must be dropped, not merged; \
 		 accepting it reopens a closed window and unbounds the operator's state"
 	);
 }
@@ -541,7 +541,7 @@ fn an_emptied_carry_window_publishes_nothing_when_folded() {
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	assert_eq!(out.diffs[0].kind(), DiffType::Remove, "precondition: the emptied window publishes its removal");
-	h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance flow watermark");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 10_000, 1.0)).build()).expect("apply");
 	assert!(out.diffs.iter().all(|d| d.kind() == DiffType::Insert), "only the new window publishes");
 	assert_eq!(out.diffs.iter().map(|d| d.post().expect("post").num_rows()).sum::<usize>(), 1);

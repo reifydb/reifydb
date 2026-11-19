@@ -1083,7 +1083,7 @@ mod integration {
 
 		let mut seed = seeding_txn(&engine, &flow_engine, version);
 		SourceWatermarks::advance(OperatorId(1), &mut seed, at_millis(30_000)).unwrap();
-		// "Restored state" means the watermark row is in the store; an uncommitted advance is not restored
+		// "Restored state" means the output watermark row is in the store; an uncommitted advance is not restored
 		// state.
 		let seeded = seed.take_pending();
 		persist(&engine.operator_state(), &seeded);
@@ -1097,7 +1097,7 @@ mod integration {
 				object: ObjectId::View(ViewId(3)),
 				output_watermark: at_millis(30_000)
 			}],
-			"resolved_holds must read the seeded watermark through the shared substrate"
+			"resolved_holds must read the seeded output watermark through the shared substrate"
 		);
 	}
 
@@ -2050,7 +2050,7 @@ mod integration {
 
 	#[test]
 	fn a_output_watermark_that_turns_visible_only_because_the_pull_passed_it_still_reaches_the_fold() {
-		// A watermark that only moves in memory must still reach storage with the next checkpoint, never on its
+		// An output watermark that only moves in memory must still reach storage with the next checkpoint, never on its
 		// own commit.
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
@@ -2085,7 +2085,7 @@ mod integration {
 		);
 		assert!(
 			matches!(second, SliceStep::Skip { .. }),
-			"a watermark-only advance must not cost a commit of its own"
+			"an output-watermark-only advance must not cost a commit of its own"
 		);
 		flow_engine.accept_source_watermarks(false);
 
@@ -2104,7 +2104,7 @@ mod integration {
 				..
 			} => assert!(
 				slice.combined.iter_sorted().next().is_some(),
-				"the watermark the producer watermark advanced must ride with the next checkpoint"
+				"the output watermark the producer advanced must ride with the next checkpoint"
 			),
 			SliceStep::Skip {
 				..

@@ -296,7 +296,7 @@ mod tests {
 	const OPERATOR: OperatorId = OperatorId(1);
 	const OTHER: OperatorId = OperatorId(2);
 	const DUE_MS: i64 = 5_000;
-	const WATERMARK_MS: i64 = 10_000;
+	const FLOW_WATERMARK_MS: i64 = 10_000;
 
 	struct TimerProbe {
 		fails: bool,
@@ -418,7 +418,7 @@ mod tests {
 		inner.register_flow_dag(flow.clone());
 
 		let mut seed = engine.flow_txn().deferred();
-		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(WATERMARK_MS)).unwrap();
+		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(FLOW_WATERMARK_MS)).unwrap();
 		for index in 0..count {
 			TimerWheel::arm(OPERATOR, &mut seed, &burst_timer(index, kind)).unwrap();
 		}
@@ -530,7 +530,7 @@ mod tests {
 
 		let mut seed = engine.flow_txn().deferred();
 		for id in [OPERATOR, OTHER] {
-			SourceWatermarks::advance(id, &mut seed, at_millis(WATERMARK_MS)).unwrap();
+			SourceWatermarks::advance(id, &mut seed, at_millis(FLOW_WATERMARK_MS)).unwrap();
 		}
 		for (id, timer) in timers {
 			TimerWheel::arm(*id, &mut seed, timer).unwrap();
@@ -689,7 +689,7 @@ mod tests {
 		inner.register_flow_dag(flow.clone());
 
 		let mut seed = engine.flow_txn().deferred();
-		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(WATERMARK_MS)).unwrap();
+		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(FLOW_WATERMARK_MS)).unwrap();
 		TimerWheel::arm(OPERATOR, &mut seed, &due_timer()).unwrap();
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
@@ -724,7 +724,7 @@ mod tests {
 		drop(failing);
 
 		assert_eq!(
-			inner.timers.due_before(Vec::new(), FLOW, at_millis(WATERMARK_MS)),
+			inner.timers.due_before(Vec::new(), FLOW, at_millis(FLOW_WATERMARK_MS)),
 			vec![TimerDue {
 				operator_id: OPERATOR,
 				due: at_millis(DUE_MS),
@@ -757,7 +757,7 @@ mod tests {
 		inner.register_flow_dag(flow.clone());
 
 		let mut seed = engine.flow_txn().deferred();
-		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(WATERMARK_MS)).unwrap();
+		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(FLOW_WATERMARK_MS)).unwrap();
 		TimerWheel::arm(OPERATOR, &mut seed, &due_timer()).unwrap();
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
@@ -790,7 +790,7 @@ mod tests {
 		inner.register_flow_dag(flow.clone());
 
 		let mut seed = engine.flow_txn().deferred();
-		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(WATERMARK_MS)).unwrap();
+		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(FLOW_WATERMARK_MS)).unwrap();
 		TimerWheel::arm(OPERATOR, &mut seed, &due_timer()).unwrap();
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
@@ -844,7 +844,7 @@ mod tests {
 		);
 
 		let mut seed = engine.flow_txn().deferred();
-		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(WATERMARK_MS)).unwrap();
+		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(FLOW_WATERMARK_MS)).unwrap();
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
 		persist(&store, &seeded);
@@ -862,8 +862,8 @@ mod tests {
 		)
 		.unwrap();
 
-		let mine = inner.timers.due_before(Vec::new(), FLOW, at_millis(WATERMARK_MS));
-		let theirs = inner.timers.due_before(Vec::new(), other_flow, at_millis(WATERMARK_MS));
+		let mine = inner.timers.due_before(Vec::new(), FLOW, at_millis(FLOW_WATERMARK_MS));
+		let theirs = inner.timers.due_before(Vec::new(), other_flow, at_millis(FLOW_WATERMARK_MS));
 		assert!(
 			mine.iter().all(|due| due.operator_id != OTHER),
 			"the dispatching flow kept an arm it does not own"

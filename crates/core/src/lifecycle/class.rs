@@ -223,7 +223,7 @@ mod tests {
 	#[test]
 	fn row_expiry_classes_are_not_hostage_to_readers_of_other_data() {
 		// Row expiry is protected by MVCC-transactional discovery, not by these readers. Sharing one
-		// watermark with them lets a wedged reader or a leaked query lease freeze it.
+		// done until with them lets a wedged reader or a leaked query lease freeze it.
 		{
 			let class = RetentionClass::RowTtl;
 			assert!(
@@ -286,7 +286,7 @@ mod tests {
 
 	#[test]
 	fn the_query_done_until_is_read_before_the_leases_in_every_class_that_reads_both() {
-		// Leases read first miss a lease the later watermark read passes, so gc collects it.
+		// Leases read first miss a lease the later done-until read passes, so gc collects it.
 		for class in RetentionClass::all() {
 			let terms = class.floor_terms();
 			let query = terms.iter().position(|term| *term == FloorTerm::QueryDoneUntil);

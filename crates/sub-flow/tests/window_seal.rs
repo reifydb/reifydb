@@ -78,7 +78,7 @@ fn a_window_cannot_seal_ahead_of_the_slowest_source_feeding_it() {
 
 #[test]
 fn a_source_that_never_reports_holds_every_window_open() {
-	// A source hydrates its watermark to zero, not to now, so a flow holding a source nobody writes
+	// A source hydrates its flow watermark to zero, not to now, so a flow holding a source nobody writes
 	// must keep every window open rather than sealing on the sources that are moving - otherwise a
 	// misconfigured pipeline looks healthy while publishing partial aggregates.
 	let db = setup();
@@ -169,7 +169,7 @@ fn two_arrival_orders_of_the_same_corpus_produce_the_same_open_windows() {
 #[test]
 fn a_transaction_is_one_arrival_so_no_row_in_it_is_late_against_its_own_siblings() {
 	// A commit is one unit of arrival: its rows carry no order against each other, so admission
-	// must read the watermark as it stood before the commit. That is what lets a bulk load carry
+	// must read the flow watermark as it stood before the commit. That is what lets a bulk load carry
 	// an hour of history into a 1s window instead of keeping only its newest bucket.
 	let (batched, split) = ordering_pair("0s");
 
@@ -349,7 +349,7 @@ fn a_row_at_the_epoch_is_refused_once_its_window_has_sealed() {
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 10, ts: "1970-01-01T00:00:20Z" }]"#);
 	db.await_row_count("FROM app::w FILTER { total == 10 }", 1, TIMEOUT);
 
-	// Carries the watermark past the 20s window's 24.001s seal instant, so it actually advances.
+	// Carries the flow watermark past the 20s window's 24.001s seal instant, so it actually advances.
 	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 20, ts: "1970-01-01T00:00:30Z" }]"#);
 	db.await_exact_row_count("FROM app::w FILTER { total == 10 }", 0, TIMEOUT);
 
@@ -595,7 +595,7 @@ fn a_session_emptied_by_retraction_frees_its_accumulator_once_it_seals() {
 
 #[test]
 fn a_zero_gap_session_frees_its_accumulator_once_it_seals() {
-	// a zero gap session must still seal once the watermark passes it, otherwise it is never reaped.
+	// a zero gap session must still seal once the flow watermark passes it, otherwise it is never reaped.
 	let db = setup_with_metrics();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");

@@ -8,7 +8,7 @@ use reifydb::{
 
 #[test]
 fn waiting_on_a_poisoned_flow_fails_fast_naming_the_cause() {
-	// A poisoned flow never moves the watermark, so the wait must stop with its cause instead of burning the
+	// A poisoned flow never moves the flow watermark, so the wait must stop with its cause instead of burning the
 	// timeout.
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().unwrap());
 	db.admin("create namespace test");

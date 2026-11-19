@@ -564,37 +564,37 @@ fn boundary_slot_belongs_to_next_window() {
 
 #[test]
 fn late_event_for_sealed_window_dropped() {
-	// A window seals once the watermark passes start + lateness, and a sealed window must
+	// A window seals once the flow watermark passes start + lateness, and a sealed window must
 	// refuse further inserts rather than reopen.
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 180, 5.0)).build()).expect("apply");
-	h.advance_flow_watermark(DateTime::from_millis(180)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(180)).expect("advance flow watermark");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 0, "insert into a sealed window must be dropped");
 }
 
 #[test]
 fn late_event_within_seal_is_accepted() {
-	// The boundary is inclusive on the mutable side: at watermark == start + lateness the
-	// window is still open. The watermark must be advanced explicitly, or the gate never
+	// The boundary is inclusive on the mutable side: at flow watermark == start + lateness the
+	// window is still open. The flow watermark must be advanced explicitly, or the gate never
 	// closes and the assertion would hold under any boundary rule.
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 120, 5.0)).build()).expect("apply");
-	h.advance_flow_watermark(DateTime::from_millis(120)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(120)).expect("advance flow watermark");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
-	assert_eq!(out.diffs.len(), 1, "window 0 is still within its lateness at watermark 120");
+	assert_eq!(out.diffs.len(), 1, "window 0 is still within its lateness at flow watermark 120");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(read::<f64>((post, 0), "volume"), Some(99.0));
 }
 
 #[test]
-fn a_gated_driver_admits_a_late_event_while_the_watermark_has_not_moved() {
+fn a_gated_driver_admits_a_late_event_while_the_flow_watermark_has_not_moved() {
 	// The operator watermark comes from the seal ledger and the flow watermark, not from arrivals, so a
 	// flow that has reported no progress has nothing to measure lateness against. If this ever
 	// starts dropping, the operator watermark is being derived from the batch again.
@@ -605,7 +605,7 @@ fn a_gated_driver_admits_a_late_event_while_the_watermark_has_not_moved() {
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 180, 5.0)).build()).expect("apply");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
 
-	assert_eq!(out.diffs.len(), 1, "with no watermark reported, an arbitrarily old window is still open");
+	assert_eq!(out.diffs.len(), 1, "with no flow watermark reported, an arbitrarily old window is still open");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(read::<u64>((post, 0), "window_start"), Some(window_order(0)));
 }
@@ -646,7 +646,7 @@ fn remove_within_seal_is_applied_and_sealed_remove_is_dropped() {
 	assert_eq!(read::<f64>(r, "volume"), Some(10.0));
 
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(4, "BTC", 240, 2.0)).build()).expect("apply");
-	h.advance_flow_watermark(DateTime::from_millis(240)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(240)).expect("advance flow watermark");
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 0, "retraction of a sealed window must be dropped");
 }
@@ -710,7 +710,7 @@ fn sealing_forgets_window_state_in_the_store() {
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	let before = h.snapshot_state();
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 240, 2.0)).build()).expect("apply");
-	h.advance_flow_watermark(DateTime::from_millis(240)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(240)).expect("advance flow watermark");
 	let after = h.snapshot_state();
 	let freed = before.keys().filter(|k| !after.contains_key(*k)).count();
 	assert!(freed > 0, "sealing window 0 must remove its accumulator state from the store");

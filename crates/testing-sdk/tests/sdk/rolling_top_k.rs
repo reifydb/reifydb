@@ -443,7 +443,7 @@ impl Emit for SealedTopVolume {
 #[test]
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
-	// grows without bound; nothing moves here after the initial batch except the watermark.
+	// grows without bound; nothing moves here after the initial batch except the flow watermark.
 	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<SealedTopVolume>>::new()
 		.with(sealed_with())
 		.build()
@@ -456,9 +456,9 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 		.expect("apply");
 	let before = h.snapshot_state().len();
 
-	let fired = h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	let fired = h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance flow watermark");
 
-	assert!(fired > 0, "the insert must have armed a seal timer that the watermark then passes");
+	assert!(fired > 0, "the insert must have armed a seal timer that the flow watermark then passes");
 	assert!(
 		h.snapshot_state().len() < before,
 		"a fired seal timer must reclaim the meta of groups that stopped reporting, but the \
@@ -566,7 +566,7 @@ fn a_top_k_trade_behind_the_window_is_dropped_and_a_trade_inside_it_revives_the_
 		.build()
 		.expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 7, 1.0)).build()).expect("apply");
-	h.advance_flow_watermark(DateTime::from_millis(115)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(115)).expect("flow watermark");
 
 	let behind = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 102, 7, 2.0)).build()).expect("apply");
 	assert!(behind.diffs.is_empty(), "a trade behind the window must be dropped, got {:?}", behind.diffs.len());

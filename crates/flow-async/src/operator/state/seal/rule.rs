@@ -166,8 +166,8 @@ mod tests {
 
 	#[test]
 	fn a_seal_instant_is_one_past_the_seal_span() {
-		// The wheel fires inclusively (`at <= watermark`) but the seal gate is strict - a window
-		// closes once the watermark has passed its whole seal span, not on reaching it. The +1
+		// The wheel fires inclusively (`at <= operator watermark`) but the seal gate is strict - a window
+		// closes once the operator watermark has passed its whole seal span, not on reaching it. The +1
 		// is what converts one into the other.
 		let rule = SealRule::tumbling(ms(1_000), ms(200));
 

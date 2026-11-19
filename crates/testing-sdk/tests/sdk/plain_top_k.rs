@@ -492,9 +492,9 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 		.expect("apply");
 	let before = h.snapshot_state().len();
 
-	let fired = h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	let fired = h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance flow watermark");
 
-	assert!(fired > 0, "the insert must have armed a seal timer that the watermark then passes");
+	assert!(fired > 0, "the insert must have armed a seal timer that the flow watermark then passes");
 	assert!(
 		h.snapshot_state().len() < before,
 		"a fired seal timer must reclaim the meta of groups that stopped reporting, but the store went from {before} rows to {}",
@@ -508,7 +508,7 @@ fn a_row_older_than_the_output_watermark_is_dropped_and_a_recent_one_is_kept() {
 	let mut h = harness!(TopVolume, rolling(3, Some(1), 10)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 7, 1.0)).build()).expect("apply");
 	let kept = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 98, 8, 2.0)).build()).expect("apply");
-	h.advance_flow_watermark(DateTime::from_millis(110)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(110)).expect("flow watermark");
 
 	let dropped = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 50, 9, 4.0)).build()).expect("apply");
 
@@ -586,7 +586,7 @@ fn an_emptied_group_publishes_nothing_on_seal() {
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 100, 5.0)).build()).expect("apply");
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 100, 5.0)).build()).expect("apply");
 	assert_eq!(render(&out), vec![(DiffType::Remove, 1, 100, 5.0)], "precondition: the emptied group withdraws");
-	h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance flow watermark");
 
 	let out =
 		h.apply(TestChangeBuilder::new().insert(input_row(2, "ETH", 10_000, 200, 9.0)).build()).expect("apply");

@@ -2068,7 +2068,7 @@ mod pull_protocol {
 				lookup: None,
 			});
 			for source in sources {
-				SourceWatermarks::advance(source, &mut txn, at).expect("advance watermark");
+				SourceWatermarks::advance(source, &mut txn, at).expect("advance source watermark");
 			}
 
 			let advanced = txn.take_pending();
@@ -2539,7 +2539,7 @@ mod pull_protocol {
 	}
 
 	#[test]
-	fn a_producer_watermark_overshoot_does_not_stall_or_overrun_the_pull() {
+	fn a_released_through_overshoot_does_not_stall_or_overrun_the_pull() {
 		// A queue released past done_until must never let the pull overrun the done mark.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
@@ -2564,14 +2564,14 @@ mod pull_protocol {
 
 		assert!(
 			ahead.released_through().0 >= h.engine.done_until().0 + 5,
-			"test precondition: producer watermark must overshoot done_until by more than the 			 test's own commits"
+			"test precondition: released through must overshoot done_until by more than the 			 test's own commits"
 		);
 
 		h.wake(&actor);
 		assert_eq!(
 			h.await_view_rows(1, seconds(10)),
 			1,
-			"an overshooting producer watermark must not stall the pull below done_until"
+			"an overshooting released through must not stall the pull below done_until"
 		);
 		let done = h.engine.done_until();
 		let position = h
@@ -2579,8 +2579,8 @@ mod pull_protocol {
 			.expect("the pull must advance at least through the insert");
 		assert!(
 			position <= done,
-			"the pull advanced to {} which overruns done_until {}: versions beyond the done \
-			 watermark are not yet safe to consume",
+			"the pull advanced to {} which overruns done_until {}: versions beyond done \
+			 until are not yet safe to consume",
 			position.0,
 			done.0
 		);
@@ -3279,7 +3279,7 @@ mod tick_failures {
 	const SOURCE: OperatorId = OperatorId(9_001);
 	const TIMED: OperatorId = OperatorId(9_002);
 	const DUE_MS: i64 = 5_000;
-	const WATERMARK_MS: i64 = 10_000;
+	const FLOW_WATERMARK_MS: i64 = 10_000;
 	const RETRY_LIMIT: u32 = 3;
 	const SINK: OperatorId = OperatorId(9_003);
 	const MEMBER_SOURCE: OperatorId = OperatorId(9_101);
@@ -3929,7 +3929,7 @@ mod tick_failures {
 			substrate: substrate.clone(),
 			lookup: None,
 		});
-		SourceWatermarks::advance(SOURCE, &mut txn, at_millis(WATERMARK_MS)).expect("advance watermark");
+		SourceWatermarks::advance(SOURCE, &mut txn, at_millis(FLOW_WATERMARK_MS)).expect("advance source watermark");
 		TimerWheel::arm(
 			TIMED,
 			&mut txn,

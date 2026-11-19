@@ -261,7 +261,7 @@ mod tests {
 
 	#[test]
 	fn the_wall_clock_operator_watermark_merges_the_ledger_and_the_flow_watermark_upward() {
-		// without the max a newly attached source drags the watermark down and re-admits sealed rows
+		// without the max a newly attached source drags the flow watermark down and re-admits sealed rows
 		let mut lagging_flow_watermark = MockStore::default().with_flow_watermark(at_millis(3_000));
 		SealLedger::advance(&mut lagging_flow_watermark, FiredAt::of(&timer(9_000))).unwrap();
 

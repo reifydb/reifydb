@@ -3,7 +3,7 @@
 
 // The supervisor pushes each decoded commit log batch to every live flow; a flow the batch does not touch
 // consumes it as a pure cursor advance. An idle flow that is never advanced pins the caught-up
-// watermark and, through its durable checkpoint, the floor that gates commit log compaction.
+// caught-up position and, through its durable checkpoint, the floor that gates commit log compaction.
 
 use std::thread;
 
@@ -50,7 +50,7 @@ fn unrelated_write_advances_idle_flow_without_tick() {
 	assert_eq!(va, 2, "the affected view must materialize from its push; got {va}");
 
 	// The write to `a` does not touch vb's source and vb cannot tick for an hour, so only the
-	// pushed batch can advance it. The caught-up watermark is the min across live flows, so it
+	// pushed batch can advance it. The caught-up position is the min across live flows, so it
 	// reaching `target` is the only observable proof that the idle flow advanced.
 	let deadline = Clock::Real.instant() + Duration::from_seconds_const(5);
 	loop {
@@ -62,7 +62,7 @@ fn unrelated_write_advances_idle_flow_without_tick() {
 			Clock::Real.instant() < deadline,
 			"an unrelated write must advance the idle view over table b via the pushed batch: \
 			 flow_consumer={} never reached the committed target={} under a 1h tick, so vb was \
-			 skipped by the supervisor and is pinning the caught-up watermark and commit log compaction",
+			 skipped by the supervisor and is pinning the caught-up position and commit log compaction",
 			caught_up.0,
 			target.0
 		);

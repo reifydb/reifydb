@@ -178,7 +178,7 @@ fn advance_to(db: &TestDb, instant: &str) {
 
 #[test]
 fn a_managed_apply_over_a_source_without_event_time_is_rejected_at_create() {
-	// Without an event time the watermark never passes a write, so a managed group would never be freed.
+	// Without an event time the flow watermark never passes a write, so a managed group would never be freed.
 	for time in ["", " with { time: processing }"] {
 		let db = memory();
 		db.admin("CREATE NAMESPACE app");
@@ -212,7 +212,7 @@ fn only_a_managed_apply_needs_event_time() {
 }
 
 #[test]
-fn managed_state_is_freed_once_the_watermark_passes_its_write_plus_lateness_and_not_before() {
+fn managed_state_is_freed_once_the_operator_watermark_passes_its_write_plus_lateness_and_not_before() {
 	// A group freed before its write plus lateness loses state a late row inside the lateness still needs.
 	let db = memory();
 	managed_view(&db);
@@ -292,7 +292,7 @@ fn a_retention_above_the_lateness_frees_later_than_the_lateness_would() {
 
 #[test]
 fn a_zero_retention_frees_at_the_next_gate_step() {
-	// Zero is a bound, not an absence: the group must go as soon as the watermark passes its write.
+	// Zero is a bound, not an absence: the group must go as soon as the flow watermark passes its write.
 	let db = memory();
 	managed_view_with(&db, "retention: 0s");
 

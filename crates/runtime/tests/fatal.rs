@@ -172,7 +172,7 @@ fn a_violated_invariant_can_be_declared_fatal_without_a_panic() {
 	// stated reason.
 	if triggered().as_deref() == Some("invariant") {
 		install(FatalConfig::armed(true));
-		reifydb_runtime::fatal!("watermark moved backwards: {} -> {}", 9, 4);
+		reifydb_runtime::fatal!("source watermark moved backwards: {} -> {}", 9, 4);
 	}
 
 	let output = run_child("a_violated_invariant_can_be_declared_fatal_without_a_panic", "invariant");
@@ -180,7 +180,7 @@ fn a_violated_invariant_can_be_declared_fatal_without_a_panic() {
 
 	assert_eq!(output.status.signal(), Some(SIGABRT), "stderr was:\n{}", stderr);
 	assert!(stderr.contains("kind:      invariant violated"), "stderr was:\n{}", stderr);
-	assert!(stderr.contains("watermark moved backwards: 9 -> 4"));
+	assert!(stderr.contains("source watermark moved backwards: 9 -> 4"));
 	assert!(stderr.contains("location:  crates/runtime/tests/fatal.rs"), "the macro must record its own call site");
 }
 

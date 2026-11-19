@@ -74,8 +74,8 @@ fn timer(millis: u64, kind: TimerKind, key: &str) -> Timer {
 }
 
 #[test]
-fn a_timer_is_due_exactly_when_the_watermark_reaches_it() {
-	// Firing before the watermark reaches T seals unreached state - silent data loss.
+fn a_timer_is_due_exactly_when_the_flow_watermark_reaches_it() {
+	// Firing before the flow watermark reaches T seals unreached state - silent data loss.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
@@ -408,7 +408,7 @@ fn a_take_reports_the_earliest_instant_it_left_behind_not_the_latest() {
 		..
 	} = TimerWheel::take_due(NODE, &mut txn, at_millis(0), NO_LIMIT, None).unwrap();
 
-	assert!(fired.is_empty(), "a watermark below every armed instant must fire nothing");
+	assert!(fired.is_empty(), "a flow watermark below every armed instant must fire nothing");
 	assert_eq!(next, Some(at_millis(5_000)));
 }
 
@@ -433,8 +433,8 @@ fn a_take_reports_nothing_armed_once_the_wheel_is_drained() {
 }
 
 #[test]
-fn a_take_reports_an_instant_no_watermark_has_reached() {
-	// the scan must run past the watermark, otherwise a far-future timer reads as nothing armed and is dropped for
+fn a_take_reports_an_instant_no_flow_watermark_has_reached() {
+	// the scan must run past the flow watermark, otherwise a far-future timer reads as nothing armed and is dropped for
 	// good
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);

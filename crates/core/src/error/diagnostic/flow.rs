@@ -434,7 +434,7 @@ pub fn flow_join_retention_requires_event_time(flow: &str) -> Diagnostic {
 		fragment: Fragment::None,
 		label: None,
 		help: Some(
-			"a join retention frees a row once the watermark passes its own event time, which only has \
+			"a join retention frees a row once the operator watermark passes its own event time, which only has \
 			 meaning against a source-supplied event time. Declare `with { time: event(<column>) }` on the \
 			 source object this flow reads, or remove the retention."
 				.to_string(),
@@ -769,7 +769,7 @@ pub fn flow_managed_operator_requires_event_time(flow: &str, operator: &str) -> 
 	flow_diagnostic(
 		"FLOW_073",
 		format!("{flow} applies managed operator '{operator}' but its sources supply no event time"),
-		"a managed operator's state is freed once the watermark passes its last write plus retention, which only \
+		"a managed operator's state is freed once the operator watermark passes its last write plus retention, which only \
 		 has meaning against a source-supplied event time. Declare `with { time: event(<column>) }` on the \
 		 source object this flow reads.",
 	)

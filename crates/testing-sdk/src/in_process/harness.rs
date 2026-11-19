@@ -214,7 +214,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 			}
 		}
 		panic!("advance_flow_watermark kept finding due timers after {MAX_ROUNDS} rounds; an operator is \
-			 re-arming at or below the watermark it was just woken for, which would spin the real \
+			 re-arming at or below the flow watermark it was just woken for, which would spin the real \
 			 wheel too")
 	}
 

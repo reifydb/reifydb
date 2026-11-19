@@ -221,7 +221,7 @@ fn a_late_row_inside_lateness_lands_in_a_window_older_than_immutable() {
 		.expect("harness");
 	h.apply(insert(1, 0, 10.0)).expect("apply");
 	h.apply(insert(2, 70_000, 5.0)).expect("apply");
-	h.advance_flow_watermark(DateTime::from_millis(70_000)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(70_000)).expect("advance flow watermark");
 
 	let out = h.apply(insert(3, 50_000, 99.0)).expect("apply");
 
@@ -239,7 +239,7 @@ fn a_late_row_inside_lateness_lands_in_a_window_older_than_immutable() {
 }
 
 #[test]
-fn a_carry_view_with_immutable_stays_bounded_while_the_watermark_tracks_the_feed() {
+fn a_carry_view_with_immutable_stays_bounded_while_the_flow_watermark_tracks_the_feed() {
 	// Admitting late rows must not unbound state: windows past the lateness horizon must still fold.
 	let feed = |windows: u64| {
 		let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<LateCarry>>::new()
@@ -249,7 +249,7 @@ fn a_carry_view_with_immutable_stays_bounded_while_the_watermark_tracks_the_feed
 		for i in 0..windows {
 			let ts = i * 60;
 			h.apply(insert(i + 1, ts, i as f64)).expect("apply");
-			h.advance_flow_watermark(DateTime::from_millis(ts as i64)).expect("advance watermark");
+			h.advance_flow_watermark(DateTime::from_millis(ts as i64)).expect("advance flow watermark");
 		}
 		h.group_state().len()
 	};
@@ -279,7 +279,7 @@ fn a_group_idle_past_window_and_lateness_carries_its_close_into_its_next_window(
 	// Dropping an idle group's meta loses its sealed carry, so a gap-filling operator would re-warm from nothing.
 	let mut h = idle_harness(None);
 	h.apply(insert(1, 0, 10.0)).expect("apply");
-	h.advance_flow_watermark(DateTime::from_millis(600_000)).expect("advance watermark");
+	h.advance_flow_watermark(DateTime::from_millis(600_000)).expect("advance flow watermark");
 
 	let out = h.apply(insert(2, 660_000, 5.0)).expect("apply");
 
@@ -295,12 +295,12 @@ fn a_retention_drops_an_idle_group_only_once_it_is_idle_past_the_horizon_by_more
 	// Dropping at the horizon would lose the carry retention exists to keep, and never dropping would leak it.
 	let mut within = idle_harness(Some(300_000));
 	within.apply(insert(1, 0, 10.0)).expect("apply");
-	within.advance_flow_watermark(DateTime::from_millis(400_000)).expect("advance watermark");
+	within.advance_flow_watermark(DateTime::from_millis(400_000)).expect("advance flow watermark");
 	let kept = within.apply(insert(2, 420_000, 5.0)).expect("apply");
 
 	let mut past = idle_harness(Some(300_000));
 	past.apply(insert(1, 0, 10.0)).expect("apply");
-	past.advance_flow_watermark(DateTime::from_millis(600_000)).expect("advance watermark");
+	past.advance_flow_watermark(DateTime::from_millis(600_000)).expect("advance flow watermark");
 	let dropped = past.apply(insert(2, 660_000, 5.0)).expect("apply");
 
 	assert_eq!(
@@ -323,7 +323,7 @@ fn a_retention_bounds_the_state_left_by_groups_that_went_idle() {
 		for g in 0..groups {
 			h.apply(insert_group(g + 1, &format!("G{g}"), 0, 10.0)).expect("apply");
 		}
-		h.advance_flow_watermark(DateTime::from_millis(3_600_000)).expect("advance watermark");
+		h.advance_flow_watermark(DateTime::from_millis(3_600_000)).expect("advance flow watermark");
 		h.snapshot_state().len()
 	};
 

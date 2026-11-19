@@ -65,7 +65,7 @@ fn an_event_time_source_propagates_its_stamp_through_a_chain_of_views() {
 fn a_processing_time_source_propagates_its_arrival_stamp_unchanged() {
 	// Processing time stays the default and is perfectly legal. What matters is that its rows
 	// carry ONE time all the way down rather than being re-stamped per hop, so a window
-	// coordinate and a watermark taken from the same row can never disagree.
+	// coordinate and a flow watermark taken from the same row can never disagree.
 	let db = setup();
 	db.admin("CREATE NAMESPACE cv");
 	db.admin("CREATE TABLE cv::src { id: int4, at: datetime } with { time: processing }");

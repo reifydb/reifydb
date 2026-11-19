@@ -53,7 +53,7 @@ fn a_left_retention_on_a_snapshot_join_is_accepted() {
 
 #[test]
 fn a_join_retention_over_a_processing_time_source_is_rejected() {
-	// A retention frees a row once the watermark passes its event time, which a processing-time flow never
+	// A retention frees a row once the flow watermark passes its event time, which a processing-time flow never
 	// supplies.
 	let engine = engine_with_sources("processing");
 

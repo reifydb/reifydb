@@ -1025,7 +1025,7 @@ pub mod tests {
 
 	#[test]
 	fn the_epoch_constant_is_the_zero_instant() {
-		// Watermarks hydrate to the epoch to mean "nothing seen yet".
+		// Output watermarks hydrate to the epoch to mean "nothing seen yet".
 		assert_eq!(DateTime::EPOCH, DateTime::from_nanos(0));
 		assert_eq!(DateTime::EPOCH, DateTime::default());
 		assert!(DateTime::EPOCH.is_epoch());

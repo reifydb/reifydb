@@ -419,7 +419,7 @@ fn the_due_page_never_returns_a_join_expiry_the_batch_already_removed() {
 
 #[test]
 fn the_due_page_stops_at_the_fire_and_never_reaches_past_it() {
-	// A page that overshoots the watermark frees rows that are still inside their own retention.
+	// A page that overshoots the flow watermark frees rows that are still inside their own retention.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 5_000);

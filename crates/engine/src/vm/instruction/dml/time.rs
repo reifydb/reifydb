@@ -214,7 +214,7 @@ mod tests {
 	#[test]
 	fn a_time_less_object_stamps_no_time_at_all() {
 		// Falling back to the arrival clock stamps a reference row with the instant it was loaded, so
-		// a join against an old event row drags the result forward to now and jumps the watermark by
+		// a join against an old event row drags the result forward to now and jumps the source watermark by
 		// the age of the corpus.
 		let shape = shape();
 

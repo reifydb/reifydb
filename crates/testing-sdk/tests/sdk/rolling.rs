@@ -423,7 +423,7 @@ impl Emit for SealedRollingSum {
 #[test]
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
-	// grows without bound; nothing moves here after the initial batch except the watermark.
+	// grows without bound; nothing moves here after the initial batch except the flow watermark.
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedRollingSum>>::new()
 		.with(sealed_with())
 		.build()
@@ -436,9 +436,9 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 		.expect("apply");
 	let before = h.snapshot_state().len();
 
-	let fired = h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+	let fired = h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance flow watermark");
 
-	assert!(fired > 0, "the insert must have armed a seal timer that the watermark then passes");
+	assert!(fired > 0, "the insert must have armed a seal timer that the flow watermark then passes");
 	assert!(
 		h.snapshot_state().len() < before,
 		"a fired seal timer must reclaim the meta of groups that stopped reporting, but the \

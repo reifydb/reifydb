@@ -382,7 +382,7 @@ impl ConfigKey {
 				"Max historical (key, version) pairs scanned per object per historical GC tick."
 			}
 			Self::HistoricalGcInterval => {
-				"How often the historical-version GC actor sweeps __historical for versions older than the oracle read watermark."
+				"How often the historical-version GC actor sweeps __historical for versions older than the query done-until mark."
 			}
 			Self::MultiPointBufferTotalBytes => {
 				"Total resident byte budget of the multi-version point cache, split evenly across \

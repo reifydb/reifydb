@@ -373,7 +373,7 @@ fn a_row_older_than_the_output_watermark_is_dropped_and_a_recent_one_is_kept() {
 	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 	let kept = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 99, 2.0)).build()).expect("apply");
-	h.advance_flow_watermark(DateTime::from_millis(110)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(110)).expect("flow watermark");
 
 	let dropped = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 50, 4.0)).build()).expect("apply");
 
@@ -410,7 +410,7 @@ fn a_rolling_view_on_a_no_rolling_operator_reports_flow_066() {
 }
 
 #[test]
-fn a_stopped_rolling_group_gives_back_its_meta_once_the_watermark_passes_it() {
+fn a_stopped_rolling_group_gives_back_its_meta_once_the_flow_watermark_passes_it() {
 	// The seal may add only its ledger row; a rolling driver that never expires leaves every dead group's meta.
 	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
 	for i in 0..6u64 {
@@ -418,7 +418,7 @@ fn a_stopped_rolling_group_gives_back_its_meta_once_the_watermark_passes_it() {
 	}
 	let before = h.snapshot_state().len();
 
-	h.advance_flow_watermark(DateTime::from_millis(10_000_000)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(10_000_000)).expect("flow watermark");
 
 	assert!(h.snapshot_state().len() <= before, "the seal must reclaim the dead group's meta, not add to state");
 }
@@ -479,14 +479,14 @@ fn a_group_revived_inside_its_window_keeps_its_old_panes() {
 	// A pane still above clock - size must survive a quiet spell; one below it is gone and takes no late row.
 	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
-	h.advance_flow_watermark(DateTime::from_millis(102)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(102)).expect("flow watermark");
 
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 102, 2.0)).build()).expect("apply");
 
 	let trace: Vec<(DiffType, f64)> = render(&out).into_iter().map(|(kind, sum, _, _)| (kind, sum)).collect();
 	assert_eq!(trace, vec![(DiffType::Update, 3.0)]);
 
-	h.advance_flow_watermark(DateTime::from_millis(110)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(110)).expect("flow watermark");
 	let late = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 104, 4.0)).build()).expect("apply");
 	assert!(render(&late).is_empty(), "a row into a pane at or below clock - size must be dropped");
 }
@@ -505,7 +505,7 @@ fn a_quiet_stream_frees_every_dead_group() {
 		.expect("apply");
 	let applied = h.history_len();
 
-	h.advance_flow_watermark(DateTime::from_millis(106)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(106)).expect("flow watermark");
 	let decay: Vec<(DateTime, TimerKind)> =
 		h.armed_timers().into_iter().filter(|t| t.key == b"rolling-decay").map(|t| (t.due, t.kind)).collect();
 	assert_eq!(
@@ -514,7 +514,7 @@ fn a_quiet_stream_frees_every_dead_group() {
 		"the timer must re-arm on B after A dies"
 	);
 
-	h.advance_flow_watermark(DateTime::from_millis(115)).expect("watermark");
+	h.advance_flow_watermark(DateTime::from_millis(115)).expect("flow watermark");
 	assert!(
 		!h.armed_timers().iter().any(|t| t.key == b"rolling-decay"),
 		"B's own decay timer must free it and leave nothing armed"

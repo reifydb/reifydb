@@ -3,7 +3,7 @@
 
 //! A custom operator arms a timer and is called back when the flow watermark passes it. The
 //! operator never reads a clock and is never handed a timestamp on apply: it arms off the row's own
-//! #time, and the due timer fires inside the flow transaction that carried the watermark past it.
+//! #time, and the due timer fires inside the flow transaction that carried the flow watermark past it.
 
 use reifydb::{
 	ConfigKey, SqliteConfig, Value, WithSubsystem, embedded,
@@ -173,22 +173,22 @@ fn declare(db: &TestDb) {
 }
 
 #[test]
-fn an_armed_timer_fires_only_once_the_event_watermark_passes_it() {
-	// A timer armed for event instant T must stay silent while the flow's event watermark sits
+fn an_armed_timer_fires_only_once_the_flow_watermark_passes_it() {
+	// A timer armed for event instant T must stay silent while the flow's operator watermark sits
 	// below T, however much real time passes or however many other rows arrive. Arriving rows are
 	// the only thing that moves time forward.
 	let db = setup();
 	declare(&db);
 
-	// Arms a callback for event instant 1000. The watermark is 0, so nothing is due.
+	// Arms a callback for event instant 1000. The flow watermark is 0, so nothing is due.
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "1970-01-01T00:00:00Z" }]"#);
 
-	// Advances the watermark to 500, still under 1000, separating "the watermark passed it" from
+	// Advances the flow watermark to 500, still under 1000, separating "the flow watermark passed it" from
 	// "another change came through".
 	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:00:00.500Z" }]"#);
 	assert!(db.await_all_flows(TIMEOUT), "the flow must drain before the view can be judged empty");
 
-	assert_eq!(db.row_count("FROM app::v"), 0, "no timer is due at watermark 500; the view must still be empty");
+	assert_eq!(db.row_count("FROM app::v"), 0, "no timer is due at flow watermark 500; the view must still be empty");
 
 	// Crosses both armed instants (1000 and 1500) at once.
 	db.command(r#"INSERT app::t [{ id: 3, g: 3, ts: "1970-01-01T00:01:00Z" }]"#);
@@ -205,9 +205,9 @@ fn a_fired_timer_hands_back_the_instant_and_key_it_was_armed_with() {
 	declare(&db);
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 7, ts: "1970-01-01T00:00:02.250Z" }]"#);
-	// Carries the watermark past group 7's armed instant, and arms its own for 601000.
+	// Carries the flow watermark past group 7's armed instant, and arms its own for 601000.
 	db.command(r#"INSERT app::t [{ id: 2, g: 9, ts: "1970-01-01T00:10:00Z" }]"#);
-	// Carries the watermark past group 9's. Its own timer (661000) stays armed and unfired, which
+	// Carries the flow watermark past group 9's. Its own timer (661000) stays armed and unfired, which
 	// is what holds the view at exactly two rows.
 	db.command(r#"INSERT app::t [{ id: 3, g: 11, ts: "1970-01-01T00:11:00Z" }]"#);
 
@@ -230,7 +230,7 @@ fn a_fired_timer_hands_back_the_instant_and_key_it_was_armed_with() {
 	assert_eq!(
 		db.row_count("FROM app::v"),
 		2,
-		"only timers the watermark has passed may fire; group 11's is still armed"
+		"only timers the flow watermark has passed may fire; group 11's is still armed"
 	);
 }
 
@@ -238,7 +238,7 @@ fn a_fired_timer_hands_back_the_instant_and_key_it_was_armed_with() {
 fn a_row_emitted_from_a_timer_carries_the_firing_instant_as_its_event_time() {
 	// A timer emission is an event-time fact: it happened at the instant armed for, not at the
 	// wall-clock moment the callback ran. Stamping from the clock yanks every downstream
-	// event-time consumer's watermark to the present, invisibly in the view's own columns.
+	// event-time consumer's flow watermark to the present, invisibly in the view's own columns.
 	let db = setup();
 	declare(&db);
 
@@ -260,7 +260,7 @@ fn a_row_emitted_from_a_timer_carries_the_firing_instant_as_its_event_time() {
 
 #[test]
 fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_woke_it() {
-	// A group with no further input of its own must still fire on another group's watermark.
+	// A group with no further input of its own must still fire on another group's flow watermark.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
@@ -275,7 +275,7 @@ fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_wok
 	assert_eq!(
 		db.await_row_count("FROM app::v filter { g == 1 }", 1, TIMEOUT),
 		1,
-		"group 1's timer must be released by the second insert's watermark and re-intern from inside \
+		"group 1's timer must be released by the second insert's flow watermark and re-intern from inside \
 		 the callback"
 	);
 }
@@ -390,7 +390,7 @@ fn declare_snooze(db: &TestDb, config: &str) {
 
 fn feed_snooze(db: &TestDb) {
 	// Group 1 arms at 1000, then re-arms at 1500 and cancels the 1000. Group 99 exists only to
-	// carry the watermark past both instants without touching group 1's armed timer.
+	// carry the flow watermark past both instants without touching group 1's armed timer.
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "1970-01-01T00:00:00Z" }]"#);
 	db.command(r#"INSERT app::t [{ id: 2, g: 1, ts: "1970-01-01T00:00:00.500Z" }]"#);
 	db.command(r#"INSERT app::t [{ id: 3, g: 99, ts: "1970-01-01T00:01:00Z" }]"#);

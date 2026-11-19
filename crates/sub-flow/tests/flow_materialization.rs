@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The flow caught-up watermark must be a materialization barrier for chains of any depth. A cursor
+// The flow caught-up position must be a materialization barrier for chains of any depth. A cursor
 // passing version V does not mean the effects of V are visible: in a multi-hop chain those effects
 // exist only as a later commit, so a plain min-of-cursors reports caught-up one commit early.
 
@@ -19,14 +19,14 @@ const ROUNDS: usize = 40;
 const OUTSTANDING_ROUNDS: usize = 300;
 
 fn await_caught_up(db: &TestDb) {
-	// Spins rather than delegating to `await_all_flows`: the defect is a watermark that crosses too
+	// Spins rather than delegating to `await_all_flows`: the defect is a caught-up position that crosses too
 	// early, so a sleep interval hands the chain enough time to finish and hides it.
 	let target = db.progress().tx().current().expect("current commit version");
 	let deadline = Clock::Real.instant() + BARRIER_TIMEOUT;
 	while db.progress().reader().flow_caught_up() < target {
 		assert!(
 			Clock::Real.instant() < deadline,
-			"the caught-up watermark never reached committed version {} - the materialization gate is \
+			"the caught-up position never reached committed version {} - the materialization gate is \
 			 stalled, not just imprecise",
 			target.0
 		);

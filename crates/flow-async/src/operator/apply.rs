@@ -265,7 +265,7 @@ mod tests {
 
 	#[test]
 	fn an_apply_without_a_window_or_lateness_holds_nothing() {
-		// Nothing in `with` gives the engine a span, so the watermark must pass through untouched.
+		// Nothing in `with` gives the engine a span, so the source watermark must pass through untouched.
 		let with = ApplyWith::default();
 
 		assert_eq!(operator(with).seal_span(), None);

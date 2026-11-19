@@ -286,8 +286,8 @@ mod tests {
 	}
 
 	#[test]
-	fn the_coordinate_one_span_behind_the_watermark_is_due_to_evict_at_that_watermark() {
-		// A rolling window holds (watermark - span, watermark] and evicts inclusively at the low
+	fn the_coordinate_one_span_behind_the_operator_watermark_is_due_to_evict_at_that_operator_watermark() {
+		// A rolling window holds (operator watermark - span, operator watermark] and evicts inclusively at the low
 		// end, so the coordinate exactly one span behind must arm at coord + span. Tumbling's
 		// strict +1 gate arms one tick late and the boundary entry then never expires.
 		let span = Duration::from_seconds(5).expect("representable span");
@@ -296,7 +296,7 @@ mod tests {
 		let armed = evict_instant(order(5_000), span);
 		assert!(
 			armed.to_order() <= operator_watermark,
-			"a coordinate exactly one span behind the watermark must already be due"
+			"a coordinate exactly one span behind the operator watermark must already be due"
 		);
 		assert_eq!(
 			ByDateTime(armed).saturating_sub_span(span).to_order(),

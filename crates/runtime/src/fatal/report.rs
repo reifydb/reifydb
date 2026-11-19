@@ -172,7 +172,7 @@ mod tests {
 	fn the_render_carries_every_field_a_ticket_needs() {
 		// Each field below is one a maintainer cannot reconstruct after the fact; dropping any turns the report
 		// into "it crashed".
-		let rendered = FatalReport::new(FatalKind::Invariant, "watermark moved backwards: 9 -> 4")
+		let rendered = FatalReport::new(FatalKind::Invariant, "source watermark moved backwards: 9 -> 4")
 			.component("flow supervisor")
 			.origin(Origin::new("crates/flow/src/x.rs", 12, 3))
 			.backtrace("0: reifydb_flow::x::apply\n1: reifydb_runtime::pool::run")
@@ -183,7 +183,7 @@ mod tests {
 		assert!(rendered.contains("id:        ERR-x:12"));
 		assert!(rendered.contains("kind:      invariant violated"));
 		assert!(rendered.contains("component: flow supervisor"));
-		assert!(rendered.contains("reason:    watermark moved backwards: 9 -> 4"));
+		assert!(rendered.contains("reason:    source watermark moved backwards: 9 -> 4"));
 		assert!(rendered.contains("location:  crates/flow/src/x.rs:12:3"));
 		assert!(rendered.contains("flow:      7"), "caller context must survive into the report");
 		assert!(rendered.contains("0: reifydb_flow::x::apply"));

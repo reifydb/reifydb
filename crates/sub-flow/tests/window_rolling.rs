@@ -167,7 +167,7 @@ fn an_event_view_over_an_event_source_buckets_by_the_declared_column_not_by_arri
 fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 	// The source declares no ts, so its #time is arrival, and the window buckets on that same
 	// stamp. This is now the whole contract for a processing-time source: it is legal, it creates
-	// without a declaration, and coordinate and watermark agree because both read #time. A
+	// without a declaration, and coordinate and flow watermark agree because both read #time. A
 	// companion test that asserted an event-time view over such a source was REFUSED was deleted
 	// with the flow-level time declaration - there is no longer a second clock to disagree with,
 	// so there is nothing left to refuse. The one fault this shape can still hide is stamping
@@ -204,7 +204,7 @@ fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 
 #[test]
 fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
-	// lateness follows the watermark, so without the 14:00 row nothing is late and refusal is never reached.
+	// lateness follows the flow watermark, so without the 14:00 row nothing is late and refusal is never reached.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { time: event(ts) }");
@@ -218,7 +218,7 @@ fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 10.0, ts: "2026-01-01T12:00:00Z" }]"#);
 	db.await_row_count("FROM app::r | filter { g == 1 and total == 10.0 }", 1, TIMEOUT);
 
-	// Carries the watermark past the 13:00 seal timer, which is what finally advances the ledger.
+	// Carries the flow watermark past the 13:00 seal timer, which is what finally advances the ledger.
 	// It also rolls the 12:00 contribution out of the 1h window, leaving group 1 on 20.
 	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 20.0, ts: "2026-01-01T14:00:00Z" }]"#);
 	db.await_row_count("FROM app::r | filter { g == 1 and total == 20.0 }", 1, TIMEOUT);
@@ -266,7 +266,7 @@ fn retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact() {
 		db.query_as_root("FROM app::r", ())
 	);
 
-	// 11:30 is still inside interval + lateness of the 13:00 watermark, so this delete is admitted
+	// 11:30 is still inside interval + lateness of the 13:00 flow watermark, so this delete is admitted
 	// and routed - but it targets a coordinate the window no longer holds.
 	db.command("DELETE app::t FILTER { id == 1 }");
 	db.await_all_flows(TIMEOUT);
@@ -497,7 +497,7 @@ fn a_retraction_inside_immutable_applies_to_a_rolling_percentile_and_the_min_bes
 }
 
 #[test]
-fn a_row_behind_the_watermark_reaches_no_subscriber_of_a_rolling_view() {
+fn a_row_behind_the_flow_watermark_reaches_no_subscriber_of_a_rolling_view() {
 	// a refused late row must emit nothing, otherwise a subscriber sees an update for a row the window never took.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
@@ -525,7 +525,7 @@ fn a_row_behind_the_watermark_reaches_no_subscriber_of_a_rolling_view() {
 	let frames = sub.drain(usize::MAX);
 	assert!(
 		frames.is_empty(),
-		"a row two hours behind the watermark must reach no subscriber, got {:?}",
+		"a row two hours behind the flow watermark must reach no subscriber, got {:?}",
 		frames.iter().map(|f| f.op).collect::<Vec<_>>()
 	);
 }

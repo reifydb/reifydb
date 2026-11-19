@@ -31,10 +31,10 @@ fn insert(db: &TestDb, id: i32, v: i32, ts: &str) {
 }
 
 #[test]
-fn a_row_expires_during_replay_once_the_event_watermark_passes_its_ttl() {
+fn a_row_expires_during_replay_once_the_operator_watermark_passes_its_ttl() {
 	// Replaying a day of history in a second must expire rows at the same event-time boundaries
 	// the live feed would, so the buffer holds one ttl-window of data rather than of ingestion.
-	// Nothing waits on wall time: the second insert is what carries the watermark past row 1.
+	// Nothing waits on wall time: the second insert is what carries the flow watermark past row 1.
 	let db = setup();
 	event_ring(&db, "1h");
 
@@ -53,14 +53,14 @@ fn a_row_expires_during_replay_once_the_event_watermark_passes_its_ttl() {
 	assert_eq!(
 		db.await_exact_row_count("FROM app::rb FILTER { id == 2 }", 1, TIMEOUT),
 		1,
-		"the row that advanced the watermark is itself still inside its ttl and must survive"
+		"the row that advanced the flow watermark is itself still inside its ttl and must survive"
 	);
 }
 
 #[test]
-fn a_frozen_event_watermark_keeps_a_row_far_past_its_ttl_in_wall_time() {
+fn a_frozen_operator_watermark_keeps_a_row_far_past_its_ttl_in_wall_time() {
 	// The mirror of the test above, and the one that catches a clock read: wall time blows past a
-	// 1s ttl while the event watermark stays put, and a stopped feed must hold rather than empty
+	// 1s ttl while the operator watermark stays put, and a stopped feed must hold rather than empty
 	// itself. The sleep is not a race - the assertion is absence, so a longer one is only stricter.
 	let db = setup();
 	event_ring(&db, "1s");
@@ -73,14 +73,14 @@ fn a_frozen_event_watermark_keeps_a_row_far_past_its_ttl_in_wall_time() {
 	assert_eq!(
 		db.await_exact_row_count("FROM app::rb FILTER { id == 1 }", 1, TIMEOUT),
 		1,
-		"the feed stopped, so the event watermark never reached the row's expiry; view now: {:?}",
+		"the feed stopped, so the operator watermark never reached the row's expiry; view now: {:?}",
 		db.query_as_root("FROM app::rb", ())
 	);
 }
 
 #[test]
 fn an_idle_ring_buffer_holds_and_drains_on_the_next_arrival() {
-	// A watermark only moves when rows arrive, so an idle ring must hold its rows however long the
+	// A flow watermark only moves when rows arrive, so an idle ring must hold its rows however long the
 	// wall clock runs - a clock-driven drain would evict different rows when the same stream is
 	// replayed later. It is the next arrival, stamped past the ttl, that finally expires the head.
 	// Both rings read the same event-time source and so run on the same clock; they differ only in
@@ -106,7 +106,7 @@ fn an_idle_ring_buffer_holds_and_drains_on_the_next_arrival() {
 	assert_eq!(
 		db.await_exact_row_count("FROM app::drained FILTER { id == 1 }", 1, TIMEOUT),
 		1,
-		"an idle ring must hold: its watermark never reached the expiry; view now: {:?}",
+		"an idle ring must hold: its flow watermark never reached the expiry; view now: {:?}",
 		db.query_as_root("FROM app::drained", ())
 	);
 
@@ -116,7 +116,7 @@ fn an_idle_ring_buffer_holds_and_drains_on_the_next_arrival() {
 		db.await_exact_row_count("FROM app::drained FILTER { id == 1 }", 0, TIMEOUT),
 		0,
 		"the second arrival is stamped more than one ttl after row 1, so it must carry the \
-		 watermark past row 1's expiry; view now: {:?}",
+		 flow watermark past row 1's expiry; view now: {:?}",
 		db.query_as_root("FROM app::drained", ())
 	);
 	assert_eq!(

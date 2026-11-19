@@ -59,7 +59,7 @@ where
 		if roll < scenario.tick_pct {
 			let drawn = rng.random_range(1..=scenario.coord_span_ms / 2);
 			flow_watermark = flow_watermark.saturating_add(drawn).min(arrival);
-			trace.push(format!("step {step}: seal at {watermark}"));
+			trace.push(format!("step {step}: seal at {flow_watermark}"));
 			fingerprint = mix(mix(fingerprint, 1), flow_watermark);
 			session.tick(flow_watermark).expect("tick must succeed");
 			model.advance_ledger(flow_watermark);

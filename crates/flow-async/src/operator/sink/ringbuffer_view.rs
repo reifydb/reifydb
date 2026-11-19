@@ -1432,7 +1432,7 @@ mod tests {
 
 	#[test]
 	fn a_timer_that_fires_before_anything_expires_evicts_nothing() {
-		// The direction a cold start lands in: a watermark short of row_time + ttl must find
+		// The direction a cold start lands in: an output watermark short of row_time + ttl must find
 		// nothing due and never fall back to "evict what looks old".
 		let engine = TestEngine::new();
 		let mut op = build_op(true, Some(hour_ttl()));
@@ -1443,7 +1443,7 @@ mod tests {
 		assert_eq!(
 			row_entry_count(&engine, &op, &base("us")),
 			2,
-			"a watermark younger than the horizon may evict nothing"
+			"an output watermark younger than the horizon may evict nothing"
 		);
 		assert_eq!(metadata(&engine, &base("us")).unwrap().count, 2);
 	}
@@ -1461,7 +1461,7 @@ mod tests {
 		let out = fire(&engine, &mut op, &base("us"), AFTER);
 		assert!(
 			out.is_some(),
-			"an eviction that reclaims real rows must still advance the operator's watermark"
+			"an eviction that reclaims real rows must still advance the operator's output watermark"
 		);
 
 		assert!(
@@ -1517,7 +1517,7 @@ mod tests {
 		let emitted = txn.emitted;
 		commit_flow_pending(&engine, &mut txn);
 
-		assert!(out.is_some(), "reclaiming real rows must still advance the operator's watermark");
+		assert!(out.is_some(), "reclaiming real rows must still advance the operator's output watermark");
 		assert!(!emitted, "ttl expiry must never mark the transaction as having emitted output");
 		assert!(!row_writes.is_empty(), "ttl expiry must remove the expired rows");
 		assert!(
