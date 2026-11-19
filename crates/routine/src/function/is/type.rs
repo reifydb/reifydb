@@ -99,7 +99,7 @@ impl Function for IsType {
 		Arity::Exact(2)
 	}
 
-	fn type_argument_positions(&self) -> &[usize] {
+	fn type_argument_indexes(&self) -> &[usize] {
 		&[1]
 	}
 }

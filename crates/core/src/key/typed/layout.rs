@@ -314,7 +314,7 @@ mod tests {
 	}
 
 	#[test]
-	fn key_values_are_positional_and_typed_like_the_columns() {
+	fn key_values_are_ordinal_and_typed_like_the_columns() {
 		// the binder walks COLUMNS and key_values() in lockstep, so a length or type disagreement binds
 		// a u64 into a blob column and sqlite accepts it without complaint
 		let key = probe(9, 3);

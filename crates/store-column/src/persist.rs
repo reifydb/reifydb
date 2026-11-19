@@ -421,7 +421,7 @@ mod tests {
 	}
 
 	#[test]
-	fn round_trips_nullable_column_preserving_none_positions() {
+	fn round_trips_nullable_column_preserving_none_indexes() {
 		let mut buffer = ColumnBuilder::with_capacity(ValueType::Int4, 4);
 		buffer.push::<i32>(10);
 		buffer.push_none();

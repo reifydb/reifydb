@@ -32,7 +32,7 @@ struct Case {
 }
 
 fn case(name: &'static str, function: impl Function + 'static, columns: Vec<Column>, constants: Vec<Value>) -> Case {
-	// Every position needs a varying column and a constant, otherwise a position goes unchecked.
+	// Every argument needs a varying column and a constant, otherwise an argument goes unchecked.
 	assert_eq!(columns.len(), constants.len(), "{name}");
 	assert!(columns.iter().all(|(_, array)| array.len() == ROWS), "{name}");
 	Case {
@@ -53,17 +53,17 @@ fn ctx(name: &str, row_count: usize) -> FunctionContext<'static> {
 	}
 }
 
-fn arg(position: usize) -> String {
-	format!("arg{position}")
+fn arg(index: usize) -> String {
+	format!("arg{index}")
 }
 
-fn constant(value: &Value, position: usize, rows: usize) -> Column {
-	from_many(&arg(position), value.clone(), rows)
+fn constant(value: &Value, index: usize, rows: usize) -> Column {
+	from_many(&arg(index), value.clone(), rows)
 }
 
-fn none_constant(value: &Value, position: usize, rows: usize) -> Column {
-	let value_type = ColumnView::try_from(&constant(value, position, 1)).unwrap().get_type();
-	none_typed(&arg(position), value_type, rows)
+fn none_constant(value: &Value, index: usize, rows: usize) -> Column {
+	let value_type = ColumnView::try_from(&constant(value, index, 1)).unwrap().get_type();
+	none_typed(&arg(index), value_type, rows)
 }
 
 fn compare(case: &Case, label: &str, short: Vec<Column>, full: Vec<Column>, wrong: &mut Vec<String>) {
@@ -83,39 +83,39 @@ fn compare(case: &Case, label: &str, short: Vec<Column>, full: Vec<Column>, wron
 }
 
 fn check(case: &Case, wrong: &mut Vec<String>) {
-	for (position, value) in case.constants.iter().enumerate() {
+	for (index, value) in case.constants.iter().enumerate() {
 		let replaced = |column: Column| {
 			let mut args = case.columns.clone();
-			args[position] = column;
+			args[index] = column;
 			args
 		};
 		compare(
 			case,
-			&format!("constant at {position}"),
-			replaced(constant(value, position, 1)),
-			replaced(constant(value, position, ROWS)),
+			&format!("constant at {index}"),
+			replaced(constant(value, index, 1)),
+			replaced(constant(value, index, ROWS)),
 			wrong,
 		);
 		compare(
 			case,
-			&format!("none constant at {position}"),
-			replaced(none_constant(value, position, 1)),
-			replaced(none_constant(value, position, ROWS)),
+			&format!("none constant at {index}"),
+			replaced(none_constant(value, index, 1)),
+			replaced(none_constant(value, index, ROWS)),
 			wrong,
 		);
 	}
 	let all = |rows: usize| -> Vec<Column> {
-		case.constants.iter().enumerate().map(|(position, value)| constant(value, position, rows)).collect()
+		case.constants.iter().enumerate().map(|(index, value)| constant(value, index, rows)).collect()
 	};
 	compare(case, "every argument constant", all(1), all(ROWS), wrong);
 }
 
-fn words(position: usize, values: [&str; ROWS]) -> Column {
-	utf8(&arg(position), values)
+fn words(index: usize, values: [&str; ROWS]) -> Column {
+	utf8(&arg(index), values)
 }
 
-fn ints(position: usize, values: [i32; ROWS]) -> Column {
-	int4(&arg(position), values)
+fn ints(index: usize, values: [i32; ROWS]) -> Column {
+	int4(&arg(index), values)
 }
 
 fn cases() -> Vec<Case> {

@@ -181,7 +181,7 @@ fn key_rows(diff: &Diff) -> Result<&[RowNumber], ValueError> {
 				assert!(
 					row_numbers(pre)? == row_numbers(post)?,
 					"diff consolidation keys an update row by its post row number and pairs \
-					 the pre row positionally; a pre row carrying a different row number \
+					 the pre row by index; a pre row carrying a different row number \
 					 would retract a different row than the one this update claims to \
 					 replace (pre={:?}, post={:?})",
 					row_numbers(pre)?,
@@ -281,19 +281,19 @@ fn is_canonical(diffs: &[Diff]) -> Result<bool, ValueError> {
 	let mut keys: Option<HashSet<(Option<&ChangeOrigin>, RowNumber)>> = None;
 	let mut closed: Vec<Option<&ChangeOrigin>> = Vec::new();
 	let mut run_start = 0;
-	for (position, diff) in diffs.iter().enumerate() {
-		if position > 0 {
-			let last = &diffs[position - 1];
+	for (index, diff) in diffs.iter().enumerate() {
+		if index > 0 {
+			let last = &diffs[index - 1];
 			if last.origin() != diff.origin() {
 				if closed.contains(&diff.origin()) {
 					return Ok(false);
 				}
 				closed.push(last.origin());
-				run_start = position;
+				run_start = index;
 			} else if kind_bit(diff.kind()) < kind_bit(last.kind()) {
 				return Ok(false);
 			}
-			let shares_columns = diffs[run_start..position].iter().any(|earlier| {
+			let shares_columns = diffs[run_start..index].iter().any(|earlier| {
 				earlier.kind() == diff.kind()
 					&& earlier.pre().zip(diff.pre()).is_none_or(|(a, b)| same_columns(a, b))
 					&& earlier.post().zip(diff.post()).is_none_or(|(a, b)| same_columns(a, b))
@@ -303,8 +303,8 @@ fn is_canonical(diffs: &[Diff]) -> Result<bool, ValueError> {
 			}
 		}
 		let rows = key_rows(diff)?;
-		if keys.is_none() && !keys_apart(&diffs[run_start..position], rows)? {
-			keys = Some(seen_keys(&diffs[..position])?);
+		if keys.is_none() && !keys_apart(&diffs[run_start..index], rows)? {
+			keys = Some(seen_keys(&diffs[..index])?);
 		}
 		if let Some(keys) = keys.as_mut() {
 			for &row in rows {
@@ -812,7 +812,7 @@ mod tests {
 	#[test]
 	fn update_batch_split_keeps_pre_post_alignment() {
 		// Splitting a multi-row update batch must keep pre and post paired by index; a survivor
-		// whose pre image slipped to another row's position would retract the wrong row.
+		// whose pre image slipped to another row's index would retract the wrong row.
 		let out = consolidate_diffs(vec![update(&[(1, 10), (2, 20)], &[(1, 11), (2, 21)]), remove(&[(1, 11)])])
 			.unwrap();
 		assert_eq!(out.len(), 2);

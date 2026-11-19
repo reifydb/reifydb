@@ -67,7 +67,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingHandlersInvoked {
 
 fn extract_optional_string_param(params: &Params) -> Option<String> {
 	match params {
-		Params::Positional(args) if !args.is_empty() => match &args[0] {
+		Params::Ordinal(args) if !args.is_empty() => match &args[0] {
 			Value::Utf8(s) => Some(s.clone()),
 			_ => None,
 		},

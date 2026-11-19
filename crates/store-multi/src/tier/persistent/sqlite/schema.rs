@@ -672,12 +672,12 @@ mod series_bound_tests {
 		let range = SeriesRowKeyRange::scan_range(storage(), true, Some(7), None, None, Some(&cursor)).encode();
 		let selected = assert_agrees(SqliteSchema::Series, &universe, &range, "series resumed scan");
 		assert!(selected > 0);
-		let position = universe
+		let index = universe
 			.iter()
 			.position(|key| *key == cursor.encode())
 			.expect("the cursor row is in the universe");
 		assert!(
-			!selected_by_columns(SqliteSchema::Series, &universe, &range).contains(&position),
+			!selected_by_columns(SqliteSchema::Series, &universe, &range).contains(&index),
 			"the cursor row itself must not be replayed"
 		);
 	}

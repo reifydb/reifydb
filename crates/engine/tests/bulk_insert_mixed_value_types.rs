@@ -16,12 +16,12 @@ const TARGETS: [&str; 3] = ["s::t", "s::r", "s::x"];
 #[derive(Clone, Copy, Debug)]
 enum Mode {
 	Named,
-	Positional,
+	Ordinal,
 	UncheckedNamed,
-	UncheckedPositional,
+	UncheckedOrdinal,
 }
 
-const MODES: [Mode; 4] = [Mode::Named, Mode::Positional, Mode::UncheckedNamed, Mode::UncheckedPositional];
+const MODES: [Mode; 4] = [Mode::Named, Mode::Ordinal, Mode::UncheckedNamed, Mode::UncheckedOrdinal];
 
 fn engine(column_type: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -42,7 +42,7 @@ fn rows(mode: Mode, values: &[Value]) -> Vec<Params> {
 					("k".to_string(), k),
 					("d".to_string(), d.clone()),
 				])),
-				Mode::Positional | Mode::UncheckedPositional => Params::from(vec![k, d.clone()]),
+				Mode::Ordinal | Mode::UncheckedOrdinal => Params::from(vec![k, d.clone()]),
 			}
 		})
 		.collect()
@@ -70,8 +70,8 @@ fn execute<V: ValidationMode>(
 fn bulk(t: &TestEngine, target: &str, mode: Mode, values: &[Value]) -> Result<(), Box<Diagnostic>> {
 	let rows = rows(mode, values);
 	match mode {
-		Mode::Named | Mode::Positional => execute(t.bulk_insert(TestEngine::identity()), target, rows),
-		Mode::UncheckedNamed | Mode::UncheckedPositional => {
+		Mode::Named | Mode::Ordinal => execute(t.bulk_insert(TestEngine::identity()), target, rows),
+		Mode::UncheckedNamed | Mode::UncheckedOrdinal => {
 			execute(t.bulk_insert_unchecked(TestEngine::identity()), target, rows)
 		}
 	}

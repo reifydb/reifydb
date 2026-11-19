@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use reifydb_codec::log::{LogIndex, LogVersion, Position, Term, record::Record};
+use reifydb_codec::log::{LogIndex, LogOffset, LogVersion, Term, record::Record};
 use reifydb_runtime::{
 	fatal::{
 		fatal, is_armed,
@@ -79,7 +79,7 @@ where
 		}
 	}
 
-	pub fn commit(&self, record: &Record) -> Result<Position, StoreLogError> {
+	pub fn commit(&self, record: &Record) -> Result<LogOffset, StoreLogError> {
 		let mut state = self.inner.state.lock();
 		if state.stopped {
 			return Err(stopped_error(&state));
@@ -94,10 +94,10 @@ where
 			});
 		}
 		state.writes += 1;
-		let position = state.partition.append(record)?;
+		let offset = state.partition.append(record)?;
 		state.written = Some(record.version);
 		state.active = active_of(&state.partition);
-		Ok(position)
+		Ok(offset)
 	}
 
 	pub fn flush(&self) -> Result<(), StoreLogError> {

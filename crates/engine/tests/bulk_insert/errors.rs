@@ -84,7 +84,7 @@ fn test_error_too_many_values() {
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::small { a: int4, b: int4 }");
 
-	// Five positional values against two columns must fault rather than be truncated.
+	// Five ordinal values against two columns must fault rather than be truncated.
 	let mut builder = t.bulk_insert(identity);
 	builder.table("test::small").row(params![1, 2, 3, 4, 5]).done();
 	let result = builder.execute();

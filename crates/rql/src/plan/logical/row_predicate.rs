@@ -164,7 +164,7 @@ fn extract_row_key(expr: &Expression) -> Option<RowKey> {
 	match expr {
 		Expression::Variable(variable) => Some(RowKey::Variable(variable.clone())),
 		Expression::Parameter(
-			ParameterExpression::Positional {
+			ParameterExpression::Ordinal {
 				fragment,
 			}
 			| ParameterExpression::Named {
@@ -374,7 +374,7 @@ pub mod tests {
 		let range = Expression::Between(BetweenExpression {
 			value: Box::new(make_rownum_column()),
 			lower: Box::new(make_constant(100)),
-			upper: Box::new(Expression::Parameter(ParameterExpression::Positional {
+			upper: Box::new(Expression::Parameter(ParameterExpression::Ordinal {
 				fragment: Fragment::internal("$2"),
 			})),
 			fragment: Fragment::internal("between"),

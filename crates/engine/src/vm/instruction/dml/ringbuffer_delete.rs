@@ -224,11 +224,11 @@ fn delete_ringbuffer_rows(
 	let catalog = &services.catalog;
 	let mut ring = Ring::new(ringbuffer.capacity);
 	let mut grouped: Vec<(Option<Partition>, Vec<RowNumber>)> = Vec::new();
-	let mut position: HashMap<Option<Partition>, usize> = HashMap::new();
+	let mut group_index: HashMap<Option<Partition>, usize> = HashMap::new();
 	match rows_filter {
 		Some(rows) => {
 			for (partition, row) in rows {
-				let index = *position.entry(partition).or_insert_with(|| {
+				let index = *group_index.entry(partition).or_insert_with(|| {
 					grouped.push((partition, Vec::new()));
 					grouped.len() - 1
 				});

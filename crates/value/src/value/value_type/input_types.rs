@@ -29,7 +29,7 @@ impl InputTypes {
 		])
 	}
 
-	pub fn expected_at(&self, position: usize) -> &[ValueType] {
-		self.0.get(position).map(|v| v.as_slice()).unwrap_or(&[])
+	pub fn expected_at(&self, index: usize) -> &[ValueType] {
+		self.0.get(index).map(|v| v.as_slice()).unwrap_or(&[])
 	}
 }

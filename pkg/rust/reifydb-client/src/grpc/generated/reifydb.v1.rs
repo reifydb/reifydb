@@ -193,13 +193,13 @@ pub mod params {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Params {
         #[prost(message, tag = "1")]
-        Positional(super::PositionalParams),
+        Ordinal(super::OrdinalParams),
         #[prost(message, tag = "2")]
         Named(super::NamedParams),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PositionalParams {
+pub struct OrdinalParams {
     #[prost(message, repeated, tag = "1")]
     pub values: ::prost::alloc::vec::Vec<TypedValue>,
 }

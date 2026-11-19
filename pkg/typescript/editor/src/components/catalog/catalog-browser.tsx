@@ -158,8 +158,8 @@ export function CatalogBrowser({ executor, namespaces, expandedPaths, onSelect }
         queryRows(executor, 'FROM system::views MAP { id, namespace_id, name, kind }'),
         queryRows(executor, 'FROM system::virtual_tables MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::ringbuffers MAP { id, namespace_id, name }'),
-        queryRows(executor, 'FROM system::columns MAP { object_id, object_kind, name, type, position }'),
-        queryRows(executor, 'FROM system::virtual_table::columns MAP { vtable_id, name, type, position }'),
+        queryRows(executor, 'FROM system::columns MAP { object_id, object_kind, name, type, ordinal }'),
+        queryRows(executor, 'FROM system::virtual_table::columns MAP { vtable_id, name, type, ordinal }'),
         Promise.all(
           procedureKinds.map((kind) =>
             queryRows(executor, `FROM system::procedure::${kind} MAP { id, namespace_id, name }`),
@@ -187,14 +187,14 @@ export function CatalogBrowser({ executor, namespaces, expandedPaths, onSelect }
       }
 
       const columnsBySource = new Map<string, ColumnInfo[]>();
-      const rawColumns = new Map<string, { name: string; type: string; position: number }[]>();
+      const rawColumns = new Map<string, { name: string; type: string; ordinal: number }[]>();
       for (const row of colRows) {
         const key = `${extractNum(row.object_type)}:${extractNum(row.object_id)}`;
         if (!rawColumns.has(key)) rawColumns.set(key, []);
         rawColumns.get(key)!.push({
           name: extractStr(row.name),
           type: resolveTypeName(extractNum(row.type)),
-          position: extractNum(row.position),
+          ordinal: extractNum(row.ordinal),
         });
       }
       for (const row of vtableColRows) {
@@ -203,11 +203,11 @@ export function CatalogBrowser({ executor, namespaces, expandedPaths, onSelect }
         rawColumns.get(key)!.push({
           name: extractStr(row.name),
           type: resolveTypeName(extractNum(row.type)),
-          position: extractNum(row.position),
+          ordinal: extractNum(row.ordinal),
         });
       }
       for (const [key, cols] of rawColumns) {
-        cols.sort((a, b) => a.position - b.position);
+        cols.sort((a, b) => a.ordinal - b.ordinal);
         columnsBySource.set(key, cols.map(c => ({ name: c.name, type: c.type })));
       }
 

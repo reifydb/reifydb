@@ -1119,9 +1119,9 @@ mod partitioned_row_key_tests {
 
 		let mut keys = [us_a.clone(), us_b.clone(), eu.clone()];
 		keys.sort();
-		let us_positions: Vec<usize> =
+		let us_indexes: Vec<usize> =
 			keys.iter().enumerate().filter(|(_, k)| **k == us_a || **k == us_b).map(|(i, _)| i).collect();
-		assert_eq!(us_positions[1] - us_positions[0], 1, "us partition rows must be contiguous");
+		assert_eq!(us_indexes[1] - us_indexes[0], 1, "us partition rows must be contiguous");
 	}
 
 	#[test]

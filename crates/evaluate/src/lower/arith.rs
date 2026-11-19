@@ -189,7 +189,7 @@ mod tests {
 	#[test]
 	fn two_arith_calls_at_different_spans_are_not_equal() {
 		// CSE merges calls that compare equal, so an arith call blind to its span would lose its error
-		// position.
+		// location.
 		assert_ne!(add_at(1), add_at(9));
 		assert_eq!(add_at(1), add_at(1));
 	}

@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_codec::log::{
-	LogIndex, LogVersion, Position,
+	LogIndex, LogOffset, LogVersion,
 	record::{HEADER_BYTES, Record},
 };
 use reifydb_core::{
@@ -90,7 +90,7 @@ impl RecordCursor for CommitCursor<'_> {
 impl Device for CommitDevice {}
 
 impl Append for CommitDevice {
-	fn append(&self, record: &Record) -> Result<Position, WalError> {
+	fn append(&self, record: &Record) -> Result<LogOffset, WalError> {
 		match self {
 			Self::Log(log) => Append::append(log, record),
 			Self::Nop(nop, _) => nop.append(record),
@@ -261,7 +261,7 @@ pub fn memory_wal_with_mode(clock: Clock, config: WalConfig) -> Result<CommitWal
 pub fn nop_wal(segment_bytes: ByteSize) -> Result<CommitWal, WalError> {
 	let scan = Scan {
 		records: Vec::new(),
-		end: Position::ZERO,
+		end: LogOffset::ZERO,
 		stop: Stop::Unwritten,
 	};
 	let (wal, _) = Wal::open(CommitDevice::Nop(NopDevice::new(), segment_bytes), vec![scan], WalMode::Off)?;

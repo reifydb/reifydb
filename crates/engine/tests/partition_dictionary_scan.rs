@@ -49,14 +49,14 @@ fn a_dictionary_partition_key_answers_exactly_what_the_plain_filter_answers() {
 				&format!(
 					"FROM {source} | filter {{ pool == $1 }} | sort {{ id: ASC }} | map {{ v: id }}"
 				),
-				positional(vec![key.clone()]),
+				ordinal(vec![key.clone()]),
 			);
 			let plain = run(
 				&t,
 				&format!(
 					"FROM {source} | filter {{ (pool == $1) == true }} | sort {{ id: ASC }} | map {{ v: id }}"
 				),
-				positional(vec![key.clone()]),
+				ordinal(vec![key.clone()]),
 			);
 			assert_eq!(pruned, plain, "{source} with {key:?}");
 		}
@@ -69,12 +69,8 @@ fn a_dictionary_partition_key_answers_the_rows_of_its_partition() {
 	let t = engine();
 	for source in ["test::t", "test::v", "test::rb", "test::plain"] {
 		let by_key = format!("FROM {source} | filter {{ pool == $1 }} | sort {{ id: ASC }} | map {{ v: id }}");
-		assert_eq!(
-			run(&t, &by_key, positional(vec![Value::Utf8("a".to_string())])),
-			ids(&["1", "3"]),
-			"{source}"
-		);
-		assert_eq!(run(&t, &by_key, positional(vec![Value::Utf8("never".to_string())])), ids(&[]), "{source}");
+		assert_eq!(run(&t, &by_key, ordinal(vec![Value::Utf8("a".to_string())])), ids(&["1", "3"]), "{source}");
+		assert_eq!(run(&t, &by_key, ordinal(vec![Value::Utf8("never".to_string())])), ids(&[]), "{source}");
 
 		let constant =
 			format!("FROM {source} | filter {{ pool == 'b' }} | sort {{ id: ASC }} | map {{ v: id }}");
@@ -137,8 +133,8 @@ enum Answer {
 	Error(String, String),
 }
 
-fn positional(values: Vec<Value>) -> Params {
-	Params::Positional(Arc::new(values))
+fn ordinal(values: Vec<Value>) -> Params {
+	Params::Ordinal(Arc::new(values))
 }
 
 fn ids(values: &[&str]) -> Answer {

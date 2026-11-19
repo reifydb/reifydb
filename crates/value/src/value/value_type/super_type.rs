@@ -310,7 +310,7 @@ mod tests {
 
 	#[test]
 	fn any_is_absorbing() {
-		// Any is the top of the lattice, so it wins from any position and against types that
+		// Any is the top of the lattice, so it wins in any argument and against types that
 		// otherwise dominate or short-circuit the fold.
 		let others = [Int4, Uint8, Utf8, Boolean, Float4, Float8, Date, Uuid4, Blob, opt(Int4)];
 		for ty in &others {

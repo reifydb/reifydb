@@ -1787,7 +1787,7 @@ mod tests {
 
 		assert!(
 			txn.pending.write_at(&RingBufferMetadataKey::encoded(RB)).is_none(),
-			"an update moves no ring position, so the metadata row must not be rewritten"
+			"an update moves no ring slot, so the metadata row must not be rewritten"
 		);
 		assert!(
 			txn.pending.write_at(&scoped_key(OperatorId(1), &op.meta_key(None))).is_none(),

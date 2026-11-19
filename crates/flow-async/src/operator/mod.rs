@@ -94,10 +94,10 @@ pub enum InputOrder {
 
 #[cfg(feature = "runtime")]
 impl InputOrder {
-	pub fn rank(self, position: usize, arity: usize) -> usize {
+	pub fn rank(self, index: usize, arity: usize) -> usize {
 		match self {
-			InputOrder::Declared => position,
-			InputOrder::Reversed => arity.saturating_sub(position + 1),
+			InputOrder::Declared => index,
+			InputOrder::Reversed => arity.saturating_sub(index + 1),
 		}
 	}
 }

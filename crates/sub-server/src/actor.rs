@@ -295,7 +295,7 @@ fn validate_call_params(procedure: &Procedure, params: &Params) -> Result<(), Bo
 				}
 			}
 		}
-		Params::Positional(_) => {
+		Params::Ordinal(_) => {
 			return Err(call_diagnostic("INVALID_PARAMS", "Call requires named params".to_string()));
 		}
 	}

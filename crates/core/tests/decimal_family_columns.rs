@@ -31,8 +31,8 @@ fn take_column(column: &(FieldRef, ArrayRef), indices: &[usize]) -> (FieldRef, A
 
 fn user_column(rows: &RecordBatch, index: usize) -> ColumnView<'_> {
 	let schema = rows.schema_ref();
-	let position = (0..rows.num_columns()).filter(|&i| !is_system_field(schema.field(i))).nth(index).unwrap();
-	ColumnView::try_from((rows.column(position), schema.field(position))).unwrap()
+	let field_index = (0..rows.num_columns()).filter(|&i| !is_system_field(schema.field(i))).nth(index).unwrap();
+	ColumnView::try_from((rows.column(field_index), schema.field(field_index))).unwrap()
 }
 
 fn user_column_count(rows: &RecordBatch) -> usize {

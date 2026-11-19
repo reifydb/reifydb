@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_value::{error, error::ValueError, fragment::Fragment, value::system_columns::is_system_field};
 
-pub(crate) fn access_position(batch: &RecordBatch, expr: &AccessObjectExpression) -> Result<usize, ValueError> {
+pub(crate) fn access_index(batch: &RecordBatch, expr: &AccessObjectExpression) -> Result<usize, ValueError> {
 	let source = match &expr.column.object {
 		ColumnObject::Qualified {
 			name,

@@ -22,7 +22,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		column_view::ColumnView,
-		system_columns::{sumtype_tag_position, user_columns},
+		system_columns::{sumtype_tag_index, user_columns},
 	},
 };
 use tracing::instrument;
@@ -95,7 +95,7 @@ impl DistinctNode {
 					.fields()
 					.iter()
 					.position(|field| field.name() == column.name())
-					.or_else(|| sumtype_tag_position(all_columns, column.name()))
+					.or_else(|| sumtype_tag_index(all_columns, column.name()))
 					.ok_or_else(|| error!(query::column_not_found(column.identifier().clone())))?;
 				let (field, array) = (&schema.fields()[index], all_columns.column(index));
 				let view = ColumnView::try_from((array, field.as_ref()))?;

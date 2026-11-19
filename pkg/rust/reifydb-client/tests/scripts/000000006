@@ -1,8 +1,8 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the Apache-2.0
 
-# Test query with positional parameters
-query_positional 'MAP { x: $1, y: $2 }' 42 'hello'
+# Test query with ordinal parameters
+query_ordinal 'MAP { x: $1, y: $2 }' 42 'hello'
 ---
 > +------+---------+
 > |  x   |    y    |

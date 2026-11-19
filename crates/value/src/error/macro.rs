@@ -85,7 +85,7 @@ pub mod tests {
 
 	#[test]
 	fn test_error_macro_with_fragment() {
-		// The fragment is what anchors a diagnostic to a source position, so the macro must
+		// The fragment is what anchors a diagnostic to a source location, so the macro must
 		// attach it rather than drop it.
 		let fragment = Fragment::Statement {
 			line: StatementLine(42),

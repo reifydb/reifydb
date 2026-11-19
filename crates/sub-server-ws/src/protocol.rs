@@ -211,7 +211,7 @@ mod tests {
 	}
 
 	#[test]
-	fn each_query_runs_with_the_params_at_its_own_position() {
+	fn each_query_runs_with_the_params_at_its_own_index() {
 		// Each query must bind the params at its own index, or a subscription runs with another's id.
 		let queries = subscribe(
 			r#"{"id":"s-1","type":"Subscribe","payload":{"subscriptions":[{"rql":"from a","params":{"monitor_id":{"type":{"id":"Utf8"},"value":"m-1"}}},{"rql":"from b","params":{"monitor_id":{"type":{"id":"Utf8"},"value":"m-2"}}}]}}"#,
@@ -236,7 +236,7 @@ mod tests {
 		.unwrap();
 
 		assert_eq!(queries[0].1, Params::None);
-		assert_eq!(queries[1].1.get_positional(0), Some(&Value::Int4(7)));
+		assert_eq!(queries[1].1.get_ordinal(0), Some(&Value::Int4(7)));
 	}
 
 	#[test]

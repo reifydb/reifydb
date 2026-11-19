@@ -1,0 +1,11 @@
+# Generated from: params_ordinal.tap.md#decimal_param
+# Test: Ordinal parameter with decimal type (query operation)
+
+query_ordinal 'MAP {result: $1}' '123.456789'
+---
+> +--------------+
+> |    result    |
+> +--------------+
+> |  123.456789  |
+> +--------------+
+>

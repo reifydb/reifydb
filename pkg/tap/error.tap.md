@@ -95,4 +95,4 @@ All errors should include:
 2. **Location Info**: Verify that line/column information is provided when applicable
 3. **Error Chains**: For nested errors, verify the full cause chain
 4. **Both Operations**: Test errors in both `command` and `query` operations
-5. **Parameter Types**: Test errors with named, positional, and no parameters
+5. **Parameter Types**: Test errors with named, ordinal, and no parameters

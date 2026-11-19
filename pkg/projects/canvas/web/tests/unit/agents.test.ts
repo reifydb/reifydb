@@ -20,7 +20,7 @@ describe('summarize', () => {
   })
 
   it('keeps the newest name whatever order the rows arrive in', () => {
-    // Aggregate output has no order guarantee, so the newest name must come from last, not position.
+    // Aggregate output has no order guarantee, so the newest name must come from last, not row order.
     const agents = summarize([row('o', 'alice', 7, 200), row('o', 'old-name', 5, 100)])
     expect(agents.painters[0].name).toBe('alice')
     expect(agents.painters[0].painted).toBe(12)

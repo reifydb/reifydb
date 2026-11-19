@@ -207,7 +207,7 @@ describe('subscriptions over the native bridge', () => {
   })
 
   it('returns the subscription ids in the order the subscriptions were given', async () => {
-    // The ack reports each subscription by index, not by position in its own list. If that index were
+    // The ack reports each subscription by index, not by its place in its own list. If that index were
     // ignored the ids would still all be present and every callback would still fire, so only
     // unsubscribing one specific subscription can show the mapping is right.
     await secondView(db)

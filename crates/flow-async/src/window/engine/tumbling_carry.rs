@@ -403,7 +403,7 @@ where
 		let rank: HashMap<(G, S), usize> = order
 			.iter()
 			.enumerate()
-			.map(|(position, (group, span))| ((group.clone(), span.start), position))
+			.map(|(index, (group, span))| ((group.clone(), span.start), index))
 			.collect();
 		pending.sort_by_key(|(group, emit)| {
 			rank.get(&(group.clone(), emit.span.start)).copied().unwrap_or(usize::MAX)

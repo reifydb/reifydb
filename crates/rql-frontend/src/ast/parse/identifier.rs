@@ -40,8 +40,8 @@ impl<'bump> Parser<'bump> {
 		if matches!(first_token.kind, TokenKind::Literal(Literal::Number)) {
 			let has_hyphen_continuation = !self.is_eof()
 				&& self.current_expect_operator(Operator::Minus).is_ok()
-				&& self.position + 1 < self.tokens.len()
-				&& is_identifier_like(&self.tokens[self.position + 1]);
+				&& self.token_index + 1 < self.tokens.len()
+				&& is_identifier_like(&self.tokens[self.token_index + 1]);
 			if !has_hyphen_continuation {
 				return Err(AstError::UnexpectedToken {
 					expected: "identifier (identifiers cannot start with digits)".to_string(),
@@ -56,8 +56,8 @@ impl<'bump> Parser<'bump> {
 
 		if self.is_eof()
 			|| self.current_expect_operator(Operator::Minus).is_err()
-			|| self.position + 1 >= self.tokens.len()
-			|| !is_identifier_like(&self.tokens[self.position + 1])
+			|| self.token_index + 1 >= self.tokens.len()
+			|| !is_identifier_like(&self.tokens[self.token_index + 1])
 		{
 			let text = self.bump().alloc_str(first_token.fragment.text());
 			let fragment = BumpFragment::Statement {
@@ -74,8 +74,8 @@ impl<'bump> Parser<'bump> {
 
 		while !self.is_eof()
 			&& self.current_expect_operator(Operator::Minus).is_ok()
-			&& self.position + 1 < self.tokens.len()
-			&& is_identifier_like(&self.tokens[self.position + 1])
+			&& self.token_index + 1 < self.tokens.len()
+			&& is_identifier_like(&self.tokens[self.token_index + 1])
 		{
 			self.consume_operator(Operator::Minus)?;
 			let next_token = self.advance()?;

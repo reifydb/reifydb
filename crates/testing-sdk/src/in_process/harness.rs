@@ -545,8 +545,8 @@ mod tests {
 				let Some(post) = diff.post() else {
 					continue;
 				};
-				for position in 0..post.row_count() {
-					let row = post.row(position).expect("every counted row resolves");
+				for index in 0..post.row_count() {
+					let row = post.row(index).expect("every counted row resolves");
 					let (Some(row_number), Some(value)) = (row.row_number(), row.i64("field0")?)
 					else {
 						continue;

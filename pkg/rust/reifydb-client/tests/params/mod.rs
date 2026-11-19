@@ -12,8 +12,8 @@ pub fn option(inner: ValueType) -> ValueType {
 	ValueType::Option(Box::new(inner))
 }
 
-pub fn positional(value: Value) -> Params {
-	Params::Positional(Arc::new(vec![value]))
+pub fn ordinal(value: Value) -> Params {
+	Params::Ordinal(Arc::new(vec![value]))
 }
 
 pub fn named(value: Value) -> Params {

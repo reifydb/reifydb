@@ -60,9 +60,9 @@ pub enum JsonExpression {
 	Variable {
 		name: String,
 	},
-	#[serde(rename = "parameter_positional")]
-	ParameterPositional {
-		position: String,
+	#[serde(rename = "parameter_ordinal")]
+	ParameterOrdinal {
+		ordinal: String,
 	},
 	#[serde(rename = "parameter_named")]
 	ParameterNamed {
@@ -274,10 +274,10 @@ impl From<&Expression> for JsonExpression {
 				name: var.name().to_string(),
 			},
 			Expression::Parameter(param) => match param {
-				ParameterExpression::Positional {
+				ParameterExpression::Ordinal {
 					fragment,
-				} => JsonExpression::ParameterPositional {
-					position: fragment.text()[1..].to_string(),
+				} => JsonExpression::ParameterOrdinal {
+					ordinal: fragment.text()[1..].to_string(),
 				},
 				ParameterExpression::Named {
 					fragment,
@@ -487,10 +487,10 @@ impl TryFrom<JsonExpression> for Expression {
 			} => Expression::Variable(VariableExpression {
 				fragment: internal_fragment(&format!("${}", name)),
 			}),
-			JsonExpression::ParameterPositional {
-				position,
-			} => Expression::Parameter(ParameterExpression::Positional {
-				fragment: internal_fragment(&format!("${}", position)),
+			JsonExpression::ParameterOrdinal {
+				ordinal,
+			} => Expression::Parameter(ParameterExpression::Ordinal {
+				fragment: internal_fragment(&format!("${}", ordinal)),
 			}),
 			JsonExpression::ParameterNamed {
 				name,
@@ -1022,13 +1022,13 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_parameter_positional() {
-		let expr = Expression::Parameter(ParameterExpression::Positional {
+	fn test_parameter_ordinal() {
+		let expr = Expression::Parameter(ParameterExpression::Ordinal {
 			fragment: internal_fragment("$1"),
 		});
 
 		let json = to_json(&expr);
-		assert_eq!(json, r#"{"type":"parameter_positional","position":"1"}"#);
+		assert_eq!(json, r#"{"type":"parameter_ordinal","ordinal":"1"}"#);
 
 		let recovered = from_json(&json).unwrap();
 		assert_eq!(to_json(&recovered), json);

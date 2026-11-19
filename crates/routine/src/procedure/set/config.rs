@@ -50,8 +50,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetConfigProcedure {
 		_args: &[(FieldRef, ArrayRef)],
 	) -> Result<RecordBatch, RoutineError> {
 		let (key, value) = match ctx.params {
-			Params::Positional(args) if args.len() == 2 => (args[0].clone(), args[1].clone()),
-			Params::Positional(args) => {
+			Params::Ordinal(args) if args.len() == 2 => (args[0].clone(), args[1].clone()),
+			Params::Ordinal(args) => {
 				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("system::config::set"),
 					expected: 2,

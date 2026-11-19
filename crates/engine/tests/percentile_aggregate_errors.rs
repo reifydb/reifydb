@@ -139,7 +139,7 @@ fn an_accuracy_that_is_not_a_whole_ppm_fails_before_any_row_is_read() {
 
 #[test]
 fn a_column_accuracy_fails_before_any_row_is_read() {
-	// A per-row accuracy can never become one digest type, so a column accuracy must fail at position 3.
+	// A per-row accuracy can never become one digest type, so a column accuracy must fail at argument 3.
 	let t = empty_engine();
 
 	let err = t.query_err("FROM test::t | aggregate { p: stats::approx_percentile(f, 0.99, a) } by { g }");

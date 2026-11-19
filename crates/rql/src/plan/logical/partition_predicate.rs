@@ -106,7 +106,7 @@ fn eq_key_for(expr: &Expression, col_name: &str, value_type: &ValueType) -> Opti
 	let variable = match other.as_ref() {
 		Expression::Variable(variable) => variable.clone(),
 		Expression::Parameter(
-			ParameterExpression::Positional {
+			ParameterExpression::Ordinal {
 				fragment,
 			}
 			| ParameterExpression::Named {
@@ -161,7 +161,7 @@ fn variable_of(expr: &Expression) -> Option<VariableExpression> {
 	match expr {
 		Expression::Variable(variable) => Some(variable.clone()),
 		Expression::Parameter(
-			ParameterExpression::Positional {
+			ParameterExpression::Ordinal {
 				fragment,
 			}
 			| ParameterExpression::Named {

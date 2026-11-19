@@ -62,10 +62,10 @@ fn delete_from_any_view_is_refused_as_a_view_write() {
 }
 
 #[test]
-fn a_positional_insert_into_a_view_is_refused_as_a_view_write() {
-	// A view check placed after the source compile answers with the positional arity error.
+fn an_ordinal_insert_into_a_view_is_refused_as_a_view_write() {
+	// A view check placed after the source compile answers with the ordinal arity error.
 	let t = prepared(VIEWS[0].1);
-	assert_view_write_refused(&t, "positional", "INSERT test::v [(1)]", "INSERT");
+	assert_view_write_refused(&t, "ordinal", "INSERT test::v [(1)]", "INSERT");
 }
 
 #[test]

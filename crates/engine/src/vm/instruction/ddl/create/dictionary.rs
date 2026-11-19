@@ -178,7 +178,7 @@ pub mod tests {
 	}
 
 	fn value_at(frame: &Frame, column: usize) -> Value {
-		// Positional read: without it a reordered result column would still pass.
+		// Read by index: without it a reordered result column would still pass.
 		ColumnView::try_from((frame.batch.column(column), frame.batch.schema_ref().field(column)))
 			.unwrap()
 			.get_value(0)

@@ -87,7 +87,7 @@ impl Shape {
 		}
 	}
 
-	/// The output column positions the driver compares. Extend appends a column, so it has one more
+	/// The output column indexes the driver compares. Extend appends a column, so it has one more
 	/// than the other two; a projection that named only the first two would compare extend's output
 	/// without ever looking at the column extend exists to add.
 	pub fn projection(self) -> &'static [usize] {

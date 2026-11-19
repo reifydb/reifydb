@@ -179,8 +179,7 @@ fn collect_rows_to_columns(
 	let columns = segment.columns;
 	let source_name = segment.source_name;
 	let num_cols = columns.len();
-	let too_many =
-		rows.iter().position(|params| matches!(params, Params::Positional(vals) if vals.len() > num_cols));
+	let too_many = rows.iter().position(|params| matches!(params, Params::Ordinal(vals) if vals.len() > num_cols));
 	let accepted = &rows[..too_many.unwrap_or(rows.len())];
 	match params_batch(segment, accepted)? {
 		Some(batch) => {
@@ -188,7 +187,7 @@ fn collect_rows_to_columns(
 		}
 		None => coerce_rows(segment, accepted, first_row, builders)?,
 	}
-	if let Some(Params::Positional(vals)) = too_many.map(|row| &rows[row]) {
+	if let Some(Params::Ordinal(vals)) = too_many.map(|row| &rows[row]) {
 		return Err(EngineError::BulkInsertTooManyValues {
 			fragment: Fragment::None,
 			expected: num_cols,
@@ -227,7 +226,7 @@ fn collect_rows_to_columns(
 fn params_batch(segment: &Segment<'_>, rows: &[Params]) -> Result<Option<RecordBatch>, ValueError> {
 	let cell = |params: &Params, index: usize, name: &str| match params {
 		Params::Named(map) => map.get(name).cloned(),
-		Params::Positional(vals) => vals.get(index).cloned(),
+		Params::Ordinal(vals) => vals.get(index).cloned(),
 		Params::None => None,
 	};
 	let mut fields = Vec::with_capacity(segment.columns.len());
@@ -290,7 +289,7 @@ fn coerce_rows(
 					)?);
 				}
 			}
-			Params::Positional(vals) => {
+			Params::Ordinal(vals) => {
 				for ((col_data, col), val) in builders
 					.iter_mut()
 					.zip(columns.iter())

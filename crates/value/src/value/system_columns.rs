@@ -112,7 +112,7 @@ impl Display for SystemColumn {
 }
 
 pub fn system_column(batch: &RecordBatch, column: SystemColumn) -> Option<&ArrayRef> {
-	position(batch, column.name()).map(|index| batch.column(index))
+	index_of(batch, column.name()).map(|index| batch.column(index))
 }
 
 pub fn row_numbers(batch: &RecordBatch) -> Result<&[RowNumber], ValueError> {
@@ -348,7 +348,7 @@ pub fn user_columns(batch: &RecordBatch) -> impl Iterator<Item = (&FieldRef, &Ar
 }
 
 pub fn column_view<'a>(batch: &'a RecordBatch, name: &str) -> Result<Option<ColumnView<'a>>, ValueError> {
-	match position(batch, name) {
+	match index_of(batch, name) {
 		Some(index) => ColumnView::try_from((batch.column(index), batch.schema_ref().field(index))).map(Some),
 		None => Ok(None),
 	}
@@ -359,12 +359,12 @@ pub fn resolve_column(batch: &RecordBatch, name: &str) -> Option<usize> {
 	SystemColumn::ALL
 		.into_iter()
 		.find(|column| &column.name()[1..] == bare)
-		.and_then(|column| position(batch, column.name()))
-		.or_else(|| position(batch, name))
-		.or_else(|| sumtype_tag_position(batch, name))
+		.and_then(|column| index_of(batch, column.name()))
+		.or_else(|| index_of(batch, name))
+		.or_else(|| sumtype_tag_index(batch, name))
 }
 
-pub fn sumtype_tag_position(batch: &RecordBatch, name: &str) -> Option<usize> {
+pub fn sumtype_tag_index(batch: &RecordBatch, name: &str) -> Option<usize> {
 	let tag = format!("{name}_tag");
 	batch.schema_ref().fields().iter().position(|field| field.name() == &tag && is_sumtype_tag(field))
 }
@@ -376,7 +376,7 @@ pub fn check_user_columns(batch: &RecordBatch) -> Result<(), ValueError> {
 	Ok(())
 }
 
-fn position(batch: &RecordBatch, name: &str) -> Option<usize> {
+fn index_of(batch: &RecordBatch, name: &str) -> Option<usize> {
 	batch.schema_ref().fields().iter().position(|field| field.name() == name)
 }
 

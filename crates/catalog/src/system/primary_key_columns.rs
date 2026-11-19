@@ -40,8 +40,8 @@ pub fn primary_key_columns() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: POSITION,
-					name: "position".to_string(),
+					id: ORDINAL,
+					name: "ordinal".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Uint2),
 					properties: vec![],
 					index: ColumnIndex(2),

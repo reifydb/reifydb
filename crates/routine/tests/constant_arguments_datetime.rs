@@ -78,10 +78,10 @@ fn check(
 ) -> usize {
 	let mut checked = 0;
 	let mut cases: Vec<Vec<Option<&Constant>>> = Vec::new();
-	for (position, options) in constants.iter().enumerate() {
+	for (index, options) in constants.iter().enumerate() {
 		for constant in options {
 			let mut case = vec![None; columns.len()];
-			case[position] = Some(constant);
+			case[index] = Some(constant);
 			cases.push(case);
 		}
 	}

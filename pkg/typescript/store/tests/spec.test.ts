@@ -64,7 +64,7 @@ describe('store specs', () => {
     });
 
     it('query sends a one shape spec as a one element tuple and a tuple spec as the tuple itself', () => {
-        // The client pairs frames with shapes by position, so the shapes it gets must be exactly the frames asked for.
+        // The client pairs frames with shapes by index, so the shapes it gets must be exactly the frames asked for.
         const client = new FakeClient();
         const store = new Store(client);
         store.query(rql(item)<{id: number}>`from test::items filter { id == $id }`, {id: 3});
@@ -108,7 +108,7 @@ describe('store specs', () => {
     });
 
     it('a tuple query fills one rows map and one data array per frame and marks the entry ready', async () => {
-        // Frames must land by position, or a component reading data[1] sees rows of the first frame.
+        // Frames must land by index, or a component reading data[1] sees rows of the first frame.
         const client = new FakeClient();
         const store = new Store(client);
         const spec = rql([item, total])`output from test::items; output from test::totals`;

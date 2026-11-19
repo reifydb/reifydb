@@ -16,7 +16,7 @@ impl<'a> Reader<'a> {
 		}
 	}
 
-	pub fn position(&self) -> usize {
+	pub fn offset(&self) -> usize {
 		self.pos
 	}
 

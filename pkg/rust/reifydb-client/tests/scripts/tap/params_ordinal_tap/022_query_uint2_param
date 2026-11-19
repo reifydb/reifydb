@@ -1,0 +1,11 @@
+# Generated from: params_ordinal.tap.md#uint2_param
+# Test: Query with ordinal UINT2 parameter
+
+query_ordinal 'MAP {result: $1}' '65535'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |  65535   |
+> +----------+
+>

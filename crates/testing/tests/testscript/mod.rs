@@ -59,7 +59,7 @@ fn test_error([in_path, out_path]: [&std::path::Path; 2]) {
 /// - `_echo <args..>`: prints the arguments back, space-separated
 /// - `_error <msg>` / `_panic <msg>`: fails with the given string
 /// - `_set k=v`: sets `prefix`, `suffix`, `start_block`, `end_block`, `start_command` or `end_command`, each printed at
-///   the position its name gives
+///   the place its name gives
 ///
 /// A command marked `!` is returned as an error carrying its own parsed form.
 #[derive(Default)]

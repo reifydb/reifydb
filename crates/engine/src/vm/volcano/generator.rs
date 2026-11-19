@@ -86,7 +86,7 @@ impl GeneratorNode {
 					.iter()
 					.map(|col| Ok(ColumnView::try_from(col)?.get_value(0)))
 					.collect::<Result<_, ValueError>>()?;
-				let params = Params::Positional(Arc::new(values));
+				let params = Params::Ordinal(Arc::new(values));
 				invoke_procedure_routine(
 					&stored_ctx.services,
 					&stored_ctx.symbols,

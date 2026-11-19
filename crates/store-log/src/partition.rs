@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_codec::log::{
-	LogIndex, LogVersion, Position, Term,
+	LogIndex, LogOffset, LogVersion, Term,
 	index::{DEFAULT_INTERVAL, TimestampRange},
 	record::Record,
 	vote::State,
@@ -155,7 +155,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		}
 	}
 
-	pub fn append(&mut self, record: &Record) -> Result<Position, StoreLogError> {
+	pub fn append(&mut self, record: &Record) -> Result<LogOffset, StoreLogError> {
 		if let Some((index, _)) = self.tail()
 			&& record.index != after(index)
 		{
@@ -177,12 +177,12 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		if self.must_roll(record) {
 			self.roll(record.version, record.index)?;
 		}
-		let position = self.segment.append(record)?;
-		self.index.append(record.version, record.index, position)?;
+		let offset = self.segment.append(record)?;
+		self.index.append(record.version, record.index, offset)?;
 		self.timestamps = widen(self.timestamps, record.timestamp);
 		self.head = Some(record.version);
 		self.last = Some((record.index, record.term));
-		Ok(position)
+		Ok(offset)
 	}
 
 	pub fn truncate_from(&mut self, index: LogIndex) -> Result<(), StoreLogError> {
@@ -208,14 +208,14 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		let log = self.dir.join(log_name(base));
 		let entries = self.dir.join(index_name(base));
 		let (mut segment, scanned) = Segment::recover(&self.fs, &log)?;
-		let mut cut = Position::ZERO;
+		let mut cut = LogOffset::ZERO;
 		for record in &scanned.records {
 			if record.index >= index {
 				break;
 			}
 			cut = cut.advance(record.encoded_len() as u64);
 		}
-		if cut == Position::ZERO {
+		if cut == LogOffset::ZERO {
 			segment.reset(self.config.segment_bytes)?;
 			self.opened_at = self.clock.now();
 		} else {
@@ -491,7 +491,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 
 	fn must_roll(&self, record: &Record) -> bool {
 		let head = self.segment.head();
-		if head == Position::ZERO {
+		if head == LogOffset::ZERO {
 			return false;
 		}
 		if head.as_u64() + record.encoded_len() as u64 > self.segment.capacity().as_bytes() {
@@ -669,7 +669,7 @@ fn rebuild<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(
 	let path = dir.join(index_name(base));
 	remove(fs, &path)?;
 	let mut index = Index::create(fs, &path, base, first.index, config.index_interval)?;
-	let mut at = Position::ZERO;
+	let mut at = LogOffset::ZERO;
 	for record in &scan.records {
 		index.append(record.version, record.index, at)?;
 		at = at.advance(record.encoded_len() as u64);
@@ -1124,7 +1124,7 @@ mod tests {
 	#[test]
 	fn an_index_below_the_oldest_segment_costs_no_syscall_at_all() {
 		// answering absent is not enough: without the log floor check the lookup clamps to the oldest
-		// segment and scans it whole, because an index below every entry resolves to position zero.
+		// segment and scans it whole, because an index below every entry resolves to offset zero.
 		// A lagging follower probes exactly this range, so the cost would be a full segment read per
 		// probe, and the answer would be identical either way.
 		let fs = TestingFs::new(MemoryFs::new(), Arc::new(NoFaults));

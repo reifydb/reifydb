@@ -124,7 +124,7 @@ pub unsafe extern "C" fn create_operator_instance<C: MountedOperator + OperatorM
 		match decode_params(params_bytes) {
 			Ok(Params::Named(map)) => Arc::try_unwrap(map).unwrap_or_else(|map| (*map).clone()),
 			Ok(Params::None) => HashMap::new(),
-			Ok(Params::Positional(_)) => {
+			Ok(Params::Ordinal(_)) => {
 				panic!(
 					"Failed to deserialize operator params for operator {}: expected named params",
 					operator_id

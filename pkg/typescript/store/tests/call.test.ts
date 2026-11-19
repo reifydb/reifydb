@@ -32,7 +32,7 @@ describe('per-tick subscription opening', () => {
     });
 
     it('turns each entry ready with the id the ack gave that subscription', async () => {
-        // The ack reports ids positionally against the subscriptions that were sent. Reading them in the
+        // The ack reports ids by index against the subscriptions that were sent. Reading them in the
         // wrong order would leave every entry ready and every later unsubscribe aimed elsewhere.
         const {client, store} = perTick();
         store.subscribe(monitors, null);

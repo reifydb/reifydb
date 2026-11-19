@@ -51,7 +51,7 @@ fn a_field_on_a_non_variable_object_lowers_with_the_rest_of_its_expression() {
 
 #[test]
 fn a_new_schema_lowers_again_and_reads_the_right_column() {
-	// Keeping the first lowering would read column 0 by position after the columns moved.
+	// Keeping the first lowering would read column 0 by index after the columns moved.
 	let env = Env::new();
 	let expression = LoweredExpr::new(column("a"), "test");
 

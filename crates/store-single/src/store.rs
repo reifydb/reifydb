@@ -1201,10 +1201,10 @@ mod tests {
 				)
 				.unwrap();
 				for row in &batch.items {
-					let position = keys.binary_search_by(|key| row.key.cmp(key)).unwrap();
+					let index = keys.binary_search_by(|key| row.key.cmp(key)).unwrap();
 					assert!(
-						position >= removed_before,
-						"key {position} came back after {removed_before} were removed"
+						index >= removed_before,
+						"key {index} came back after {removed_before} were removed"
 					);
 				}
 			}
@@ -1213,7 +1213,7 @@ mod tests {
 
 	#[test]
 	fn a_stopped_scan_finds_rows_that_only_the_persistent_tier_holds() {
-		// After a restart the buffer lacks old rows, so stopping on one tier's position would skip keys in the
+		// After a restart the buffer lacks old rows, so stopping on one tier's place would skip keys in the
 		// other.
 		let (mut store, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
 		let mut model = BTreeMap::new();

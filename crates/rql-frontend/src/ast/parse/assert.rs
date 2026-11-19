@@ -34,7 +34,7 @@ impl<'bump> Parser<'bump> {
 		let is_multi = expect_error || self.is_multi_statement_block();
 
 		let (node, rql) = if is_multi {
-			let body_start_pos = self.position;
+			let body_start_pos = self.token_index;
 
 			loop {
 				self.skip_new_line()?;
@@ -54,7 +54,7 @@ impl<'bump> Parser<'bump> {
 				self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
 			}
 
-			let body_end_pos = self.position;
+			let body_end_pos = self.token_index;
 			let rql = if body_start_pos < body_end_pos {
 				let start = self.tokens[body_start_pos].fragment.offset();
 				let end = self.tokens[body_end_pos - 1].fragment.source_end();
@@ -89,7 +89,7 @@ impl<'bump> Parser<'bump> {
 
 	fn is_multi_statement_block(&self) -> bool {
 		let mut depth = 1u32;
-		let mut pos = self.position;
+		let mut pos = self.token_index;
 		while pos < self.tokens.len() {
 			match self.tokens[pos].kind {
 				TokenKind::Operator(Operator::OpenCurly) => depth += 1,

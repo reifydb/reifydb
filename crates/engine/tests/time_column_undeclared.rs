@@ -34,7 +34,7 @@ fn reading_time_from_an_object_without_a_time_declaration_reports_column_not_fou
 
 #[test]
 fn a_time_column_not_found_error_points_at_the_time_reference_in_the_query() {
-	// The fragment must carry the #time position, otherwise a client cannot underline the reference.
+	// The fragment must carry the #time location, otherwise a client cannot underline the reference.
 	let t = engine();
 
 	let err = time_error(&t);
@@ -42,7 +42,7 @@ fn a_time_column_not_found_error_points_at_the_time_reference_in_the_query() {
 	assert_eq!(err.code, "QUERY_001", "got: {err:?}");
 	assert!(
 		matches!(err.fragment, Fragment::Statement { .. }),
-		"the fragment must carry a position, got: {:?}",
+		"the fragment must carry a location, got: {:?}",
 		err.fragment
 	);
 	let offset = RQL.find("#time").unwrap();

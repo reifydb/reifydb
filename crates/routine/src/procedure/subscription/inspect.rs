@@ -47,7 +47,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for InspectSubscription {
 		_args: &[(FieldRef, ArrayRef)],
 	) -> Result<RecordBatch, RoutineError> {
 		let subscription_id_value = match ctx.params {
-			Params::Positional(args) if args.len() == 1 => match &args[0] {
+			Params::Ordinal(args) if args.len() == 1 => match &args[0] {
 				Value::Uint8(id) => *id,
 				Value::Utf8(s) => {
 					s.parse::<u64>().map_err(|_| RoutineError::ProcedureExecutionFailed {
@@ -67,7 +67,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for InspectSubscription {
 					procedure: Fragment::internal("subscription::inspect"),
 					expected: 1,
 					actual: match ctx.params {
-						Params::Positional(args) => args.len(),
+						Params::Ordinal(args) => args.len(),
 						_ => 0,
 					},
 				});

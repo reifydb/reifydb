@@ -269,7 +269,7 @@ impl Output {
 		}
 		let epoch = self.epochs.last_mut().unwrap();
 		match epoch.iter().position(|group| group.kind == kind && group.source == source) {
-			Some(position) => &mut epoch[position],
+			Some(index) => &mut epoch[index],
 			None => {
 				epoch.push(Group {
 					kind,

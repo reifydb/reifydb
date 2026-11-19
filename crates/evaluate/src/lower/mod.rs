@@ -51,7 +51,7 @@ use crate::{
 		cast::lower_cast,
 		direct::{Direct, Spliced},
 		error::from_datafusion,
-		schema::positional_schema,
+		schema::ordinal_schema,
 	},
 };
 
@@ -213,7 +213,7 @@ fn lower_root<'e>(
 	expression: &'e Expression,
 ) -> Result<(Arc<dyn PhysicalExpr>, FieldRef), Stop> {
 	let node = lower_node(ctx, operator, expression)?;
-	let schema = positional_schema(operator, ctx.batch.schema_ref())?;
+	let schema = ordinal_schema(operator, ctx.batch.schema_ref())?;
 	let expr =
 		create_physical_expr(&node.expr, &schema, &ExecutionProps::new(), &PhysicalPlanningContext::default())
 			.map_err(|err| from_datafusion(operator, err))?;

@@ -61,8 +61,8 @@ impl CompletenessWriter for CompletenessWriterImpl {
 		let mut rows = Vec::with_capacity(advances.len());
 		let mut index_keys = Vec::with_capacity(advances.len());
 		let mut entries: Vec<TaggedKey> = Vec::with_capacity(advances.len());
-		for (position, &(object, at)) in advances.iter().enumerate() {
-			if advances[..position].iter().any(|&(seen, _)| seen == object) {
+		for (index, &(object, at)) in advances.iter().enumerate() {
+			if advances[..index].iter().any(|&(seen, _)| seen == object) {
 				return Err(internal_error!("{} advances {:?} twice in one batch", table.name, object));
 			}
 			let mut row = shape.allocate_table();
@@ -76,11 +76,11 @@ impl CompletenessWriter for CompletenessWriterImpl {
 		let now = self.clock.now();
 
 		let mut existing = Vec::new();
-		for (position, indexed) in tx.get(&entries)?.into_iter().enumerate() {
+		for (index, indexed) in tx.get(&entries)?.into_iter().enumerate() {
 			if let Some(indexed) = indexed {
 				let row_number =
 					indexed_row_number(&table, EncodedPodRow::view(&indexed.bytes).body())?;
-				existing.push((position, row_number));
+				existing.push((index, row_number));
 			}
 		}
 
@@ -92,7 +92,7 @@ impl CompletenessWriter for CompletenessWriterImpl {
 				.iter()
 				.map(|&(_, row_number)| row_key_from_partition(table.id, None, row_number))
 				.collect();
-			for (&(position, row_number), pre) in existing.iter().zip(tx.get(&row_keys)?) {
+			for (&(index, row_number), pre) in existing.iter().zip(tx.get(&row_keys)?) {
 				let Some(pre) = pre else {
 					return Err(internal_error!(
 						"{} indexes row {:?} that does not exist",
@@ -119,12 +119,12 @@ impl CompletenessWriter for CompletenessWriterImpl {
 						));
 					}
 				};
-				if advances[position].1 < previous {
-					outcomes[position] = Advanced::Backwards(previous);
+				if advances[index].1 < previous {
+					outcomes[index] = Advanced::Backwards(previous);
 					continue;
 				}
-				outcomes[position] = Advanced::Forward;
-				rows[position].set_timestamps(pre_view.created_at(), now);
+				outcomes[index] = Advanced::Forward;
+				rows[index].set_timestamps(pre_view.created_at(), now);
 				update_ids.push(row_number);
 				update_pres.push(pre);
 			}

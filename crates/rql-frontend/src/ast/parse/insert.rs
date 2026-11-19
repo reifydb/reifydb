@@ -303,7 +303,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_insert_positional_single_row() {
+	fn test_insert_ordinal_single_row() {
 		let bump = Bump::new();
 		let source = r#"INSERT users [(1, "Alice")]"#;
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -335,7 +335,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_insert_positional_multiple_rows() {
+	fn test_insert_ordinal_multiple_rows() {
 		let bump = Bump::new();
 		let source = r#"
 			INSERT users [
@@ -373,7 +373,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_insert_positional_with_namespace() {
+	fn test_insert_ordinal_with_namespace() {
 		let bump = Bump::new();
 		let source = r#"INSERT test::users [(1, "Alice")]"#;
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();

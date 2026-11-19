@@ -57,7 +57,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for GraphqlExplain {
 		_args: &[(FieldRef, ArrayRef)],
 	) -> Result<RecordBatch, RoutineError> {
 		let query = match ctx.params {
-			Params::Positional(args) if args.len() == 1 => match &args[0] {
+			Params::Ordinal(args) if args.len() == 1 => match &args[0] {
 				Value::Utf8(s) => s.as_str().to_string(),
 				other => {
 					return Err(RoutineError::ProcedureInvalidArgumentType {
@@ -68,7 +68,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for GraphqlExplain {
 					});
 				}
 			},
-			Params::Positional(args) => {
+			Params::Ordinal(args) => {
 				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("graphql::explain"),
 					expected: 1,

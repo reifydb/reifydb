@@ -85,8 +85,8 @@ impl CatalogStore {
 					primary_key::get_column_ids(EncodedCatalogRow::view(&entry.bytes));
 				let column_ids = deserialize_column_ids(&column_ids_blob);
 
-				for (position, column_id) in column_ids.iter().enumerate() {
-					result.push((pk_key.primary_key.0, column_id.0, position));
+				for (ordinal, column_id) in column_ids.iter().enumerate() {
+					result.push((pk_key.primary_key.0, column_id.0, ordinal));
 				}
 			}
 		}

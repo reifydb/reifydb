@@ -71,13 +71,13 @@ mod tests {
 		}
 	}
 
-	fn column(position: u8, name: &str, constraint: TypeConstraint, dictionary_id: Option<DictionaryId>) -> Column {
+	fn column(ordinal: u8, name: &str, constraint: TypeConstraint, dictionary_id: Option<DictionaryId>) -> Column {
 		Column {
-			id: ColumnId(position as u64),
+			id: ColumnId(ordinal as u64),
 			name: name.to_string(),
 			constraint,
 			properties: Vec::new(),
-			index: ColumnIndex(position),
+			index: ColumnIndex(ordinal),
 			auto_increment: false,
 			dictionary_id,
 		}
@@ -148,9 +148,8 @@ mod tests {
 		(0..view.columns().len()).map(|index| shape.get_value(row, index)).collect()
 	}
 
-	fn values(columns: &RecordBatch, position: usize) -> Vec<Value> {
-		let column =
-			ColumnView::try_from((columns.column(position), columns.schema_ref().field(position))).unwrap();
+	fn values(columns: &RecordBatch, index: usize) -> Vec<Value> {
+		let column = ColumnView::try_from((columns.column(index), columns.schema_ref().field(index))).unwrap();
 		(0..columns.num_rows()).map(|row| column.get_value(row)).collect()
 	}
 

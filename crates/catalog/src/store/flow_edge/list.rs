@@ -129,7 +129,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_flow_edges_by_flow_returns_edges_in_creation_order() {
-		// Append lane assignment reads a node's inputs positionally, so this order decides which branch owns
+		// Append lane assignment reads a node's inputs by index, so this order decides which branch owns
 		// lane 0; the scan itself yields descending, which makes the id sort load-bearing rather than cosmetic.
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");

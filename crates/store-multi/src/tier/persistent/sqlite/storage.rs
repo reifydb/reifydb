@@ -2893,7 +2893,7 @@ mod tests {
 	#[test]
 	fn a_series_batch_larger_than_a_chunk_reports_back_the_keys_it_actually_wrote() {
 		// Only a batch past UPSERT_CHUNK reaches the chunked statements, which are the only ones that
-		// RETURN their key columns. Those columns are read back positionally and rebuilt into an encoded
+		// RETURN their key columns. Those columns are read back by ordinal and rebuilt into an encoded
 		// key, so a wrong column order or a wrong count here hands the caller keys for rows it never wrote.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		let t = series_table();

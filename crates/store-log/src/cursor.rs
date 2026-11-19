@@ -3,12 +3,12 @@
 
 use std::path::{Path, PathBuf};
 
-use reifydb_codec::log::{LogVersion, Position, record::Record};
+use reifydb_codec::log::{LogOffset, LogVersion, record::Record};
 use reifydb_runtime::io::fs::{Filesystem, Len, Open, ReadDir};
 
 use crate::{
 	error::StoreLogError,
-	index::{position_of, read},
+	index::{offset_of, read},
 	partition::{bases_in, index_name, log_name, rebuildable},
 	segment::{Stop, Torn, scan_upto},
 };
@@ -20,7 +20,7 @@ pub struct Cursor<'a, F: Filesystem> {
 	dir: PathBuf,
 	bases: Vec<LogVersion>,
 	at: usize,
-	position: Position,
+	offset: LogOffset,
 	last: Option<LogVersion>,
 	torn: Option<Torn>,
 }
@@ -54,13 +54,13 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 			Err(error) => return Err(error),
 		};
 		let from = torn.filter(|torn| torn.base == bases[at]).map(|torn| torn.from);
-		let (position, last) = seek(fs, &path, position_of(&entries, after), after, from)?;
+		let (offset, last) = seek(fs, &path, offset_of(&entries, after), after, from)?;
 		Ok(Self {
 			fs,
 			dir: dir.to_path_buf(),
 			bases,
 			at,
-			position,
+			offset,
 			last,
 			torn,
 		})
@@ -71,13 +71,13 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 		while out.len() < max {
 			let path = self.dir.join(log_name(self.bases[self.at]));
 			let from = self.torn.filter(|torn| torn.base == self.bases[self.at]).map(|torn| torn.from);
-			let scan = match scan_upto(self.fs, &path, self.position, self.last, max - out.len(), from) {
+			let scan = match scan_upto(self.fs, &path, self.offset, self.last, max - out.len(), from) {
 				Ok(scan) => scan,
 				Err(StoreLogError::NotFound(missing)) => return Err(self.reclaimed_or(missing)?),
 				Err(error) => return Err(error),
 			};
 			for record in &scan.records {
-				self.position = self.position.advance(record.encoded_len() as u64);
+				self.offset = self.offset.advance(record.encoded_len() as u64);
 				self.last = Some(record.version);
 			}
 			out.extend(scan.records);
@@ -88,17 +88,17 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 						break;
 					}
 					let len = self.fs.open(&path)?.len()?;
-					if self.position.as_u64() != len {
+					if self.offset.as_u64() != len {
 						return Err(StoreLogError::SegmentIncomplete {
-							end: self.position,
+							end: self.offset,
 							len,
 							path,
 						});
 					}
 					self.at += 1;
-					self.position = Position::ZERO;
+					self.offset = LogOffset::ZERO;
 				}
-				Stop::Stale(_) if self.position == Position::ZERO && self.last.is_some() => {
+				Stop::Stale(_) if self.offset == LogOffset::ZERO && self.last.is_some() => {
 					return Err(StoreLogError::SegmentOutOfOrder {
 						previous: self.last.expect("guarded above"),
 						found: first_version(self.fs, &path)?,
@@ -128,8 +128,8 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 		self.bases[self.at]
 	}
 
-	pub fn position(&self) -> Position {
-		self.position
+	pub fn offset(&self) -> LogOffset {
+		self.offset
 	}
 
 	fn reclaimed_or(&self, missing: PathBuf) -> Result<StoreLogError, StoreLogError> {
@@ -178,10 +178,10 @@ pub(crate) fn drain<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Resul
 }
 
 fn first_version<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<LogVersion, StoreLogError> {
-	match scan_upto(fs, path, Position::ZERO, None, 1, None)?.records.first() {
+	match scan_upto(fs, path, LogOffset::ZERO, None, 1, None)?.records.first() {
 		Some(record) => Ok(record.version),
 		None => Err(StoreLogError::SegmentIncomplete {
-			end: Position::ZERO,
+			end: LogOffset::ZERO,
 			len: fs.open(path)?.len()?,
 			path: path.to_path_buf(),
 		}),
@@ -191,10 +191,10 @@ fn first_version<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<LogVersion
 fn seek<F: Filesystem + Open>(
 	fs: &F,
 	path: &Path,
-	from: Position,
+	from: LogOffset,
 	after: LogVersion,
-	torn: Option<Position>,
-) -> Result<(Position, Option<LogVersion>), StoreLogError> {
+	torn: Option<LogOffset>,
+) -> Result<(LogOffset, Option<LogVersion>), StoreLogError> {
 	let mut at = from;
 	let mut last = None;
 	loop {

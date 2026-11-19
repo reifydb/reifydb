@@ -105,9 +105,9 @@ impl DictionaryBinding {
 	) -> Result<Self, ValueError> {
 		let schema = columns.schema();
 		let mut dictionary_columns = HashMap::new();
-		for (position, field) in schema.fields().iter().enumerate() {
+		for (index, field) in schema.fields().iter().enumerate() {
 			if let Some(dictionary) = dictionary_of(field)? {
-				dictionary_columns.insert(position, dictionary);
+				dictionary_columns.insert(index, dictionary);
 			}
 		}
 		let mut binder = Binder {
@@ -122,8 +122,8 @@ impl DictionaryBinding {
 		let mut decoded: Vec<usize> = dictionary_columns
 			.keys()
 			.copied()
-			.filter(|position| {
-				let name = schema.field(*position).name();
+			.filter(|index| {
+				let name = schema.field(*index).name();
 				expressions.iter().any(|expression| mentions(expression, name))
 			})
 			.collect();
@@ -147,16 +147,16 @@ impl DictionaryBinding {
 
 	pub(crate) fn bind_literals<T: Find + ?Sized>(&self, txn: &mut T) -> Result<BoundLiterals, ValueError> {
 		let mut dictionaries: HashMap<usize, Dictionary> = HashMap::new();
-		for position in self.decoded.iter().chain(self.literals.iter().map(|(p, _)| p)) {
-			if !dictionaries.contains_key(position) {
-				let dictionary = self.dictionary(txn, *position)?;
-				dictionaries.insert(*position, dictionary);
+		for index in self.decoded.iter().chain(self.literals.iter().map(|(p, _)| p)) {
+			if !dictionaries.contains_key(index) {
+				let dictionary = self.dictionary(txn, *index)?;
+				dictionaries.insert(*index, dictionary);
 			}
 		}
 		let mut ids: Vec<Option<DictionaryEntryId>> = vec![None; self.literals.len()];
 		let mut by_dictionary: HashMap<DictionaryId, Vec<usize>> = HashMap::new();
-		for (slot, (position, _)) in self.literals.iter().enumerate() {
-			by_dictionary.entry(dictionaries[position].id).or_default().push(slot);
+		for (slot, (index, _)) in self.literals.iter().enumerate() {
+			by_dictionary.entry(dictionaries[index].id).or_default().push(slot);
 		}
 		for slots in by_dictionary.values() {
 			let dictionary = &dictionaries[&self.literals[slots[0]].0];
@@ -168,9 +168,9 @@ impl DictionaryBinding {
 		let ids = ids
 			.into_iter()
 			.zip(&self.literals)
-			.map(|(found, (position, _))| match found {
+			.map(|(found, (index, _))| match found {
 				Some(id) => Ok(id),
-				None => DictionaryEntryId::from_u128(0, dictionaries[position].id_type.clone()),
+				None => DictionaryEntryId::from_u128(0, dictionaries[index].id_type.clone()),
 			})
 			.collect::<Result<Vec<_>, ValueError>>()?;
 		Ok(BoundLiterals {
@@ -191,32 +191,31 @@ impl DictionaryBinding {
 		let mut fields: Vec<(FieldRef, ArrayRef)> =
 			columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect();
 		let mut appended: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(self.ids.len() + self.literals.len());
-		for (slot, position) in self.ids.iter().enumerate() {
-			let (field, array) = &fields[*position];
+		for (slot, index) in self.ids.iter().enumerate() {
+			let (field, array) = &fields[*index];
 			appended.push((Arc::new(field.as_ref().clone().with_name(id_name(slot))), array.clone()));
 		}
-		for (slot, ((position, _), id)) in self.literals.iter().zip(&literals.ids).enumerate() {
+		for (slot, ((index, _), id)) in self.literals.iter().zip(&literals.ids).enumerate() {
 			let mut builder = ColumnBuilder::with_capacity(ValueType::DictionaryId, columns.num_rows());
-			builder.set_dictionary_id(literals.dictionaries[position].id);
+			builder.set_dictionary_id(literals.dictionaries[index].id);
 			for _ in 0..columns.num_rows() {
 				builder.push(*id);
 			}
 			appended.push(builder.finish(&literal_name(slot)));
 		}
-		for position in &self.decoded {
-			let dictionary = &literals.dictionaries[position];
-			let (field, array) = &fields[*position];
-			fields[*position] =
-				decode_dictionary_ids(field, array, dictionary.value_type.clone(), |ids| {
-					txn.resolve(dictionary, ids)
-				})?;
+		for index in &self.decoded {
+			let dictionary = &literals.dictionaries[index];
+			let (field, array) = &fields[*index];
+			fields[*index] = decode_dictionary_ids(field, array, dictionary.value_type.clone(), |ids| {
+				txn.resolve(dictionary, ids)
+			})?;
 		}
 		fields.extend(appended);
 		batch(fields)
 	}
 
-	fn dictionary<T: Resolve + ?Sized>(&self, txn: &mut T, position: usize) -> Result<Dictionary, ValueError> {
-		let field = self.schema.field(position);
+	fn dictionary<T: Resolve + ?Sized>(&self, txn: &mut T, index: usize) -> Result<Dictionary, ValueError> {
+		let field = self.schema.field(index);
 		let id = from_field(field)?.dictionary_id.expect("a bound dictionary column carries its dictionary");
 		txn.dictionary(id)?.ok_or_else(|| {
 			ValueError::from(FlowSinkError::DictionaryNotFound {
@@ -237,15 +236,15 @@ struct Binder<'a> {
 impl Binder<'_> {
 	fn top(&mut self, expression: &Expression, passing: bool) -> Expression {
 		if passing {
-			if let Some((position, _)) = self.dictionary_column(expression) {
-				return self.id(position);
+			if let Some((index, _)) = self.dictionary_column(expression) {
+				return self.id(index);
 			}
 			if let Expression::Alias(alias) = expression
-				&& let Some((position, _)) = self.dictionary_column(&alias.expression)
+				&& let Some((index, _)) = self.dictionary_column(&alias.expression)
 			{
 				return Expression::Alias(AliasExpression {
 					alias: alias.alias.clone(),
-					expression: Box::new(self.id(position)),
+					expression: Box::new(self.id(index)),
 					fragment: alias.fragment.clone(),
 				});
 			}
@@ -313,27 +312,27 @@ impl Binder<'_> {
 	fn pair(&mut self, left: &Expression, right: &Expression) -> Option<(Expression, Expression)> {
 		match (self.dictionary_column(left), self.dictionary_column(right)) {
 			(Some((l, ld)), Some((r, rd))) if ld == rd => Some((self.id(l), self.id(r))),
-			(Some((position, _)), None) => {
+			(Some((index, _)), None) => {
 				let text = text_constant(right)?;
-				Some((self.id(position), self.literal(position, text)))
+				Some((self.id(index), self.literal(index, text)))
 			}
-			(None, Some((position, _))) => {
+			(None, Some((index, _))) => {
 				let text = text_constant(left)?;
-				Some((self.literal(position, text), self.id(position)))
+				Some((self.literal(index, text), self.id(index)))
 			}
 			_ => None,
 		}
 	}
 
 	fn list(&mut self, value: &Expression, list: &Expression) -> Option<(Expression, Expression)> {
-		let (position, _) = self.dictionary_column(value)?;
+		let (index, _) = self.dictionary_column(value)?;
 		let items = match list {
 			Expression::Tuple(tuple) => &tuple.expressions,
 			Expression::List(list) => &list.expressions,
 			single => slice::from_ref(single),
 		};
 		let texts: Vec<Value> = items.iter().map(text_constant).collect::<Option<_>>()?;
-		let bound: Vec<Expression> = texts.into_iter().map(|text| self.literal(position, text)).collect();
+		let bound: Vec<Expression> = texts.into_iter().map(|text| self.literal(index, text)).collect();
 		let list = match list {
 			Expression::Tuple(tuple) => Expression::Tuple(TupleExpression {
 				expressions: bound,
@@ -345,33 +344,33 @@ impl Binder<'_> {
 			}),
 			_ => bound.into_iter().next().expect("a single list item binds to one literal"),
 		};
-		Some((self.id(position), list))
+		Some((self.id(index), list))
 	}
 
 	fn dictionary_column(&self, expression: &Expression) -> Option<(usize, DictionaryId)> {
 		let Expression::Column(column) = expression else {
 			return None;
 		};
-		let position = resolve_column(self.columns, column.0.name.text())?;
-		self.dictionary_columns.get(&position).map(|dictionary| (position, *dictionary))
+		let index = resolve_column(self.columns, column.0.name.text())?;
+		self.dictionary_columns.get(&index).map(|dictionary| (index, *dictionary))
 	}
 
-	fn id(&mut self, position: usize) -> Expression {
-		let slot = match self.ids.iter().position(|p| *p == position) {
+	fn id(&mut self, index: usize) -> Expression {
+		let slot = match self.ids.iter().position(|p| *p == index) {
 			Some(slot) => slot,
 			None => {
-				self.ids.push(position);
+				self.ids.push(index);
 				self.ids.len() - 1
 			}
 		};
 		synthetic(id_name(slot))
 	}
 
-	fn literal(&mut self, position: usize, text: Value) -> Expression {
-		let slot = match self.literals.iter().position(|(p, v)| *p == position && *v == text) {
+	fn literal(&mut self, index: usize, text: Value) -> Expression {
+		let slot = match self.literals.iter().position(|(p, v)| *p == index && *v == text) {
 			Some(slot) => slot,
 			None => {
-				self.literals.push((position, text));
+				self.literals.push((index, text));
 				self.literals.len() - 1
 			}
 		};

@@ -662,7 +662,7 @@ impl Display for Expression {
 				..
 			}) => write!(f, "{}", fragment.text()),
 			Expression::Parameter(param) => match param {
-				ParameterExpression::Positional {
+				ParameterExpression::Ordinal {
 					fragment,
 					..
 				} => write!(f, "{}", fragment.text()),
@@ -723,7 +723,7 @@ pub struct IdentExpression(pub Fragment);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ParameterExpression {
-	Positional {
+	Ordinal {
 		fragment: Fragment,
 	},
 	Named {
@@ -732,9 +732,9 @@ pub enum ParameterExpression {
 }
 
 impl ParameterExpression {
-	pub fn position(&self) -> Option<u32> {
+	pub fn ordinal(&self) -> Option<u32> {
 		match self {
-			ParameterExpression::Positional {
+			ParameterExpression::Ordinal {
 				fragment,
 			} => fragment.text()[1..].parse().ok(),
 			ParameterExpression::Named {
@@ -748,7 +748,7 @@ impl ParameterExpression {
 			ParameterExpression::Named {
 				fragment,
 			} => Some(&fragment.text()[1..]),
-			ParameterExpression::Positional {
+			ParameterExpression::Ordinal {
 				..
 			} => None,
 		}

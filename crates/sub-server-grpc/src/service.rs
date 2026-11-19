@@ -342,7 +342,7 @@ impl ReifyDbService {
 					}
 				}
 			}
-			Params::Positional(_) => {
+			Params::Ordinal(_) => {
 				return Err(diagnostic_status(
 					Code::InvalidArgument,
 					"INVALID_PARAMS",

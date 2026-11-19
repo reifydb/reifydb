@@ -41,7 +41,7 @@ fn a_prefix_sorts_after_the_string_that_extends_it() {
 }
 
 #[test]
-fn a_zero_byte_sorts_last_within_a_position() {
+fn a_zero_byte_sorts_last_at_a_given_offset() {
 	// 0x00 is the smallest content value, so under descending it must encode largest.
 	let zero = {
 		let mut out = Vec::new();

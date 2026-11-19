@@ -129,7 +129,7 @@ describe('encodeValue', () => {
 });
 
 describe('encodeParams', () => {
-    it('should reject null and undefined in an array naming the position', () => {
+    it('should reject null and undefined in an array naming the index', () => {
         expect(() => encodeParams([42, null])).toThrow('parameter $2 is null or undefined, use Option.none(inner)');
         expect(() => encodeParams([undefined])).toThrow('parameter $1 is null or undefined, use Option.none(inner)');
         expect(() => encodeParams([42, 'hello', new NoneValue()])).toThrow('parameter $3 is a NoneValue without an inner type, use Option.none(inner)');
@@ -140,7 +140,7 @@ describe('encodeParams', () => {
         expect(() => encodeParams({a: 1, name: undefined})).toThrow('parameter $name is null or undefined, use Option.none(inner)');
     });
 
-    it('should encode positional Option params', () => {
+    it('should encode ordinal Option params', () => {
         expect(encodeParams([Option.some(new Int4Value(42)), Option.none('Utf8'), Option.some(Option.none('Int4')), Option.none({Option: 'Int4'})])).toEqual([
             {type: {id: 'Option', underlying: {id: 'Int4'}}, value: '42'},
             {type: {id: 'Option', underlying: {id: 'Utf8'}}, value: NONE_VALUE},
@@ -171,7 +171,7 @@ describe('encodeParams', () => {
         expect(encodeParams(undefined)).toEqual([]);
     });
 
-    it('should encode mixed array params and reject a trailing null naming its position', () => {
+    it('should encode mixed array params and reject a trailing null naming its index', () => {
         const result = encodeParams([42, 'hello', true]);
         const arr = result as any[];
         expect(arr).toHaveLength(3);

@@ -26,7 +26,7 @@ fn naming_a_closure_where_rows_are_read_says_it_holds_a_closure() {
 	assert!(diagnostic.message.contains("closure"), "the error must name the cause, got: {}", diagnostic.message);
 	assert!(
 		matches!(diagnostic.fragment, Fragment::Statement { .. }),
-		"the fragment must carry a position, got: {:?}",
+		"the fragment must carry a location, got: {:?}",
 		diagnostic.fragment
 	);
 }

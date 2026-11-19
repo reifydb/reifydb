@@ -53,7 +53,7 @@ fn assert_no_shared_column(diagnostic: &Diagnostic, left: &str, right: &str) {
 
 #[test]
 fn natural_join_on_a_column_written_in_two_places_matches_the_equivalent_using_join() {
-	// Each extend names k at its own position, so matching names by position would find no common column.
+	// Each extend names k at its own index, so matching names by index would find no common column.
 	let t = engine();
 	let names = ["a", "b", "k", "s_c", "s_e"];
 

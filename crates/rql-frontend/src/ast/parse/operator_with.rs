@@ -92,7 +92,7 @@ impl<'bump> Parser<'bump> {
 			if self.current()?.is_operator(Operator::CloseCurly) {
 				break;
 			}
-			if self.tokens[self.position - 1].kind == TokenKind::Separator(Separator::NewLine) {
+			if self.tokens[self.token_index - 1].kind == TokenKind::Separator(Separator::NewLine) {
 				continue;
 			}
 			return Err(AstError::UnexpectedToken {
@@ -107,7 +107,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_operator_with_key(&mut self) -> Result<AstOperatorWithKey<'bump>, ValueError> {
-		let qualified = self.tokens.get(self.position + 1).is_some_and(|next: &Token<'bump>| {
+		let qualified = self.tokens.get(self.token_index + 1).is_some_and(|next: &Token<'bump>| {
 			next.is_operator(Operator::Dot) || next.is_operator(Operator::DoubleColon)
 		});
 		if qualified {

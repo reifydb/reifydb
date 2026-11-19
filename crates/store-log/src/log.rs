@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use reifydb_codec::log::{
-	LogIndex, LogVersion, Position, Term,
+	LogIndex, LogOffset, LogVersion, Term,
 	meta::{FORMAT_VERSION, MAGIC, META_BYTES, Meta},
 	record::Record,
 };
@@ -114,7 +114,7 @@ where
 		Ok((log, scans))
 	}
 
-	pub fn append(&self, partition: u32, record: &Record) -> Result<Position, StoreLogError> {
+	pub fn append(&self, partition: u32, record: &Record) -> Result<LogOffset, StoreLogError> {
 		self.writer(partition)?.commit(record)
 	}
 

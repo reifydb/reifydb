@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use reifydb_codec::log::{
-	LogVersion, Position,
+	LogOffset, LogVersion,
 	record::{HEADER_BYTES, Header, RESERVED, Record},
 };
 use reifydb_runtime::io::fs::{
@@ -20,29 +20,29 @@ pub const STAGING_SUFFIX: &str = ".staging";
 pub enum Stop {
 	Unwritten,
 	Eof,
-	Corrupt(Position),
-	Stale(Position),
+	Corrupt(LogOffset),
+	Stale(LogOffset),
 	Limit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Scan {
 	pub records: Vec<Record>,
-	pub end: Position,
+	pub end: LogOffset,
 	pub stop: Stop,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Torn {
 	pub base: LogVersion,
-	pub from: Position,
+	pub from: LogOffset,
 }
 
 pub struct Segment<F: Filesystem> {
 	path: PathBuf,
 	file: F::FileMut,
 	capacity: ByteSize,
-	head: Position,
+	head: LogOffset,
 	torn: bool,
 	regrow: Option<ByteSize>,
 }
@@ -67,7 +67,7 @@ impl<F: Filesystem> Segment<F> {
 			path: path.to_path_buf(),
 			file,
 			capacity,
-			head: Position::ZERO,
+			head: LogOffset::ZERO,
 			torn: false,
 			regrow: None,
 		})
@@ -80,7 +80,7 @@ impl<F: Filesystem> Segment<F> {
 		let file = fs.open_mut(path)?;
 		file.sync_data()?;
 		let capacity = ByteSize::from_bytes(file.len()?);
-		let scan = walk(&file, path, capacity, Position::ZERO, None, None, false, None)?;
+		let scan = walk(&file, path, capacity, LogOffset::ZERO, None, None, false, None)?;
 		let torn = matches!(scan.stop, Stop::Corrupt(_) | Stop::Stale(_));
 		let segment = Self {
 			path: path.to_path_buf(),
@@ -93,7 +93,7 @@ impl<F: Filesystem> Segment<F> {
 		Ok((segment, scan))
 	}
 
-	pub fn append(&mut self, record: &Record) -> Result<Position, StoreLogError> {
+	pub fn append(&mut self, record: &Record) -> Result<LogOffset, StoreLogError> {
 		if let Some(capacity) = self.regrow.take() {
 			self.reset(capacity)?;
 		}
@@ -122,7 +122,7 @@ impl<F: Filesystem> Segment<F> {
 		self.file.truncate(0)?;
 		self.file.truncate(capacity.as_bytes())?;
 		self.file.sync_data()?;
-		self.head = Position::ZERO;
+		self.head = LogOffset::ZERO;
 		self.capacity = capacity;
 		self.torn = false;
 		self.regrow = None;
@@ -133,11 +133,11 @@ impl<F: Filesystem> Segment<F> {
 		self.regrow = Some(capacity);
 	}
 
-	pub fn truncate_to(&mut self, position: Position) -> Result<(), StoreLogError> {
-		self.file.truncate(position.as_u64())?;
+	pub fn truncate_to(&mut self, offset: LogOffset) -> Result<(), StoreLogError> {
+		self.file.truncate(offset.as_u64())?;
 		self.file.sync_data()?;
-		self.head = position;
-		self.capacity = ByteSize::from_bytes(position.as_u64());
+		self.head = offset;
+		self.capacity = ByteSize::from_bytes(offset.as_u64());
 		Ok(())
 	}
 
@@ -151,7 +151,7 @@ impl<F: Filesystem> Segment<F> {
 		&self.path
 	}
 
-	pub fn head(&self) -> Position {
+	pub fn head(&self) -> LogOffset {
 		self.head
 	}
 
@@ -165,10 +165,10 @@ impl<F: Filesystem> Segment<F> {
 }
 
 pub fn scan<F: Open>(fs: &F, path: &Path) -> Result<Scan, StoreLogError> {
-	scan_from(fs, path, Position::ZERO)
+	scan_from(fs, path, LogOffset::ZERO)
 }
 
-pub fn scan_from<F: Open>(fs: &F, path: &Path, from: Position) -> Result<Scan, StoreLogError> {
+pub fn scan_from<F: Open>(fs: &F, path: &Path, from: LogOffset) -> Result<Scan, StoreLogError> {
 	let file = fs.open(path)?;
 	let capacity = ByteSize::from_bytes(file.len()?);
 	walk(&file, path, capacity, from, None, None, true, None)
@@ -177,10 +177,10 @@ pub fn scan_from<F: Open>(fs: &F, path: &Path, from: Position) -> Result<Scan, S
 pub fn scan_upto<F: Open>(
 	fs: &F,
 	path: &Path,
-	from: Position,
+	from: LogOffset,
 	after: Option<LogVersion>,
 	limit: usize,
-	torn: Option<Position>,
+	torn: Option<LogOffset>,
 ) -> Result<Scan, StoreLogError> {
 	let file = fs.open(path)?;
 	let capacity = ByteSize::from_bytes(file.len()?);
@@ -191,58 +191,58 @@ fn walk<H: Pread>(
 	file: &H,
 	path: &Path,
 	capacity: ByteSize,
-	from: Position,
+	from: LogOffset,
 	after: Option<LogVersion>,
 	limit: Option<usize>,
 	strict: bool,
-	torn: Option<Position>,
+	torn: Option<LogOffset>,
 ) -> Result<Scan, StoreLogError> {
 	let mut records = Vec::new();
-	let mut position = from;
+	let mut offset = from;
 	let mut previous = after;
-	let mut first_corrupt: Option<Position> = None;
+	let mut first_corrupt: Option<LogOffset> = None;
 	loop {
 		if limit.is_some_and(|max| records.len() >= max) {
-			return Ok(clean(records, position, Stop::Limit, first_corrupt));
+			return Ok(clean(records, offset, Stop::Limit, first_corrupt));
 		}
-		if capacity.as_bytes().saturating_sub(position.as_u64()) < HEADER_BYTES as u64 {
-			return Ok(clean(records, position, Stop::Eof, first_corrupt));
+		if capacity.as_bytes().saturating_sub(offset.as_u64()) < HEADER_BYTES as u64 {
+			return Ok(clean(records, offset, Stop::Eof, first_corrupt));
 		}
 		let mut header = [0u8; HEADER_BYTES];
-		if !read_exact(file, position.as_u64(), &mut header)? {
-			return Ok(clean(records, position, Stop::Eof, first_corrupt));
+		if !read_exact(file, offset.as_u64(), &mut header)? {
+			return Ok(clean(records, offset, Stop::Eof, first_corrupt));
 		}
 		let header = Header::decode(&header);
 		if header.is_end() {
-			return Ok(clean(records, position, Stop::Unwritten, first_corrupt));
+			return Ok(clean(records, offset, Stop::Unwritten, first_corrupt));
 		}
 		let Some(payload_len) = header.payload_len() else {
 			if let Some(result) = escalated(path, first_corrupt) {
 				return result;
 			}
-			return Ok(stopped(records, position, Stop::Corrupt(position)));
+			return Ok(stopped(records, offset, Stop::Corrupt(offset)));
 		};
 		let total = HEADER_BYTES as u64 + payload_len as u64;
-		if capacity.as_bytes().saturating_sub(position.as_u64()) < total {
+		if capacity.as_bytes().saturating_sub(offset.as_u64()) < total {
 			if let Some(result) = escalated(path, first_corrupt) {
 				return result;
 			}
-			return Ok(stopped(records, position, Stop::Corrupt(position)));
+			return Ok(stopped(records, offset, Stop::Corrupt(offset)));
 		}
 		let mut payload = vec![0u8; payload_len];
-		read_exact(file, position.as_u64() + HEADER_BYTES as u64, &mut payload)?;
+		read_exact(file, offset.as_u64() + HEADER_BYTES as u64, &mut payload)?;
 		if !header.verify(&payload) {
-			if !strict || torn == Some(position) {
-				return Ok(stopped(records, position, Stop::Corrupt(position)));
+			if !strict || torn == Some(offset) {
+				return Ok(stopped(records, offset, Stop::Corrupt(offset)));
 			}
-			first_corrupt.get_or_insert(position);
-			position = position.advance(total);
+			first_corrupt.get_or_insert(offset);
+			offset = offset.advance(total);
 			continue;
 		}
 		if header.reserved != RESERVED {
 			return Err(StoreLogError::SegmentFormat {
 				path: path.to_path_buf(),
-				position,
+				offset,
 				reserved: header.reserved,
 			});
 		}
@@ -251,18 +251,18 @@ fn walk<H: Pread>(
 			if let Some(result) = escalated(path, first_corrupt) {
 				return result;
 			}
-			return Ok(stopped(records, position, Stop::Stale(position)));
+			return Ok(stopped(records, offset, Stop::Stale(offset)));
 		}
 		if let Some(result) = escalated(path, first_corrupt) {
 			return result;
 		}
 		previous = Some(record.version);
 		records.push(record);
-		position = position.advance(total);
+		offset = offset.advance(total);
 	}
 }
 
-fn stopped(records: Vec<Record>, end: Position, stop: Stop) -> Scan {
+fn stopped(records: Vec<Record>, end: LogOffset, stop: Stop) -> Scan {
 	Scan {
 		records,
 		end,
@@ -270,18 +270,18 @@ fn stopped(records: Vec<Record>, end: Position, stop: Stop) -> Scan {
 	}
 }
 
-fn clean(records: Vec<Record>, position: Position, stop: Stop, first_corrupt: Option<Position>) -> Scan {
+fn clean(records: Vec<Record>, offset: LogOffset, stop: Stop, first_corrupt: Option<LogOffset>) -> Scan {
 	match first_corrupt {
 		Some(first) => stopped(records, first, Stop::Corrupt(first)),
-		None => stopped(records, position, stop),
+		None => stopped(records, offset, stop),
 	}
 }
 
-fn escalated(path: &Path, first_corrupt: Option<Position>) -> Option<Result<Scan, StoreLogError>> {
+fn escalated(path: &Path, first_corrupt: Option<LogOffset>) -> Option<Result<Scan, StoreLogError>> {
 	first_corrupt.map(|first| {
 		Err(StoreLogError::SegmentCorrupt {
 			path: path.to_path_buf(),
-			position: first,
+			offset: first,
 		})
 	})
 }
@@ -383,7 +383,7 @@ mod tests {
 		let scan = scan(&fs, &path).unwrap();
 
 		assert_eq!(scan.records, vec![]);
-		assert_eq!(scan.end, Position::ZERO);
+		assert_eq!(scan.end, LogOffset::ZERO);
 		assert_eq!(scan.stop, Stop::Unwritten);
 	}
 

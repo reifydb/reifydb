@@ -455,7 +455,7 @@ mod tests {
 
 	#[test]
 	fn pushdown_is_none_over_multi_chunk_nullable() {
-		// A none at position 1 of each chunk has to resolve to block rows 1 and 4, not chunk-local 1 twice.
+		// A none at index 1 of each chunk has to resolve to block rows 1 and 4, not chunk-local 1 twice.
 		let mut a = ColumnBuilder::with_capacity(ValueType::Int4, 3);
 		a.push::<i32>(10);
 		a.push_none();

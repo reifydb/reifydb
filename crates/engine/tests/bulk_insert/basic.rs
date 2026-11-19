@@ -34,7 +34,7 @@ fn test_table_insert_named_params() {
 }
 
 #[test]
-fn test_table_insert_positional_params() {
+fn test_table_insert_ordinal_params() {
 	let t = TestEngine::new();
 	let identity = TestEngine::identity();
 

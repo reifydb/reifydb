@@ -48,7 +48,7 @@ pub struct RowwiseWorkload {
 	pub value_ceiling: i64,
 
 	/// Which shape's output is being compared. The driver projects a published row down to these
-	/// column positions before checking it, so extend's third column is invisible to the comparison
+	/// column indexes before checking it, so extend's third column is invisible to the comparison
 	/// unless the projection names it - and an oracle claiming three columns against a two-column
 	/// projection fails on every row for a reason that has nothing to do with the operator.
 	pub shape: Shape,

@@ -346,7 +346,7 @@ fn bulk_inserting_a_mismatched_digest_after_a_matching_one_names_both_types() {
 	let right = values["right"].clone();
 	for (value, got) in wrong_values() {
 		let d = values[value.trim_start_matches('$')].clone();
-		for target in ["table", "ringbuffer", "series", "positional table"] {
+		for target in ["table", "ringbuffer", "series", "ordinal table"] {
 			let mut builder = t.bulk_insert(TestEngine::identity());
 			match target {
 				"table" => builder

@@ -62,11 +62,11 @@ impl<'bump> Parser<'bump> {
 			self.skip_new_line()?;
 
 			self.consume_operator(Operator::OpenCurly)?;
-			let body_start_pos = self.position;
+			let body_start_pos = self.token_index;
 
 			let body = self.parse_policy_body()?;
 
-			let body_end_pos = self.position;
+			let body_end_pos = self.token_index;
 			let body_source = if body_start_pos < body_end_pos {
 				let start = self.tokens[body_start_pos].fragment.offset();
 				let end = self.tokens[body_end_pos - 1].fragment.offset()

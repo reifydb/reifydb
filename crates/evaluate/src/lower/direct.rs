@@ -49,13 +49,13 @@ impl Direct {
 			.routines
 			.get_scalar_function(call.func.0.text())
 			.ok_or_else(|| internal_error!("{}: row-changing routine vanished", operator))?;
-		let positions = function.type_argument_positions();
+		let indexes = function.type_argument_indexes();
 		let arguments = call
 			.args
 			.iter()
 			.enumerate()
 			.map(|(index, arg)| match arg {
-				Expression::Column(column) if positions.contains(&index) => {
+				Expression::Column(column) if indexes.contains(&index) => {
 					match ValueType::from_str(column.0.name.text()) {
 						Ok(ty) => Argument::Type(ty, column.0.name.clone()),
 						Err(_) => Argument::Lowered(LoweredExpr::new(arg.clone(), operator)),

@@ -98,7 +98,7 @@ fn sort_time_at_the_end_of_the_day() {
 
 #[test]
 fn sort_ties_keep_input_order() {
-	// Rows tied on the key must keep their input position in both directions, or take turns non-deterministic.
+	// Rows tied on the key must keep their input order in both directions, or take turns non-deterministic.
 	let rows = "from [{ id: 0, v: 7 }, { id: 1, v: 7 }, { id: 2, v: 7 }, { id: 3, v: 7 }]";
 
 	let ascending = ids(&format!("{rows} | sort {{ v: ASC }}"), Params::None);

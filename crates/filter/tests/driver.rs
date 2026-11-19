@@ -187,7 +187,7 @@ fn a_committed_cycle_is_followed_by_idle_when_no_trigger_fires() {
 #[test]
 fn dual_write_is_live_before_the_first_slice_is_ever_fetched() {
 	// The ordering invariant. Dual-write begins at begin_rebuild, so begin_rebuild must happen before
-	// the scan reads anything: a key written after the cursor passed its position but before the
+	// the scan reads anything: a key written after the cursor passed its place but before the
 	// rebuild began would land in neither the scan output nor the new filter, and the swap would then
 	// answer "definitely absent" for a row that exists. Asserting slices() == 0 alongside rebuilding
 	// is what makes this fail if begin_rebuild is moved after the first next_slice.

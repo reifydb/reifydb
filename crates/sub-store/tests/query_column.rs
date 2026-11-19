@@ -442,7 +442,7 @@ fn series_headers_are_the_key_and_the_data_columns() {
 #[test]
 fn a_tagged_series_puts_the_tag_column_after_the_key() {
 	// The block names the discriminant column "tag" regardless of the declared sum type, and
-	// places it between the key and the data columns. Any other position silently pairs every
+	// places it between the key and the data columns. Any other index silently pairs every
 	// data column with the wrong name.
 	let db = series_db();
 	db.admin("CREATE ENUM test::status { Active, Inactive }");

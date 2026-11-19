@@ -115,7 +115,7 @@ impl<G: Grid> GridOracle<G> {
 }
 
 /// What makes two published rows the same row for a fixed-grid window: the group-by column plus the
-/// window start, which the operator carries as the row's event position. Not the row number - a key
+/// window start, which the operator carries as the row's event time. Not the row number - a key
 /// whose mapping the sweep forgot mints a new one, so a duplicate would collide with nothing.
 fn window_row_key() -> RowKey {
 	RowKey::columns(["g"]).with_time()

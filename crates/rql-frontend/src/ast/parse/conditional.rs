@@ -50,13 +50,13 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn skip_new_line_before_else(&mut self) {
-		let mut position = self.position;
-		while position < self.tokens.len() && self.tokens[position].is_separator(Separator::NewLine) {
-			position += 1;
+		let mut token_index = self.token_index;
+		while token_index < self.tokens.len() && self.tokens[token_index].is_separator(Separator::NewLine) {
+			token_index += 1;
 		}
 
-		if position < self.tokens.len() && self.tokens[position].is_keyword(Keyword::Else) {
-			self.position = position;
+		if token_index < self.tokens.len() && self.tokens[token_index].is_keyword(Keyword::Else) {
+			self.token_index = token_index;
 		}
 	}
 
@@ -70,7 +70,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let next_pos = self.position + 1;
+			let next_pos = self.token_index + 1;
 			if next_pos >= self.tokens.len() {
 				break;
 			}

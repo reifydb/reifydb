@@ -365,8 +365,7 @@ fn none_column(field: &Field, name: &str, count: usize) -> Result<(FieldRef, Arr
 }
 
 fn gather(columns: &RecordBatch, rows: &[usize]) -> Result<RecordBatch, ValueError> {
-	let identity =
-		rows.len() == columns.num_rows() && rows.iter().enumerate().all(|(position, &row)| position == row);
+	let identity = rows.len() == columns.num_rows() && rows.iter().enumerate().all(|(index, &row)| index == row);
 	match identity {
 		true => Ok(columns.clone()),
 		false => take_rows(columns, rows),

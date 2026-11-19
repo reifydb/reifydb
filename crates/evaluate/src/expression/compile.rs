@@ -129,7 +129,7 @@ pub(crate) fn variable_column(
 
 fn is_param(ctx: &EvalContext, name: &str) -> bool {
 	ctx.params.get_named(name).is_some()
-		|| name.parse::<usize>().is_ok_and(|index| index > 0 && ctx.params.get_positional(index - 1).is_some())
+		|| name.parse::<usize>().is_ok_and(|index| index > 0 && ctx.params.get_ordinal(index - 1).is_some())
 }
 
 pub(crate) fn variable_field_column(

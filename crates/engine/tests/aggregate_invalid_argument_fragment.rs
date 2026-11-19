@@ -26,13 +26,13 @@ fn assert_points_at_function(diagnostic: &Diagnostic, function: &str) {
 	assert_eq!(diagnostic.code, "FUNCTION_004", "got: {diagnostic:?}");
 	assert!(
 		matches!(diagnostic.fragment, Fragment::Statement { .. }),
-		"the fragment must carry a position, got: {diagnostic:?}"
+		"the fragment must carry a location, got: {diagnostic:?}"
 	);
 	assert_eq!(diagnostic.fragment.text(), function, "got: {diagnostic:?}");
 }
 
 #[test]
-fn a_text_literal_argument_to_a_numeric_aggregate_reports_the_call_position() {
+fn a_text_literal_argument_to_a_numeric_aggregate_reports_the_call_location() {
 	// Without the call fragment the error renders with no LOCATION and no RQL, so a user cannot see which aggregate
 	// failed.
 	let t = engine();
@@ -43,8 +43,8 @@ fn a_text_literal_argument_to_a_numeric_aggregate_reports_the_call_position() {
 }
 
 #[test]
-fn a_text_column_argument_to_a_numeric_aggregate_reports_the_call_position() {
-	// A column input reaches the accumulator on a different path than a literal, so both must keep the position.
+fn a_text_column_argument_to_a_numeric_aggregate_reports_the_call_location() {
+	// A column input reaches the accumulator on a different path than a literal, so both must keep the location.
 	let t = engine();
 	for function in FUNCTIONS {
 		let rql = format!("from test::t aggregate {{ v: {function}(s) }} by {{ g }}");

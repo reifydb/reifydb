@@ -37,7 +37,7 @@ pub type DictionaryValues = HashMap<usize, HashMap<DictionaryEntryId, Value>>;
 struct ResolvedColumns<'a> {
 	batch: &'a RecordBatch,
 	dictionary: Option<&'a DictionaryValues>,
-	positions: HashMap<&'a str, usize>,
+	indexes: HashMap<&'a str, usize>,
 	views: Box<[OnceLock<Option<ColumnView<'a>>>]>,
 	times: OnceLock<RowTimes<'a>>,
 }
@@ -45,21 +45,21 @@ struct ResolvedColumns<'a> {
 impl<'a> ResolvedColumns<'a> {
 	fn new(batch: &'a RecordBatch, dictionary: Option<&'a DictionaryValues>) -> Self {
 		let fields = batch.schema_ref().fields();
-		let mut positions = HashMap::with_capacity(fields.len());
+		let mut indexes = HashMap::with_capacity(fields.len());
 		for (index, field) in fields.iter().enumerate() {
-			positions.entry(field.name().as_str()).or_insert(index);
+			indexes.entry(field.name().as_str()).or_insert(index);
 		}
 		Self {
 			batch,
 			dictionary,
-			positions,
+			indexes,
 			views: fields.iter().map(|_| OnceLock::new()).collect(),
 			times: OnceLock::new(),
 		}
 	}
 
 	fn view(&self, name: &str) -> Result<Option<&ColumnView<'a>>, SdkError> {
-		let Some(&index) = self.positions.get(name) else {
+		let Some(&index) = self.indexes.get(name) else {
 			return Ok(None);
 		};
 		let slot = &self.views[index];
@@ -80,7 +80,7 @@ impl<'a> ResolvedColumns<'a> {
 	}
 
 	fn entries(&self, name: &str) -> Option<&'a HashMap<DictionaryEntryId, Value>> {
-		self.dictionary.and_then(|dictionary| dictionary.get(self.positions.get(name)?))
+		self.dictionary.and_then(|dictionary| dictionary.get(self.indexes.get(name)?))
 	}
 
 	fn row_numbers(&self) -> &'a [RowNumber] {

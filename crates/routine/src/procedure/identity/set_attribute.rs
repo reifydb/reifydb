@@ -43,8 +43,8 @@ pub(crate) fn extract_args(
 	expected: usize,
 ) -> Result<Vec<Value>, RoutineError> {
 	match params {
-		Params::Positional(args) if args.len() == expected => Ok(args.as_ref().clone()),
-		Params::Positional(args) => Err(RoutineError::ProcedureArityMismatch {
+		Params::Ordinal(args) if args.len() == expected => Ok(args.as_ref().clone()),
+		Params::Ordinal(args) => Err(RoutineError::ProcedureArityMismatch {
 			procedure: Fragment::internal(procedure),
 			expected,
 			actual: args.len(),

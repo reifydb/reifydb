@@ -99,13 +99,13 @@ fn call(function: &impl Function, args: &[Column]) -> Result<Column, String> {
 fn check(name: &str, function: &impl Function, columns: Vec<Column>, constants: Vec<Vec<Value>>) -> Vec<String> {
 	let mut wrong = Vec::new();
 	let mut cases: Vec<(String, Vec<Column>, Vec<Column>)> = Vec::new();
-	for (position, values) in constants.iter().enumerate() {
+	for (index, values) in constants.iter().enumerate() {
 		for value in values {
 			let mut one = columns.clone();
 			let mut many = columns.clone();
-			one[position] = from_one("constant", value.clone());
-			many[position] = from_many("constant", value.clone(), ROWS);
-			cases.push((format!("{name} arg {position} = {value:?}"), one, many));
+			one[index] = from_one("constant", value.clone());
+			many[index] = from_many("constant", value.clone(), ROWS);
+			cases.push((format!("{name} arg {index} = {value:?}"), one, many));
 		}
 	}
 	if columns.len() > 1 {
@@ -246,7 +246,7 @@ fn unary_time_functions_broadcast_a_constant_time() {
 }
 
 #[test]
-fn binary_date_functions_read_a_constant_in_every_position() {
+fn binary_date_functions_read_a_constant_in_every_argument() {
 	// Every row must read row 0 of a 1-row argument, otherwise rows past the first see a missing value.
 	let date_or_none = vec![date_value(), none_of(ValueType::Date)];
 	let duration_or_none = vec![duration_value(), none_of(ValueType::Duration)];
@@ -312,7 +312,7 @@ fn date_new_reads_a_constant_year_month_or_day() {
 }
 
 #[test]
-fn binary_time_functions_read_a_constant_in_every_position() {
+fn binary_time_functions_read_a_constant_in_every_argument() {
 	// Every row must read row 0 of a 1-row argument, otherwise rows past the first see a missing value.
 	let time_or_none = vec![time_value(), none_of(ValueType::Time)];
 	let duration_or_none = vec![duration_value(), none_of(ValueType::Duration)];
@@ -357,7 +357,7 @@ fn binary_time_functions_read_a_constant_in_every_position() {
 }
 
 #[test]
-fn time_new_reads_a_constant_part_in_every_position() {
+fn time_new_reads_a_constant_part_in_every_argument() {
 	// A 1-row part must apply to every row, otherwise later rows read past the end of the part.
 	let hours = int4("hour", [0, 5, 13, 23]);
 	let minutes = int4("minute", [0, 15, 30, 59]);

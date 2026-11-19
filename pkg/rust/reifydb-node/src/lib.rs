@@ -135,7 +135,7 @@ type ParamsInput = Either<Vec<ParamValue>, HashMap<String, ParamValue>>;
 fn parse_params(params: Option<ParamsInput>) -> Result<Params, NapiError> {
 	let wire = match params {
 		None => return Ok(Params::None),
-		Some(Either::A(items)) => WireParams::Positional(
+		Some(Either::A(items)) => WireParams::Ordinal(
 			items.into_iter()
 				.enumerate()
 				.map(|(index, value)| to_wire_value(&format!("${}", index + 1), value))

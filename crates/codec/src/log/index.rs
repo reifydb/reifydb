@@ -4,7 +4,7 @@
 use crc32fast::Hasher;
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions, value::datetime::DateTime};
 
-use crate::log::{LogIndex, LogVersion, Position};
+use crate::log::{LogIndex, LogOffset, LogVersion};
 
 pub const HEADER_BYTES: usize = 40;
 
@@ -87,7 +87,7 @@ fn checksum_bytes(bytes: &[u8]) -> u32 {
 pub struct Entry {
 	pub version: LogVersion,
 	pub index: LogIndex,
-	pub position: Position,
+	pub offset: LogOffset,
 }
 
 pub fn encode_entry(header: &Header, entry: Entry) -> [u8; ENTRY_BYTES] {
@@ -119,17 +119,17 @@ pub fn encode_entry(header: &Header, entry: Entry) -> [u8; ENTRY_BYTES] {
 			u32::MAX
 		);
 		assert!(
-			entry.position.as_u64() <= u32::MAX as u64,
-			"a position of {} overflows the four byte position field, so the segment must stay under \
+			entry.offset.as_u64() <= u32::MAX as u64,
+			"an offset of {} overflows the four byte offset field, so the segment must stay under \
 			 {} bytes",
-			entry.position,
+			entry.offset,
 			u32::MAX
 		);
 	}
 	let mut out = [0u8; ENTRY_BYTES];
 	out[0..4].copy_from_slice(&((entry.version.as_u64() - header.base_version.as_u64()) as u32).to_le_bytes());
 	out[4..8].copy_from_slice(&((entry.index.as_u64() - header.base_index.as_u64()) as u32).to_le_bytes());
-	out[8..12].copy_from_slice(&(entry.position.as_u64() as u32).to_le_bytes());
+	out[8..12].copy_from_slice(&(entry.offset.as_u64() as u32).to_le_bytes());
 	out
 }
 
@@ -145,6 +145,6 @@ pub fn decode_entry(header: &Header, buf: &[u8; ENTRY_BYTES]) -> Option<Entry> {
 				.as_u64()
 				.checked_add(u32::from_le_bytes(buf[4..8].try_into().unwrap()) as u64)?,
 		),
-		position: Position::new(u32::from_le_bytes(buf[8..12].try_into().unwrap()) as u64),
+		offset: LogOffset::new(u32::from_le_bytes(buf[8..12].try_into().unwrap()) as u64),
 	})
 }

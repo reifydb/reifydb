@@ -96,7 +96,7 @@ fn every_fed_hash_survives_the_commit() {
 
 #[test]
 fn writes_during_a_rebuild_land_in_the_new_filter() {
-	// The core invariant of this work item. A key written after the scan passed its position exists in
+	// The core invariant of this work item. A key written after the scan passed its place exists in
 	// neither the scan output nor a non-dual-written building filter, so after the swap it reads as absent
 	// while the row is on disk. Dual-write is the only thing preventing that.
 	let filter = AdaptiveKeyFilter::new();

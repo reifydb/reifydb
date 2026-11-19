@@ -38,7 +38,7 @@ fn order_inbox(operator: &FlowNode, order: InputOrder, mut inbox: Vec<Change>) -
 			.inputs
 			.iter()
 			.position(|input| input == node)
-			.map(|position| order.rank(position, arity))
+			.map(|index| order.rank(index, arity))
 			.unwrap_or(arity),
 		_ => arity,
 	});

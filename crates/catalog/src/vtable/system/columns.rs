@@ -52,7 +52,7 @@ impl BaseVTable for SystemColumnsTable {
 		let mut object_types = Vec::new();
 		let mut column_names = Vec::new();
 		let mut column_types = Vec::new();
-		let mut positions = Vec::new();
+		let mut ordinals = Vec::new();
 		let mut auto_increments = Vec::new();
 		let mut dictionary_ids = Vec::new();
 		let mut dictionary_present = Vec::new();
@@ -64,7 +64,7 @@ impl BaseVTable for SystemColumnsTable {
 			object_types.push(info.object_id.kind_name());
 			column_names.push(info.column.name);
 			column_types.push(type_constraint_text(&info.column.constraint));
-			positions.push(u16::from(info.column.index.0));
+			ordinals.push(u16::from(info.column.index.0));
 			auto_increments.push(info.column.auto_increment);
 			dictionary_ids.push(info.column.dictionary_id.map_or(0, |d| d.0));
 			dictionary_present.push(info.column.dictionary_id.is_some());
@@ -76,7 +76,7 @@ impl BaseVTable for SystemColumnsTable {
 			factory::utf8("object_kind", object_types),
 			factory::utf8("name", column_names),
 			factory::utf8("type", column_types),
-			factory::uint2("position", positions),
+			factory::uint2("ordinal", ordinals),
 			factory::bool("auto_increment", auto_increments),
 			factory::uint8_with_bitvec("dictionary_id", dictionary_ids, dictionary_present),
 		];

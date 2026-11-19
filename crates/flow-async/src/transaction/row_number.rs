@@ -126,7 +126,7 @@ fn resolve_or_mint(
 	}
 
 	txn.state_write_batch(operator, batch)?;
-	Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
+	Ok(results.into_iter().map(|r| r.expect("every index filled")).collect())
 }
 
 pub trait RowNumberExtension: FlowTransaction {

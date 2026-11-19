@@ -99,7 +99,7 @@ fn an_empty_change_passes_a_broken_filter_without_an_error() {
 
 #[test]
 fn a_later_batch_with_moved_columns_reads_the_right_column() {
-	// Without lowering again the moved column is read by its old position and the wrong row passes.
+	// Without lowering again the moved column is read by its old index and the wrong row passes.
 	let mut operator = filter("a > 1");
 	let first = batch(vec![factory::int4("a", [2]), factory::int4("b", [0])]).unwrap();
 	let moved = batch(vec![factory::int4("b", [0, 5]), factory::int4("a", [5, 0])]).unwrap();

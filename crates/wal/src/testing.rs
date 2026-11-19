@@ -6,7 +6,7 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_codec::log::{LogIndex, LogVersion, Position, record::Record};
+use reifydb_codec::log::{LogIndex, LogOffset, LogVersion, record::Record};
 use reifydb_runtime::{
 	io::fs::{Create, Filesystem, Mkdir, Open, OpenMut, ReadDir, Rename, SyncDir, Unlink},
 	sync::Arc,
@@ -143,7 +143,7 @@ where
 	C: ClockNow + Clone + Send + 'static,
 	Partition<F, C>: Send,
 {
-	fn append(&self, record: &Record) -> Result<Position, WalError> {
+	fn append(&self, record: &Record) -> Result<LogOffset, WalError> {
 		self.call();
 		let lsn = Lsn::from_version(record.version).unwrap_or(Lsn::FIRST);
 		match self.0.hooks.on_append(lsn, record.payload.len()) {

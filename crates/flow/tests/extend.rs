@@ -98,7 +98,7 @@ fn a_type_mismatch_builds_the_extend_and_fails_every_apply() {
 
 #[test]
 fn a_later_batch_with_moved_columns_reads_the_right_column() {
-	// Without lowering again the moved column is read by its old position and the wrong value comes out.
+	// Without lowering again the moved column is read by its old index and the wrong value comes out.
 	let mut operator = extend(&["c: a + 1"]).unwrap();
 	let first = batch(vec![factory::int4("a", [2]), factory::int4("b", [0])]).unwrap();
 	let moved = batch(vec![factory::int4("b", [0]), factory::int4("a", [5])]).unwrap();

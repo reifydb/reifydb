@@ -314,8 +314,8 @@ mod tests {
 		for (node, ty) in nodes {
 			builder.add_node(FlowNode::new(node, ty));
 		}
-		for (position, (source, target)) in edges.iter().enumerate() {
-			builder.add_edge(FlowEdge::new(position as u64, builder.id(), *source, *target)).unwrap();
+		for (index, (source, target)) in edges.iter().enumerate() {
+			builder.add_edge(FlowEdge::new(index as u64, builder.id(), *source, *target)).unwrap();
 		}
 		builder.build()
 	}

@@ -55,8 +55,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for StorageAdvanceProcedure {
 		_args: &[(FieldRef, ArrayRef)],
 	) -> Result<RecordBatch, RoutineError> {
 		let (objects, at) = match ctx.params {
-			Params::Positional(args) if args.len() == 2 => (args[0].clone(), args[1].clone()),
-			Params::Positional(args) => return Err(arity(args.len())),
+			Params::Ordinal(args) if args.len() == 2 => (args[0].clone(), args[1].clone()),
+			Params::Ordinal(args) => return Err(arity(args.len())),
 			_ => return Err(arity(0)),
 		};
 

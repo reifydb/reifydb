@@ -365,7 +365,7 @@ impl<'a> Vm<'a> {
 		}
 		args.reverse();
 		for (index, arg) in args.into_iter().enumerate() {
-			match type_arguments.iter().find(|(position, _)| *position == index) {
+			match type_arguments.iter().find(|(at, _)| *at == index) {
 				Some((_, name)) => self.exec_load_var(name)?,
 				None => self.stack.push(arg),
 			}
@@ -455,7 +455,7 @@ impl<'a> Vm<'a> {
 			assert!(
 				popped == arity,
 				"argument pop produced {popped} values for an arity-{arity} call; downstream \
-				 callees positionally zip params against args, so a miscount silently mis-binds \
+				 callees zip params against args by index, so a miscount silently mis-binds \
 				 or drops arguments instead of failing the call"
 			);
 		}
@@ -777,7 +777,7 @@ impl<'a> Vm<'a> {
 			} => {
 				let handler_name = handler_name.clone();
 				if let Some(routine) = ctx.services.routines.get_procedure(&handler_name) {
-					let call_params = Params::Positional(Arc::new(args));
+					let call_params = Params::Ordinal(Arc::new(args));
 					let identity = self.identity;
 					let mut proc_ctx = RoutineProcedureContext {
 						fragment: name.clone(),
@@ -1001,12 +1001,8 @@ impl<'a> Vm<'a> {
 		if let Some(ref registry) = services.remote_registry {
 			let param_refs: Vec<String> = (1..=args.len()).map(|i| format!("${}", i)).collect();
 			let remote_rql = format!("CALL {}({})", func_name, param_refs.join(", "));
-			let frames = registry.forward_query(
-				address,
-				&remote_rql,
-				Params::Positional(Arc::new(args)),
-				token,
-			)?;
+			let frames =
+				registry.forward_query(address, &remote_rql, Params::Ordinal(Arc::new(args)), token)?;
 			if let Some(frame) = frames.into_iter().next() {
 				self.stack.push(Variable::columns(frame.batch));
 			} else {
@@ -1054,7 +1050,7 @@ impl<'a> Vm<'a> {
 		name: &Fragment,
 		func_name: &str,
 	) -> Result<(), ValueError> {
-		let call_params = Params::Positional(Arc::new(args));
+		let call_params = Params::Ordinal(Arc::new(args));
 		let attach_metadata = routine.attaches_row_metadata();
 		let columns = invoke_procedure_routine(
 			ctx.services,

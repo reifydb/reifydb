@@ -82,7 +82,7 @@ mod tests {
 	#[test]
 	fn test_a_token_survives_a_round_trip() {
 		// Every ack and extend is authorised purely by what this parser reads back out. A field
-		// that shifts by one position would hand attempt 2's outcome to attempt 3, or transition
+		// that shifts by one place would hand attempt 2's outcome to attempt 3, or transition
 		// a different item entirely.
 		let original = token("worker-1");
 

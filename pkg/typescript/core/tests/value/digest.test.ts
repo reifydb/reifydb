@@ -34,9 +34,9 @@ function zigzag(index: bigint): bigint {
     return index >= 0n ? index * 2n : -index * 2n - 1n;
 }
 
-function headerWith(position: number, value: bigint): bigint[] {
+function headerWith(index: number, value: bigint): bigint[] {
     const fields = EMPTY_FLOAT8.slice(0, 6);
-    fields[position] = value;
+    fields[index] = value;
     return fields;
 }
 
@@ -209,10 +209,10 @@ describe('DigestValue', () => {
     });
 
     it('rejects infinity in a duration digest', () => {
-        for (const position of [4, 5]) {
-            const fields = headerWith(position, 1n);
+        for (const index of [4, 5]) {
+            const fields = headerWith(index, 1n);
             fields[1] = 18n;
-            expect(() => new DigestValue(new Uint8Array(varints([...fields, 0n, 0n]))), `${position}`)
+            expect(() => new DigestValue(new Uint8Array(varints([...fields, 0n, 0n]))), `${index}`)
                 .toThrow('digest of duration cannot hold infinity');
         }
     });

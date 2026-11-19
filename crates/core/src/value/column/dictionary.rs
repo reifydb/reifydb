@@ -94,18 +94,18 @@ pub fn decode_dictionary_ids(
 		);
 	};
 	let mut distinct: Vec<DictionaryEntryId> = Vec::new();
-	let mut positions: HashMap<u128, usize> = HashMap::new();
+	let mut indexes: HashMap<u128, usize> = HashMap::new();
 	let mut rows: Vec<Option<usize>> = Vec::with_capacity(view.len());
 	for (row, id) in dictionary_array::iter(container).enumerate() {
 		if !view.is_defined(row) {
 			rows.push(None);
 			continue;
 		}
-		let position = *positions.entry(id.to_u128()).or_insert_with(|| {
+		let index = *indexes.entry(id.to_u128()).or_insert_with(|| {
 			distinct.push(id);
 			distinct.len() - 1
 		});
-		rows.push(Some(position));
+		rows.push(Some(index));
 	}
 	let values = match distinct.is_empty() {
 		true => Vec::new(),
@@ -126,7 +126,7 @@ pub fn decode_dictionary_ids(
 			found.len() - 1
 		}));
 	}
-	let picks: Vec<Option<usize>> = rows.into_iter().map(|row| row.and_then(|position| slots[position])).collect();
+	let picks: Vec<Option<usize>> = rows.into_iter().map(|row| row.and_then(|index| slots[index])).collect();
 	let decoded = take_rows_or_none(&batch(vec![found.finish(field.name())])?, &picks)?;
 	Ok((decoded.schema_ref().fields()[0].clone(), decoded.column(0).clone()))
 }

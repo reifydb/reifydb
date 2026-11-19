@@ -89,11 +89,11 @@ pub(crate) fn extract_view_sort(as_clause: &QueryPlan, columns: &[ViewColumnToCr
 
 	let mut resolved = Vec::with_capacity(by.len());
 	for key in by {
-		let Some(position) = columns.iter().position(|c| c.name.text() == key.column.text()) else {
+		let Some(index) = columns.iter().position(|c| c.name.text() == key.column.text()) else {
 			return Vec::new();
 		};
 		resolved.push(ViewSortKey {
-			column: ColumnIndex(position as u8),
+			column: ColumnIndex(index as u8),
 			direction: key.direction.clone(),
 		});
 	}

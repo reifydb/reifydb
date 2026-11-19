@@ -21,7 +21,7 @@ use reifydb_value::{
 		constraint::TypeConstraint,
 		enum_variant::EnumVariant,
 		sumtype::SumTypeId,
-		system_columns::{sumtype_tag_position, user_columns},
+		system_columns::{sumtype_tag_index, user_columns},
 		value_type::{
 			ValueType,
 			field::{from_field, is_sumtype_tag},
@@ -259,7 +259,7 @@ impl SymbolTable {
 	}
 
 	pub fn enum_field(&self, batch: &RecordBatch, field: &str) -> Result<Option<Value>, ValueError> {
-		let Some(index) = sumtype_tag_position(batch, field) else {
+		let Some(index) = sumtype_tag_index(batch, field) else {
 			return Ok(None);
 		};
 		self.enum_value(batch.schema_ref().field(index), batch.column(index), 0)

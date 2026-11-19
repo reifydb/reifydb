@@ -110,19 +110,19 @@ pub fn parse_rql(command: &Command) -> String {
 	command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ")
 }
 
-/// First argument is the RQL, the rest are positional parameters.
+/// First argument is the RQL, the rest are ordinal parameters.
 #[allow(dead_code)]
-pub fn parse_positional_params(command: &Command) -> (String, Params) {
+pub fn parse_ordinal_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
 
 	if args.is_empty() {
-		return (String::new(), Params::Positional(Arc::new(vec![])));
+		return (String::new(), Params::Ordinal(Arc::new(vec![])));
 	}
 
 	let rql = args[0].to_string();
 	let params: Vec<_> = args[1..].iter().map(|s| parse_param_value(s)).collect();
 
-	(rql, Params::Positional(Arc::new(params)))
+	(rql, Params::Ordinal(Arc::new(params)))
 }
 
 /// First argument is the RQL, the rest are `name=value` pairs.

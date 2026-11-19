@@ -1,0 +1,11 @@
+# Generated from: params_ordinal.tap.md#int2_param
+# Test: Query with ordinal INT2 parameter
+
+query_ordinal 'MAP {result: $1}' '1234'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |   1234   |
+> +----------+
+>

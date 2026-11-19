@@ -110,7 +110,7 @@ pub fn aggregate_call_diagnostic(output: &str, error: AggregateCallError) -> Dia
 			actual,
 		}) => flow_percentile_argument_count(output, function.text(), actual),
 		AggregateCallError::Percentile(PercentileCallError::NotLiteral {
-			position: 2,
+			index: 2,
 			..
 		})
 		| AggregateCallError::Percentile(PercentileCallError::PercentileNotANumber {
@@ -120,13 +120,13 @@ pub fn aggregate_call_diagnostic(output: &str, error: AggregateCallError) -> Dia
 			..
 		}) => flow_percentile_out_of_range(output, PERCENTILE_FUNCTION),
 		AggregateCallError::Percentile(PercentileCallError::NotLiteral {
-			position: 3,
+			index: 3,
 			..
 		}) => flow_digest_accuracy_not_a_literal(output, PERCENTILE_FUNCTION),
 		AggregateCallError::Percentile(PercentileCallError::NotLiteral {
-			position,
+			index,
 			..
-		}) => unreachable!("a percentile call has no literal argument at position {position}"),
+		}) => unreachable!("a percentile call has no literal argument at index {index}"),
 		AggregateCallError::Percentile(PercentileCallError::Accuracy {
 			error,
 			..

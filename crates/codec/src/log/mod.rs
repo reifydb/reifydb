@@ -157,13 +157,13 @@ impl From<RecordKind> for u32 {
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct Position(u64);
+pub struct LogOffset(u64);
 
-impl Position {
+impl LogOffset {
 	pub const ZERO: Self = Self(0);
 
-	pub const fn new(position: u64) -> Self {
-		Self(position)
+	pub const fn new(offset: u64) -> Self {
+		Self(offset)
 	}
 
 	pub const fn as_u64(self) -> u64 {
@@ -179,15 +179,15 @@ impl Position {
 	}
 }
 
-impl Display for Position {
+impl Display for LogOffset {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "{}", self.0)
 	}
 }
 
-impl From<Position> for u64 {
-	fn from(position: Position) -> Self {
-		position.0
+impl From<LogOffset> for u64 {
+	fn from(offset: LogOffset) -> Self {
+		offset.0
 	}
 }
 

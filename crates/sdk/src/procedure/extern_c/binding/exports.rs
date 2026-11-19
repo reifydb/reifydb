@@ -55,7 +55,7 @@ pub unsafe extern "C" fn create_procedure_instance<T: ExternCProcedureWithMetada
 		match decode_params(params_bytes) {
 			Ok(Params::Named(map)) => Arc::try_unwrap(map).unwrap_or_else(|map| (*map).clone()),
 			Ok(Params::None) => HashMap::new(),
-			Ok(Params::Positional(_)) => {
+			Ok(Params::Ordinal(_)) => {
 				panic!("Failed to deserialize procedure params: expected named params");
 			}
 			Err(e) => {

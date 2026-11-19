@@ -242,7 +242,7 @@ pub mod tests {
 	#[test]
 	fn test_float_with_trailing_identifier() {
 		let bump = Bump::new();
-		// The digit-starting-identifier backtrack must fall back to the number, not retry the same position
+		// The digit-starting-identifier backtrack must fall back to the number, not retry the same char index
 		// forever.
 		let tokens = tokenize(&bump, "3.14px").unwrap();
 		assert_eq!(tokens.len(), 2);

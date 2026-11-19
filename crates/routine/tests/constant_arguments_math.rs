@@ -80,16 +80,16 @@ fn mismatches<F: Function>(
 	constants: &[Value],
 ) -> Vec<String> {
 	let mut wrong = Vec::new();
-	for (position, constant) in constants.iter().enumerate() {
+	for (index, constant) in constants.iter().enumerate() {
 		let with = |len: usize| {
 			let mut args = columns.to_vec();
-			args[position] = from_many("constant", constant.clone(), len);
+			args[index] = from_many("constant", constant.clone(), len);
 			args
 		};
 		match (outcome(function, &with(1)), outcome(function, &with(ROWS))) {
 			(Ok(one), Ok(all)) if one.len() == ROWS && one.to_data() == all.to_data() => {}
 			(one, all) => wrong.push(format!(
-				"{name} position {position} constant {constant:?}: one row gave {one:?}, repeated gave {all:?}"
+				"{name} argument {index} constant {constant:?}: one row gave {one:?}, repeated gave {all:?}"
 			)),
 		}
 	}
@@ -147,7 +147,7 @@ fn unary_decimal_and_integer_constant_fills_every_row() {
 }
 
 #[test]
-fn binary_constant_in_either_position_matches_repeated() {
+fn binary_constant_in_either_argument_matches_repeated() {
 	// A row loop bounded by the first argument's length, or reading the second past its end, breaks here.
 	let mut wrong = Vec::new();
 	let floats2 = [floats(), float8("x", [2.0, -1.5, 0.25, 3.0])];
@@ -177,7 +177,7 @@ fn binary_constant_in_either_position_matches_repeated() {
 }
 
 #[test]
-fn clamp_constant_in_any_position_matches_repeated() {
+fn clamp_constant_in_any_argument_matches_repeated() {
 	// Otherwise clamp answers as many rows as the value argument, or none for rows past a 1-row bound.
 	let mut wrong = Vec::new();
 	let int_cols = [int4("v", [1, 5, 9, -3]), int4("lo", [0, 1, 2, -5]), int4("hi", [10, 8, 9, 3])];
@@ -223,7 +223,7 @@ fn round_constant_value_or_digits_matches_repeated() {
 }
 
 #[test]
-fn variadic_constant_in_any_position_matches_repeated() {
+fn variadic_constant_in_any_argument_matches_repeated() {
 	// Row-wise min, max, avg, sum and count must see a 1-row argument in every row, not only row 0.
 	let mut wrong = Vec::new();
 	let ints2 = [ints(), int4("b", [6, -4, 2, 10])];

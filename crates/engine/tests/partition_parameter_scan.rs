@@ -82,14 +82,14 @@ fn a_partition_parameter_answers_exactly_what_the_plain_filter_answers() {
 				&format!(
 					"FROM {source} | filter {{ {filter} }} | sort {{ id: ASC }} | map {{ v: id }}"
 				),
-				positional(vec![value.clone()]),
+				ordinal(vec![value.clone()]),
 			);
 			let plain = run(
 				&t,
 				&format!(
 					"FROM {source} | filter {{ ({filter}) == true }} | sort {{ id: ASC }} | map {{ v: id }}"
 				),
-				positional(vec![value.clone()]),
+				ordinal(vec![value.clone()]),
 			);
 			assert_eq!(pruned, plain, "{source} {filter} with {value:?}");
 		}
@@ -101,14 +101,14 @@ fn a_partition_parameter_answers_the_rows_of_its_partition() {
 	// A pruned scan must still read every row of the named partition, never a different partition.
 	let t = engine();
 	let rows = "FROM test::k | filter { k == $1 } | sort { id: ASC } | map { v: id }";
-	assert_eq!(run(&t, rows, positional(vec![Value::Int8(2)])), ids(&["1", "3"]));
-	assert_eq!(run(&t, rows, positional(vec![Value::Int4(3)])), ids(&["2"]));
+	assert_eq!(run(&t, rows, ordinal(vec![Value::Int8(2)])), ids(&["1", "3"]));
+	assert_eq!(run(&t, rows, ordinal(vec![Value::Int4(3)])), ids(&["2"]));
 
 	let view = "FROM test::v | filter { region == $1 } | sort { id: ASC } | map { v: id }";
-	assert_eq!(run(&t, view, positional(vec![Value::Utf8("eu".to_string())])), ids(&["1", "3"]));
+	assert_eq!(run(&t, view, ordinal(vec![Value::Utf8("eu".to_string())])), ids(&["1", "3"]));
 
 	let tiers = "FROM test::m | filter { region == 'eu' and tier == $1 } | sort { id: ASC } | map { v: id }";
-	assert_eq!(run(&t, tiers, positional(vec![Value::Utf8("gold".to_string())])), ids(&["1"]));
+	assert_eq!(run(&t, tiers, ordinal(vec![Value::Utf8("gold".to_string())])), ids(&["1"]));
 }
 
 #[derive(Debug, PartialEq)]
@@ -117,8 +117,8 @@ enum Answer {
 	Error(String, String),
 }
 
-fn positional(values: Vec<Value>) -> Params {
-	Params::Positional(Arc::new(values))
+fn ordinal(values: Vec<Value>) -> Params {
+	Params::Ordinal(Arc::new(values))
 }
 
 fn ids(values: &[&str]) -> Answer {

@@ -90,7 +90,7 @@ describe('Digest [json-http]', () => {
         }
     }, 10000);
 
-    it('reads the same percentile from a positional digest parameter as from one query', async () => {
+    it('reads the same percentile from an ordinal digest parameter as from one query', async () => {
         // A digest that loses a bucket or its accuracy on the way out reads a different p than the server alone.
         const [rows] = await client.query(DIGESTS, null, []);
         const [truth] = await client.query(PERCENTILES, null, []);
@@ -146,9 +146,9 @@ describe('Digest [json-http]', () => {
         expect(off <= 50_000_000n).toBe(true);
 
         for (const [i, row] of (rows as any[]).entries()) {
-            const [[positional]] = await client.query('map { p99: stats::approx_percentile($1, 0.99) }', [row.latencies], []);
+            const [[ordinal]] = await client.query('map { p99: stats::approx_percentile($1, 0.99) }', [row.latencies], []);
             const [[named]] = await client.query('map { p99: stats::approx_percentile($d, 0.99) }', {d: row.latencies}, []);
-            for (const read of [positional, named]) {
+            for (const read of [ordinal, named]) {
                 expect(read.p99).toBeInstanceOf(DurationValue);
                 expect(read.p99.equals(truth[i].latency_p99)).toBe(true);
             }

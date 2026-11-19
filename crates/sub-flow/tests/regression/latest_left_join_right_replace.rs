@@ -162,8 +162,8 @@ fn a_right_replace_where_another_row_of_the_key_takes_the_pick_frees_the_old_win
 }
 
 #[test]
-fn a_ring_eviction_that_moves_the_winner_position_to_another_key_leaves_one_fresh_winner() {
-	// An evicted winner must be freed and never stay a candidate when its ring position moves to another key.
+fn a_ring_eviction_that_moves_the_winner_slot_to_another_key_leaves_one_fresh_winner() {
+	// An evicted winner must be freed and never stay a candidate when its ring slot moves to another key.
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::bar { k: utf8, n: int4 }");

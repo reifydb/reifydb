@@ -25,20 +25,20 @@ fn a_rownum_parameter_answers_the_rows_its_value_names() {
 	let t = engine();
 	for source in SOURCES {
 		let rows = format!("FROM {source} | filter {{ #rownum == $1 }} | sort {{ id: ASC }} | map {{ v: id }}");
-		assert_eq!(run(&t, &rows, positional(vec![Value::Int4(2)])), ids(&["20"]), "{source}");
-		assert_eq!(run(&t, &rows, positional(vec![Value::Uint8(4)])), ids(&["40"]), "{source}");
-		assert_eq!(run(&t, &rows, positional(vec![Value::Uint8(9)])), ids(&[]), "{source}");
+		assert_eq!(run(&t, &rows, ordinal(vec![Value::Int4(2)])), ids(&["20"]), "{source}");
+		assert_eq!(run(&t, &rows, ordinal(vec![Value::Uint8(4)])), ids(&["40"]), "{source}");
+		assert_eq!(run(&t, &rows, ordinal(vec![Value::Uint8(9)])), ids(&[]), "{source}");
 
 		let list = format!(
 			"FROM {source} | filter {{ #rownum in [$1, 3] }} | sort {{ id: ASC }} | map {{ v: id }}"
 		);
-		assert_eq!(run(&t, &list, positional(vec![Value::Int8(1)])), ids(&["10", "30"]), "{source}");
+		assert_eq!(run(&t, &list, ordinal(vec![Value::Int8(1)])), ids(&["10", "30"]), "{source}");
 
 		let range = format!(
 			"FROM {source} | filter {{ #rownum between $1 and $2 }} | sort {{ id: ASC }} | map {{ v: id }}"
 		);
 		assert_eq!(
-			run(&t, &range, positional(vec![Value::Uint1(2), Value::Uint1(3)])),
+			run(&t, &range, ordinal(vec![Value::Uint1(2), Value::Uint1(3)])),
 			ids(&["20", "30"]),
 			"{source}"
 		);
@@ -81,14 +81,14 @@ fn a_rownum_parameter_answers_exactly_what_the_plain_filter_answers() {
 					&format!(
 						"FROM {source} | filter {{ {filter} }} | sort {{ id: ASC }} | map {{ v: id }}"
 					),
-					positional(vec![value.clone()]),
+					ordinal(vec![value.clone()]),
 				);
 				let plain = run(
 					&t,
 					&format!(
 						"FROM {source} | filter {{ ({filter}) == true }} | sort {{ id: ASC }} | map {{ v: id }}"
 					),
-					positional(vec![value.clone()]),
+					ordinal(vec![value.clone()]),
 				);
 				assert_eq!(lookup, plain, "{source} {filter} with {value:?}");
 			}
@@ -118,7 +118,7 @@ fn a_negated_rownum_list_excludes_the_listed_rows() {
 			"FROM {source} | filter {{ #rownum not in [$1, 2] }} | sort {{ id: ASC }} | map {{ v: id }}"
 		);
 		assert_eq!(run(&t, &constants, Params::None), ids(&["30", "40"]), "{source}");
-		assert_eq!(run(&t, &parameters, positional(vec![Value::Int4(1)])), ids(&["30", "40"]), "{source}");
+		assert_eq!(run(&t, &parameters, ordinal(vec![Value::Int4(1)])), ids(&["30", "40"]), "{source}");
 	}
 }
 
@@ -140,8 +140,8 @@ enum Answer {
 	Error(String, String),
 }
 
-fn positional(values: Vec<Value>) -> Params {
-	Params::Positional(Arc::new(values))
+fn ordinal(values: Vec<Value>) -> Params {
+	Params::Ordinal(Arc::new(values))
 }
 
 fn ids(values: &[&str]) -> Answer {

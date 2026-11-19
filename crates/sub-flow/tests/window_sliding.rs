@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// A sliding window is identified by the coordinate it starts at, not by its position in the
+// A sliding window is identified by the coordinate it starts at, not by its index in the
 // slide sequence. These tests pin the three places that distinction is observable: which windows
 // a row lands in, what a window stamps #time with, and when a window seals.
 

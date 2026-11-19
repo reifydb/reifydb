@@ -17,7 +17,7 @@ fn engine() -> TestEngine {
 }
 
 fn assert_column_not_found(t: &TestEngine, rql: &str, column: &str) {
-	// A Fragment::None or internal fragment would lose the position a client needs to point at the typo.
+	// A Fragment::None or internal fragment would lose the location a client needs to point at the typo.
 	let result = t.inner().query_as(TestEngine::identity(), rql, Params::None);
 	let Some(err) = result.error else {
 		panic!("a missing column must be an error, not a result of none or dropped rows\nrql: {rql}");

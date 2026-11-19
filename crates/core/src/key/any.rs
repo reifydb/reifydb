@@ -2516,7 +2516,7 @@ mod tests {
 		//
 		// The shapes here are derived from the keys themselves rather than listed per producer,
 		// so a new key type is covered the moment it joins the probe set, and every field
-		// position is exercised rather than only the ones a producer happens to slice at today.
+		// index is exercised rather than only the ones a producer happens to slice at today.
 		let probes = all_probes();
 		let bounds: Vec<TaggedKeyBound> = probes.iter().flat_map(|(key, _)| bounds_derived_from(key)).collect();
 

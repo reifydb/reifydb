@@ -99,16 +99,16 @@ fn check<F: Function>(
 	name: &str,
 	function: &F,
 	defaults: &[(FieldRef, ArrayRef)],
-	position: usize,
+	index: usize,
 	constant: &Constant,
 	wrong: &mut Vec<String>,
 ) {
 	let with = |len: usize| {
 		let mut args = defaults.to_vec();
-		args[position] = constant.column(len);
+		args[index] = constant.column(len);
 		args
 	};
-	let label = format!("{name} arg {position} = {}", describe(constant));
+	let label = format!("{name} arg {index} = {}", describe(constant));
 	compare(&label, outcome(function, &with(1)), outcome(function, &with(ROWS)), wrong);
 }
 
@@ -173,9 +173,9 @@ fn check_both(name: &str, function: &impl Function, third: Option<Constant>, wro
 
 fn check_two<F: Function>(name: &str, function: F, wrong: &mut Vec<String>) {
 	let defaults = vec![left_column(), right_column()];
-	for position in 0..2 {
+	for index in 0..2 {
 		for constant in operands() {
-			check(name, &function, &defaults, position, &constant, wrong);
+			check(name, &function, &defaults, index, &constant, wrong);
 		}
 	}
 	check_both(name, &function, None, wrong);
@@ -183,9 +183,9 @@ fn check_two<F: Function>(name: &str, function: F, wrong: &mut Vec<String>) {
 
 fn check_three<F: Function>(name: &str, function: F, third: Vec<Constant>, wrong: &mut Vec<String>) {
 	let defaults = vec![left_column(), right_column(), third[0].column(ROWS)];
-	for position in 0..2 {
+	for index in 0..2 {
 		for constant in operands() {
-			check(name, &function, &defaults, position, &constant, wrong);
+			check(name, &function, &defaults, index, &constant, wrong);
 		}
 	}
 	for constant in &third {

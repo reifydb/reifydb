@@ -1,0 +1,11 @@
+# Generated from: params_ordinal.tap.md#int4_param
+# Test: Ordinal parameter with INT4 type
+
+command_ordinal 'MAP {result: $1}' '12345678'
+---
+> +------------+
+> |   result   |
+> +------------+
+> |  12345678  |
+> +------------+
+>

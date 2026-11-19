@@ -60,7 +60,7 @@ export function refusingStore<P extends object | null>(
             entryKey(subscription.rql, subscription.params, subscription.shape) === refused,
         )
         if (index === -1) return client.subscribe(subscriptions)
-        const others = subscriptions.filter((_, position) => position !== index)
+        const others = subscriptions.filter((_, otherIndex) => otherIndex !== index)
         const subscriptionIds = others.length > 0 ? await client.subscribe(others) : []
         setTimeout(() => {
           subscriptions[index].callbacks.onError?.(error)

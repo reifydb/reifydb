@@ -28,7 +28,7 @@ fn a_type_argument_binds_by_the_routine_that_exists_when_the_call_runs() {
 }
 
 #[test]
-fn a_procedure_named_like_a_builtin_rejects_an_undefined_name_at_the_builtin_type_position() {
+fn a_procedure_named_like_a_builtin_rejects_an_undefined_name_at_the_builtin_type_argument() {
 	// A shadowing procedure must fail on an undefined variable, never receive the builtin's type.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE is");

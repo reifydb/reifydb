@@ -148,7 +148,7 @@ fn deep_chain_interleaved_with_direct() {
 	system.run_until_idle();
 
 	// A forwarded message is enqueued when it is emitted, so it lands behind the direct send
-	// that was already waiting rather than inheriting the originating message's position.
+	// that was already waiting rather than inheriting the originating message's place.
 	assert_eq!(log_contents(&log), vec!["direct", "fwd:via_b"]);
 }
 

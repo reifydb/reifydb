@@ -144,13 +144,13 @@ impl<'a> Output<'a> {
 		}
 		let (pre_source, post_source) = (source_of(&pre), source_of(&post));
 		let epoch = self.epochs.last_mut().unwrap();
-		let position = epoch.iter().position(|group| {
+		let index = epoch.iter().position(|group| {
 			group.kind == kind
 				&& group.pre.first().map_or(Source::Absent, Cell::source) == pre_source
 				&& group.post.first().map_or(Source::Absent, Cell::source) == post_source
 		});
-		let group = match position {
-			Some(position) => &mut epoch[position],
+		let group = match index {
+			Some(index) => &mut epoch[index],
 			None => {
 				epoch.push(Group {
 					kind,

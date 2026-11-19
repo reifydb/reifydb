@@ -147,7 +147,7 @@ pub(crate) struct Parser<'bump> {
 	bump: &'bump Bump,
 	source: &'bump str,
 	tokens: Vec<Token<'bump>>,
-	position: usize,
+	token_index: usize,
 	depth: usize,
 }
 
@@ -157,7 +157,7 @@ impl<'bump> Parser<'bump> {
 			bump,
 			source,
 			tokens,
-			position: 0,
+			token_index: 0,
 			depth: 0,
 		}
 	}
@@ -168,8 +168,8 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn source_since(&self, start_offset: usize) -> &'bump str {
-		let end = if self.position > 0 {
-			let prev = &self.tokens[self.position - 1];
+		let end = if self.token_index > 0 {
+			let prev = &self.tokens[self.token_index - 1];
 			prev.fragment.source_end()
 		} else {
 			start_offset
@@ -390,11 +390,11 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn advance(&mut self) -> Result<Token<'bump>, ValueError> {
-		if self.position >= self.tokens.len() {
+		if self.token_index >= self.tokens.len() {
 			return Err(AstError::UnexpectedEof.into());
 		}
-		let token = self.tokens[self.position];
-		self.position += 1;
+		let token = self.tokens[self.token_index];
+		self.token_index += 1;
 		Ok(token)
 	}
 
@@ -451,17 +451,17 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn current(&self) -> Result<Token<'bump>, ValueError> {
-		if self.position >= self.tokens.len() {
+		if self.token_index >= self.tokens.len() {
 			return Err(AstError::UnexpectedEof.into());
 		}
-		Ok(self.tokens[self.position])
+		Ok(self.tokens[self.token_index])
 	}
 
 	pub(crate) fn is_next_keyword(&self, keyword: Keyword) -> bool {
-		if self.position + 1 >= self.tokens.len() {
+		if self.token_index + 1 >= self.tokens.len() {
 			return false;
 		}
-		matches!(self.tokens[self.position + 1].kind, TokenKind::Keyword(k) if k == keyword)
+		matches!(self.tokens[self.token_index + 1].kind, TokenKind::Keyword(k) if k == keyword)
 	}
 
 	pub(crate) fn current_expect(&self, expected: TokenKind) -> Result<(), ValueError> {
@@ -515,7 +515,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn is_eof(&self) -> bool {
-		self.position >= self.tokens.len()
+		self.token_index >= self.tokens.len()
 	}
 
 	pub(crate) fn current_is_operator(&self, operator: Operator) -> bool {
@@ -523,7 +523,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn has_pipe_ahead(&self) -> bool {
-		let mut pos = self.position;
+		let mut pos = self.token_index;
 		let mut depth = 0;
 
 		while pos < self.tokens.len() {
@@ -718,13 +718,13 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn is_colon_alias(&self) -> bool {
-		if self.position + 1 >= self.tokens.len() {
+		if self.token_index + 1 >= self.tokens.len() {
 			return false;
 		}
-		let is_valid_key = self.tokens[self.position].is_identifier()
-			|| matches!(self.tokens[self.position].kind, TokenKind::Keyword(_))
-			|| matches!(self.tokens[self.position].kind, TokenKind::Literal(Literal::Text));
-		is_valid_key && self.tokens[self.position + 1].is_operator(Operator::Colon)
+		let is_valid_key = self.tokens[self.token_index].is_identifier()
+			|| matches!(self.tokens[self.token_index].kind, TokenKind::Keyword(_))
+			|| matches!(self.tokens[self.token_index].kind, TokenKind::Literal(Literal::Text));
+		is_valid_key && self.tokens[self.token_index + 1].is_operator(Operator::Colon)
 	}
 
 	pub(crate) fn try_parse_colon_alias(&mut self) -> Option<Result<Ast<'bump>, ValueError>> {
@@ -736,7 +736,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_colon_alias_inner(&mut self) -> Result<Ast<'bump>, ValueError> {
-		let key = if matches!(self.tokens[self.position].kind, TokenKind::Literal(Literal::Text)) {
+		let key = if matches!(self.tokens[self.token_index].kind, TokenKind::Literal(Literal::Text)) {
 			Ast::Literal(self.parse_literal_text()?)
 		} else {
 			Ast::Identifier(self.parse_as_identifier()?)

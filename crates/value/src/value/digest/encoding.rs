@@ -30,7 +30,7 @@ impl Digest {
 	pub fn decode(bytes: &[u8]) -> Result<Self, DigestError> {
 		let mut reader = Reader {
 			bytes,
-			position: 0,
+			offset: 0,
 		};
 		let version = reader.varint()?;
 		if version != VERSION {
@@ -49,9 +49,9 @@ impl Digest {
 		digest.positive_infinity = reader.varint()?;
 		digest.negative = reader.store()?;
 		digest.positive = reader.store()?;
-		if reader.position != bytes.len() {
+		if reader.offset != bytes.len() {
 			return Err(DigestError::TrailingBytes {
-				remaining: bytes.len() - reader.position,
+				remaining: bytes.len() - reader.offset,
 			});
 		}
 		if digest.inner == ValueType::Duration
@@ -116,7 +116,7 @@ fn unzigzag(encoded: u32) -> i32 {
 
 struct Reader<'a> {
 	bytes: &'a [u8],
-	position: usize,
+	offset: usize,
 }
 
 impl Reader<'_> {
@@ -124,8 +124,8 @@ impl Reader<'_> {
 		let mut value = 0u64;
 		let mut shift = 0u32;
 		loop {
-			let byte = *self.bytes.get(self.position).ok_or(DigestError::Truncated)?;
-			self.position += 1;
+			let byte = *self.bytes.get(self.offset).ok_or(DigestError::Truncated)?;
+			self.offset += 1;
 			let low = u64::from(byte & 0x7f);
 			if shift == 63 && low > 1 {
 				return Err(DigestError::VarintOverflow);
@@ -204,9 +204,9 @@ mod tests {
 		out
 	}
 
-	fn header_with(position: usize, value: u64) -> Vec<u64> {
+	fn header_with(index: usize, value: u64) -> Vec<u64> {
 		let mut fields = EMPTY_FLOAT8[..6].to_vec();
-		fields[position] = value;
+		fields[index] = value;
 		fields
 	}
 
@@ -279,7 +279,7 @@ mod tests {
 			assert_eq!(varints(&[value]), bytes);
 			let mut reader = Reader {
 				bytes,
-				position: 0,
+				offset: 0,
 			};
 			assert_eq!(reader.varint().unwrap(), value);
 		}
@@ -473,11 +473,11 @@ mod tests {
 
 	#[test]
 	fn decode_rejects_infinity_in_a_duration_digest() {
-		for position in [4, 5] {
-			let mut fields = header_with(position, 1);
+		for index in [4, 5] {
+			let mut fields = header_with(index, 1);
 			fields[1] = 18;
 			let bytes = varints(&[&fields[..], &[0, 0]].concat());
-			assert!(matches!(Digest::decode(&bytes), Err(DigestError::NonFiniteDuration)), "{position}");
+			assert!(matches!(Digest::decode(&bytes), Err(DigestError::NonFiniteDuration)), "{index}");
 		}
 		let zero = varints(&[1, 18, 10_000, 1, 0, 0, 0, 0]);
 		assert_eq!(Digest::decode(&zero).unwrap().count(), 1);

@@ -100,7 +100,7 @@ function hex(bytes: Uint8Array): string {
 }
 
 class DigestReader {
-    private position = 0;
+    private offset = 0;
 
     constructor(private readonly bytes: Uint8Array) {}
 
@@ -124,8 +124,8 @@ class DigestReader {
         const positiveInfinity = this.varint();
         const negative = this.store();
         const positive = this.store();
-        if (this.position !== this.bytes.length) {
-            throw new Error(`digest encoding has ${this.bytes.length - this.position} trailing bytes`);
+        if (this.offset !== this.bytes.length) {
+            throw new Error(`digest encoding has ${this.bytes.length - this.offset} trailing bytes`);
         }
         if (inner === "Duration" && (negativeInfinity !== 0n || positiveInfinity !== 0n)) {
             throw new Error("digest of duration cannot hold infinity");
@@ -141,11 +141,11 @@ class DigestReader {
         let value = 0n;
         let shift = 0n;
         for (;;) {
-            if (this.position >= this.bytes.length) {
+            if (this.offset >= this.bytes.length) {
                 throw new Error("digest encoding ends early");
             }
-            const byte = this.bytes[this.position];
-            this.position += 1;
+            const byte = this.bytes[this.offset];
+            this.offset += 1;
             const low = BigInt(byte & 0x7f);
             if (shift === 63n && low > 1n) {
                 throw new Error("digest encoding has a varint above u64");

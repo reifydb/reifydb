@@ -256,7 +256,7 @@ pub fn encode_params(params: &Params) -> Result<Vec<u8>, EncodeError> {
 	let mut buf = Vec::new();
 	match params {
 		Params::None => buf.push(0),
-		Params::Positional(values) => {
+		Params::Ordinal(values) => {
 			buf.push(1);
 			buf.extend_from_slice(&(values.len() as u32).to_le_bytes());
 			for value in values.iter() {
@@ -286,7 +286,7 @@ pub fn decode_params(bytes: &[u8]) -> Result<Params, DecodeError> {
 			for _ in 0..count {
 				values.push(decode_value_from(&mut r)?);
 			}
-			Params::Positional(values.into())
+			Params::Ordinal(values.into())
 		}
 		2 => {
 			let count = r.u32()?;

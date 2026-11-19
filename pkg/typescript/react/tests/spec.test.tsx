@@ -29,7 +29,7 @@ describe('hook specs', () => {
     });
 
     it('useQuery hands a one shape spec as a one element tuple and a tuple spec as the tuple itself', () => {
-        // The client pairs frames with shapes by position, so the shapes it gets must be exactly the frames asked for.
+        // The client pairs frames with shapes by index, so the shapes it gets must be exactly the frames asked for.
         const {client, wrapper} = setup();
         renderHook(() => useQuery(byId, {id: 3}), {wrapper});
         renderHook(() => useQuery(pair, null), {wrapper});

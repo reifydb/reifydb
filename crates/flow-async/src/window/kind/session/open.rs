@@ -150,14 +150,15 @@ impl<S: Coord> OpenSessions<S> {
 		let Some(index) = self.sessions.iter().position(|session| session.id == id) else {
 			return Ok(None);
 		};
-		let Some(position) = self.sessions[index].members.iter().position(|member| member.row == row) else {
+		let Some(member_index) = self.sessions[index].members.iter().position(|member| member.row == row)
+		else {
 			return internal_err!(
 				"open session {} has no member row {:?}; the row index and the session members disagree",
 				id,
 				row
 			);
 		};
-		self.sessions[index].members.remove(position);
+		self.sessions[index].members.remove(member_index);
 		if self.sessions[index].members.is_empty() {
 			self.sessions.remove(index);
 			return Ok(Some(Removal::Emptied(id)));

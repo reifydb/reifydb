@@ -1,0 +1,11 @@
+# Generated from: params_ordinal.tap.md#uint1_param
+# Test: Ordinal parameter with UINT1 type
+
+command_ordinal 'MAP {result: $1}' '255'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |   255    |
+> +----------+
+>

@@ -386,7 +386,7 @@ pub fn decode_apply_with(bytes: &[u8]) -> Result<ApplyWith, ValueError> {
 	let values = match decode_params(bytes).map_err(|e| internal_error!("failed to decode apply with: {}", e))? {
 		Params::None => return Ok(ApplyWith::default()),
 		Params::Named(values) => values,
-		Params::Positional(_) => return Err(internal_error!("apply with must be named params")),
+		Params::Ordinal(_) => return Err(internal_error!("apply with must be named params")),
 	};
 	let mut with = ApplyWith::default();
 	let mut window_name: Option<String> = None;
@@ -731,8 +731,8 @@ mod tests {
 	}
 
 	#[test]
-	fn positional_params_fail_to_decode() {
-		let bytes = encode_params(&Params::Positional(Arc::new(vec![Value::Duration(secs(1))]))).unwrap();
+	fn ordinal_params_fail_to_decode() {
+		let bytes = encode_params(&Params::Ordinal(Arc::new(vec![Value::Duration(secs(1))]))).unwrap();
 		assert!(decode_apply_with(&bytes).is_err());
 	}
 

@@ -341,7 +341,7 @@ mod join {
 	const RIGHT_COLUMNS: [(&str, ValueType); 3] =
 		[("rid", ValueType::Int8), ("k", ValueType::Int4), ("rv", ValueType::Int8)];
 
-	// The left payload's position in the joined row. Computing it from the side widths is how the
+	// The left payload's index in the joined row. Computing it from the side widths is how the
 	// first version of this silently asserted against the right side's key column instead.
 	const LV: usize = 2;
 

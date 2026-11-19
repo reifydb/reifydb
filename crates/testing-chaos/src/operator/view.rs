@@ -358,9 +358,9 @@ mod projection_tests {
 	}
 
 	#[test]
-	fn projecting_resolves_positions_through_the_recorded_column_order() {
-		// Rows are keyed by column name, but positional projections index into the recorded
-		// emission order. Resolving positions against the row's own name ordering instead would
+	fn projecting_resolves_indexes_through_the_recorded_column_order() {
+		// Rows are keyed by column name, but ordinal projections index into the recorded
+		// emission order. Resolving indexes against the row's own name ordering instead would
 		// make `&[0, 1]` mean alphabetical, swapping these two columns while still comparing.
 		let mut view = MaterializedView::empty();
 		view.columns = vec!["total".to_string(), "g".to_string()];
@@ -372,7 +372,7 @@ mod projection_tests {
 		assert_eq!(
 			view.projected(&[0, 1]),
 			vec![vec![Value::Int4(99), Value::Int4(7)]],
-			"position 0 must be `total` because that is what was emitted first, not `g` because it sorts first"
+			"index 0 must be `total` because that is what was emitted first, not `g` because it sorts first"
 		);
 		assert_eq!(
 			view.projected(&[1]),

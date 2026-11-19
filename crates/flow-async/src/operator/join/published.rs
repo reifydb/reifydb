@@ -502,7 +502,7 @@ pub(crate) fn publish_joined(
 				assert!(
 					encoded.len() == opposite_indices.len(),
 					"the ledger walks {} encoded rights while the cartesian walks {} opposite rows; \
-					 the two must stay positionally aligned or every published pair takes another \
+					 the two must stay aligned by index or every published pair takes another \
 					 pair's row number",
 					encoded.len(),
 					opposite_indices.len()
@@ -586,14 +586,14 @@ pub(crate) fn withdraw_joined(
 	ctx.ledger.flush(host)?;
 
 	let runs = decode_runs(host, ctx.right_store, block)?;
-	let mut positions = Vec::new();
+	let mut indexes = Vec::new();
 	for (run, columns) in runs.iter().enumerate() {
-		positions.extend((0..columns.num_rows()).map(|row| (run, row)));
+		indexes.extend((0..columns.num_rows()).map(|row| (run, row)));
 	}
 	let mut out = Vec::new();
-	for (row_number, position) in withdrawals {
+	for (row_number, index) in withdrawals {
 		let carried = [(row_number, false)];
-		match position {
+		match index {
 			None => {
 				let unmatched = ctx.operator.unmatched_left_columns(
 					host,
@@ -603,8 +603,8 @@ pub(crate) fn withdraw_joined(
 				)?;
 				out.extend(unmatched.withdrawn());
 			}
-			Some(position) => {
-				let (run, row) = positions[position];
+			Some(index) => {
+				let (run, row) = indexes[index];
 				let joined = ctx.operator.join_columns_cartesian(
 					host,
 					left,

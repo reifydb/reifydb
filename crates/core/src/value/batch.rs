@@ -42,7 +42,7 @@ use reifydb_value::{
 		row_number::RowNumber,
 		sumtype::SumTypeId,
 		system_columns::{
-			SystemColumn, column_view, is_system_field, stamp_system_columns, sumtype_tag_position,
+			SystemColumn, column_view, is_system_field, stamp_system_columns, sumtype_tag_index,
 			system_column, system_field,
 		},
 		time::Time,
@@ -485,7 +485,7 @@ pub fn group_by(batch: &RecordBatch, keys: &[&str], dict: &mut GroupKeyDict) -> 
 			.fields()
 			.iter()
 			.position(|field| field.name() == key)
-			.or_else(|| sumtype_tag_position(batch, key))
+			.or_else(|| sumtype_tag_index(batch, key))
 			.ok_or_else(|| {
 				ValueError::from(CoreError::FrameError {
 					message: format!("Column '{}' not found", key),

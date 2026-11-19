@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::log::{LogIndex, LogVersion, Position, record::Record};
+use reifydb_codec::log::{LogIndex, LogOffset, LogVersion, record::Record};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::error::WalError;
@@ -9,7 +9,7 @@ use crate::error::WalError;
 pub trait Device: Send + Sync + 'static {}
 
 pub trait Append: Device {
-	fn append(&self, record: &Record) -> Result<Position, WalError>;
+	fn append(&self, record: &Record) -> Result<LogOffset, WalError>;
 
 	fn head(&self) -> Result<Option<LogVersion>, WalError>;
 }

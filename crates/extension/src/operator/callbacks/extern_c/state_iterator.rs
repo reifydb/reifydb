@@ -15,7 +15,7 @@ thread_local! {
 
 struct BatchIterator {
 	items: Vec<(Vec<u8>, Vec<u8>)>,
-	position: usize,
+	index: usize,
 }
 
 impl BatchIterator {
@@ -24,7 +24,7 @@ impl BatchIterator {
 
 		Self {
 			items,
-			position: 0,
+			index: 0,
 		}
 	}
 }
@@ -67,10 +67,10 @@ pub(crate) fn next_iterator_batch(handle: StateIteratorHandle, cap: usize) -> Op
 	ITERATOR_REGISTRY.with(|r| {
 		let mut registry = r.borrow_mut();
 		let iter = registry.get_mut(handle)?;
-		let remaining = iter.items.len().saturating_sub(iter.position);
+		let remaining = iter.items.len().saturating_sub(iter.index);
 		let take = remaining.min(cap);
-		let start = iter.items[iter.position..].as_ptr();
-		iter.position += take;
+		let start = iter.items[iter.index..].as_ptr();
+		iter.index += take;
 		Some((start, take))
 	})
 }

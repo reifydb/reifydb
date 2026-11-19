@@ -430,7 +430,7 @@ fn expand_enum_param(
 pub(crate) fn param_symbol(expression: &Expression) -> Option<&str> {
 	match expression {
 		Expression::Parameter(
-			ParameterExpression::Positional {
+			ParameterExpression::Ordinal {
 				fragment,
 			}
 			| ParameterExpression::Named {
@@ -901,8 +901,8 @@ impl InlineDataNode {
 			match cast_column_data(&eval_ctx, &ColumnView::try_from(&data)?, wide.clone(), fragment) {
 				Ok(casted) => {
 					let casted = ColumnView::try_from(&casted)?;
-					for (position, &row) in rows.iter().enumerate() {
-						casts[row] = Some(casted.get_value(position));
+					for (index, &row) in rows.iter().enumerate() {
+						casts[row] = Some(casted.get_value(index));
 					}
 				}
 				Err(_) => Self::cast_each(

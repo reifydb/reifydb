@@ -26,7 +26,7 @@ fn engine() -> TestEngine {
 		"INSERT test::p [{ ts: 1, region: 'eu', v: 1 }, { ts: 2, region: 'us', v: 2 }, { ts: 3, region: 'eu', v: 3 }, { ts: 4, region: 'eu', v: 4 }]",
 	);
 	for (v, nanos) in [(1, 1_000_000), (2, 1_700_000), (3, 2_000_000), (4, 3_000_000)] {
-		let params = positional(vec![Value::DateTime(DateTime::from_nanos(nanos)), Value::Int4(v)]);
+		let params = ordinal(vec![Value::DateTime(DateTime::from_nanos(nanos)), Value::Int4(v)]);
 		let result = t.inner().command_as(TestEngine::identity(), "INSERT test::d [{ ts: $1, v: $2 }]", params);
 		assert!(result.error.is_none(), "{:?}", result.error);
 	}
@@ -88,14 +88,14 @@ fn a_series_parameter_bound_answers_exactly_what_the_plain_filter_answers() {
 				&format!(
 					"FROM {source} | filter {{ {filter} }} | sort {{ v: ASC }} | map {{ out: v }}"
 				),
-				positional(value.clone()),
+				ordinal(value.clone()),
 			);
 			let plain = run(
 				&t,
 				&format!(
 					"FROM {source} | filter {{ ({filter}) == true }} | sort {{ v: ASC }} | map {{ out: v }}"
 				),
-				positional(value.clone()),
+				ordinal(value.clone()),
 			);
 			assert_eq!(narrowed, plain, "{source} {filter} with {value:?}");
 		}
@@ -107,16 +107,13 @@ fn a_series_parameter_bound_answers_the_rows_in_its_range() {
 	// A narrowed range must still hold every row the bound admits, including rows sharing the floored key.
 	let t = engine();
 	let before = "FROM test::d | filter { ts < $1 } | sort { v: ASC } | map { out: v }";
-	assert_eq!(run(&t, before, positional(vec![at(1_500_000)])), rows(&["1", "2"]));
+	assert_eq!(run(&t, before, ordinal(vec![at(1_500_000)])), rows(&["1", "2"]));
 
 	let window = "FROM test::s | filter { ts >= $1 and ts < $2 } | sort { v: ASC } | map { out: v }";
-	assert_eq!(run(&t, window, positional(vec![Value::Int4(2), Value::Int4(5)])), rows(&["2", "3", "4"]));
+	assert_eq!(run(&t, window, ordinal(vec![Value::Int4(2), Value::Int4(5)])), rows(&["2", "3", "4"]));
 
 	let regional = "FROM test::p | filter { region == $1 and ts > $2 } | sort { v: ASC } | map { out: v }";
-	assert_eq!(
-		run(&t, regional, positional(vec![Value::Utf8("eu".to_string()), Value::Int4(1)])),
-		rows(&["3", "4"])
-	);
+	assert_eq!(run(&t, regional, ordinal(vec![Value::Utf8("eu".to_string()), Value::Int4(1)])), rows(&["3", "4"]));
 }
 
 #[test]
@@ -139,7 +136,7 @@ fn a_series_range_with_no_room_answers_no_rows() {
 	let constants = "FROM test::s | filter { ts > 5 and ts < 2 } | map { out: v }";
 	let parameters = "FROM test::s | filter { ts > 2 and ts < $1 } | map { out: v }";
 	assert_eq!(run(&t, constants, Params::None), rows(&[]));
-	assert_eq!(run(&t, parameters, positional(vec![Value::Int8(0)])), rows(&[]));
+	assert_eq!(run(&t, parameters, ordinal(vec![Value::Int8(0)])), rows(&[]));
 }
 
 #[test]
@@ -176,8 +173,8 @@ enum Answer {
 	Error(String, String),
 }
 
-fn positional(values: Vec<Value>) -> Params {
-	Params::Positional(Arc::new(values))
+fn ordinal(values: Vec<Value>) -> Params {
+	Params::Ordinal(Arc::new(values))
 }
 
 fn rows(values: &[&str]) -> Answer {

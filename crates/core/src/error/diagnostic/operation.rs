@@ -51,11 +51,11 @@ pub fn aggregate_map_without_aggregate(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-pub fn aggregate_argument_not_literal(fragment: Fragment, function: &str, position: usize) -> Diagnostic {
+pub fn aggregate_argument_not_literal(fragment: Fragment, function: &str, index: usize) -> Diagnostic {
 	Diagnostic {
 		code: "AGGREGATE_010".to_string(),
 		rql: None,
-		message: format!("argument {} of aggregate function {} must be a literal", position, function),
+		message: format!("argument {} of aggregate function {} must be a literal", index, function),
 		column: None,
 		fragment,
 		label: Some("not a literal".to_string()),

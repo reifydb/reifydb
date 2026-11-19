@@ -27,11 +27,11 @@ use tonic::{
 use super::generated::{
 	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest, ChangeEvent,
 	CommandRequest as ProtoCommandRequest, HydrationOptions as ProtoHydrationOptions,
-	LogoutRequest as ProtoLogoutRequest, NamedParams, OperationRequest as ProtoOperationRequest,
-	Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest,
-	QueueClaimRequest as ProtoQueueClaimRequest, SubscribeItem as ProtoSubscribeItem,
-	SubscribeOptions as ProtoSubscribeOptions, SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent,
-	TypedValue, UnsubscribeRequest as ProtoUnsubscribeRequest, params::Params as ProtoParamsOneof,
+	LogoutRequest as ProtoLogoutRequest, NamedParams, OperationRequest as ProtoOperationRequest, OrdinalParams,
+	Params as ProtoParams, QueryRequest as ProtoQueryRequest, QueueClaimRequest as ProtoQueueClaimRequest,
+	SubscribeItem as ProtoSubscribeItem, SubscribeOptions as ProtoSubscribeOptions,
+	SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
+	UnsubscribeRequest as ProtoUnsubscribeRequest, params::Params as ProtoParamsOneof,
 	reify_db_client::ReifyDbClient, subscription_event,
 };
 use crate::{
@@ -595,8 +595,8 @@ fn decode_rbcf(bytes: &[u8]) -> Result<Vec<Frame>, ValueError> {
 fn params_to_proto(params: Params) -> Result<Option<ProtoParams>, ValueError> {
 	Ok(match params {
 		Params::None => None,
-		Params::Positional(values) => Some(ProtoParams {
-			params: Some(ProtoParamsOneof::Positional(PositionalParams {
+		Params::Ordinal(values) => Some(ProtoParams {
+			params: Some(ProtoParamsOneof::Ordinal(OrdinalParams {
 				values: Arc::unwrap_or_clone(values)
 					.into_iter()
 					.map(value_to_typed_value)

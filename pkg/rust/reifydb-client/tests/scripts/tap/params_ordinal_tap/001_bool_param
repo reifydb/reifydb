@@ -1,0 +1,11 @@
+# Generated from: params_ordinal.tap.md#bool_param
+# Test: Ordinal parameter with boolean type
+
+command_ordinal 'MAP {result: $1}' 'true'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |   true   |
+> +----------+
+>

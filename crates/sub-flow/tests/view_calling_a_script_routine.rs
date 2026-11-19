@@ -38,9 +38,9 @@ fn refusal_of(view: &str) -> Result<(), String> {
 }
 
 #[test]
-fn a_deferred_view_calling_a_script_udf_is_refused_in_every_expression_position() {
-	// A position the create check skips reaches the flow without the script's udfs and aborts the flow.
-	let positions = [
+fn a_deferred_view_calling_a_script_udf_is_refused_in_every_expression_place() {
+	// A place the create check skips reaches the flow without the script's udfs and aborts the flow.
+	let places = [
 		(
 			"extend",
 			"CREATE DEFERRED VIEW app::v { g: int4, a: int4, x: int4 } AS { FROM app::t | extend { x: twice(a) } }",
@@ -74,11 +74,11 @@ fn a_deferred_view_calling_a_script_udf_is_refused_in_every_expression_position(
 			"CREATE DEFERRED VIEW app::v { g: int4, a: int4 } AS { FROM app::t APPEND { FROM app::u | map { g, a: twice(c) } } }",
 		),
 	];
-	let misses: Vec<String> = positions
+	let misses: Vec<String> = places
 		.iter()
-		.filter_map(|(position, view)| refusal_of(view).err().map(|miss| format!("{position}: {miss}")))
+		.filter_map(|(place, view)| refusal_of(view).err().map(|miss| format!("{place}: {miss}")))
 		.collect();
-	assert!(misses.is_empty(), "every position calling twice must be refused at create:\n{}", misses.join("\n"));
+	assert!(misses.is_empty(), "every place calling twice must be refused at create:\n{}", misses.join("\n"));
 }
 
 #[test]

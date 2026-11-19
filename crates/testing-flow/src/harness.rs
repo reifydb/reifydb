@@ -493,7 +493,7 @@ mod tests {
 
 	#[test]
 	fn the_batch_time_is_the_latest_row_time() {
-		// A batch is one arrival, so its position is the latest event time it carries - matching what
+		// A batch is one arrival, so its time is the latest event time it carries - matching what
 		// the batch path captures as the flow watermark. Taking the first row's time instead would make
 		// a group's due-ness depend on how the driver happened to order rows inside a change.
 		let early = DateTime::from_epoch_millis(1_000).unwrap();
@@ -502,7 +502,7 @@ mod tests {
 		let change = change_at(&[early, late, early]);
 		assert_eq!(batch_time_of(&change).expect("the batch time reads"), late);
 
-		// No row time is not the same as time zero: it means the workload declared no position, and the
+		// No row time is not the same as time zero: it means the workload declared no event time, and the
 		// change's own stamp is the only honest answer left.
 		let stamped = DateTime::from_epoch_millis(4_242).unwrap();
 		let timeless =

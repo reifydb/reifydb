@@ -179,7 +179,7 @@ fn ranked_pairs(flow: &FlowDag, flow_engine: &FlowEngineInner, node: &FlowNode) 
 		return Vec::new();
 	}
 	let mut ranked: Vec<(usize, OperatorId)> =
-		node.inputs.iter().enumerate().map(|(position, input)| (order.rank(position, arity), *input)).collect();
+		node.inputs.iter().enumerate().map(|(index, input)| (order.rank(index, arity), *input)).collect();
 	ranked.sort();
 	let mut pairs = Vec::new();
 	for (index, (_, earlier)) in ranked.iter().enumerate() {

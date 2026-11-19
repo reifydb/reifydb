@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_client::{HttpClient, Value, ValueType, WireFormat};
 use tokio::runtime::Runtime;
 
-use super::{assert_echoed, list_of_records, named, named_as, option, positional};
+use super::{assert_echoed, list_of_records, named, named_as, option, ordinal};
 use crate::common::{cleanup_server, create_server_instance, start_server_and_get_http_port};
 
 fn run<F, Fut>(test_fn: F)
@@ -32,7 +32,7 @@ where
 #[test]
 fn a_present_int4_param_echoes_as_int4() {
 	run(|client| async move {
-		let frames = client.query("MAP { v: $1 }", Some(positional(Value::Int4(5)))).await.unwrap();
+		let frames = client.query("MAP { v: $1 }", Some(ordinal(Value::Int4(5)))).await.unwrap();
 		assert_echoed(&frames, ValueType::Int4, Value::Int4(5));
 
 		let frames = client.query("MAP { v: $v }", Some(named(Value::Int4(5)))).await.unwrap();
@@ -44,7 +44,7 @@ fn a_present_int4_param_echoes_as_int4() {
 fn a_none_of_int4_param_echoes_as_a_none_of_int4() {
 	run(|client| async move {
 		let none = Value::none_of(ValueType::Int4);
-		let frames = client.query("MAP { v: $1 }", Some(positional(none.clone()))).await.unwrap();
+		let frames = client.query("MAP { v: $1 }", Some(ordinal(none.clone()))).await.unwrap();
 		assert_echoed(&frames, option(ValueType::Int4), none.clone());
 
 		let frames = client.query("MAP { v: $v }", Some(named(none.clone()))).await.unwrap();
@@ -59,7 +59,7 @@ fn a_none_of_option_int4_param_echoes_as_a_none_of_int4() {
 	// echoed column is a single-layer Option(Int4) holding a none of Int4.
 	run(|client| async move {
 		let none = Value::none_of(option(ValueType::Int4));
-		let frames = client.query("MAP { v: $1 }", Some(positional(none.clone()))).await.unwrap();
+		let frames = client.query("MAP { v: $1 }", Some(ordinal(none.clone()))).await.unwrap();
 		assert_echoed(&frames, option(ValueType::Int4), Value::none_of(ValueType::Int4));
 
 		let frames = client.query("MAP { v: $v }", Some(named(none))).await.unwrap();
@@ -90,9 +90,9 @@ fn a_list_of_records_param_echoes_as_list_of_records() {
 }
 
 #[test]
-fn a_positional_list_of_records_param_echoes_as_list_of_records() {
+fn an_ordinal_list_of_records_param_echoes_as_list_of_records() {
 	run(|client| async move {
-		let frames = client.query("MAP { v: $1 }", Some(positional(regions()))).await.unwrap();
+		let frames = client.query("MAP { v: $1 }", Some(ordinal(regions()))).await.unwrap();
 		assert_echoed(&frames, regions_type(), regions());
 	});
 }
@@ -131,7 +131,7 @@ fn a_list_of_records_param_inserts_one_row_per_element() {
 }
 
 #[test]
-fn a_positional_list_of_records_param_inserts_one_row_per_element() {
+fn an_ordinal_list_of_records_param_inserts_one_row_per_element() {
 	run(|client| async move {
 		client.admin(
 			"CREATE NAMESPACE test; CREATE TABLE test::monitor_regions { id: utf8, label: utf8 }",
@@ -140,7 +140,7 @@ fn a_positional_list_of_records_param_inserts_one_row_per_element() {
 		.await
 		.unwrap();
 
-		client.command("INSERT test::monitor_regions $1", Some(positional(regions()))).await.unwrap();
+		client.command("INSERT test::monitor_regions $1", Some(ordinal(regions()))).await.unwrap();
 
 		let frames = client.query("FROM test::monitor_regions", None).await.unwrap();
 		assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());

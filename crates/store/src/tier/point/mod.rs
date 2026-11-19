@@ -103,14 +103,14 @@ fn entry_hash<D: PointDomain>(entry: &Entry<D>) -> u64 {
 	bucket_hash(&entry.key.dimension, &entry.key.key)
 }
 
-fn find_position<D: PointDomain>(shard: &Shard<D>, hash: u64, dimension: D::Dimension, key: &D::Key) -> Option<u32> {
+fn find_slot<D: PointDomain>(shard: &Shard<D>, hash: u64, dimension: D::Dimension, key: &D::Key) -> Option<u32> {
 	let Shard {
 		index,
 		entries,
 		..
 	} = shard;
-	index.find(hash, |position| {
-		let entry = &entries[*position as usize];
+	index.find(hash, |slot| {
+		let entry = &entries[*slot as usize];
 		entry.key.dimension == dimension && entry.key.key == *key
 	})
 	.copied()

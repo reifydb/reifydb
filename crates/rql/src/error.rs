@@ -108,7 +108,7 @@ pub enum RqlError {
 		fragment: Fragment,
 	},
 
-	#[error("Cannot mix keyed and positional rows in the same INSERT")]
+	#[error("Cannot mix keyed and ordinal rows in the same INSERT")]
 	InsertMixedRowTypes {
 		fragment: Fragment,
 	},
@@ -138,8 +138,8 @@ pub enum RqlError {
 		fragment: Fragment,
 	},
 
-	#[error("Positional INSERT expects {expected} values, got {actual}")]
-	InsertPositionalWrongLength {
+	#[error("Ordinal INSERT expects {expected} values, got {actual}")]
+	InsertOrdinalWrongLength {
 		fragment: Fragment,
 		expected: usize,
 		actual: usize,
@@ -552,26 +552,26 @@ impl IntoDiagnostic for RqlError {
 			RqlError::InsertMixedRowTypes { fragment } => Diagnostic {
 				code: "INSERT_003".to_string(),
 				rql: None,
-				message: "Cannot mix keyed {key: value} and positional (value, ...) rows in the same INSERT"
+				message: "Cannot mix keyed {key: value} and ordinal (value, ...) rows in the same INSERT"
 					.to_string(),
 				column: None,
 				fragment,
 				label: Some("mixed row types".to_string()),
-				help: Some("Use either all keyed rows [{id: 1, name: \"Alice\"}] or all positional rows [(1, \"Alice\")] in a single INSERT".to_string()),
+				help: Some("Use either all keyed rows [{id: 1, name: \"Alice\"}] or all ordinal rows [(1, \"Alice\")] in a single INSERT".to_string()),
 				notes: vec![
 					"Keyed rows use curly braces: { column: value, ... }".to_string(),
-					"Positional rows use parentheses: (value1, value2, ...)".to_string(),
+					"Ordinal rows use parentheses: (value1, value2, ...)".to_string(),
 					"All rows in a single INSERT must use the same style".to_string(),
 				],
 				cause: None,
 				operator_chain: None,
 			},
 
-			RqlError::InsertPositionalWrongLength { fragment, expected, actual, column_names } => Diagnostic {
+			RqlError::InsertOrdinalWrongLength { fragment, expected, actual, column_names } => Diagnostic {
 				code: "INSERT_004".to_string(),
 				rql: None,
 				message: format!(
-					"Positional INSERT expects {} values (one per column), got {}",
+					"Ordinal INSERT expects {} values (one per column), got {}",
 					expected, actual
 				),
 				column: None,
@@ -583,7 +583,7 @@ impl IntoDiagnostic for RqlError {
 				)),
 				notes: vec![
 					format!("Table has {} columns: {}", expected, column_names.join(", ")),
-					"Positional inserts must provide a value for every column".to_string(),
+					"Ordinal inserts must provide a value for every column".to_string(),
 				],
 				cause: None,
 				operator_chain: None,

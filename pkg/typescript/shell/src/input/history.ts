@@ -57,7 +57,7 @@ export class MemoryHistoryStorage implements HistoryStorage {
 
 export class CommandHistory {
   private entries: string[] = [];
-  private position: number = -1;
+  private index: number = -1;
   private savedInput: string = '';
   private storage: HistoryStorage;
 
@@ -91,29 +91,29 @@ export class CommandHistory {
     if (this.entries.length === 0) return null;
 
     // Save current input when starting navigation
-    if (this.position === -1) {
+    if (this.index === -1) {
       this.savedInput = currentInput;
-      this.position = this.entries.length;
+      this.index = this.entries.length;
     }
 
-    if (this.position > 0) {
-      this.position--;
-      return this.entries[this.position];
+    if (this.index > 0) {
+      this.index--;
+      return this.entries[this.index];
     }
 
     return null;
   }
 
   next(): string | null {
-    if (this.position === -1) return null;
+    if (this.index === -1) return null;
 
-    if (this.position < this.entries.length - 1) {
-      this.position++;
-      return this.entries[this.position];
+    if (this.index < this.entries.length - 1) {
+      this.index++;
+      return this.entries[this.index];
     }
 
-    if (this.position === this.entries.length - 1) {
-      this.position = -1;
+    if (this.index === this.entries.length - 1) {
+      this.index = -1;
       return this.savedInput;
     }
 
@@ -121,7 +121,7 @@ export class CommandHistory {
   }
 
   reset(): void {
-    this.position = -1;
+    this.index = -1;
     this.savedInput = '';
   }
 
@@ -131,7 +131,7 @@ export class CommandHistory {
 
   clear(): void {
     this.entries = [];
-    this.position = -1;
+    this.index = -1;
     this.savedInput = '';
     this.storage.save(this.entries);
   }

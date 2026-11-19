@@ -268,7 +268,7 @@ impl DictionaryAllocatorRegistry {
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		let serialized = serialize_values(dictionary, values)?;
-		let (firsts, slot_of) = distinct_positions(serialized.iter().map(Vec::as_slice));
+		let (firsts, slot_of) = distinct_indexes(serialized.iter().map(Vec::as_slice));
 		let mut answers: Vec<Option<DictionaryEntryId>> = Vec::with_capacity(firsts.len());
 		for index in firsts {
 			answers.push(self.find_one(dictionary, &serialized[index])?);
@@ -277,7 +277,7 @@ impl DictionaryAllocatorRegistry {
 	}
 
 	pub fn get_batch(&self, dictionary: &Dictionary, ids: &[u128]) -> Result<Vec<Option<Arc<[u8]>>>, ValueError> {
-		let (firsts, slot_of) = distinct_positions(ids.iter().copied());
+		let (firsts, slot_of) = distinct_indexes(ids.iter().copied());
 		let mut answers: Vec<Option<Arc<[u8]>>> = Vec::with_capacity(firsts.len());
 		for index in firsts {
 			answers.push(self.get_one(dictionary, ids[index])?);
@@ -434,7 +434,7 @@ fn serialize_values(dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Vec
 		.collect()
 }
 
-fn distinct_positions<K: Hash + Eq>(keys: impl Iterator<Item = K>) -> (Vec<usize>, Vec<usize>) {
+fn distinct_indexes<K: Hash + Eq>(keys: impl Iterator<Item = K>) -> (Vec<usize>, Vec<usize>) {
 	let mut seen: HashMap<K, usize> = HashMap::new();
 	let mut firsts: Vec<usize> = Vec::new();
 	let mut slot_of: Vec<usize> = Vec::new();

@@ -42,7 +42,7 @@ type Entries<'a> = Option<&'a HashMap<DictionaryEntryId, Value>>;
 struct ExternCNames<'a> {
 	columns: BorrowedColumns<'a>,
 	dictionary: Option<&'a DictionaryValues>,
-	positions: OnceCell<Option<HashMap<&'a str, (usize, BorrowedColumn<'a>)>>>,
+	indexes: OnceCell<Option<HashMap<&'a str, (usize, BorrowedColumn<'a>)>>>,
 }
 
 impl<'a> ExternCNames<'a> {
@@ -50,20 +50,20 @@ impl<'a> ExternCNames<'a> {
 		Rc::new(Self {
 			columns,
 			dictionary,
-			positions: OnceCell::new(),
+			indexes: OnceCell::new(),
 		})
 	}
 
 	fn column(&self, name: &str) -> Result<Option<(BorrowedColumn<'a>, Entries<'a>)>, SdkError> {
-		let positions = self.positions.get_or_init(|| {
-			let mut positions = HashMap::with_capacity(self.columns.column_count());
+		let indexes = self.indexes.get_or_init(|| {
+			let mut indexes = HashMap::with_capacity(self.columns.column_count());
 			for (index, column) in self.columns.columns().enumerate() {
-				positions.entry(column.checked_name().ok()?).or_insert((index, column));
+				indexes.entry(column.checked_name().ok()?).or_insert((index, column));
 			}
-			Some(positions)
+			Some(indexes)
 		});
-		let found = match positions {
-			Some(positions) => positions.get(name).copied(),
+		let found = match indexes {
+			Some(indexes) => indexes.get(name).copied(),
 			None => {
 				let mut found = None;
 				for (index, column) in self.columns.columns().enumerate() {

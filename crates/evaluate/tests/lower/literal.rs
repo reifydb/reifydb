@@ -297,7 +297,7 @@ fn a_parameter_lowers_with_the_rest_of_its_expression() {
 	// A parameter must keep the between beside it answering per row over a nullable column.
 	let env = Env::with_symbols(symbols(vec![("1", Variable::scalar(Value::Int4(99)))]));
 	let input = batch(vec![factory::int4_optional("a", [Some(5), None, Some(20)]), factory::int4("id", [1, 2, 3])]);
-	let parameter = Expression::Parameter(ParameterExpression::Positional {
+	let parameter = Expression::Parameter(ParameterExpression::Ordinal {
 		fragment: frag("$1"),
 	});
 	let expression = and(between(column("a"), number("2"), number("10")), compare("!=", column("id"), parameter));

@@ -128,12 +128,12 @@ impl<R: BatchRead> KeyspaceVisitor for GetMany<'_, R> {
 		}
 		let mut probes = Vec::with_capacity(self.items.len());
 		let mut matcher: Vec<(EncodedKey, usize)> = Vec::with_capacity(self.items.len());
-		for (_, position, group, suffix) in self.items {
+		for (_, index, group, suffix) in self.items {
 			if !const { group_scoped::<K>() } && !group.is_root() {
 				continue;
 			}
 			let typed = typed_key::<K>(*group, suffix, lowest::<K>());
-			matcher.push((encode::<K>(&typed), *position));
+			matcher.push((encode::<K>(&typed), *index));
 			probes.push(typed);
 		}
 		matcher.sort_unstable();
@@ -143,8 +143,8 @@ impl<R: BatchRead> KeyspaceVisitor for GetMany<'_, R> {
 			let start = matcher.partition_point(|(key, _)| *key < found);
 			let end = matcher.partition_point(|(key, _)| *key <= found);
 			if let Some(((_, last), rest)) = matcher[start..end].split_last() {
-				for (_, position) in rest {
-					out.push((*position, answer.clone()));
+				for (_, index) in rest {
+					out.push((*index, answer.clone()));
 				}
 				out.push((*last, answer));
 			}
@@ -180,7 +180,7 @@ fn read_many<R: BatchRead>(
 	let mut items: Vec<GetManyItem> = keys
 		.iter()
 		.enumerate()
-		.map(|(position, key)| {
+		.map(|(index, key)| {
 			let (group, keyspace, suffix) = parts(key);
 			if let Some(expected) = suffix_width_of(keyspace)
 				&& expected != suffix.len()
@@ -192,10 +192,10 @@ fn read_many<R: BatchRead>(
 					found: suffix.len(),
 				});
 			}
-			Ok((keyspace, position, group, suffix))
+			Ok((keyspace, index, group, suffix))
 		})
 		.collect::<Result<_, StoreOperatorError>>()?;
-	items.sort_unstable_by_key(|(keyspace, position, _, _)| (*keyspace, *position));
+	items.sort_unstable_by_key(|(keyspace, index, _, _)| (*keyspace, *index));
 	let mut answers = vec![None; keys.len()];
 	for run in items.chunk_by(|left, right| left.0 == right.0) {
 		let found = dispatch(
@@ -209,8 +209,8 @@ fn read_many<R: BatchRead>(
 			},
 		)
 		.expect("an operator state key must name a keyspace in the catalogue");
-		for (position, answer) in found {
-			answers[position] = Some(answer);
+		for (index, answer) in found {
+			answers[index] = Some(answer);
 		}
 	}
 	Ok(answers)

@@ -133,8 +133,8 @@ impl NostateOperator for SwallowsRemoveOperator {
 fn rows_of(columns: &impl ColumnsView) -> Result<(Vec<KvRow>, Vec<RowNumber>), SdkError> {
 	let mut rows = Vec::with_capacity(columns.row_count());
 	let mut numbers = Vec::with_capacity(columns.row_count());
-	for position in 0..columns.row_count() {
-		let row = columns.row(position).expect("every counted row resolves");
+	for index in 0..columns.row_count() {
+		let row = columns.row(index).expect("every counted row resolves");
 		rows.push(KvRow {
 			k: row.u64("k")?,
 			v: row.f64("v")?,

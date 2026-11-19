@@ -36,10 +36,10 @@ fn assert_fragment_is_the_source_text(err: &Diagnostic, rql: &str, pair: &str) {
 	let text = err.fragment.text();
 	let offset = (*err.fragment.column() as usize)
 		.checked_sub(1)
-		.unwrap_or_else(|| panic!("the fragment must carry its position in the query, got {:?}", err.fragment));
+		.unwrap_or_else(|| panic!("the fragment must carry its location in the query, got {:?}", err.fragment));
 	assert!(
 		rql.get(offset..).is_some_and(|rest| rest.starts_with(text)),
-		"the fragment must be the query text at its own position, got {text:?} at column {}\nrql: {rql}",
+		"the fragment must be the query text at its own location, got {text:?} at column {}\nrql: {rql}",
 		offset + 1
 	);
 	assert!(text.contains(pair), "the fragment must cover the pair `{pair}` as written, got {text:?}\nrql: {rql}");

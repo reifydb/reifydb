@@ -213,7 +213,7 @@ pub enum PercentileCallError {
 	},
 	NotLiteral {
 		argument: Fragment,
-		position: usize,
+		index: usize,
 	},
 	PercentileNotANumber {
 		argument: Fragment,
@@ -381,7 +381,7 @@ fn check_percentile_literal(argument: &Expression) -> Result<(), PercentileCallE
 			},
 			_ => PercentileCallError::NotLiteral {
 				argument: fragment,
-				position: 2,
+				index: 2,
 			},
 		});
 	};
@@ -401,7 +401,7 @@ fn percentile_accuracy(argument: &Expression) -> Result<u32, PercentileCallError
 	if !is_literal(argument) {
 		return Err(PercentileCallError::NotLiteral {
 			argument: fragment,
-			position: 3,
+			index: 3,
 		});
 	}
 	accuracy_literal(argument).map_err(|error| PercentileCallError::Accuracy {
@@ -769,7 +769,7 @@ mod tests {
 
 	#[test]
 	fn the_stable_sharing_rule_maps_a_fixed_call_set_to_a_pinned_slot_layout() {
-		// Flow slot values are stored by position, so any change to this layout reads old state against new
+		// Flow slot values are stored by index, so any change to this layout reads old state against new
 		// slots.
 		let (outputs, slots) = rewrite_outputs(vec![
 			percentile(vec![column("latency"), number("0.5"), number("0.01")]),
@@ -871,7 +871,7 @@ mod tests {
 		));
 		assert!(matches!(
 			rewrite_failure(p(column("target"))),
-			PercentileCallError::NotLiteral { argument, position: 2 } if argument.text() == "target"
+			PercentileCallError::NotLiteral { argument, index: 2 } if argument.text() == "target"
 		));
 		assert!(matches!(rewrite_failure(p(text("0.5"))), PercentileCallError::PercentileNotANumber { .. }));
 		assert!(matches!(rewrite_failure(p(number("nan"))), PercentileCallError::PercentileNotANumber { .. }));
@@ -888,7 +888,7 @@ mod tests {
 
 		assert!(matches!(
 			rewrite_failure(accuracy(column("acc"))),
-			PercentileCallError::NotLiteral { argument, position: 3 } if argument.text() == "acc"
+			PercentileCallError::NotLiteral { argument, index: 3 } if argument.text() == "acc"
 		));
 		assert!(matches!(
 			rewrite_failure(accuracy(number("0.5"))),

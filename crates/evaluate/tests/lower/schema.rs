@@ -102,7 +102,7 @@ fn a_qualified_access_reads_the_dotted_name_or_the_bare_name() {
 }
 
 #[test]
-fn a_qualified_access_skips_system_columns_but_keeps_their_position() {
+fn a_qualified_access_skips_system_columns_but_keeps_their_index() {
 	// The index must count the system columns it skips, or the lowered column points one slot early.
 	let mut recorded = Recorded::inline(&["Field { name: \"t.a\", data_type: Int32 } [\"3\"]"]);
 	let env = Env::new();

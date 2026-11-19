@@ -471,7 +471,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let body_start_pos = self.position;
+		let body_start_pos = self.token_index;
 
 		let mut body = Vec::new();
 
@@ -494,7 +494,7 @@ impl<'bump> Parser<'bump> {
 			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
 		}
 
-		let body_end_pos = self.position;
+		let body_end_pos = self.token_index;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
 			let end = self.tokens[body_end_pos - 1].fragment.source_end();
@@ -535,7 +535,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let body_start_pos = self.position;
+		let body_start_pos = self.token_index;
 
 		let mut body = Vec::new();
 
@@ -558,7 +558,7 @@ impl<'bump> Parser<'bump> {
 			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
 		}
 
-		let body_end_pos = self.position;
+		let body_end_pos = self.token_index;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
 			let end = self.tokens[body_end_pos - 1].fragment.source_end();
@@ -588,24 +588,24 @@ impl<'bump> Parser<'bump> {
 		let test_ident = MaybeQualifiedTestIdentifier::new(name).with_namespace(namespace);
 
 		let cases = if !self.is_eof() && self.current()?.kind == TokenKind::Operator(Operator::OpenBracket) {
-			let params_start_pos = self.position;
+			let params_start_pos = self.token_index;
 			let mut depth = 0u32;
 			loop {
-				let tok = &self.tokens[self.position];
+				let tok = &self.tokens[self.token_index];
 				match tok.kind {
 					TokenKind::Operator(Operator::OpenBracket) => depth += 1,
 					TokenKind::Operator(Operator::CloseBracket) => {
 						depth -= 1;
 						if depth == 0 {
-							self.position += 1;
+							self.token_index += 1;
 							break;
 						}
 					}
 					_ => {}
 				}
-				self.position += 1;
+				self.token_index += 1;
 			}
-			let params_end_pos = self.position;
+			let params_end_pos = self.token_index;
 
 			let start = self.tokens[params_start_pos].fragment.offset();
 			let end = self.tokens[params_end_pos - 1].fragment.offset()
@@ -617,7 +617,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let body_start_pos = self.position;
+		let body_start_pos = self.token_index;
 
 		let mut body = Vec::new();
 
@@ -640,7 +640,7 @@ impl<'bump> Parser<'bump> {
 			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
 		}
 
-		let body_end_pos = self.position;
+		let body_end_pos = self.token_index;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
 			let end = self.tokens[body_end_pos - 1].fragment.source_end();
@@ -1144,20 +1144,20 @@ impl<'bump> Parser<'bump> {
 		self.consume_keyword(Keyword::With)?;
 		let (storage_kind, members) = self.parse_windowed_view_group_with_clause(hint)?;
 
-		let as_start = self.position;
+		let as_start = self.token_index;
 		let Some(first) = self.parse_view_as_clause()? else {
 			return Err(unexpected_option(&self.current()?, "'as'"));
 		};
-		let as_end = self.position;
+		let as_end = self.token_index;
 		let mut as_clauses = vec![first];
 		for _ in 1..members.len() {
-			self.position = as_start;
+			self.token_index = as_start;
 			let Some(copy) = self.parse_view_as_clause()? else {
 				return Err(unexpected_option(&self.current()?, "'as'"));
 			};
 			as_clauses.push(copy);
 		}
-		self.position = as_end;
+		self.token_index = as_end;
 
 		Ok(AstCreate::DeferredWindowedViewGroup(AstCreateDeferredWindowedViewGroup {
 			token,
@@ -2695,7 +2695,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let body_start_pos = self.position;
+		let body_start_pos = self.token_index;
 		let mut body = Vec::new();
 
 		loop {
@@ -2717,7 +2717,7 @@ impl<'bump> Parser<'bump> {
 			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
 		}
 
-		let body_end_pos = self.position;
+		let body_end_pos = self.token_index;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
 			let end = self.tokens[body_end_pos - 1].fragment.source_end();
@@ -2761,7 +2761,7 @@ impl<'bump> Parser<'bump> {
 		};
 
 		self.consume_operator(Operator::OpenCurly)?;
-		let body_start_pos = self.position;
+		let body_start_pos = self.token_index;
 
 		let mut depth = 1u32;
 		while depth > 0 {
@@ -2792,7 +2792,7 @@ impl<'bump> Parser<'bump> {
 			}
 		}
 
-		let body_end_pos = self.position;
+		let body_end_pos = self.token_index;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
 			let end = self.tokens[body_end_pos - 1].fragment.source_end();
@@ -2805,7 +2805,7 @@ impl<'bump> Parser<'bump> {
 
 		let rollback_body_source = if (self.consume_if(TokenKind::Keyword(Keyword::Rollback))?).is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
-			let rb_start_pos = self.position;
+			let rb_start_pos = self.token_index;
 
 			let mut depth = 1u32;
 			while depth > 0 {
@@ -2837,7 +2837,7 @@ impl<'bump> Parser<'bump> {
 				}
 			}
 
-			let rb_end_pos = self.position;
+			let rb_end_pos = self.token_index;
 			let rb_source = if rb_start_pos < rb_end_pos {
 				let start = self.tokens[rb_start_pos].fragment.offset();
 				let end = self.tokens[rb_end_pos - 1].fragment.offset()

@@ -510,13 +510,13 @@ fn the_index_stays_consistent_with_the_slab() {
 	for index in 0..4 {
 		fill(&tier, OP_A, key(group_a(), CACHED, format!("k{index}").as_bytes()), sample_row.clone());
 	}
-	assert!(tier.index_is_consistent(), "insert must leave every index position addressing its own slot");
+	assert!(tier.index_is_consistent(), "insert must leave every index entry addressing its own slot");
 
 	tier.overwrite(OP_A, vec![(key(group_a(), CACHED, b"k1"), row("replaced"))]);
-	assert!(tier.index_is_consistent(), "an overwrite must reuse the position, not orphan it");
+	assert!(tier.index_is_consistent(), "an overwrite must reuse the slot, not orphan it");
 
 	tier.invalidate(OP_A, &[key(group_a(), CACHED, b"k0").clone()]);
-	assert!(tier.index_is_consistent(), "a removal must repair the position of the slot swapped into the hole");
+	assert!(tier.index_is_consistent(), "a removal must repair the index entry of the slot swapped into the hole");
 	assert_eq!(
 		body(&tier.get(OP_A, &key(group_a(), CACHED, b"k1")).expect("k1 must survive")),
 		"replaced",

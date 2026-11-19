@@ -237,7 +237,7 @@ fn an_expression_input_and_another_accuracy_get_their_own_digest_slots_in_every_
 
 #[test]
 fn the_stable_sharing_rule_maps_a_fixed_call_set_to_a_pinned_slot_layout_in_every_flow_operator() {
-	// Flow slot values are stored by position, so any change to this layout reads old state against new slots.
+	// Flow slot values are stored by index, so any change to this layout reads old state against new slots.
 	let slots = [
 		single(10_000, 10.0),
 		single(10_000, 0.0),
@@ -733,7 +733,7 @@ fn assert_fixed_view_matches_batch(db: &TestDb, step: &str) -> Vec<(Vec<String>,
 
 #[test]
 fn a_fixed_call_set_keeps_its_slot_layout_and_answers_across_a_restart() {
-	// Slot state is stored by position, so a layout rebuilt differently on reopen reads old state as other slots.
+	// Slot state is stored by index, so a layout rebuilt differently on reopen reads old state as other slots.
 	let path = TempDbPath::new("percentile_view_fixed_restart");
 	let before = {
 		let mut db = sqlite(&path);
@@ -758,7 +758,7 @@ fn a_fixed_call_set_keeps_its_slot_layout_and_answers_across_a_restart() {
 
 #[test]
 fn a_reopened_fixed_call_set_given_only_inserts_equals_batch_as_soon_as_its_flows_catch_up() {
-	// Inserts merge into slots stored by position, so a layout reordered on reopen must show as wrong answers.
+	// Inserts merge into slots stored by index, so a layout reordered on reopen must show as wrong answers.
 	let path = TempDbPath::new("percentile_view_fixed_reopen_inserts");
 	{
 		let mut db = sqlite(&path);

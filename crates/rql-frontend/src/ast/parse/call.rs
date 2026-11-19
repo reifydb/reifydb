@@ -182,23 +182,23 @@ impl<'bump> Parser<'bump> {
 
 	pub(crate) fn is_function_call_pattern(&self) -> bool {
 		let tokens_len = self.tokens.len();
-		if self.position >= tokens_len {
+		if self.token_index >= tokens_len {
 			return false;
 		}
 
-		// SAFETY: `self.position < tokens_len` was checked immediately above.
-		if !unsafe { self.tokens.get_unchecked(self.position) }.is_identifier() {
+		// SAFETY: `self.token_index < tokens_len` was checked immediately above.
+		if !unsafe { self.tokens.get_unchecked(self.token_index) }.is_identifier() {
 			return false;
 		}
 
-		if self.position + 1 < tokens_len
-			// SAFETY: the short-circuiting left operand established `self.position + 1 < tokens_len`.
-			&& unsafe { self.tokens.get_unchecked(self.position + 1) }.is_operator(Operator::OpenParen)
+		if self.token_index + 1 < tokens_len
+			// SAFETY: the short-circuiting left operand established `self.token_index + 1 < tokens_len`.
+			&& unsafe { self.tokens.get_unchecked(self.token_index + 1) }.is_operator(Operator::OpenParen)
 		{
 			return true;
 		}
 
-		let mut pos = self.position + 1;
+		let mut pos = self.token_index + 1;
 		while pos + 2 < tokens_len {
 			// SAFETY: the loop condition `pos + 2 < tokens_len` implies `pos < tokens_len`.
 			if !unsafe { self.tokens.get_unchecked(pos) }.is_operator(Operator::DoubleColon) {

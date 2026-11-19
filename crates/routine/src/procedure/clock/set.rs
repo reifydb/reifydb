@@ -45,8 +45,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockSetProcedure {
 		_args: &[(FieldRef, ArrayRef)],
 	) -> Result<RecordBatch, RoutineError> {
 		let arg = match ctx.params {
-			Params::Positional(args) if args.len() == 1 => &args[0],
-			Params::Positional(args) => {
+			Params::Ordinal(args) if args.len() == 1 => &args[0],
+			Params::Ordinal(args) => {
 				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("clock::set"),
 					expected: 1,

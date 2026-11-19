@@ -13,7 +13,7 @@ use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
-use crate::common::{parse_named_params, parse_positional_params, parse_rql, write_frames};
+use crate::common::{parse_named_params, parse_ordinal_params, parse_rql, write_frames};
 
 pub struct WsRunner {
 	instance: Option<Database>,
@@ -54,9 +54,9 @@ impl testscript::runner::Runner for WsRunner {
 				write_frames(result)
 			}
 
-			"command_positional" => {
-				let (rql, params) = parse_positional_params(command);
-				println!("command_positional: {rql}");
+			"command_ordinal" => {
+				let (rql, params) = parse_ordinal_params(command);
+				println!("command_ordinal: {rql}");
 
 				let result = self.runtime.block_on(client.command(&rql, Some(params)))?;
 				write_frames(result)
@@ -78,9 +78,9 @@ impl testscript::runner::Runner for WsRunner {
 				write_frames(result)
 			}
 
-			"query_positional" => {
-				let (rql, params) = parse_positional_params(command);
-				println!("query_positional: {rql}");
+			"query_ordinal" => {
+				let (rql, params) = parse_ordinal_params(command);
+				println!("query_ordinal: {rql}");
 
 				let result = self.runtime.block_on(client.query(&rql, Some(params)))?;
 				write_frames(result)

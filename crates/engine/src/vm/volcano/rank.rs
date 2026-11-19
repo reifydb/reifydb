@@ -50,8 +50,8 @@ pub(crate) fn enum_name_ranks(
 			sumtype.variants.iter().map(|variant| (variant.name.as_str(), variant.tag)).collect();
 		names.sort();
 		let mut rank = [0u8; 256];
-		for (position, (_, tag)) in names.iter().enumerate() {
-			rank[usize::from(*tag)] = position as u8;
+		for (index, (_, tag)) in names.iter().enumerate() {
+			rank[usize::from(*tag)] = index as u8;
 		}
 		let tags = array
 			.as_any()
@@ -289,7 +289,7 @@ mod tests {
 	}
 
 	#[test]
-	fn rows_tied_on_every_key_keep_their_input_position() {
+	fn rows_tied_on_every_key_keep_their_input_order() {
 		// Tie order is observable through take, so ranking must be a total order ending in the row index.
 		let data = factory::int4("k", [7, 7, 7, 7]);
 

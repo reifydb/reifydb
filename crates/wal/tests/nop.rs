@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::log::Position;
+use reifydb_codec::log::LogOffset;
 use reifydb_store_log::segment::{Scan, Stop};
 use reifydb_value::value::datetime::DateTime;
 use reifydb_wal::{body::Body, error::WalError, lsn::Lsn, nop::NopDevice, sync::WalMode, wal::Wal};
@@ -27,7 +27,7 @@ impl Body for Ping {
 fn open() -> Wal<Ping, NopDevice> {
 	let scan = Scan {
 		records: Vec::new(),
-		end: Position::ZERO,
+		end: LogOffset::ZERO,
 		stop: Stop::Unwritten,
 	};
 	let (wal, _) = Wal::open(NopDevice::new(), vec![scan], WalMode::Off).unwrap();

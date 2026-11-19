@@ -82,10 +82,10 @@ impl<D: RangeDomain> RangeTier<D> {
 		let mut pending = Vec::new();
 		{
 			let mut shard = self.shard(index).lock();
-			for (position, key) in keys.iter().enumerate() {
+			for (key_index, key) in keys.iter().enumerate() {
 				match Self::resolve_locked(&mut shard, &partition, key) {
-					Some(resident) => answers[position] = Some(resident),
-					None => pending.push(position),
+					Some(resident) => answers[key_index] = Some(resident),
+					None => pending.push(key_index),
 				}
 			}
 		}
@@ -98,19 +98,19 @@ impl<D: RangeDomain> RangeTier<D> {
 		let claimed: Vec<(usize, bool)> = {
 			let coverage = self.coverage().read();
 			pending.into_iter()
-				.map(|position| (position, coverage.contains(dimension, &keys[position])))
+				.map(|key_index| (key_index, coverage.contains(dimension, &keys[key_index])))
 				.collect()
 		};
 		#[cfg(test)]
 		absence_interlock();
 		let mut shard = self.shard(index).lock();
-		for (position, claimed) in claimed {
+		for (key_index, claimed) in claimed {
 			if !claimed {
 				Self::record_point_miss_locked(&mut shard, &partition);
 				continue;
 			}
-			if let Some(resident) = Self::resolve_locked(&mut shard, &partition, &keys[position]) {
-				answers[position] = Some(resident);
+			if let Some(resident) = Self::resolve_locked(&mut shard, &partition, &keys[key_index]) {
+				answers[key_index] = Some(resident);
 				continue;
 			}
 			if !self.retractions_unchanged(before) {
@@ -118,7 +118,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				continue;
 			}
 			Self::record_point_hit_locked(&mut shard, &partition);
-			answers[position] = Some(None);
+			answers[key_index] = Some(None);
 		}
 		answers
 	}

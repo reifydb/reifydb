@@ -1,0 +1,11 @@
+# Generated from: params_ordinal.tap.md#float4_param
+# Test: Ordinal parameter with FLOAT4 type
+
+command_ordinal 'MAP {result: $1}' '3.14'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |   3.14   |
+> +----------+
+>

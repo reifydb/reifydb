@@ -81,9 +81,9 @@ export class ReifyError extends Error {
     }
 
     toString(): string {
-        const position = this.fragment
+        const location = this.fragment
             ? `line ${this.fragment.line}, offset ${this.fragment.column}`
-            : "unknown position";
+            : "unknown location";
 
         const notes = this.notes.length
             ? `\nNotes:\n- ${this.notes.join("\n- ")}`
@@ -93,7 +93,7 @@ export class ReifyError extends Error {
             ? `\nHelp: ${this.help}`
             : "";
 
-        return `${this.name}: ${this.message}\nAt ${position}${help}${notes}`;
+        return `${this.name}: ${this.message}\nAt ${location}${help}${notes}`;
     }
 }
 

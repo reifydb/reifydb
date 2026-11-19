@@ -192,7 +192,7 @@ mod tests {
 
 	#[test]
 	fn stats_follow_schema_order() {
-		// The pruner pairs stats with schema positions, so a reordering silently applies one
+		// The pruner pairs stats with schema indexes, so a reordering silently applies one
 		// column's bounds to another.
 		let t = data(vec![
 			("c", ValueType::Int4, int4_chunks(&[&[3]])),

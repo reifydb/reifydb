@@ -58,14 +58,14 @@ fn one_generic_path_writes_every_width_into_its_own_slot() {
 		);
 	}
 
-	for (position, (old, new)) in before.iter().zip(row.as_slice()).enumerate() {
+	for (at, (old, new)) in before.iter().zip(row.as_slice()).enumerate() {
 		let in_slot = written.iter().any(|(index, bytes)| {
 			let offset = shape.fields()[*index].offset as usize;
-			position >= offset && position < offset + bytes.len()
+			at >= offset && at < offset + bytes.len()
 		});
-		let in_bitvec = position >= SHAPE_HEADER_SIZE && position < shape.data_offset();
+		let in_bitvec = at >= SHAPE_HEADER_SIZE && at < shape.data_offset();
 		if !in_slot && !in_bitvec {
-			assert_eq!(old, new, "byte {position} lies outside every written slot but changed");
+			assert_eq!(old, new, "byte {at} lies outside every written slot but changed");
 		}
 	}
 

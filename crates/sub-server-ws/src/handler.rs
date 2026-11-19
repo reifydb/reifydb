@@ -813,7 +813,7 @@ fn parse_call_params(request_id: &str, params: Option<WireParams>, procedure: &P
 				}
 			}
 		}
-		Params::Positional(_) => {
+		Params::Ordinal(_) => {
 			return Err(build_error(request_id, "INVALID_PARAMS", "Call requires named params"));
 		}
 	}

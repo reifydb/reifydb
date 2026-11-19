@@ -1,0 +1,11 @@
+# Generated from: params_ordinal.tap.md#int8_param
+# Test: Query with ordinal INT8 parameter
+
+query_ordinal 'MAP {result: $1}' '9223372036854775807'
+---
+> +-----------------------+
+> |        result         |
+> +-----------------------+
+> |  9223372036854775807  |
+> +-----------------------+
+>

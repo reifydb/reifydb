@@ -18,17 +18,17 @@ use reifydb_value::{
 };
 
 use crate::{
-	expression::{access::access_position, context::EvalContext},
+	expression::{access::access_index, context::EvalContext},
 	lower::{Node, error::from_datafusion, literal::row_zero},
 	stack::Variable,
 };
 
-pub(super) fn positional_schema(operator: &str, schema: &Schema) -> Result<DFSchema, ValueError> {
+pub(super) fn ordinal_schema(operator: &str, schema: &Schema) -> Result<DFSchema, ValueError> {
 	let fields: Vec<Field> = schema
 		.fields()
 		.iter()
 		.enumerate()
-		.map(|(index, field)| field.as_ref().clone().with_name(positional_name(index)))
+		.map(|(index, field)| field.as_ref().clone().with_name(ordinal_name(index)))
 		.collect();
 	DFSchema::try_from(Schema::new(fields)).map_err(|err| from_datafusion(operator, err))
 }
@@ -43,7 +43,7 @@ pub(super) fn column(ctx: &EvalContext, operator: &str, column: &ColumnExpressio
 			false => field.clone(),
 		};
 		return Ok(Node {
-			expr: positional(index),
+			expr: ordinal(index),
 			field,
 		});
 	}
@@ -61,17 +61,17 @@ pub(super) fn column(ctx: &EvalContext, operator: &str, column: &ColumnExpressio
 }
 
 pub(super) fn access(ctx: &EvalContext, access: &AccessObjectExpression) -> Result<Node, ValueError> {
-	let index = access_position(&ctx.batch, access)?;
+	let index = access_index(&ctx.batch, access)?;
 	Ok(Node {
-		expr: positional(index),
+		expr: ordinal(index),
 		field: ctx.batch.schema_ref().fields()[index].clone(),
 	})
 }
 
-pub(super) fn positional(index: usize) -> Expr {
-	Expr::Column(Column::from_name(positional_name(index)))
+pub(super) fn ordinal(index: usize) -> Expr {
+	Expr::Column(Column::from_name(ordinal_name(index)))
 }
 
-fn positional_name(index: usize) -> String {
+fn ordinal_name(index: usize) -> String {
 	format!("#{index}")
 }

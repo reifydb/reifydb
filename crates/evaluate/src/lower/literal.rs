@@ -33,7 +33,7 @@ pub(super) fn parameter(
 	parameter: &ParameterExpression,
 ) -> Result<Node, ValueError> {
 	let fragment = match parameter {
-		ParameterExpression::Positional {
+		ParameterExpression::Ordinal {
 			fragment,
 		}
 		| ParameterExpression::Named {

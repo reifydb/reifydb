@@ -38,7 +38,7 @@ use crate::{
 	expression::{compile::type_column, context::EvalContext},
 	lower::{
 		Node, Stop, compare, direct::splice_key, empty_of, error::into_external, literal, lower_node,
-		schema::positional, typed_field, udf, volatile,
+		schema::ordinal, typed_field, udf, volatile,
 	},
 };
 
@@ -60,7 +60,7 @@ pub(super) fn lower_call<'e>(
 	if function.changes_row_count() {
 		return match resolve_column(&ctx.batch, &splice_key(call)) {
 			Some(index) => Ok(Node {
-				expr: positional(index),
+				expr: ordinal(index),
 				field: Arc::new(
 					ctx.batch.schema_ref().fields()[index]
 						.as_ref()
@@ -72,13 +72,13 @@ pub(super) fn lower_call<'e>(
 		};
 	}
 	function.arity().check(&call.func.0, call.args.len()).map_err(ValueError::from)?;
-	let type_positions = function.type_argument_positions();
+	let type_indexes = function.type_argument_indexes();
 	let args = call
 		.args
 		.iter()
 		.enumerate()
 		.map(|(index, arg)| match arg {
-			Expression::Column(column) if type_positions.contains(&index) => {
+			Expression::Column(column) if type_indexes.contains(&index) => {
 				match ValueType::from_str(column.0.name.text()) {
 					Ok(ty) => {
 						let (field, array) = type_column(1, &ty, &column.0.name);
@@ -302,7 +302,7 @@ mod tests {
 	#[test]
 	fn two_routine_calls_at_different_spans_are_not_equal() {
 		// CSE merges calls that compare equal, so equality must include the span or a merged call loses its
-		// error position.
+		// error location.
 		let function = abs();
 		assert_ne!(abs_at(&function, 1), abs_at(&function, 9));
 		assert_eq!(abs_at(&function, 1), abs_at(&function, 1));

@@ -47,7 +47,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 		let mut vtable_ids = Vec::new();
 		let mut names = Vec::new();
 		let mut types = Vec::new();
-		let mut positions = Vec::new();
+		let mut ordinals = Vec::new();
 
 		for vtable in VTableRegistry::list_vtables(txn)? {
 			for col in &vtable.columns {
@@ -55,7 +55,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 				vtable_ids.push(vtable.id.0);
 				names.push(col.name.clone());
 				types.push(type_constraint_text(&col.constraint));
-				positions.push(u16::from(col.index.0));
+				ordinals.push(u16::from(col.index.0));
 			}
 		}
 
@@ -65,7 +65,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 				vtable_ids.push(vtable.id.0);
 				names.push(col.name.clone());
 				types.push(type_constraint_text(&col.constraint));
-				positions.push(u16::from(col.index.0));
+				ordinals.push(u16::from(col.index.0));
 			}
 		}
 
@@ -74,7 +74,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 			factory::uint8("vtable_id", vtable_ids),
 			factory::utf8("name", names),
 			factory::utf8("type", types),
-			factory::uint2("position", positions),
+			factory::uint2("ordinal", ordinals),
 		];
 
 		self.exhausted = true;

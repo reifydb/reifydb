@@ -81,7 +81,7 @@ impl Expression {
 
 			Expression::Call(expr) => expr.full_fragment_owned(),
 			Expression::Parameter(param) => match param {
-				ParameterExpression::Positional {
+				ParameterExpression::Ordinal {
 					fragment,
 					..
 				} => fragment.clone(),

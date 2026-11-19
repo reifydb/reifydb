@@ -141,7 +141,7 @@ where
 			match columns.rows()[row] {
 				Some(number) => Ok(number),
 				None => internal_err!(
-					"update diff {diff} has a row without a row number at batch position {}",
+					"update diff {diff} has a row without a row number at batch index {}",
 					columns.index()[row]
 				),
 			}
@@ -151,14 +151,14 @@ where
 		let mut run_post: Vec<usize> = Vec::new();
 		let (mut p, mut q) = (0, 0);
 		while p < pre.len() || q < post.len() {
-			let position = match (pre.index().get(p), post.index().get(q)) {
+			let index = match (pre.index().get(p), post.index().get(q)) {
 				(Some(&a), Some(&b)) => a.min(b),
 				(Some(&a), None) => a,
 				(None, Some(&b)) => b,
 				(None, None) => break,
 			};
-			let before = (pre.index().get(p) == Some(&position)).then_some(p);
-			let after = (post.index().get(q) == Some(&position)).then_some(q);
+			let before = (pre.index().get(p) == Some(&index)).then_some(p);
+			let after = (post.index().get(q) == Some(&index)).then_some(q);
 			let mut numbers = Vec::with_capacity(2);
 			if let Some(row) = before {
 				numbers.push(number(pre, row)?);

@@ -96,15 +96,15 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn is_closure_pattern(&self) -> bool {
-		if self.position >= self.tokens.len() {
+		if self.token_index >= self.tokens.len() {
 			return false;
 		}
 
-		if !self.tokens[self.position].is_operator(Operator::OpenParen) {
+		if !self.tokens[self.token_index].is_operator(Operator::OpenParen) {
 			return false;
 		}
 
-		let mut pos = self.position + 1;
+		let mut pos = self.token_index + 1;
 
 		if pos < self.tokens.len() && self.tokens[pos].is_operator(Operator::CloseParen) {
 			pos += 1;

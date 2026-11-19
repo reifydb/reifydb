@@ -79,8 +79,8 @@ message LogoutResponse {
 }
 
 message Params {
-  oneof params { PositionalParams positional = 1; NamedParams named = 2; }
+  oneof params { OrdinalParams ordinal = 1; NamedParams named = 2; }
 }
-message PositionalParams { repeated TypedValue values = 1; }
+message OrdinalParams { repeated TypedValue values = 1; }
 message NamedParams      { map<string, TypedValue> values = 1; }
 message TypedValue       { bytes encoded = 1; }

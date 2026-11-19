@@ -46,8 +46,8 @@ const NUMBER = /[+-]?(?:[\d_]+(?:\.[\d_]+)?|\.[\d_]+)(?:[eE][+-]?\d+)?/y;
 const OPERATOR = /<<|>>|\.\.|==|!=|->|=>|>=|<=|~=|:=|&&|\|\||\?\?|\/\/|[+\-*/%|.=<>!&^?]/y;
 const DELIMITER = /[;,]/y;
 
-function match(pattern: RegExp, source: string, position: number): string | null {
-    pattern.lastIndex = position;
+function match(pattern: RegExp, source: string, charIndex: number): string | null {
+    pattern.lastIndex = charIndex;
     const result = pattern.exec(source);
     return result === null ? null : result[0];
 }
@@ -67,9 +67,9 @@ function classifyCall(word: string): RqlTokenKind {
     return 'function';
 }
 
-function scanString(source: string, position: number): number {
-    const quote = source[position];
-    let index = position + 1;
+function scanString(source: string, charIndex: number): number {
+    const quote = source[charIndex];
+    let index = charIndex + 1;
     while (index < source.length) {
         const char = source[index];
         if (char === '\\') {
@@ -84,132 +84,132 @@ function scanString(source: string, position: number): number {
 
 export function tokenizeRql(source: string): RqlToken[] {
     const tokens: RqlToken[] = [];
-    let position = 0;
+    let charIndex = 0;
     let afterSeparator = false;
 
     const push = (kind: RqlTokenKind, end: number): void => {
-        tokens.push({kind, start: position, end});
-        position = end;
+        tokens.push({kind, start: charIndex, end});
+        charIndex = end;
     };
 
-    while (position < source.length) {
+    while (charIndex < source.length) {
         if (afterSeparator) {
-            const white = match(WHITESPACE, source, position);
+            const white = match(WHITESPACE, source, charIndex);
             if (white !== null) {
-                push('white', position + white.length);
+                push('white', charIndex + white.length);
                 continue;
             }
 
-            const chained = match(NAMESPACE_HEAD, source, position);
+            const chained = match(NAMESPACE_HEAD, source, charIndex);
             if (chained !== null) {
                 afterSeparator = false;
-                push('namespace', position + chained.length);
+                push('namespace', charIndex + chained.length);
                 continue;
             }
 
-            const called = match(CALL_NAME, source, position);
+            const called = match(CALL_NAME, source, charIndex);
             if (called !== null) {
                 afterSeparator = false;
-                push('function', position + called.length);
+                push('function', charIndex + called.length);
                 continue;
             }
 
-            const leaf = match(WORD, source, position);
+            const leaf = match(WORD, source, charIndex);
             if (leaf !== null) {
                 afterSeparator = false;
-                push('entity', position + leaf.length);
+                push('entity', charIndex + leaf.length);
                 continue;
             }
 
             afterSeparator = false;
         }
 
-        const systemColumn = match(SYSTEM_COLUMN, source, position);
+        const systemColumn = match(SYSTEM_COLUMN, source, charIndex);
         if (systemColumn !== null) {
-            push('variable.predefined', position + systemColumn.length);
+            push('variable.predefined', charIndex + systemColumn.length);
             continue;
         }
 
-        const comment = match(COMMENT, source, position);
+        const comment = match(COMMENT, source, charIndex);
         if (comment !== null) {
-            push('comment', position + comment.length);
+            push('comment', charIndex + comment.length);
             continue;
         }
 
-        const namespace = match(NAMESPACE_HEAD, source, position);
+        const namespace = match(NAMESPACE_HEAD, source, charIndex);
         if (namespace !== null) {
-            push('namespace', position + namespace.length);
+            push('namespace', charIndex + namespace.length);
             continue;
         }
 
-        const separator = match(NAMESPACE_SEPARATOR, source, position);
+        const separator = match(NAMESPACE_SEPARATOR, source, charIndex);
         if (separator !== null) {
             afterSeparator = true;
-            push('operator', position + separator.length);
+            push('operator', charIndex + separator.length);
             continue;
         }
 
-        const namedArgument = match(NAMED_ARGUMENT, source, position);
+        const namedArgument = match(NAMED_ARGUMENT, source, charIndex);
         if (namedArgument !== null) {
-            push('key', position + namedArgument.length);
+            push('key', charIndex + namedArgument.length);
             continue;
         }
 
-        const variable = match(VARIABLE, source, position);
+        const variable = match(VARIABLE, source, charIndex);
         if (variable !== null) {
-            push('variable', position + variable.length);
+            push('variable', charIndex + variable.length);
             continue;
         }
 
-        const call = match(CALL_NAME, source, position);
+        const call = match(CALL_NAME, source, charIndex);
         if (call !== null) {
-            push(classifyCall(call), position + call.length);
+            push(classifyCall(call), charIndex + call.length);
             continue;
         }
 
-        const word = match(WORD, source, position);
+        const word = match(WORD, source, charIndex);
         if (word !== null) {
-            push(classifyWord(word), position + word.length);
+            push(classifyWord(word), charIndex + word.length);
             continue;
         }
 
-        const white = match(WHITESPACE, source, position);
+        const white = match(WHITESPACE, source, charIndex);
         if (white !== null) {
-            push('white', position + white.length);
+            push('white', charIndex + white.length);
             continue;
         }
 
-        const bracket = match(BRACKET, source, position);
+        const bracket = match(BRACKET, source, charIndex);
         if (bracket !== null) {
-            push('bracket', position + bracket.length);
+            push('bracket', charIndex + bracket.length);
             continue;
         }
 
-        const number = match(NUMBER, source, position);
+        const number = match(NUMBER, source, charIndex);
         if (number !== null) {
-            push('number', position + number.length);
+            push('number', charIndex + number.length);
             continue;
         }
 
-        const char = source[position];
+        const char = source[charIndex];
         if (char === '"' || char === "'") {
-            push('string', scanString(source, position));
+            push('string', scanString(source, charIndex));
             continue;
         }
 
-        const operator = match(OPERATOR, source, position);
+        const operator = match(OPERATOR, source, charIndex);
         if (operator !== null) {
-            push('operator', position + operator.length);
+            push('operator', charIndex + operator.length);
             continue;
         }
 
-        const delimiter = match(DELIMITER, source, position);
+        const delimiter = match(DELIMITER, source, charIndex);
         if (delimiter !== null) {
-            push('delimiter', position + delimiter.length);
+            push('delimiter', charIndex + delimiter.length);
             continue;
         }
 
-        push('identifier', position + 1);
+        push('identifier', charIndex + 1);
     }
 
     return tokens;

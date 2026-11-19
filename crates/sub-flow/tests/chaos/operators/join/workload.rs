@@ -72,7 +72,7 @@ pub struct JoinRow {
 
 	pub value: i64,
 
-	/// The row's event position, which is what the sweep ages this row's side group on. Without it the
+	/// The row's event time, which is what the sweep ages this row's side group on. Without it the
 	/// whole corpus lands in one activity bucket and any cutoff is all-or-nothing, so a keyspace or
 	/// mapping assertion would hold for a reason unrelated to the phase it names.
 	pub coord_ms: u64,
@@ -149,7 +149,7 @@ fn ordered(order: InputOrder, mut diffs: Vec<Diff>) -> Vec<Diff> {
 		Some(ChangeOrigin::Flow(node)) => inputs
 			.iter()
 			.position(|input| input == node)
-			.map(|position| order.rank(position, inputs.len()))
+			.map(|index| order.rank(index, inputs.len()))
 			.unwrap_or(inputs.len()),
 		_ => inputs.len(),
 	});
@@ -162,7 +162,7 @@ pub struct JoinWorkload {
 	pub none_pct: u32,
 	pub rekey_pct: u32,
 
-	/// The span rows draw their event position from. A join has no window, so this only decides how
+	/// The span rows draw their event time from. A join has no window, so this only decides how
 	/// widely the corpus spreads across the activity grid, which is what lets one side group be forgotten
 	/// while another stays live.
 	pub coord_span_ms: u64,

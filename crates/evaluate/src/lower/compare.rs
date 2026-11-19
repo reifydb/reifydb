@@ -329,14 +329,14 @@ mod tests {
 
 	#[test]
 	fn two_compare_casts_at_different_spans_are_not_equal() {
-		// CSE merges calls that compare equal, so a cast blind to its span would lose its error position.
+		// CSE merges calls that compare equal, so a cast blind to its span would lose its error location.
 		assert_ne!(cast_at(1), cast_at(9));
 		assert_eq!(cast_at(1), cast_at(1));
 	}
 
 	#[test]
 	fn two_betweens_at_different_spans_are_not_equal() {
-		// CSE merges calls that compare equal, so a between blind to its span would lose its error position.
+		// CSE merges calls that compare equal, so a between blind to its span would lose its error location.
 		assert_ne!(between_at(1), between_at(9));
 		assert_eq!(between_at(1), between_at(1));
 	}

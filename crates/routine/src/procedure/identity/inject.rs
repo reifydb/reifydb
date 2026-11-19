@@ -52,7 +52,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for IdentityInject {
 		}
 
 		let identity_id = match ctx.params {
-			Params::Positional(args) if args.len() == 1 => match &args[0] {
+			Params::Ordinal(args) if args.len() == 1 => match &args[0] {
 				Value::IdentityId(id) => *id,
 				other => {
 					return Err(RoutineError::ProcedureInvalidArgumentType {
@@ -63,7 +63,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for IdentityInject {
 					});
 				}
 			},
-			Params::Positional(args) => {
+			Params::Ordinal(args) => {
 				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("identity::inject"),
 					expected: 1,

@@ -61,7 +61,7 @@ impl<'bump> Compiler<'bump> {
 					}
 					.into());
 				}
-				self.compile_positional_tuples(unresolved_target, list.nodes, tx)
+				self.compile_ordinal_tuples(unresolved_target, list.nodes, tx)
 			}
 			other => self.compile_single(other, tx),
 		}
@@ -191,7 +191,7 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	fn compile_positional_tuples(
+	fn compile_ordinal_tuples(
 		&self,
 		target: &UnresolvedObjectIdentifier<'bump>,
 		nodes: Vec<Ast<'bump>>,
@@ -228,7 +228,7 @@ impl<'bump> Compiler<'bump> {
 					)? {
 					return Err(refusal);
 				}
-				return Err(RqlError::InsertPositionalWrongLength {
+				return Err(RqlError::InsertOrdinalWrongLength {
 					fragment: tuple.token.fragment.to_owned(),
 					expected: column_names.len(),
 					actual: tuple_len,

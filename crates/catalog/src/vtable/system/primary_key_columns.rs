@@ -49,19 +49,19 @@ impl BaseVTable for SystemPrimaryKeyColumns {
 
 		let mut pk_ids = Vec::new();
 		let mut column_ids = Vec::new();
-		let mut positions = Vec::new();
+		let mut ordinals = Vec::new();
 
 		let pk_columns = CatalogStore::list_primary_key_columns(txn)?;
-		for (pk_id, column_id, position) in pk_columns {
+		for (pk_id, column_id, ordinal) in pk_columns {
 			pk_ids.push(pk_id);
 			column_ids.push(column_id);
-			positions.push(position as u16);
+			ordinals.push(ordinal as u16);
 		}
 
 		let columns = vec![
 			factory::uint8("primary_key_id", pk_ids),
 			factory::uint8("column_id", column_ids),
-			factory::uint2("position", positions),
+			factory::uint2("ordinal", ordinals),
 		];
 
 		self.exhausted = true;

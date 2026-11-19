@@ -98,7 +98,7 @@ fn series_bound(expr: &Expression) -> Option<SeriesBound> {
 	match expr {
 		Expression::Variable(variable) => Some(SeriesBound::Variable(variable.clone())),
 		Expression::Parameter(
-			ParameterExpression::Positional {
+			ParameterExpression::Ordinal {
 				fragment,
 			}
 			| ParameterExpression::Named {

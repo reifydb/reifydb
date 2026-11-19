@@ -1,0 +1,11 @@
+# Generated from: params_ordinal.tap.md#uint1_param
+# Test: Query with ordinal UINT1 parameter
+
+query_ordinal 'MAP {result: $1}' '255'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |   255    |
+> +----------+
+>

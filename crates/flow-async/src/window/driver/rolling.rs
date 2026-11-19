@@ -133,10 +133,10 @@ fn located<G, C: Coord, X>(
 	pane: Option<C::Span>,
 ) -> Result<(C, u64), ValueError> {
 	let Some(coord) = columns.coords()[row] else {
-		return internal_err!("a rolling row at batch position {} carries no coordinate", columns.index()[row]);
+		return internal_err!("a rolling row at batch index {} carries no coordinate", columns.index()[row]);
 	};
 	let Some(number) = columns.rows()[row] else {
-		return internal_err!("a rolling row at batch position {} carries no row number", columns.index()[row]);
+		return internal_err!("a rolling row at batch index {} carries no row number", columns.index()[row]);
 	};
 	Ok((pane_of(coord, pane), number.0))
 }
@@ -187,12 +187,8 @@ where
 				pre,
 				post,
 			} => {
-				let mut before: HashMap<usize, usize> = pre
-					.index()
-					.iter()
-					.enumerate()
-					.map(|(row, &position)| (position, row))
-					.collect();
+				let mut before: HashMap<usize, usize> =
+					pre.index().iter().enumerate().map(|(row, &index)| (index, row)).collect();
 				for row in 0..post.len() {
 					let (post_at, number) = located(&post, row, pane)?;
 					let group = &post.groups()[row];

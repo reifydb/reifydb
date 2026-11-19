@@ -164,6 +164,8 @@ mod nested_option_types;
 mod nested_read_policy_bypass;
 #[path = "none_operand_expression_types.rs"]
 mod none_operand_expression_types;
+#[path = "ordinal_insert.rs"]
+mod ordinal_insert;
 #[path = "output_rule.rs"]
 mod output_rule;
 #[path = "partition_dictionary_scan.rs"]
@@ -176,8 +178,6 @@ mod percentile_aggregate;
 mod percentile_aggregate_errors;
 #[path = "plan_cache.rs"]
 mod plan_cache;
-#[path = "positional_insert.rs"]
-mod positional_insert;
 #[path = "present_rows_keep_the_plain_type.rs"]
 mod present_rows_keep_the_plain_type;
 #[path = "procedure_body_pipe.rs"]

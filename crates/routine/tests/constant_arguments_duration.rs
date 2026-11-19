@@ -91,12 +91,12 @@ fn assert_same(label: &str, actual: &Column, expected: &Column) {
 }
 
 fn check<F: Function>(name: &str, function: F, args: Vec<Arg>) {
-	for position in 0..args.len() {
+	for index in 0..args.len() {
 		let pick = |constant: fn(&Arg) -> &Column| -> Vec<Column> {
 			args.iter()
 				.enumerate()
 				.map(|(i, arg)| {
-					if i == position {
+					if i == index {
 						constant(arg).clone()
 					} else {
 						arg.varying.clone()
@@ -106,7 +106,7 @@ fn check<F: Function>(name: &str, function: F, args: Vec<Arg>) {
 		};
 		let actual = call(&function, &pick(|arg| &arg.one));
 		let expected = call(&function, &pick(|arg| &arg.repeated));
-		assert_same(&format!("{name} constant at {position}"), &actual, &expected);
+		assert_same(&format!("{name} constant at {index}"), &actual, &expected);
 	}
 	let actual = call(&function, &args.iter().map(|arg| arg.one.clone()).collect::<Vec<_>>());
 	let expected = call(&function, &args.iter().map(|arg| arg.repeated.clone()).collect::<Vec<_>>());

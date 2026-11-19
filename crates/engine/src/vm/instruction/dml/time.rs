@@ -265,8 +265,8 @@ mod tests {
 	}
 
 	#[test]
-	fn the_populator_is_resolved_by_name_not_by_position() {
-		// Resolving by position would pick the wrong column once another shares its type.
+	fn the_populator_is_resolved_by_name_not_by_index() {
+		// Resolving by index would pick the wrong column once another shares its type.
 		let shape = RowShape::new(
 			RowFamily::Table,
 			vec![

@@ -231,7 +231,7 @@ mod tests {
 
 		#[test]
 		fn test_reorder() {
-			// reorder must place row indices[i] at position i.
+			// reorder must place row indices[i] at index i.
 			let container = LargeStringArray::from(vec![
 				"first".to_string(),
 				"second".to_string(),

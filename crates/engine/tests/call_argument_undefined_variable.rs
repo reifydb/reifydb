@@ -5,7 +5,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{fragment::Fragment, params::Params};
 
 #[test]
-fn an_undefined_name_in_a_procedure_call_argument_reports_its_position() {
+fn an_undefined_name_in_a_procedure_call_argument_reports_its_location() {
 	// Without the fragment a client cannot underline which argument named an undefined variable.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
@@ -23,7 +23,7 @@ fn an_undefined_name_in_a_procedure_call_argument_reports_its_position() {
 	let diagnostic = err.diagnostic();
 	assert!(
 		matches!(diagnostic.fragment, Fragment::Statement { .. }),
-		"the fragment must carry a position, got: {diagnostic:?}"
+		"the fragment must carry a location, got: {diagnostic:?}"
 	);
 	assert_eq!(diagnostic.fragment.text(), "typo", "got: {diagnostic:?}");
 }

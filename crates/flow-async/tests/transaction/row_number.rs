@@ -236,7 +236,7 @@ fn get_row_number_returns_an_existing_mapping_without_minting() {
 
 #[test]
 fn get_row_numbers_reports_a_hole_for_every_unmapped_key() {
-	// The batch form must stay positional, or a caller zips numbers onto the wrong rows.
+	// The batch form must stay aligned by index, or a caller zips numbers onto the wrong rows.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let (mapped, _) = txn.get_or_create_row_numbers(NODE, group(), &[key("mapped")]).unwrap().remove(0);

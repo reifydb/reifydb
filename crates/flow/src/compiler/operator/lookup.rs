@@ -116,13 +116,13 @@ fn order_left_keys(
 
 	let mut slots: Vec<Option<Expression>> = vec![None; right.partition_by.len()];
 	for (name, (left_key, right_key)) in names.iter().zip(left_keys.into_iter().zip(right_keys)) {
-		let Some(position) = right.partition_by.iter().position(|column| column == name) else {
+		let Some(index) = right.partition_by.iter().position(|column| column == name) else {
 			return Err(not_partition(right_key.full_fragment_owned()));
 		};
-		if slots[position].is_some() {
+		if slots[index].is_some() {
 			return Err(not_partition(right_key.full_fragment_owned()));
 		}
-		slots[position] = Some(left_key);
+		slots[index] = Some(left_key);
 	}
 
 	Ok(slots.into_iter().flatten().collect())

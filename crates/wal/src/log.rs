@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::log::{LogIndex, LogVersion, Position, record::Record};
+use reifydb_codec::log::{LogIndex, LogOffset, LogVersion, record::Record};
 use reifydb_runtime::io::fs::{Create, Filesystem, Mkdir, Open, OpenMut, ReadDir, Rename, SyncDir, Unlink};
 use reifydb_store_log::{cursor::Cursor, log::Log, partition::Partition};
 use reifydb_value::{byte_size::ByteSize, clock::ClockNow};
@@ -50,7 +50,7 @@ where
 	C: ClockNow + Clone + Send + 'static,
 	Partition<F, C>: Send,
 {
-	fn append(&self, record: &Record) -> Result<Position, WalError> {
+	fn append(&self, record: &Record) -> Result<LogOffset, WalError> {
 		Ok(self.append(0, record)?)
 	}
 

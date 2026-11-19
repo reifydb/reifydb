@@ -123,7 +123,7 @@ fn a_session_window_keeps_no_state_per_removed_row() {
 }
 
 // The exact shape the session sweep found, pinned as a fixed sequence. The seed that surfaced it
-// (12750666829617941778) is not a durable handle: it names a position in a generated corpus, so any
+// (12750666829617941778) is not a durable handle: it names a place in a generated corpus, so any
 // change to the workload or its parameters points it somewhere else entirely.
 
 fn valued(number: u64, value: i64, ms: i64) -> reifydb_testing_chaos::operator::event::Row {

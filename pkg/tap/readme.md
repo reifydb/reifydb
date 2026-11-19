@@ -45,7 +45,7 @@ When working with TAP test specifications:
 2. Create ONE test file per TAP suite with `.tap.ts` extension (e.g., `params_named_primitive.tap.md` → `params_named_primitive.tap.ts`)
 3. Use `describe` blocks with the suite name from the TAP file
 4. Create one `it` block per test case, using the test case ID as the test name
-5. Map parameters according to TypeScript conventions (objects for named, arrays for positional)
+5. Map parameters according to TypeScript conventions (objects for named, arrays for ordinal)
 6. Use appropriate Schema types from `@reifydb/core`
 7. Include proper setup/teardown with `beforeEach`/`afterEach`
 
@@ -60,7 +60,7 @@ When working with TAP test specifications:
    - Expected output in the exact ASCII table format from the TAP spec
 6. Convert parameter values to Rust syntax:
    - Named: `'param=value'` format
-   - Positional: Direct values or appropriate Rust literals
+   - Ordinal: Direct values or appropriate Rust literals
 7. Preserve exact whitespace and formatting in expected output sections
 
 ## TAP File Format
@@ -87,11 +87,11 @@ tags: [tag1, tag2]
 operation: query|command
 statement: "RQL statement with $params"
 params:
-  type: named|positional
+  type: named|ordinal
   values:
     # For named:
     param_name: value
-    # For positional:
+    # For ordinal:
     - value1
     - value2
 expected:
@@ -153,10 +153,10 @@ params:
 
 RQL: `MAP $param1 + $param2 as result`
 
-#### Positional Parameters
+#### Ordinal Parameters
 ```yaml
 params:
-  type: positional
+  type: ordinal
   values:
     - value1
     - value2
@@ -232,7 +232,7 @@ describe('Named Parameters - Primitive Types', () => {
 │   ├── 002_int1_param
 │   ├── 003_int2_param
 │   └── ...
-├── params_positional_primitive_tap/
+├── params_ordinal_primitive_tap/
 │   ├── 001_bool_param
 │   ├── 002_int1_param
 │   └── ...
@@ -265,12 +265,12 @@ command_named 'MAP $bool_val as result' 'bool_val=true'
 pkg/typescript/client/tests/integration/
 ├── tap/                                      # TAP-generated tests
 │   ├── params_named_primitive.tap.ts        # Named param tests (note .tap.ts extension)
-│   ├── params_positional_primitive.tap.ts   # Positional param tests
+│   ├── params_ordinal_primitive.tap.ts      # Ordinal param tests
 │   ├── basic_queries.tap.ts                 # Query tests
 │   └── basic_commands.tap.ts                # Command tests
 └── ws/                                       # Language-specific tests
     ├── params_named_value.test.ts           # TypeScript Value type tests
-    ├── params_positional_value.test.ts      
+    ├── params_ordinal_value.test.ts         
     ├── error.test.ts
     └── test-helper.ts                       # Shared test utilities
 ```
@@ -284,7 +284,7 @@ pkg/rust/reifydb-client/tests/scripts/
 │   │   ├── 002_int1_param
 │   │   ├── 003_int2_param
 │   │   └── ...
-│   ├── params_positional_primitive_tap/
+│   ├── params_ordinal_primitive_tap/
 │   │   ├── 001_bool_param
 │   │   ├── 002_int1_param
 │   │   └── ...
@@ -317,9 +317,9 @@ params:
 // Becomes TypeScript object:
 {int_val: 42, str_val: "hello", bool_val: true}
 
-// Positional parameters from TAP:
+// Ordinal parameters from TAP:
 params:
-  type: positional
+  type: ordinal
   values:
     - 42
     - "hello"
@@ -342,16 +342,16 @@ params:
 // Becomes Rust testscript arguments:
 command_named 'RQL' 'int_val=42' 'str_val=hello' 'bool_val=true'
 
-// Positional parameters from TAP:
+// Ordinal parameters from TAP:
 params:
-  type: positional
+  type: ordinal
   values:
     - 42
     - "hello"
     - true
 
 // Becomes Rust testscript arguments:
-command_positional 'RQL' '42' 'hello' 'true'
+command_ordinal 'RQL' '42' 'hello' 'true'
 ```
 
 ### Special Data Type Handling
@@ -398,7 +398,7 @@ command_positional 'RQL' '42' 'hello' 'true'
 ## Test Files
 
 - `params_named_primitive.tap.md` - Named parameters with primitive types
-- `params_positional_primitive.tap.md` - Positional parameters with primitive types  
+- `params_ordinal_primitive.tap.md` - Ordinal parameters with primitive types  
 - `basic_queries.tap.md` - Basic query operations (MAP, SELECT)
 - `basic_commands.tap.md` - Basic command operations (CREATE, INSERT)
 - `statement_handling.tap.md` - Multiple statements, empty statements, and statement separators

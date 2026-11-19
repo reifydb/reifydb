@@ -24,7 +24,7 @@ function build() {
 }
 
 describe('spec frames over the native bridge', () => {
-  it('pairs each output frame with the shape at the same position', async () => {
+  it('pairs each output frame with the shape at the same index', async () => {
     // Swapped frames would decode item rows as totals, so pairing must follow statement order.
     const client = storeClient(build())
     await client.command(

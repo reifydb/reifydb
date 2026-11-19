@@ -39,7 +39,7 @@ fn flow_consumer_position_advances_to_committed_version() {
 			panic!(
 				"flow consumer position did not reach the committed version within 10s: \
 				 flow_consumer={} target={} (the flow subsystem is not advancing \
-				 FlowConsumerPosition - every await-based flow test will hang)",
+				 FlowCaughtUpPosition - every await-based flow test will hang)",
 				flow_consumer.0, target.0
 			);
 		}

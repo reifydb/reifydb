@@ -31,8 +31,8 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	fn try_parse_keyword_as_function_call(&mut self) -> Result<Ast<'bump>, ValueError> {
-		if self.position + 1 < self.tokens.len()
-			&& self.tokens[self.position + 1].is_operator(Operator::OpenParen)
+		if self.token_index + 1 < self.tokens.len()
+			&& self.tokens[self.token_index + 1].is_operator(Operator::OpenParen)
 		{
 			let first_ident_token = self.consume_identifier()?;
 			let open_paren_token = self.advance()?;
@@ -121,12 +121,12 @@ impl<'bump> Parser<'bump> {
 				}
 				Keyword::Drop => Ok(Ast::Drop(self.parse_drop()?)),
 				Keyword::Delete | Keyword::Insert | Keyword::Update => {
-					if self.position + 1 < self.tokens.len()
+					if self.token_index + 1 < self.tokens.len()
 						&& (matches!(
-							self.tokens[self.position + 1].kind,
+							self.tokens[self.token_index + 1].kind,
 							TokenKind::Identifier | TokenKind::Keyword(_)
 						) || matches!(
-							self.tokens[self.position + 1].kind,
+							self.tokens[self.token_index + 1].kind,
 							TokenKind::Operator(Operator::OpenBracket)
 								| TokenKind::Operator(Operator::OpenCurly)
 								| TokenKind::Variable
@@ -235,9 +235,9 @@ impl<'bump> Parser<'bump> {
 				Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
 				Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
 				Keyword::Udf => {
-					if self.position + 1 < self.tokens.len()
+					if self.token_index + 1 < self.tokens.len()
 						&& matches!(
-							self.tokens[self.position + 1].kind,
+							self.tokens[self.token_index + 1].kind,
 							TokenKind::Identifier | TokenKind::Keyword(_)
 						) {
 						Ok(Ast::DefFunction(self.parse_def_function()?))

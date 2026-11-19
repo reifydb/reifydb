@@ -357,7 +357,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_bare_field_in_trailing_position_is_rejected() {
+	fn a_bare_field_in_trailing_place_is_rejected() {
 		// the check must cover every field, not just the first one it looks at
 		let out = expand("struct JoinLeftKey { group: Desc<GroupId>, row: RowNumber }");
 		assert!(out.contains("compile_error"), "{out}");
@@ -524,7 +524,7 @@ mod tests {
 
 	#[test]
 	fn a_tuple_struct_is_rejected() {
-		// a positional field has no column name to emit
+		// an unnamed field has no column name to emit
 		let out = expand("struct JoinLeftKey(Desc<GroupId>);");
 		assert!(out.contains("compile_error"), "{out}");
 	}

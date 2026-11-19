@@ -266,7 +266,7 @@ mod tests {
 
 	fn windowed(rows: &[(u64, i32, i32, i64)]) -> MaterializedView {
 		// (row number, g, total, window start). The row number is what the view folds on; the window
-		// start rides the event position, exactly as a window operator emits it.
+		// start rides the event time, exactly as a window operator emits it.
 		let mut v = MaterializedView::empty();
 		v.columns = vec!["g".to_string(), "total".to_string()];
 		for (number, g, total, at) in rows {
@@ -286,7 +286,7 @@ mod tests {
 	fn a_second_row_for_one_window_is_caught_even_when_the_multiset_permits_its_value() {
 		// A key whose row-number mapping was forgotten mints a fresh number, so its duplicate
 		// folds in without colliding; both tuples are values the model permits for other windows
-		// of the group, so a positional multiset alone would let the duplicate through.
+		// of the group, so a ordinal multiset alone would let the duplicate through.
 		let duplicate = windowed(&[(1, 1, 5, 1_000), (2, 1, 9, 1_000)]);
 		let permitted: Vec<Vec<Value>> =
 			vec![vec![Value::Int4(1), Value::Int4(5)], vec![Value::Int4(1), Value::Int4(9)]];
@@ -424,7 +424,7 @@ mod tests {
 
 	#[test]
 	fn a_view_claim_honours_its_own_named_tolerances_not_the_workloads() {
-		// The workload's tolerances are positional; a keyed claim compares by column name, so
+		// The workload's tolerances are ordinal; a keyed claim compares by column name, so
 		// passing that slice through would apply the wrong column's tolerance.
 		let mut oracle = MaterializedView::empty();
 		oracle.columns = vec!["g".to_string(), "total".to_string()];

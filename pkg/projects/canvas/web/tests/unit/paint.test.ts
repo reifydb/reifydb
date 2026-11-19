@@ -31,7 +31,7 @@ describe('paint helper', () => {
     expect([...PALETTE]).toEqual(backend)
   })
 
-  it('keeps an exact palette colour unmixed at every pattern position', () => {
+  it('keeps an exact palette colour unmixed at every pattern index', () => {
     // A flat area in a palette colour must stay flat, otherwise it turns speckled.
     PALETTE.forEach((color, index) => {
       const [r, g, b] = rgb(color)

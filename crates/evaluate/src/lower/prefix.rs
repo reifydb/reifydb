@@ -152,7 +152,7 @@ mod tests {
 
 	#[test]
 	fn two_negations_at_different_spans_are_not_equal() {
-		// CSE merges calls that compare equal, so a negation blind to its span would lose its error position.
+		// CSE merges calls that compare equal, so a negation blind to its span would lose its error location.
 		assert_ne!(negate_at(1), negate_at(9));
 		assert_eq!(negate_at(1), negate_at(1));
 	}

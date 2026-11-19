@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_codec::log::{
-	LogIndex, LogVersion, Position,
+	LogIndex, LogOffset, LogVersion,
 	index::{ENTRY_BYTES, Entry, HEADER_BYTES, Header, MAGIC, TimestampRange, decode_entry, encode_entry},
 	record::Record,
 };
@@ -80,7 +80,7 @@ impl<F: Filesystem> Index<F> {
 		let truncated = !(len - HEADER_BYTES as u64).is_multiple_of(ENTRY_BYTES as u64);
 		let read = entries.len();
 		let anchors = anchors(log);
-		entries.retain(|entry| anchors.contains(&(entry.version, entry.index, entry.position)));
+		entries.retain(|entry| anchors.contains(&(entry.version, entry.index, entry.offset)));
 		let recovery = Recovery {
 			read,
 			kept: entries.len(),
@@ -102,15 +102,15 @@ impl<F: Filesystem> Index<F> {
 		&mut self,
 		version: LogVersion,
 		index: LogIndex,
-		position: Position,
+		offset: LogOffset,
 	) -> Result<bool, StoreLogError> {
-		if !self.due(position) {
+		if !self.due(offset) {
 			return Ok(false);
 		}
 		let entry = Entry {
 			version,
 			index,
-			position,
+			offset,
 		};
 		let at = self.end();
 		write_all(&self.file, &self.path, at, &encode_entry(&self.header, entry))?;
@@ -141,8 +141,8 @@ impl<F: Filesystem> Index<F> {
 		Ok(self.file.sync_data()?)
 	}
 
-	pub fn lookup(&self, version: LogVersion) -> Position {
-		position_of(&self.entries, version)
+	pub fn lookup(&self, version: LogVersion) -> LogOffset {
+		offset_of(&self.entries, version)
 	}
 
 	pub fn entries(&self) -> &[Entry] {
@@ -157,10 +157,10 @@ impl<F: Filesystem> Index<F> {
 		&self.path
 	}
 
-	fn due(&self, position: Position) -> bool {
+	fn due(&self, offset: LogOffset) -> bool {
 		match self.entries.last() {
 			None => true,
-			Some(last) => position.distance_from(last.position) >= self.interval.as_bytes(),
+			Some(last) => offset.distance_from(last.offset) >= self.interval.as_bytes(),
 		}
 	}
 
@@ -187,11 +187,11 @@ pub fn find<F: Open>(
 	entries: &[Entry],
 	version: LogVersion,
 ) -> Result<Option<Record>, StoreLogError> {
-	let scan = scan_from(fs, path, position_of(entries, version))?;
+	let scan = scan_from(fs, path, offset_of(entries, version))?;
 	Ok(scan.records.into_iter().find(|record| record.version == version))
 }
 
-pub fn position_of(entries: &[Entry], version: LogVersion) -> Position {
+pub fn offset_of(entries: &[Entry], version: LogVersion) -> LogOffset {
 	at_or_before(entries.partition_point(|entry| entry.version <= version), entries)
 }
 
@@ -201,19 +201,19 @@ pub fn find_at<F: Open>(
 	entries: &[Entry],
 	index: LogIndex,
 ) -> Result<Option<Record>, StoreLogError> {
-	let scan = scan_from(fs, path, position_of_index(entries, index))?;
+	let scan = scan_from(fs, path, offset_of_index(entries, index))?;
 	Ok(scan.records.into_iter().find(|record| record.index == index))
 }
 
-pub fn position_of_index(entries: &[Entry], index: LogIndex) -> Position {
+pub fn offset_of_index(entries: &[Entry], index: LogIndex) -> LogOffset {
 	at_or_before(entries.partition_point(|entry| entry.index <= index), entries)
 }
 
-fn at_or_before(at: usize, entries: &[Entry]) -> Position {
+fn at_or_before(at: usize, entries: &[Entry]) -> LogOffset {
 	if at == 0 {
-		Position::ZERO
+		LogOffset::ZERO
 	} else {
-		entries[at - 1].position
+		entries[at - 1].offset
 	}
 }
 
@@ -263,9 +263,9 @@ fn load<H: Pread>(file: &H, path: &Path, len: u64) -> Result<(Header, Vec<Entry>
 	Ok((header, entries))
 }
 
-fn anchors(log: &Scan) -> HashSet<(LogVersion, LogIndex, Position)> {
+fn anchors(log: &Scan) -> HashSet<(LogVersion, LogIndex, LogOffset)> {
 	let mut out = HashSet::with_capacity(log.records.len());
-	let mut at = Position::ZERO;
+	let mut at = LogOffset::ZERO;
 	for record in &log.records {
 		out.insert((record.version, record.index, at));
 		at = at.advance(record.encoded_len() as u64);
@@ -322,8 +322,8 @@ mod tests {
 		// an entry is stored as a delta against the base, so a roundtrip is the only proof it decodes back.
 		let (fs, path) = fixture();
 		let mut index = Index::create(&fs, &path, BASE, BASE_INDEX, INTERVAL).unwrap();
-		assert!(index.append(BASE, BASE_INDEX, Position::ZERO).unwrap());
-		assert!(index.append(version(9), index_at(1), Position::new(512)).unwrap());
+		assert!(index.append(BASE, BASE_INDEX, LogOffset::ZERO).unwrap());
+		assert!(index.append(version(9), index_at(1), LogOffset::new(512)).unwrap());
 		index.sync().unwrap();
 
 		let (_, entries) = read(&fs, &path).unwrap();
@@ -334,12 +334,12 @@ mod tests {
 				Entry {
 					version: BASE,
 					index: BASE_INDEX,
-					position: Position::ZERO
+					offset: LogOffset::ZERO
 				},
 				Entry {
 					version: version(9),
 					index: index_at(1),
-					position: Position::new(512)
+					offset: LogOffset::new(512)
 				}
 			]
 		);
@@ -350,11 +350,11 @@ mod tests {
 		// landing above the target skips the record, and the forward scan can only move forwards.
 		let entries = pair();
 
-		assert_eq!(position_of(&entries, LogVersion::new(5)), Position::ZERO);
-		assert_eq!(position_of(&entries, LogVersion::new(10)), Position::ZERO);
-		assert_eq!(position_of(&entries, LogVersion::new(19)), Position::ZERO);
-		assert_eq!(position_of(&entries, LogVersion::new(20)), Position::new(800));
-		assert_eq!(position_of(&entries, LogVersion::new(999)), Position::new(800));
+		assert_eq!(offset_of(&entries, LogVersion::new(5)), LogOffset::ZERO);
+		assert_eq!(offset_of(&entries, LogVersion::new(10)), LogOffset::ZERO);
+		assert_eq!(offset_of(&entries, LogVersion::new(19)), LogOffset::ZERO);
+		assert_eq!(offset_of(&entries, LogVersion::new(20)), LogOffset::new(800));
+		assert_eq!(offset_of(&entries, LogVersion::new(999)), LogOffset::new(800));
 	}
 
 	#[test]
@@ -376,8 +376,8 @@ mod tests {
 		.unwrap();
 		sync_path(&fs, &log).unwrap();
 		let mut index = Index::create(&fs, &path, BASE, BASE_INDEX, INTERVAL).unwrap();
-		index.append(BASE, BASE_INDEX, Position::ZERO).unwrap();
-		index.append(version(1), index_at(1), Position::new(2048)).unwrap();
+		index.append(BASE, BASE_INDEX, LogOffset::ZERO).unwrap();
+		index.append(version(1), index_at(1), LogOffset::new(2048)).unwrap();
 		index.sync().unwrap();
 
 		let scanned = scan(&fs, &log).unwrap();
@@ -390,7 +390,7 @@ mod tests {
 			[Entry {
 				version: BASE,
 				index: BASE_INDEX,
-				position: Position::ZERO
+				offset: LogOffset::ZERO
 			}]
 		);
 	}
@@ -400,12 +400,12 @@ mod tests {
 			Entry {
 				version: LogVersion::new(10),
 				index: LogIndex::new(1),
-				position: Position::ZERO,
+				offset: LogOffset::ZERO,
 			},
 			Entry {
 				version: LogVersion::new(20),
 				index: LogIndex::new(7),
-				position: Position::new(800),
+				offset: LogOffset::new(800),
 			},
 		]
 	}

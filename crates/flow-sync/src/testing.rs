@@ -399,11 +399,8 @@ impl Resolve for TestingTx {
 		Ok(ids.iter()
 			.map(|id| {
 				let offset = id.to_u128().checked_sub(1)?;
-				let position = usize::try_from(offset).ok()?;
-				self.dictionary_values
-					.get(&dictionary.id)
-					.and_then(|values| values.get(position))
-					.cloned()
+				let index = usize::try_from(offset).ok()?;
+				self.dictionary_values.get(&dictionary.id).and_then(|values| values.get(index)).cloned()
 			})
 			.collect())
 	}
@@ -418,14 +415,14 @@ impl Find for TestingTx {
 	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		values.iter()
 			.map(|value| {
-				let Some(position) = self
+				let Some(index) = self
 					.dictionary_values
 					.get(&dictionary.id)
 					.and_then(|stored| stored.iter().position(|existing| existing == value))
 				else {
 					return Ok(None);
 				};
-				DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone()).map(Some)
+				DictionaryEntryId::from_u128(index as u128 + 1, dictionary.id_type.clone()).map(Some)
 			})
 			.collect()
 	}
@@ -437,14 +434,14 @@ impl Intern for TestingTx {
 		let mut ids = Vec::with_capacity(values.len());
 		for value in values {
 			let known = self.dictionary_values.entry(dictionary.id).or_default();
-			let position = match known.iter().position(|existing| existing == value) {
-				Some(position) => position,
+			let index = match known.iter().position(|existing| existing == value) {
+				Some(index) => index,
 				None => {
 					known.push(value.clone());
 					known.len() - 1
 				}
 			};
-			ids.push(DictionaryEntryId::from_u128(position as u128 + 1, dictionary.id_type.clone())?);
+			ids.push(DictionaryEntryId::from_u128(index as u128 + 1, dictionary.id_type.clone())?);
 		}
 		Ok(ids)
 	}

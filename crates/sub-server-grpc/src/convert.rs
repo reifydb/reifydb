@@ -18,10 +18,10 @@ use crate::{
 pub fn proto_params_to_params(proto: generated::Params) -> Result<Params, SubServerGrpcError> {
 	match proto.params {
 		None => Ok(Params::None),
-		Some(ProtoParamsOneof::Positional(pos)) => {
+		Some(ProtoParamsOneof::Ordinal(pos)) => {
 			let values: Result<Vec<Value>, SubServerGrpcError> =
 				pos.values.into_iter().map(typed_value_to_value).collect();
-			Ok(Params::Positional(Arc::new(values?)))
+			Ok(Params::Ordinal(Arc::new(values?)))
 		}
 		Some(ProtoParamsOneof::Named(named)) => {
 			let map: Result<HashMap<String, Value>, SubServerGrpcError> = named

@@ -178,7 +178,7 @@ fn too_many_arguments_is_an_arity_error() {
 #[test]
 fn a_binding_call_binds_named_request_params_by_name_and_coerces_them() {
 	// The server executes a bound procedure as `CALL ns::proc()` with the arguments as named request params;
-	// they must reach the body typed exactly like positional arguments do.
+	// they must reach the body typed exactly like ordinal arguments do.
 	let t = engine();
 
 	let frames = call(

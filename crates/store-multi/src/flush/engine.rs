@@ -229,9 +229,9 @@ impl FlushEngine {
 
 		let mut entry_kinds = self.list_evictable_kinds();
 		if let Some(resume) = state.resume_from
-			&& let Some(position) = entry_kinds.iter().position(|kind| *kind == resume)
+			&& let Some(index) = entry_kinds.iter().position(|kind| *kind == resume)
 		{
-			entry_kinds.rotate_left(position);
+			entry_kinds.rotate_left(index);
 		}
 		state.resume_from = None;
 

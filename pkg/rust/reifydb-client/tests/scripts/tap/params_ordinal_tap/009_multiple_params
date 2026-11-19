@@ -1,0 +1,11 @@
+# Generated from: params_ordinal.tap.md
+# Test: Multiple ordinal parameters
+
+query_ordinal 'MAP { sum: $1 + $2, name: $3 }' '10' '20' 'test'
+---
+> +-------+--------+
+> |  sum  |  name  |
+> +-------+--------+
+> |  30   |  test  |
+> +-------+--------+
+>

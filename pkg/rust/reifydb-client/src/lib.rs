@@ -140,7 +140,7 @@ pub struct WireValue {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum WireParams {
-	Positional(Vec<WireValue>),
+	Ordinal(Vec<WireValue>),
 	Named(HashMap<String, WireValue>),
 }
 
@@ -163,9 +163,9 @@ fn value_to_wire(value: Value) -> WireValue {
 pub fn params_to_wire(params: Params) -> Option<WireParams> {
 	match params {
 		Params::None => None,
-		Params::Positional(values) => Some(WireParams::Positional(
-			Arc::unwrap_or_clone(values).into_iter().map(value_to_wire).collect(),
-		)),
+		Params::Ordinal(values) => {
+			Some(WireParams::Ordinal(Arc::unwrap_or_clone(values).into_iter().map(value_to_wire).collect()))
+		}
 		Params::Named(map) => Some(WireParams::Named(
 			Arc::unwrap_or_clone(map).into_iter().map(|(k, v)| (k, value_to_wire(v))).collect(),
 		)),

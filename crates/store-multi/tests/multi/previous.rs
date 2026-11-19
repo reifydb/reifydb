@@ -94,7 +94,7 @@ fn a_batched_previous_read_answers_every_key_exactly_as_the_point_read_does_in_e
 	// The producer turns the batched answer into the published pre-image and the insert or update
 	// classification, so any key where it differs from the point read it replaces changes what commit log
 	// consumers see: a tombstone read as a value, a read at the commit's own version, or an answer
-	// handed to the wrong position in the batch.
+	// handed to the wrong index in the batch.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let a = row(1);
 	let b = row(2);

@@ -208,11 +208,11 @@ fn patched_decode_error(patch: impl Fn(&mut Vec<u8>)) -> String {
 	format!("{error} {error:?}")
 }
 
-fn params_position(bytes: &[u8]) -> usize {
+fn params_offset(bytes: &[u8]) -> usize {
 	bytes.windows(2).rposition(|window| window == [5, 2]).expect("the decimal(5, 2) column carries [5, 2] as extra")
 }
 
-fn descriptor_position(bytes: &[u8]) -> usize {
+fn descriptor_offset(bytes: &[u8]) -> usize {
 	let descriptor = [ValueKind::Decimal.byte(), 0, 0, 0, 1, 0];
 	bytes.windows(descriptor.len())
 		.position(|window| window == descriptor)
@@ -223,7 +223,7 @@ fn descriptor_position(bytes: &[u8]) -> usize {
 fn a_frame_column_whose_values_exceed_its_precision_is_rejected() {
 	// Narrowing the declared precision below the data must fail decode instead of building an invalid array.
 	let error = patched_decode_error(|bytes| {
-		let at = params_position(bytes);
+		let at = params_offset(bytes);
 		bytes[at] = 4;
 	});
 	assert!(error.contains("more digits than precision"), "{error}");
@@ -233,7 +233,7 @@ fn a_frame_column_whose_values_exceed_its_precision_is_rejected() {
 fn a_frame_decimal_column_with_a_scale_past_its_precision_is_rejected() {
 	// A scale above the precision has no valid layout, so the header must fail decode instead of reading the data.
 	let error = patched_decode_error(|bytes| {
-		let at = params_position(bytes);
+		let at = params_offset(bytes);
 		bytes[at + 1] = 6;
 	});
 	assert!(error.contains("invalid scale 6"), "{error}");
@@ -243,7 +243,7 @@ fn a_frame_decimal_column_with_a_scale_past_its_precision_is_rejected() {
 fn a_frame_family_column_under_dict_encoding_is_rejected() {
 	// The family has no dict layout, so reading the data as dict indices would invent values.
 	let error = patched_decode_error(|bytes| {
-		let at = descriptor_position(bytes);
+		let at = descriptor_offset(bytes);
 		bytes[at + 1] = 1;
 	});
 	assert!(error.contains("Dict encoding not supported"), "{error}");

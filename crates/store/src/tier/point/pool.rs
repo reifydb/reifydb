@@ -163,13 +163,13 @@ impl<D: PointDomain> PointTier<D> {
 				..
 			} = &*shard;
 			index.len() == entries.len()
-				&& entries.iter().enumerate().all(|(position, entry)| {
+				&& entries.iter().enumerate().all(|(slot, entry)| {
 					index.find(entry_hash::<D>(entry), |resident| {
 						let other = &entries[*resident as usize];
 						other.key.dimension == entry.key.dimension
 							&& other.key.key == entry.key.key
 					})
-					.copied() == Some(position as u32)
+					.copied() == Some(slot as u32)
 				})
 		})
 	}
@@ -254,20 +254,20 @@ impl<D: PointDomain> Shard<D> {
 			return None;
 		}
 		if len <= EVICTION_SAMPLE {
-			return (0..len).min_by_key(|position| self.entries[*position].tick);
+			return (0..len).min_by_key(|slot| self.entries[*slot].tick);
 		}
 		let mut victim: Option<(u64, usize)> = None;
 		for _ in 0..EVICTION_SAMPLE {
-			let position = (self.next_random() % len as u64) as usize;
-			let tick = self.entries[position].tick;
+			let slot = (self.next_random() % len as u64) as usize;
+			let tick = self.entries[slot].tick;
 			if victim.map(|(lowest, _)| tick < lowest).unwrap_or(true) {
-				victim = Some((tick, position));
+				victim = Some((tick, slot));
 			}
 		}
-		victim.map(|(_, position)| position)
+		victim.map(|(_, slot)| slot)
 	}
 
-	pub(super) fn remove_at(&mut self, position: usize) {
+	pub(super) fn remove_at(&mut self, slot: usize) {
 		let Shard {
 			index,
 			entries,
@@ -275,16 +275,14 @@ impl<D: PointDomain> Shard<D> {
 			..
 		} = self;
 		let last = entries.len() - 1;
-		let entry = entries.swap_remove(position);
-		if let Ok(occupied) =
-			index.find_entry(entry_hash::<D>(&entry), |resident| *resident as usize == position)
-		{
+		let entry = entries.swap_remove(slot);
+		if let Ok(occupied) = index.find_entry(entry_hash::<D>(&entry), |resident| *resident as usize == slot) {
 			occupied.remove();
 		}
-		if position < entries.len() {
-			let moved = entry_hash::<D>(&entries[position]);
+		if slot < entries.len() {
+			let moved = entry_hash::<D>(&entries[slot]);
 			if let Some(resident) = index.find_mut(moved, |resident| *resident as usize == last) {
-				*resident = position as u32;
+				*resident = slot as u32;
 			}
 		}
 		budget.release(ByteSize::from_bytes(entry_footprint::<D>(&entry.key, &entry.row) as u64));

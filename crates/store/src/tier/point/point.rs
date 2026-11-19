@@ -4,8 +4,7 @@
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::point::{
-	Entry, PointDomain, PointKey, PointTier, Shard, account, bucket_hash, entry_footprint, entry_hash,
-	find_position,
+	Entry, PointDomain, PointKey, PointTier, Shard, account, bucket_hash, entry_footprint, entry_hash, find_slot,
 };
 
 const OVERWRITE_HOLD_KEYS: usize = 256;
@@ -16,13 +15,13 @@ impl<D: PointDomain> PointTier<D> {
 		let hash = bucket_hash(&dimension, key);
 		let mut shard = self.shard_at(dimension, key).lock();
 		let next = shard.next_tick;
-		let Some(position) = find_position(&shard, hash, dimension, key) else {
+		let Some(slot) = find_slot(&shard, hash, dimension, key) else {
 			shard.metrics.misses += 1;
 			shard.bucket_metrics[bucket].misses += 1;
 			return None;
 		};
 		let row = {
-			let entry = &mut shard.entries[position as usize];
+			let entry = &mut shard.entries[slot as usize];
 			entry.tick = next;
 			entry.row.clone()
 		};
@@ -109,9 +108,9 @@ impl<D: PointDomain> PointTier<D> {
 					false
 				});
 				index.clear();
-				for position in 0..entries.len() {
-					let hash = entry_hash::<D>(&entries[position]);
-					index.insert_unique(hash, position as u32, |resident| {
+				for slot in 0..entries.len() {
+					let hash = entry_hash::<D>(&entries[slot]);
+					index.insert_unique(hash, slot as u32, |resident| {
 						entry_hash::<D>(&entries[*resident as usize])
 					});
 				}
@@ -123,17 +122,17 @@ impl<D: PointDomain> PointTier<D> {
 
 fn remove_key<D: PointDomain>(shard: &mut Shard<D>, dimension: D::Dimension, key: &D::Key) {
 	let hash = bucket_hash(&dimension, key);
-	if let Some(position) = find_position(shard, hash, dimension, key) {
-		shard.remove_at(position as usize);
+	if let Some(slot) = find_slot(shard, hash, dimension, key) {
+		shard.remove_at(slot as usize);
 	}
 }
 
 fn insert_entry<D: PointDomain>(shard: &mut Shard<D>, bucket: usize, id: PointKey<D::Dimension, D::Key>, row: D::Row) {
 	let next = shard.next_tick;
 	let hash = bucket_hash(&id.dimension, &id.key);
-	match find_position(shard, hash, id.dimension, &id.key) {
-		Some(position) => {
-			let entry = &mut shard.entries[position as usize];
+	match find_slot(shard, hash, id.dimension, &id.key) {
+		Some(slot) => {
+			let entry = &mut shard.entries[slot as usize];
 			let old = entry_footprint::<D>(&entry.key, &entry.row);
 			if !D::supersede(&mut entry.row, row) {
 				return;
@@ -155,8 +154,8 @@ fn insert_entry<D: PointDomain>(shard: &mut Shard<D>, bucket: usize, id: PointKe
 				row,
 				tick: next,
 			});
-			let position = (entries.len() - 1) as u32;
-			index.insert_unique(hash, position, |resident| entry_hash::<D>(&entries[*resident as usize]));
+			let slot = (entries.len() - 1) as u32;
+			index.insert_unique(hash, slot, |resident| entry_hash::<D>(&entries[*resident as usize]));
 			budget.charge(ByteSize::from_bytes(new as u64));
 		}
 	}

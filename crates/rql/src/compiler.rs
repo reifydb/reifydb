@@ -961,7 +961,7 @@ impl InstructionCompiler {
 				for (index, arg) in c.args.iter().enumerate() {
 					if let Expression::Column(col) = arg
 						&& function.as_ref().is_some_and(|function| {
-							function.type_argument_positions().contains(&index)
+							function.type_argument_indexes().contains(&index)
 						}) && let Ok(ty) = ValueType::from_str(col.0.name.text())
 					{
 						self.emit(Instruction::PushConst(Value::Type(ty)));
@@ -1044,7 +1044,7 @@ impl InstructionCompiler {
 				}
 			}
 			Expression::Parameter(p) => match p {
-				ParameterExpression::Positional {
+				ParameterExpression::Ordinal {
 					fragment,
 				} => {
 					self.emit(Instruction::LoadVar(fragment.clone()));

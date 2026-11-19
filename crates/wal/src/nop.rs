@@ -3,7 +3,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use reifydb_codec::log::{LogIndex, LogVersion, Position, record::Record};
+use reifydb_codec::log::{LogIndex, LogOffset, LogVersion, record::Record};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
@@ -40,9 +40,9 @@ impl RecordCursor for NopCursor {
 impl Device for NopDevice {}
 
 impl Append for NopDevice {
-	fn append(&self, record: &Record) -> Result<Position, WalError> {
+	fn append(&self, record: &Record) -> Result<LogOffset, WalError> {
 		self.last.store(record.version.as_u64(), Ordering::Release);
-		Ok(Position::ZERO)
+		Ok(LogOffset::ZERO)
 	}
 
 	fn head(&self) -> Result<Option<LogVersion>, WalError> {

@@ -8,7 +8,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use reifydb_codec::log::{LogIndex, LogVersion, Position, Term};
+use reifydb_codec::log::{LogIndex, LogOffset, LogVersion, Term};
 use reifydb_runtime::io::fs::FsError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,16 +40,16 @@ pub enum StoreLogError {
 	},
 	SegmentIncomplete {
 		path: PathBuf,
-		end: Position,
+		end: LogOffset,
 		len: u64,
 	},
 	SegmentCorrupt {
 		path: PathBuf,
-		position: Position,
+		offset: LogOffset,
 	},
 	SegmentFormat {
 		path: PathBuf,
-		position: Position,
+		offset: LogOffset,
 		reserved: u32,
 	},
 	SegmentOutOfOrder {
@@ -294,22 +294,22 @@ impl Display for StoreLogError {
 			),
 			StoreLogError::SegmentCorrupt {
 				path,
-				position,
+				offset,
 			} => write!(
 				f,
 				"log segment {} is corrupt at {}, but valid records follow it",
 				path.display(),
-				position
+				offset
 			),
 			StoreLogError::SegmentFormat {
 				path,
-				position,
+				offset,
 				reserved,
 			} => write!(
 				f,
 				"log segment {} has a record at {} with reserved word {}, so it was written by another format and cannot be replayed",
 				path.display(),
-				position,
+				offset,
 				reserved
 			),
 			StoreLogError::VoteCorrupt {

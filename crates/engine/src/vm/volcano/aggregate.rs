@@ -36,7 +36,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		digest::DigestError,
-		system_columns::sumtype_tag_position,
+		system_columns::sumtype_tag_index,
 		value_type::field::{FieldType, from_field},
 	},
 };
@@ -160,7 +160,7 @@ impl AggregateNode {
 						.schema_ref()
 						.index_of(key)
 						.ok()
-						.or_else(|| sumtype_tag_position(&columns, key));
+						.or_else(|| sumtype_tag_index(&columns, key));
 					key_types.push(match index {
 						Some(index) => Some(from_field(columns.schema_ref().field(index))?),
 						None => None,
@@ -427,8 +427,8 @@ fn percentile_call_error(failure: PercentileCallError) -> ValueError {
 		.into(),
 		PercentileCallError::NotLiteral {
 			argument,
-			position,
-		} => error!(operation::aggregate_argument_not_literal(argument, PERCENTILE_FUNCTION, position)),
+			index,
+		} => error!(operation::aggregate_argument_not_literal(argument, PERCENTILE_FUNCTION, index)),
 		PercentileCallError::PercentileNotANumber {
 			argument,
 		} => error!(operation::aggregate_percentile_not_a_number(argument)),
@@ -591,16 +591,16 @@ fn align_column_data(
 	produced: &[GroupId],
 	data: (FieldRef, ArrayRef),
 ) -> Result<(FieldRef, ArrayRef), ValueError> {
-	let mut position_of: Vec<Option<usize>> = vec![None; dict.len()];
-	for (position, group) in produced.iter().enumerate() {
-		if let Some(slot) = position_of.get_mut(group.index()) {
-			*slot = Some(position);
+	let mut index_of: Vec<Option<usize>> = vec![None; dict.len()];
+	for (index, group) in produced.iter().enumerate() {
+		if let Some(slot) = index_of.get_mut(group.index()) {
+			*slot = Some(index);
 		}
 	}
 
 	let reorder_indices: Vec<usize> = (0..dict.len())
 		.map(|index| {
-			position_of[index].ok_or_else(|| {
+			index_of[index].ok_or_else(|| {
 				CoreError::FrameError {
 					message: format!(
 						"Group key {:?} missing in aggregate output",
@@ -645,7 +645,7 @@ mod tests {
 		}))
 	}
 
-	fn positioned(text: &str, column: u32) -> Fragment {
+	fn located(text: &str, column: u32) -> Fragment {
 		Fragment::Statement {
 			text: Arc::from(text),
 			line: StatementLine(1),
@@ -655,13 +655,13 @@ mod tests {
 
 	fn number(text: &str, column: u32) -> Expression {
 		Expression::Constant(ConstantExpression::Number {
-			fragment: positioned(text, column),
+			fragment: located(text, column),
 		})
 	}
 
 	#[test]
-	fn a_number_literal_reaches_the_accumulator_with_its_source_text_and_position() {
-		// Accuracy must be parsed from the exact text, so a normalized 0.01 or a lost position is a bug.
+	fn a_number_literal_reaches_the_accumulator_with_its_source_text_and_location() {
+		// Accuracy must be parsed from the exact text, so a normalized 0.01 or a lost location is a bug.
 		let literals = literal_arguments(&call(vec![column("x"), number("0.010", 24)]), 1)
 			.expect("one literal must fit one literal slot");
 
@@ -669,9 +669,9 @@ mod tests {
 			literals,
 			vec![LiteralArgument {
 				kind: LiteralKind::Number,
-				fragment: positioned("0.010", 24),
+				fragment: located("0.010", 24),
 			}],
-			"the literal must keep its kind, its exact text and its position"
+			"the literal must keep its kind, its exact text and its location"
 		);
 	}
 
@@ -679,7 +679,7 @@ mod tests {
 	fn a_text_literal_is_passed_as_text_not_as_a_number() {
 		// A quoted "0.01" passed as a number would be accepted as an accuracy the user never wrote as a number.
 		let text = Expression::Constant(ConstantExpression::Text {
-			fragment: positioned("0.01", 24),
+			fragment: located("0.01", 24),
 		});
 
 		let literals = literal_arguments(&call(vec![column("x"), text]), 1)
@@ -690,11 +690,11 @@ mod tests {
 	}
 
 	#[test]
-	fn a_column_in_a_literal_position_reports_aggregate_010() {
+	fn a_column_as_a_literal_argument_reports_aggregate_010() {
 		// A per-row accuracy cannot become one digest type, so a column there must fail instead of being read.
 		let err = literal_arguments(&call(vec![column("x"), column("acc")]), 1).unwrap_err();
 
-		assert_eq!(err.0.code, "AGGREGATE_010", "a column in a literal position must report AGGREGATE_010");
+		assert_eq!(err.0.code, "AGGREGATE_010", "a column as a literal argument must report AGGREGATE_010");
 		assert_eq!(err.0.fragment.text(), "acc", "the error must point at the offending argument");
 	}
 

@@ -171,7 +171,7 @@ fn test_changes_routed_to_correct_subscription() {
 
 #[test]
 fn one_stream_routes_each_entry_to_its_own_handle() {
-	// Catches entries of one shared stream being routed by position instead of by subscription id.
+	// Catches entries of one shared stream being routed by index instead of by subscription id.
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
 	let mut server = create_server_instance(&runtime);

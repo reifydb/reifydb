@@ -11,14 +11,14 @@ use crate::value::Value;
 pub enum Params {
 	#[default]
 	None,
-	Positional(Arc<Vec<Value>>),
+	Ordinal(Arc<Vec<Value>>),
 	Named(Arc<HashMap<String, Value>>),
 }
 
 impl Params {
-	pub fn get_positional(&self, index: usize) -> Option<&Value> {
+	pub fn get_ordinal(&self, index: usize) -> Option<&Value> {
 		match self {
-			Params::Positional(values) => values.get(index),
+			Params::Ordinal(values) => values.get(index),
 			_ => None,
 		}
 	}
@@ -43,7 +43,7 @@ impl From<()> for Params {
 
 impl From<Vec<Value>> for Params {
 	fn from(values: Vec<Value>) -> Self {
-		Params::Positional(Arc::new(values))
+		Params::Ordinal(Arc::new(values))
 	}
 }
 
@@ -55,7 +55,7 @@ impl From<HashMap<String, Value>> for Params {
 
 impl<const N: usize> From<[Value; N]> for Params {
 	fn from(values: [Value; N]) -> Self {
-		Params::Positional(Arc::new(values.to_vec()))
+		Params::Ordinal(Arc::new(values.to_vec()))
 	}
 }
 
@@ -83,7 +83,7 @@ macro_rules! params {
             let values = vec![
                 $($crate::value::into::IntoValue::into_value($value)),*
             ];
-            $crate::params::Params::Positional(::std::sync::Arc::new(values))
+            $crate::params::Params::Ordinal(::std::sync::Arc::new(values))
         }
     };
 }
@@ -105,16 +105,16 @@ pub mod tests {
 	use crate::{params::Params, value::into::IntoValue};
 
 	#[test]
-	fn test_params_macro_positional() {
+	fn test_params_macro_ordinal() {
 		let params = params![42, true, "hello"];
 		match params {
-			Params::Positional(values) => {
+			Params::Ordinal(values) => {
 				assert_eq!(values.len(), 3);
 				assert_eq!(values[0], Value::Int4(42));
 				assert_eq!(values[1], Value::Boolean(true));
 				assert_eq!(values[2], Value::Utf8("hello".to_string()));
 			}
-			_ => panic!("Expected positional params"),
+			_ => panic!("Expected ordinal params"),
 		}
 	}
 
@@ -173,13 +173,13 @@ pub mod tests {
 
 		let params = params![v1, v2, 300];
 		match params {
-			Params::Positional(values) => {
+			Params::Ordinal(values) => {
 				assert_eq!(values.len(), 3);
 				assert_eq!(values[0], Value::Int8(100));
 				assert_eq!(values[1], Value::Int8(200));
 				assert_eq!(values[2], Value::Int4(300));
 			}
-			_ => panic!("Expected positional params"),
+			_ => panic!("Expected ordinal params"),
 		}
 	}
 
@@ -189,10 +189,10 @@ pub mod tests {
 		let params2 = params! { a: 1, b: 2};
 
 		match params1 {
-			Params::Positional(values) => {
+			Params::Ordinal(values) => {
 				assert_eq!(values.len(), 3)
 			}
-			_ => panic!("Expected positional params"),
+			_ => panic!("Expected ordinal params"),
 		}
 
 		match params2 {

@@ -204,12 +204,12 @@ pub mod ids {
 			pub const OBJECT_KIND: ColumnId = ColumnId(3);
 			pub const NAME: ColumnId = ColumnId(4);
 			pub const TYPE: ColumnId = ColumnId(5);
-			pub const POSITION: ColumnId = ColumnId(6);
+			pub const ORDINAL: ColumnId = ColumnId(6);
 			pub const AUTO_INCREMENT: ColumnId = ColumnId(7);
 			pub const DICTIONARY_ID: ColumnId = ColumnId(8);
 
 			pub const ALL: [ColumnId; 8] =
-				[ID, OBJECT_ID, OBJECT_KIND, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
+				[ID, OBJECT_ID, OBJECT_KIND, NAME, TYPE, ORDINAL, AUTO_INCREMENT, DICTIONARY_ID];
 		}
 
 		pub mod enum_variants {
@@ -604,9 +604,9 @@ pub mod ids {
 
 			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(1);
 			pub const COLUMN_ID: ColumnId = ColumnId(2);
-			pub const POSITION: ColumnId = ColumnId(3);
+			pub const ORDINAL: ColumnId = ColumnId(3);
 
-			pub const ALL: [ColumnId; 3] = [PRIMARY_KEY_ID, COLUMN_ID, POSITION];
+			pub const ALL: [ColumnId; 3] = [PRIMARY_KEY_ID, COLUMN_ID, ORDINAL];
 		}
 
 		pub mod column_properties {
@@ -661,24 +661,24 @@ pub mod ids {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR_NAME: ColumnId = ColumnId(1);
-			pub const POSITION: ColumnId = ColumnId(2);
+			pub const ORDINAL: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const TYPE: ColumnId = ColumnId(4);
 			pub const DESCRIPTION: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 5] = [OPERATOR_NAME, POSITION, NAME, TYPE, DESCRIPTION];
+			pub const ALL: [ColumnId; 5] = [OPERATOR_NAME, ORDINAL, NAME, TYPE, DESCRIPTION];
 		}
 
 		pub mod operator_library_outputs {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR_NAME: ColumnId = ColumnId(1);
-			pub const POSITION: ColumnId = ColumnId(2);
+			pub const ORDINAL: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const TYPE: ColumnId = ColumnId(4);
 			pub const DESCRIPTION: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 5] = [OPERATOR_NAME, POSITION, NAME, TYPE, DESCRIPTION];
+			pub const ALL: [ColumnId; 5] = [OPERATOR_NAME, ORDINAL, NAME, TYPE, DESCRIPTION];
 		}
 
 		pub mod virtual_tables {
@@ -855,9 +855,9 @@ pub mod ids {
 			pub const VTABLE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const TYPE: ColumnId = ColumnId(4);
-			pub const POSITION: ColumnId = ColumnId(5);
+			pub const ORDINAL: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 5] = [ID, VTABLE_ID, NAME, TYPE, POSITION];
+			pub const ALL: [ColumnId; 5] = [ID, VTABLE_ID, NAME, TYPE, ORDINAL];
 		}
 	}
 

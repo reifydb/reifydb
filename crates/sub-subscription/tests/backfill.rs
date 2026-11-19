@@ -880,7 +880,7 @@ fn writes_before_the_first_chunk_arrive_live_exactly_once() {
 
 #[test]
 fn writes_between_chunks_arrive_live_exactly_once() {
-	// Writes after the first chunk hit rows on both sides of the scan position; a scan must never read past V.
+	// Writes after the first chunk hit rows on both sides of the scan cursor; a scan must never read past V.
 	let db = ten_rows();
 	let (watcher, hook) = backfill_with_writes(
 		&db,

@@ -174,7 +174,7 @@ pub struct Params {
 	pub remove_pct: u32,
 	pub update_pct: u32,
 
-	/// The span rows draw their event position from. Only the forgetting entry points care: a join has
+	/// The span rows draw their event time from. Only the forgetting entry points care: a join has
 	/// no window, so this decides how far apart on the activity grid the corpus lands and nothing else.
 	pub coord_span_ms: u64,
 
@@ -358,7 +358,7 @@ fn right_side(seed: u64, params: &Params) -> Vec<JoinRow> {
 			number: RowNumber(1_000_000 + index as u64),
 			key: Some(rng.random_range(1..=params.keys)),
 			// Loaded before the run and never touched again, so it has to sit at the newest
-			// position the corpus can reach or the sweep would evaporate half of it.
+			// event time the corpus can reach or the sweep would evaporate half of it.
 			coord_ms: params.coord_span_ms,
 			value: rng.random_range(1..100i64),
 		})

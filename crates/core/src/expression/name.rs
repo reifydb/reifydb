@@ -21,7 +21,7 @@ pub fn display_label(expr: &Expression) -> Fragment {
 		Expression::Constant(const_expr) => constant_label(const_expr),
 		Expression::Variable(var) => var.fragment.clone(),
 		Expression::Parameter(param) => match param {
-			ParameterExpression::Positional {
+			ParameterExpression::Ordinal {
 				fragment,
 			}
 			| ParameterExpression::Named {
@@ -46,7 +46,7 @@ fn canonical_text(expr: &Expression) -> String {
 		Expression::Variable(var) => var.fragment.text().to_string(),
 
 		Expression::Parameter(param) => match param {
-			ParameterExpression::Positional {
+			ParameterExpression::Ordinal {
 				fragment,
 			}
 			| ParameterExpression::Named {
@@ -615,8 +615,8 @@ mod tests {
 	}
 
 	#[test]
-	fn canonical_parameter_positional() {
-		let e = Expression::Parameter(ParameterExpression::Positional {
+	fn canonical_parameter_ordinal() {
+		let e = Expression::Parameter(ParameterExpression::Ordinal {
 			fragment: frag("$1"),
 		});
 		assert_eq!(canonical_name(&e).text(), "$1");
@@ -830,7 +830,7 @@ mod tests {
 		});
 		assert!(collect(&var).is_empty());
 
-		let param = Expression::Parameter(ParameterExpression::Positional {
+		let param = Expression::Parameter(ParameterExpression::Ordinal {
 			fragment: frag("$1"),
 		});
 		assert!(collect(&param).is_empty());

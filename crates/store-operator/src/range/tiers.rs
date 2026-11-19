@@ -98,11 +98,11 @@ impl<K: Keyspace> RangeTier for StandardRangeTier<K> {
 		suffixes: &[&[u8]],
 	) -> Vec<Option<Option<EncodedPodRow>>> {
 		let mut answers = vec![None; suffixes.len()];
-		let mut positions = Vec::with_capacity(suffixes.len());
+		let mut indexes = Vec::with_capacity(suffixes.len());
 		let mut keys = Vec::with_capacity(suffixes.len());
-		for (position, suffix) in suffixes.iter().enumerate() {
+		for (index, suffix) in suffixes.iter().enumerate() {
 			if let Some(key) = <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix) {
-				positions.push(position);
+				indexes.push(index);
 				keys.push(key);
 			}
 		}
@@ -110,10 +110,10 @@ impl<K: Keyspace> RangeTier for StandardRangeTier<K> {
 			operator,
 			group,
 		};
-		for (position, answer) in
-			positions.into_iter().zip(StandardRangeTier::<K>::lookup_run(self, partition, &keys))
+		for (index, answer) in
+			indexes.into_iter().zip(StandardRangeTier::<K>::lookup_run(self, partition, &keys))
 		{
-			answers[position] = answer;
+			answers[index] = answer;
 		}
 		answers
 	}
@@ -287,25 +287,25 @@ impl RangeTiers {
 		let mut decoded = keys
 			.iter()
 			.enumerate()
-			.filter_map(|(position, key)| {
+			.filter_map(|(index, key)| {
 				OperatorStateKey::decode_inner(key.as_slice())
-					.map(|(group, keyspace, suffix)| (position, group, keyspace, suffix))
+					.map(|(group, keyspace, suffix)| (index, group, keyspace, suffix))
 			})
 			.peekable();
-		while let Some((position, group, keyspace, suffix)) = decoded.next() {
-			let mut positions = vec![position];
+		while let Some((index, group, keyspace, suffix)) = decoded.next() {
+			let mut indexes = vec![index];
 			let mut suffixes = vec![suffix];
 			while let Some((next, _, _, suffix)) =
 				decoded.next_if(|(_, g, k, _)| *g == group && *k == keyspace)
 			{
-				positions.push(next);
+				indexes.push(next);
 				suffixes.push(suffix);
 			}
 			if let Some(tier) = self.of(keyspace) {
-				for (position, answer) in
-					positions.into_iter().zip(tier.lookup_run(operator, group, &suffixes))
+				for (index, answer) in
+					indexes.into_iter().zip(tier.lookup_run(operator, group, &suffixes))
 				{
-					answers[position] = answer;
+					answers[index] = answer;
 				}
 			}
 		}

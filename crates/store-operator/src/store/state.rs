@@ -187,8 +187,8 @@ impl StandardOperatorStore {
 				SizeProbe::Known(size) => sizes.push(size),
 				SizeProbe::Persistent => {
 					sizes.push(None);
-					let (positions, keys) = residual.entry(*operator).or_default();
-					positions.push(index);
+					let (indexes, keys) = residual.entry(*operator).or_default();
+					indexes.push(index);
 					keys.push(key);
 				}
 			}
@@ -196,8 +196,8 @@ impl StandardOperatorStore {
 		if self.persistent.is_absent() {
 			return Ok(sizes);
 		}
-		for (operator, (positions, keys)) in residual {
-			for (index, size) in positions.into_iter().zip(self.persistent.state_sizes(operator, &keys)?) {
+		for (operator, (indexes, keys)) in residual {
+			for (index, size) in indexes.into_iter().zip(self.persistent.state_sizes(operator, &keys)?) {
 				sizes[index] = size;
 			}
 		}
@@ -278,8 +278,8 @@ impl StandardOperatorStore {
 		let mut answers: Vec<Option<EncodedPodRow>> = vec![None; keys.len()];
 		for (run, row) in sorted.chunk_by(|left, right| left.0 == right.0).zip(found) {
 			if let Some(((_, last), rest)) = run.split_last() {
-				for (_, position) in rest {
-					answers[*position] = row.clone();
+				for (_, index) in rest {
+					answers[*index] = row.clone();
 				}
 				answers[*last] = row;
 			}

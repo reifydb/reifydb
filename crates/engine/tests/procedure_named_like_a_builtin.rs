@@ -19,7 +19,7 @@ fn r_text(frames: &[Frame]) -> Vec<String> {
 
 #[test]
 fn a_procedure_named_like_a_builtin_reads_a_variable_where_the_builtin_takes_a_type() {
-	// The procedure takes plain utf8, so it must never borrow the builtin's type position.
+	// The procedure takes plain utf8, so it must never borrow the builtin's type argument.
 	if var_os(CHILD).is_some() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -29,7 +29,7 @@ fn a_procedure_named_like_a_builtin_reads_a_variable_where_the_builtin_takes_a_t
 
 		let plain =
 			r_text(&t.command("let $duration = 'slow'; let $r = ns::echo('a', duration); map { r: $r }"));
-		assert_eq!(plain, vec!["slow"], "a bare name at a value position must load the variable");
+		assert_eq!(plain, vec!["slow"], "a bare name as a value argument must load the variable");
 		let shadowing =
 			r_text(&t.command("let $duration = 'slow'; let $r = is::type('a', duration); map { r: $r }"));
 		assert_eq!(

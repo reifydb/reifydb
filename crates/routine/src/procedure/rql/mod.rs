@@ -15,7 +15,7 @@ use reifydb_value::{
 
 pub(super) fn extract_query(params: &Params, procedure: &'static str) -> Result<String, RoutineError> {
 	match params {
-		Params::Positional(args) if args.len() == 1 => match &args[0] {
+		Params::Ordinal(args) if args.len() == 1 => match &args[0] {
 			Value::Utf8(s) => Ok(s.as_str().to_string()),
 			other => Err(RoutineError::ProcedureInvalidArgumentType {
 				procedure: Fragment::internal(procedure),
@@ -24,7 +24,7 @@ pub(super) fn extract_query(params: &Params, procedure: &'static str) -> Result<
 				actual: other.get_type(),
 			}),
 		},
-		Params::Positional(args) => Err(RoutineError::ProcedureArityMismatch {
+		Params::Ordinal(args) => Err(RoutineError::ProcedureArityMismatch {
 			procedure: Fragment::internal(procedure),
 			expected: 1,
 			actual: args.len(),

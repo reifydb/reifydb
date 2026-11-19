@@ -20,7 +20,7 @@ use reifydb_value::{
 
 use crate::{
 	expression::context::EvalContext,
-	lower::{Node, bool_field, literal, schema::positional},
+	lower::{Node, bool_field, literal, schema::ordinal},
 };
 
 pub(super) fn children(expression: &Expression) -> Vec<&Expression> {
@@ -98,7 +98,7 @@ pub(super) fn lower_is_variant(ctx: &EvalContext, operator: &str, e: &IsVariantE
 		if uint1 {
 			return Ok(Node {
 				expr: Expr::BinaryExpr(BinaryExpr::new(
-					Box::new(positional(index)),
+					Box::new(ordinal(index)),
 					Operator::Eq,
 					Box::new(Expr::Literal(ScalarValue::UInt8(Some(tag)), None)),
 				)),

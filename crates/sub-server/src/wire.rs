@@ -80,7 +80,7 @@ impl Serialize for WireValue {
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum WireParams {
-	Positional(Vec<WireValue>),
+	Ordinal(Vec<WireValue>),
 	Named(HashMap<String, WireValue>),
 }
 
@@ -92,7 +92,7 @@ impl<'de> Deserialize<'de> for WireParams {
 				.enumerate()
 				.map(|(index, item)| wire_value(&format!("${}", index + 1), item))
 				.collect::<Result<_, _>>()
-				.map(WireParams::Positional)
+				.map(WireParams::Ordinal)
 				.map_err(D::Error::custom),
 			JsonValue::Object(entries) => entries
 				.into_iter()
@@ -133,12 +133,12 @@ impl WireValue {
 impl WireParams {
 	pub fn into_params(self) -> Result<Params, String> {
 		match self {
-			WireParams::Positional(items) => {
+			WireParams::Ordinal(items) => {
 				let mut values = Vec::with_capacity(items.len());
 				for (index, item) in items.into_iter().enumerate() {
 					values.push(wire_value_to_value(&format!("${}", index + 1), item)?);
 				}
-				Ok(Params::Positional(Arc::new(values)))
+				Ok(Params::Ordinal(Arc::new(values)))
 			}
 			WireParams::Named(map) => {
 				let mut result = HashMap::with_capacity(map.len());
@@ -160,7 +160,7 @@ mod tests {
 
 	use super::*;
 
-	fn positional(json: &str) -> Result<Params, String> {
+	fn ordinal(json: &str) -> Result<Params, String> {
 		from_str::<WireParams>(json).expect("wire params should deserialise").into_params()
 	}
 
@@ -180,8 +180,8 @@ mod tests {
 
 	#[test]
 	fn a_none_under_one_some_layer_of_option_option_int4_is_a_none_of_int4() {
-		let params = positional(&format!("[{}]", option_option_int4(&none_marker(1)))).unwrap();
-		assert_eq!(params.get_positional(0), Some(&Value::none_of(ValueType::Int4)));
+		let params = ordinal(&format!("[{}]", option_option_int4(&none_marker(1)))).unwrap();
+		assert_eq!(params.get_ordinal(0), Some(&Value::none_of(ValueType::Int4)));
 
 		let params = named(&format!(r#"{{"v":{}}}"#, option_option_int4(&none_marker(1)))).unwrap();
 		assert_eq!(params.get_named("v"), Some(&Value::none_of(ValueType::Int4)));
@@ -189,8 +189,8 @@ mod tests {
 
 	#[test]
 	fn a_bare_marker_on_option_option_int4_is_a_none_of_option_int4() {
-		let params = positional(&format!("[{}]", option_option_int4(NONE_MARKER))).unwrap();
-		assert_eq!(params.get_positional(0), Some(&Value::none_of(option(ValueType::Int4))));
+		let params = ordinal(&format!("[{}]", option_option_int4(NONE_MARKER))).unwrap();
+		assert_eq!(params.get_ordinal(0), Some(&Value::none_of(option(ValueType::Int4))));
 
 		let params = named(&format!(r#"{{"v":{}}}"#, option_option_int4(NONE_MARKER))).unwrap();
 		assert_eq!(params.get_named("v"), Some(&Value::none_of(option(ValueType::Int4))));
@@ -198,8 +198,8 @@ mod tests {
 
 	#[test]
 	fn a_present_value_on_option_option_int4_is_the_base_value() {
-		let params = positional(&format!("[{}]", option_option_int4("5"))).unwrap();
-		assert_eq!(params.get_positional(0), Some(&Value::Int4(5)));
+		let params = ordinal(&format!("[{}]", option_option_int4("5"))).unwrap();
+		assert_eq!(params.get_ordinal(0), Some(&Value::Int4(5)));
 
 		let params = named(&format!(r#"{{"v":{}}}"#, option_option_int4("5"))).unwrap();
 		assert_eq!(params.get_named("v"), Some(&Value::Int4(5)));
@@ -207,18 +207,18 @@ mod tests {
 
 	#[test]
 	fn a_scalar_descriptor_is_a_base_type() {
-		let params = positional(r#"[{"type":{"id":"Int4"},"value":"7"}]"#).unwrap();
-		assert_eq!(params.get_positional(0), Some(&Value::Int4(7)));
+		let params = ordinal(r#"[{"type":{"id":"Int4"},"value":"7"}]"#).unwrap();
+		assert_eq!(params.get_ordinal(0), Some(&Value::Int4(7)));
 	}
 
 	#[test]
 	fn nested_descriptors_carry_the_option_layers() {
-		let params = positional(
+		let params = ordinal(
 			r#"[{"type":{"id":"Option","underlying":{"id":"Option","underlying":{"id":"Utf8"}}},"value":"⟪none:1⟫"},{"type":{"id":"Option","underlying":{"id":"Utf8"}},"value":"seven"}]"#,
 		)
 		.unwrap();
-		assert_eq!(params.get_positional(0), Some(&Value::none_of(ValueType::Utf8)));
-		assert_eq!(params.get_positional(1), Some(&Value::Utf8("seven".to_string())));
+		assert_eq!(params.get_ordinal(0), Some(&Value::none_of(ValueType::Utf8)));
+		assert_eq!(params.get_ordinal(1), Some(&Value::Utf8("seven".to_string())));
 	}
 
 	#[test]
@@ -228,8 +228,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_positional_error_names_the_position_and_the_type() {
-		let err = positional(r#"[{"type":{"id":"Int4"},"value":"1"},{"type":{"id":"Int4"},"value":"abc"}]"#)
+	fn an_ordinal_error_names_the_index_and_the_type() {
+		let err = ordinal(r#"[{"type":{"id":"Int4"},"value":"1"},{"type":{"id":"Int4"},"value":"abc"}]"#)
 			.unwrap_err();
 		assert_eq!(err, "parameter $2: invalid data: cannot parse 'abc' as Int4");
 	}

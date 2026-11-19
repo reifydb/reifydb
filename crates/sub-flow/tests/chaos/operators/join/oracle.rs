@@ -86,7 +86,7 @@ pub struct HashOracle {
 	/// nothing, so the state stays gone.
 	exposed: BTreeSet<u64>,
 
-	/// The newest event position ever written to each (join key, side), live or since removed. Each
+	/// The newest event time ever written to each (join key, side), live or since removed. Each
 	/// side of an interned group ages on its own ttl, so one number per key would leave a quiet right
 	/// row constrained by busy left traffic - and per-row would be wrong the other way, keys are forgotten whole.
 	key_high: BTreeMap<(i32, Side), u64>,
@@ -124,7 +124,7 @@ impl HashOracle {
 
 	/// Every output row the operator owes, flagged with whether the sweep put it beyond the claim's
 	/// reach. Two independent cutoffs strand a pair: either side losing its stored row, or the pair
-	/// losing its mapping. The mapping test uses the lower position, which bounds when it was stamped.
+	/// losing its mapping. The mapping test uses the lower event time, which bounds when it was stamped.
 	fn pairs(&self) -> Vec<(OutputKey, MaterializedRow, bool)> {
 		let mut out = Vec::new();
 		for left in self.left.values() {
@@ -233,7 +233,7 @@ impl Model<JoinRow> for HashOracle {
 	}
 }
 
-/// The pick a latest join applies to the rows held under one key: newest event position first, ties
+/// The pick a latest join applies to the rows held under one key: newest event time first, ties
 /// broken by row number.
 fn winner(right: &BTreeMap<u64, JoinRow>, key: i32) -> Option<&JoinRow> {
 	right.values().filter(|row| row.key == Some(key)).max_by_key(|row| (row.coord_ms, row.number.0))

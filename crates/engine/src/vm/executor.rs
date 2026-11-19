@@ -126,7 +126,7 @@ impl RqlExecutor for Executor {
 
 fn populate_symbols(symbols: &mut SymbolTable, params: &Params) -> Result<(), ValueError> {
 	match params {
-		Params::Positional(values) => {
+		Params::Ordinal(values) => {
 			for (index, value) in values.iter().enumerate() {
 				let param_name = (index + 1).to_string();
 				symbols.set(param_name, Variable::scalar(value.clone()), false)?;

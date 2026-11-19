@@ -178,7 +178,7 @@ pub trait Function: for<'a> Routine<context::FunctionContext<'a>> {
 		&[]
 	}
 
-	fn type_argument_positions(&self) -> &[usize] {
+	fn type_argument_indexes(&self) -> &[usize] {
 		&[]
 	}
 
