@@ -714,7 +714,7 @@ pub(crate) fn withdraw_slot(
 	Ok(None)
 }
 
-pub(crate) fn retain_published_slot(
+pub(crate) fn current_published_slot(
 	host: &mut dyn HostContext,
 	ctx: &PublishedJoinContext,
 	group: GroupId,

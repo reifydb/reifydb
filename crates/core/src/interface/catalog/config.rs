@@ -52,12 +52,12 @@ pub enum ConfigKey {
 	OracleLsnStep,
 	QueryRowBatchSize,
 	QueryBytes,
-	RetentionEvictInterval,
-	RetentionEvictBatchSize,
-	RetentionEvictMaxBatchesPerTick,
+	ExpireInterval,
+	ExpireBatchSize,
+	ExpireMaxBatchesPerTick,
 	EpochBucketInterval,
 	LifecycleStartupDelay,
-	MaxRetentionHorizonFloor,
+	MinHistoryHorizon,
 	HistoricalGcBatchSize,
 	HistoricalGcInterval,
 	MultiPointBufferTotalBytes,
@@ -99,8 +99,8 @@ pub enum ConfigKey {
 	MetricsSnapshotTtl,
 	QueueLeaseReapInterval,
 	QueueLeaseReapBatchSize,
-	QueueRetentionInterval,
-	QueueRetentionBatchSize,
+	QueueExpireInterval,
+	QueueExpireBatchSize,
 	CommitMergeInterval,
 }
 
@@ -111,12 +111,12 @@ impl ConfigKey {
 			Self::OracleLsnStep,
 			Self::QueryRowBatchSize,
 			Self::QueryBytes,
-			Self::RetentionEvictInterval,
-			Self::RetentionEvictBatchSize,
-			Self::RetentionEvictMaxBatchesPerTick,
+			Self::ExpireInterval,
+			Self::ExpireBatchSize,
+			Self::ExpireMaxBatchesPerTick,
 			Self::EpochBucketInterval,
 			Self::LifecycleStartupDelay,
-			Self::MaxRetentionHorizonFloor,
+			Self::MinHistoryHorizon,
 			Self::HistoricalGcBatchSize,
 			Self::HistoricalGcInterval,
 			Self::MultiPointBufferTotalBytes,
@@ -158,8 +158,8 @@ impl ConfigKey {
 			Self::MetricsSnapshotTtl,
 			Self::QueueLeaseReapInterval,
 			Self::QueueLeaseReapBatchSize,
-			Self::QueueRetentionInterval,
-			Self::QueueRetentionBatchSize,
+			Self::QueueExpireInterval,
+			Self::QueueExpireBatchSize,
 			Self::CommitMergeInterval,
 		]
 	}
@@ -186,16 +186,14 @@ impl ConfigKey {
 			Self::OracleLsnStep => Value::Uint8(default::query::ORACLE_LSN_STEP),
 			Self::QueryRowBatchSize => Value::Uint2(default::query::ROW_BATCH_SIZE),
 			Self::QueryBytes => Value::Uint8(default::query::MEMORY_LIMIT.as_bytes()),
-			Self::RetentionEvictInterval => Value::Duration(default::retention::EVICT_INTERVAL),
-			Self::RetentionEvictBatchSize => Value::Uint8(default::retention::EVICT_BATCH_SIZE),
-			Self::RetentionEvictMaxBatchesPerTick => {
-				Value::Uint8(default::retention::EVICT_MAX_BATCHES_PER_TICK)
-			}
-			Self::EpochBucketInterval => Value::Duration(default::retention::EPOCH_BUCKET_INTERVAL),
-			Self::LifecycleStartupDelay => Value::Duration(default::retention::STARTUP_DELAY),
-			Self::MaxRetentionHorizonFloor => Value::Duration(default::retention::MAX_HORIZON_FLOOR),
-			Self::HistoricalGcBatchSize => Value::Uint8(default::retention::HISTORICAL_GC_BATCH_SIZE),
-			Self::HistoricalGcInterval => Value::Duration(default::retention::HISTORICAL_GC_INTERVAL),
+			Self::ExpireInterval => Value::Duration(default::lifecycle::EVICT_INTERVAL),
+			Self::ExpireBatchSize => Value::Uint8(default::lifecycle::EVICT_BATCH_SIZE),
+			Self::ExpireMaxBatchesPerTick => Value::Uint8(default::lifecycle::EVICT_MAX_BATCHES_PER_TICK),
+			Self::EpochBucketInterval => Value::Duration(default::lifecycle::EPOCH_BUCKET_INTERVAL),
+			Self::LifecycleStartupDelay => Value::Duration(default::lifecycle::STARTUP_DELAY),
+			Self::MinHistoryHorizon => Value::Duration(default::lifecycle::MAX_HORIZON_FLOOR),
+			Self::HistoricalGcBatchSize => Value::Uint8(default::lifecycle::HISTORICAL_GC_BATCH_SIZE),
+			Self::HistoricalGcInterval => Value::Duration(default::lifecycle::HISTORICAL_GC_INTERVAL),
 			Self::MultiPointBufferTotalBytes => {
 				Value::Uint8(default::store::MULTI_POINT_BUFFER_TOTAL.as_bytes())
 			}
@@ -245,8 +243,8 @@ impl ConfigKey {
 			Self::MetricsSnapshotTtl => Value::Duration(default::metrics::SNAPSHOT_TTL),
 			Self::QueueLeaseReapInterval => Value::Duration(default::queue::LEASE_REAP_INTERVAL),
 			Self::QueueLeaseReapBatchSize => Value::Uint8(default::queue::LEASE_REAP_BATCH_SIZE),
-			Self::QueueRetentionInterval => Value::Duration(default::queue::RETENTION_INTERVAL),
-			Self::QueueRetentionBatchSize => Value::Uint8(default::queue::RETENTION_BATCH_SIZE),
+			Self::QueueExpireInterval => Value::Duration(default::queue::EXPIRE_INTERVAL),
+			Self::QueueExpireBatchSize => Value::Uint8(default::queue::EXPIRE_BATCH_SIZE),
 			Self::CommitMergeInterval => Value::Duration(default::store::COMMIT_MERGE_INTERVAL),
 		}
 	}
@@ -257,21 +255,19 @@ impl ConfigKey {
 			Self::OracleLsnStep => Value::Uint8(default::query::ORACLE_LSN_STEP),
 			Self::QueryRowBatchSize => Value::Uint2(default::query::ROW_BATCH_SIZE_TESTING),
 			Self::QueryBytes => Value::Uint8(default::query::MEMORY_LIMIT_TESTING.as_bytes()),
-			Self::RetentionEvictInterval => Value::Duration(default::retention::EVICT_INTERVAL_TESTING),
-			Self::RetentionEvictBatchSize => Value::Uint8(default::retention::EVICT_BATCH_SIZE_TESTING),
-			Self::RetentionEvictMaxBatchesPerTick => {
-				Value::Uint8(default::retention::EVICT_MAX_BATCHES_PER_TICK_TESTING)
+			Self::ExpireInterval => Value::Duration(default::lifecycle::EVICT_INTERVAL_TESTING),
+			Self::ExpireBatchSize => Value::Uint8(default::lifecycle::EVICT_BATCH_SIZE_TESTING),
+			Self::ExpireMaxBatchesPerTick => {
+				Value::Uint8(default::lifecycle::EVICT_MAX_BATCHES_PER_TICK_TESTING)
 			}
-			Self::EpochBucketInterval => Value::Duration(default::retention::EPOCH_BUCKET_INTERVAL_TESTING),
-			Self::LifecycleStartupDelay => Value::Duration(default::retention::STARTUP_DELAY_TESTING),
-			Self::MaxRetentionHorizonFloor => {
-				Value::Duration(default::retention::MAX_HORIZON_FLOOR_TESTING)
-			}
+			Self::EpochBucketInterval => Value::Duration(default::lifecycle::EPOCH_BUCKET_INTERVAL_TESTING),
+			Self::LifecycleStartupDelay => Value::Duration(default::lifecycle::STARTUP_DELAY_TESTING),
+			Self::MinHistoryHorizon => Value::Duration(default::lifecycle::MAX_HORIZON_FLOOR_TESTING),
 			Self::HistoricalGcBatchSize => {
-				Value::Uint8(default::retention::HISTORICAL_GC_BATCH_SIZE_TESTING)
+				Value::Uint8(default::lifecycle::HISTORICAL_GC_BATCH_SIZE_TESTING)
 			}
 			Self::HistoricalGcInterval => {
-				Value::Duration(default::retention::HISTORICAL_GC_INTERVAL_TESTING)
+				Value::Duration(default::lifecycle::HISTORICAL_GC_INTERVAL_TESTING)
 			}
 			Self::MultiPointBufferTotalBytes => {
 				Value::Uint8(default::store::MULTI_POINT_BUFFER_TOTAL_TESTING.as_bytes())
@@ -334,8 +330,8 @@ impl ConfigKey {
 			Self::MetricsSnapshotTtl => Value::Duration(default::metrics::SNAPSHOT_TTL_TESTING),
 			Self::QueueLeaseReapInterval => Value::Duration(default::queue::LEASE_REAP_INTERVAL_TESTING),
 			Self::QueueLeaseReapBatchSize => Value::Uint8(default::queue::LEASE_REAP_BATCH_SIZE_TESTING),
-			Self::QueueRetentionInterval => Value::Duration(default::queue::RETENTION_INTERVAL_TESTING),
-			Self::QueueRetentionBatchSize => Value::Uint8(default::queue::RETENTION_BATCH_SIZE_TESTING),
+			Self::QueueExpireInterval => Value::Duration(default::queue::EXPIRE_INTERVAL_TESTING),
+			Self::QueueExpireBatchSize => Value::Uint8(default::queue::EXPIRE_BATCH_SIZE_TESTING),
 			Self::CommitMergeInterval => Value::Duration(default::store::COMMIT_MERGE_INTERVAL_TESTING),
 		}
 	}
@@ -352,31 +348,28 @@ impl ConfigKey {
 			Self::QueryBytes => {
 				"Maximum bytes a single query may buffer in memory across its blocking operators (joins, sort, top k, distinct) and its accumulated result. A query that would exceed this fails with QUERY_006 instead of growing without bound. Read fresh for each query, so changes take effect immediately."
 			}
-			Self::RetentionEvictInterval => {
-				"How often the retention evictor scans objects with a row TTL for expired rows."
+			Self::ExpireInterval => {
+				"How often the expire task scans objects with a row TTL for expired rows."
 			}
-			Self::RetentionEvictBatchSize => {
-				"Max rows examined (and thus evicted) per transaction during a retention eviction tick."
+			Self::ExpireBatchSize => {
+				"Max rows examined (and thus evicted) per transaction during an expire tick."
 			}
-			Self::RetentionEvictMaxBatchesPerTick => {
-				"Upper bound on eviction transactions per retention tick. Caps how long one tick can run when draining a backlog; remaining work resumes on the next tick."
+			Self::ExpireMaxBatchesPerTick => {
+				"Upper bound on eviction transactions per expire tick. Caps how long one tick can run when draining a backlog; remaining work resumes on the next tick."
 			}
 			Self::EpochBucketInterval => {
 				"Wall-clock width of one durable version-epoch bucket. The epoch log persists at most one \
 				 (bucket, commit version) sample per bucket, and those samples are what let TTLs resolve a \
 				 cutoff after a restart. Smaller buckets give finer expiry resolution at the cost of more \
-				 persisted samples over the retention horizon."
+				 persisted samples over the history horizon."
 			}
 			Self::LifecycleStartupDelay => {
-				"How long after startup every retention executor computes cutoffs but deletes nothing. A \
+				"How long after startup every lifecycle task computes cutoffs but deletes nothing. A \
 				 process restarted after a long downtime wakes with a large expired backlog; the startup \
 				 delay plus per-class budgets drain it over many ticks instead of one mass eviction."
 			}
-			Self::MaxRetentionHorizonFloor => {
-				"Lower bound on the retained version-epoch horizon. The horizon is the longest declared \
-				 TTL in the catalog, never less than this floor; epoch samples older than the horizon are \
-				 pruned. A TTL longer than the horizon could not resolve a cutoff, so it is rejected at \
-				 declaration time rather than silently never expiring."
+			Self::MinHistoryHorizon => {
+				"Lower bound on the history horizon. The horizon is the longest declared row ttl or join or lookup lateness, never less than this floor; epoch samples older than it are removed."
 			}
 			Self::HistoricalGcBatchSize => {
 				"Max historical (key, version) pairs scanned per object per historical GC tick."
@@ -421,7 +414,7 @@ impl ConfigKey {
 			Self::MultiFlushSliceBytes => {
 				"Maximum bytes of buffered entries the persistent-flush class moves from the commit \
 				 buffer to the SQLite tier in one slice. Bounds how long a single flush holds the lane, \
-				 so a large backlog drains across ticks instead of stalling every other retention class \
+				 so a large backlog drains across ticks instead of stalling every other lifecycle class \
 				 behind it."
 			}
 			Self::MultiWalAutocheckpoint => {
@@ -574,7 +567,7 @@ impl ConfigKey {
 				 METRICS_SAMPLE_INTERVAL. Read once at boot; changing it requires a restart."
 			}
 			Self::MetricsSnapshotTtl => {
-				"How long a row stays in every system::metric ::snapshots series before the retention evictor \
+				"How long a row stays in every system::metric ::snapshots series before the expire task \
 				 drops it. Must be > 0. Applied to each snapshots series at boot; changing it requires a restart."
 			}
 			Self::QueueLeaseReapInterval => {
@@ -586,11 +579,11 @@ impl ConfigKey {
 			Self::CommitMergeInterval => {
 				"How often the commit-merge task merges closed commit-buffer maps off the commit path. Commits merge inline only when the mergeable backlog outgrows the commit store's merge backlog."
 			}
-			Self::QueueRetentionInterval => {
-				"How often the queue retention sweeper deletes finished items whose terminal attempt is older than the queue's declared retention.done, and deduplication records past their own ttl."
+			Self::QueueExpireInterval => {
+				"How often the queue expire task deletes finished items whose terminal attempt is older than the queue's declared retention.done, and deduplication records past their own ttl."
 			}
-			Self::QueueRetentionBatchSize => {
-				"Max records one queue retention slice may scan across its item and deduplication sweeps. Remaining work drains on the next slice."
+			Self::QueueExpireBatchSize => {
+				"Max records one queue expire slice may scan across its item and deduplication sweeps. Remaining work drains on the next slice."
 			}
 		}
 	}
@@ -601,12 +594,12 @@ impl ConfigKey {
 			Self::OracleLsnStep => false,
 			Self::QueryRowBatchSize => false,
 			Self::QueryBytes => false,
-			Self::RetentionEvictInterval => true,
-			Self::RetentionEvictBatchSize => false,
-			Self::RetentionEvictMaxBatchesPerTick => false,
+			Self::ExpireInterval => true,
+			Self::ExpireBatchSize => false,
+			Self::ExpireMaxBatchesPerTick => false,
 			Self::EpochBucketInterval => true,
 			Self::LifecycleStartupDelay => false,
-			Self::MaxRetentionHorizonFloor => false,
+			Self::MinHistoryHorizon => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => true,
 			Self::MultiPointBufferTotalBytes => true,
@@ -648,8 +641,8 @@ impl ConfigKey {
 			Self::MetricsSnapshotTtl => true,
 			Self::QueueLeaseReapInterval => false,
 			Self::QueueLeaseReapBatchSize => false,
-			Self::QueueRetentionInterval => false,
-			Self::QueueRetentionBatchSize => false,
+			Self::QueueExpireInterval => false,
+			Self::QueueExpireBatchSize => false,
 			Self::CommitMergeInterval => true,
 		}
 	}
@@ -660,12 +653,12 @@ impl ConfigKey {
 			Self::OracleLsnStep => &[ValueType::Uint8],
 			Self::QueryRowBatchSize => &[ValueType::Uint2],
 			Self::QueryBytes => &[ValueType::Uint8],
-			Self::RetentionEvictInterval => &[ValueType::Duration],
-			Self::RetentionEvictBatchSize => &[ValueType::Uint8],
-			Self::RetentionEvictMaxBatchesPerTick => &[ValueType::Uint8],
+			Self::ExpireInterval => &[ValueType::Duration],
+			Self::ExpireBatchSize => &[ValueType::Uint8],
+			Self::ExpireMaxBatchesPerTick => &[ValueType::Uint8],
 			Self::EpochBucketInterval => &[ValueType::Duration],
 			Self::LifecycleStartupDelay => &[ValueType::Duration],
-			Self::MaxRetentionHorizonFloor => &[ValueType::Duration],
+			Self::MinHistoryHorizon => &[ValueType::Duration],
 			Self::HistoricalGcBatchSize => &[ValueType::Uint8],
 			Self::HistoricalGcInterval => &[ValueType::Duration],
 			Self::MultiPointBufferTotalBytes => &[ValueType::Uint8],
@@ -707,8 +700,8 @@ impl ConfigKey {
 			Self::MetricsSnapshotTtl => &[ValueType::Duration],
 			Self::QueueLeaseReapInterval => &[ValueType::Duration],
 			Self::QueueLeaseReapBatchSize => &[ValueType::Uint8],
-			Self::QueueRetentionInterval => &[ValueType::Duration],
-			Self::QueueRetentionBatchSize => &[ValueType::Uint8],
+			Self::QueueExpireInterval => &[ValueType::Duration],
+			Self::QueueExpireBatchSize => &[ValueType::Uint8],
 			Self::CommitMergeInterval => &[ValueType::Duration],
 		}
 	}
@@ -719,12 +712,12 @@ impl ConfigKey {
 			Self::OracleLsnStep => false,
 			Self::QueryRowBatchSize => false,
 			Self::QueryBytes => false,
-			Self::RetentionEvictInterval => false,
-			Self::RetentionEvictBatchSize => false,
-			Self::RetentionEvictMaxBatchesPerTick => false,
+			Self::ExpireInterval => false,
+			Self::ExpireBatchSize => false,
+			Self::ExpireMaxBatchesPerTick => false,
 			Self::EpochBucketInterval => false,
 			Self::LifecycleStartupDelay => false,
-			Self::MaxRetentionHorizonFloor => false,
+			Self::MinHistoryHorizon => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
 			Self::MultiPointBufferTotalBytes => true,
@@ -766,8 +759,8 @@ impl ConfigKey {
 			Self::MetricsSnapshotTtl => false,
 			Self::QueueLeaseReapInterval => false,
 			Self::QueueLeaseReapBatchSize => false,
-			Self::QueueRetentionInterval => false,
-			Self::QueueRetentionBatchSize => false,
+			Self::QueueExpireInterval => false,
+			Self::QueueExpireBatchSize => false,
 			Self::CommitMergeInterval => false,
 		}
 	}
@@ -792,9 +785,9 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
-			Self::MaxRetentionHorizonFloor => match value {
+			Self::MinHistoryHorizon => match value {
 				Value::Duration(d) if !d.is_positive() => {
-					Err("MAX_RETENTION_HORIZON_FLOOR must be greater than zero".to_string())
+					Err("MIN_HISTORY_HORIZON must be greater than zero".to_string())
 				}
 				_ => Ok(()),
 			},
@@ -1089,12 +1082,12 @@ impl fmt::Display for ConfigKey {
 			Self::OracleLsnStep => write!(f, "ORACLE_LSN_STEP"),
 			Self::QueryRowBatchSize => write!(f, "QUERY_ROW_BATCH_SIZE"),
 			Self::QueryBytes => write!(f, "QUERY_BYTES"),
-			Self::RetentionEvictInterval => write!(f, "RETENTION_EVICT_INTERVAL"),
-			Self::RetentionEvictBatchSize => write!(f, "RETENTION_EVICT_BATCH_SIZE"),
-			Self::RetentionEvictMaxBatchesPerTick => write!(f, "RETENTION_EVICT_MAX_BATCHES_PER_TICK"),
+			Self::ExpireInterval => write!(f, "EXPIRE_INTERVAL"),
+			Self::ExpireBatchSize => write!(f, "EXPIRE_BATCH_SIZE"),
+			Self::ExpireMaxBatchesPerTick => write!(f, "EXPIRE_MAX_BATCHES_PER_TICK"),
 			Self::EpochBucketInterval => write!(f, "EPOCH_BUCKET_INTERVAL"),
 			Self::LifecycleStartupDelay => write!(f, "LIFECYCLE_STARTUP_DELAY"),
-			Self::MaxRetentionHorizonFloor => write!(f, "MAX_RETENTION_HORIZON_FLOOR"),
+			Self::MinHistoryHorizon => write!(f, "MIN_HISTORY_HORIZON"),
 			Self::HistoricalGcBatchSize => write!(f, "HISTORICAL_GC_BATCH_SIZE"),
 			Self::HistoricalGcInterval => write!(f, "HISTORICAL_GC_INTERVAL"),
 			Self::MultiPointBufferTotalBytes => write!(f, "MULTI_POINT_BUFFER_TOTAL_BYTES"),
@@ -1136,8 +1129,8 @@ impl fmt::Display for ConfigKey {
 			Self::MetricsSnapshotTtl => write!(f, "METRICS_SNAPSHOT_TTL"),
 			Self::QueueLeaseReapInterval => write!(f, "QUEUE_LEASE_REAP_INTERVAL"),
 			Self::QueueLeaseReapBatchSize => write!(f, "QUEUE_LEASE_REAP_BATCH_SIZE"),
-			Self::QueueRetentionInterval => write!(f, "QUEUE_RETENTION_INTERVAL"),
-			Self::QueueRetentionBatchSize => write!(f, "QUEUE_RETENTION_BATCH_SIZE"),
+			Self::QueueExpireInterval => write!(f, "QUEUE_EXPIRE_INTERVAL"),
+			Self::QueueExpireBatchSize => write!(f, "QUEUE_EXPIRE_BATCH_SIZE"),
 			Self::CommitMergeInterval => write!(f, "COMMIT_MERGE_INTERVAL"),
 		}
 	}
@@ -1152,12 +1145,12 @@ impl FromStr for ConfigKey {
 			"ORACLE_LSN_STEP" => Ok(Self::OracleLsnStep),
 			"QUERY_ROW_BATCH_SIZE" => Ok(Self::QueryRowBatchSize),
 			"QUERY_BYTES" => Ok(Self::QueryBytes),
-			"RETENTION_EVICT_INTERVAL" => Ok(Self::RetentionEvictInterval),
-			"RETENTION_EVICT_BATCH_SIZE" => Ok(Self::RetentionEvictBatchSize),
-			"RETENTION_EVICT_MAX_BATCHES_PER_TICK" => Ok(Self::RetentionEvictMaxBatchesPerTick),
+			"EXPIRE_INTERVAL" => Ok(Self::ExpireInterval),
+			"EXPIRE_BATCH_SIZE" => Ok(Self::ExpireBatchSize),
+			"EXPIRE_MAX_BATCHES_PER_TICK" => Ok(Self::ExpireMaxBatchesPerTick),
 			"EPOCH_BUCKET_INTERVAL" => Ok(Self::EpochBucketInterval),
 			"LIFECYCLE_STARTUP_DELAY" => Ok(Self::LifecycleStartupDelay),
-			"MAX_RETENTION_HORIZON_FLOOR" => Ok(Self::MaxRetentionHorizonFloor),
+			"MIN_HISTORY_HORIZON" => Ok(Self::MinHistoryHorizon),
 			"HISTORICAL_GC_BATCH_SIZE" => Ok(Self::HistoricalGcBatchSize),
 			"HISTORICAL_GC_INTERVAL" => Ok(Self::HistoricalGcInterval),
 			"MULTI_POINT_BUFFER_TOTAL_BYTES" => Ok(Self::MultiPointBufferTotalBytes),
@@ -1199,8 +1192,8 @@ impl FromStr for ConfigKey {
 			"METRICS_SNAPSHOT_TTL" => Ok(Self::MetricsSnapshotTtl),
 			"QUEUE_LEASE_REAP_INTERVAL" => Ok(Self::QueueLeaseReapInterval),
 			"QUEUE_LEASE_REAP_BATCH_SIZE" => Ok(Self::QueueLeaseReapBatchSize),
-			"QUEUE_RETENTION_INTERVAL" => Ok(Self::QueueRetentionInterval),
-			"QUEUE_RETENTION_BATCH_SIZE" => Ok(Self::QueueRetentionBatchSize),
+			"QUEUE_EXPIRE_INTERVAL" => Ok(Self::QueueExpireInterval),
+			"QUEUE_EXPIRE_BATCH_SIZE" => Ok(Self::QueueExpireBatchSize),
 			"COMMIT_MERGE_INTERVAL" => Ok(Self::CommitMergeInterval),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
@@ -1384,9 +1377,9 @@ mod tests {
 		assert!(all.contains(&ConfigKey::FlowFullWakeInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionLoadBatchBytes));
 		assert!(all.contains(&ConfigKey::QueryBytes));
-		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
-		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
-		assert!(all.contains(&ConfigKey::RetentionEvictMaxBatchesPerTick));
+		assert!(all.contains(&ConfigKey::ExpireInterval));
+		assert!(all.contains(&ConfigKey::ExpireBatchSize));
+		assert!(all.contains(&ConfigKey::ExpireMaxBatchesPerTick));
 		assert!(all.contains(&ConfigKey::MultiFlushInterval));
 		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::OperatorResidentBytes));
@@ -1395,7 +1388,7 @@ mod tests {
 		assert!(all.contains(&ConfigKey::OperatorWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::SubscriptionWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
-		assert!(all.contains(&ConfigKey::MaxRetentionHorizonFloor));
+		assert!(all.contains(&ConfigKey::MinHistoryHorizon));
 		assert!(all.contains(&ConfigKey::FlowLoadBatchBytes));
 		assert!(all.contains(&ConfigKey::OperatorRangeTierBytes));
 		assert!(all.contains(&ConfigKey::OperatorDirtyBytes));
@@ -1418,8 +1411,8 @@ mod tests {
 		assert!(all.contains(&ConfigKey::MetricsSnapshotInterval));
 		assert!(all.contains(&ConfigKey::QueueLeaseReapInterval));
 		assert!(all.contains(&ConfigKey::QueueLeaseReapBatchSize));
-		assert!(all.contains(&ConfigKey::QueueRetentionInterval));
-		assert!(all.contains(&ConfigKey::QueueRetentionBatchSize));
+		assert!(all.contains(&ConfigKey::QueueExpireInterval));
+		assert!(all.contains(&ConfigKey::QueueExpireBatchSize));
 		assert!(all.contains(&ConfigKey::CommitMergeInterval));
 	}
 
@@ -1757,7 +1750,7 @@ mod tests {
 		// Bare integers carry no unit: duration keys take Duration values (or duration
 		// strings cast at the CALL boundary), never int-as-seconds.
 		assert!(matches!(
-			ConfigKey::MaxRetentionHorizonFloor.accept(Value::Int4(60)),
+			ConfigKey::MinHistoryHorizon.accept(Value::Int4(60)),
 			Err(AcceptError::TypeMismatch { .. })
 		));
 	}
@@ -1771,7 +1764,7 @@ mod tests {
 	#[test]
 	fn test_accept_idempotent_on_canonical_duration() {
 		let canonical = Value::duration_seconds(5);
-		assert_eq!(ConfigKey::MaxRetentionHorizonFloor.accept(canonical.clone()).unwrap(), canonical);
+		assert_eq!(ConfigKey::MinHistoryHorizon.accept(canonical.clone()).unwrap(), canonical);
 	}
 
 	#[test]

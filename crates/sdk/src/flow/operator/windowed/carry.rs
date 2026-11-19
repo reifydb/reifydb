@@ -309,7 +309,7 @@ where
 		let settings = <A::Coord as SealDomain>::window_settings_of(with)?;
 		let aggregator = A::create(operator_id, params, with)?;
 		let engine_config = window_engine_config(params);
-		let retention = match seal_span {
+		let immutable = match seal_span {
 			Some(_) => None,
 			None => settings.immutable,
 		};
@@ -317,7 +317,7 @@ where
 			aggregator,
 			engine: TumblingCarryEngine::new(
 				TumblingCarryConfig::builder(engine_config)
-					.retention(retention)
+					.immutable(immutable)
 					.idle_retention(idle_retention)
 					.build(),
 			),

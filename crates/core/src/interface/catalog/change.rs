@@ -33,7 +33,7 @@ use crate::{
 		view::View,
 		windowed_view_group::WindowedViewGroup,
 	},
-	row::{OperatorRetention, RowSettings},
+	row::{OperatorHorizon, RowSettings},
 };
 
 pub trait CatalogTrackConfigChangeOperations {
@@ -230,11 +230,11 @@ pub trait CatalogTrackRowSettingsChangeOperations {
 	fn track_row_settings_created(&mut self, storage: StorageId, settings: RowSettings) -> Result<(), ValueError>;
 }
 
-pub trait CatalogTrackOperatorRetentionChangeOperations {
-	fn track_operator_retention_created(
+pub trait CatalogTrackOperatorHorizonChangeOperations {
+	fn track_operator_horizon_created(
 		&mut self,
 		operator: OperatorId,
-		retention: OperatorRetention,
+		horizon: OperatorHorizon,
 	) -> Result<(), ValueError>;
 }
 
@@ -270,6 +270,6 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackWindowedViewGroupChangeOperations
 	+ CatalogTrackConfigChangeOperations
 	+ CatalogTrackRowSettingsChangeOperations
-	+ CatalogTrackOperatorRetentionChangeOperations
+	+ CatalogTrackOperatorHorizonChangeOperations
 {
 }

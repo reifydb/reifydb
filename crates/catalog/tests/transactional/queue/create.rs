@@ -109,6 +109,6 @@ fn committed_create_preserves_every_option() {
 
 	assert_eq!(queue.partition_by, vec!["msg".to_string()]);
 	assert_eq!(queue.ordered_by(), Some("msg"));
-	assert!(queue.retention.done.is_some());
+	assert!(queue.done.ttl.is_some());
 	assert_eq!(queue.retry.attempts, 2);
 }

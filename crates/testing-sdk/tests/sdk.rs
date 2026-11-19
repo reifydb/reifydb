@@ -34,8 +34,8 @@ mod plain_rolling;
 #[path = "sdk/plain_top_k.rs"]
 mod plain_top_k;
 
-#[path = "sdk/retained.rs"]
-mod retained;
+#[path = "sdk/entry_map.rs"]
+mod entry_map;
 
 #[path = "sdk/guest_sweep.rs"]
 mod guest_sweep;

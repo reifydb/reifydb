@@ -465,7 +465,7 @@ fn test_error_nonexistent_table() {
 }
 
 #[test]
-fn test_lifecycle_cleanup_on_disconnect() {
+fn test_cleanup_on_disconnect() {
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
 	let mut server = create_server_instance(&runtime);
@@ -495,7 +495,7 @@ fn test_lifecycle_cleanup_on_disconnect() {
 }
 
 #[test]
-fn test_lifecycle_no_callbacks_after_drop() {
+fn test_no_callbacks_after_drop() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_no_cb", "id: int4, value: int4").await?;
 		let sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;

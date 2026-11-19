@@ -120,12 +120,12 @@ mod join_digest_key;
 mod join_key_normalized;
 #[path = "join_key_type_mismatch.rs"]
 mod join_key_type_mismatch;
+#[path = "join_lateness_ddl.rs"]
+mod join_lateness_ddl;
 #[path = "join_natural.rs"]
 mod join_natural;
 #[path = "join_output_columns.rs"]
 mod join_output_columns;
-#[path = "join_retention_ddl.rs"]
-mod join_retention_ddl;
 #[path = "join_using_condition_fragment.rs"]
 mod join_using_condition_fragment;
 #[path = "join_using_unknown_key_column.rs"]
@@ -244,8 +244,8 @@ mod time_column_undeclared;
 mod time_domain_chained_view;
 #[path = "time_domain_recheck.rs"]
 mod time_domain_recheck;
-#[path = "time_update_lifecycle.rs"]
-mod time_update_lifecycle;
+#[path = "time_update.rs"]
+mod time_update;
 #[path = "top_k_system_columns.rs"]
 mod top_k_system_columns;
 #[path = "transaction.rs"]

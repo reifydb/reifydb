@@ -5,7 +5,7 @@ use reifydb_core::error::diagnostic::flow::{
 	flow_append_lane_mismatch, flow_extern_unsupported_on_wasm, flow_missing_input_edge, flow_operator_input_arity,
 	flow_parent_operator_not_found, flow_sink_dictionary_entry_not_found, flow_sink_dictionary_not_found,
 	flow_sink_missing_series_key, flow_sink_missing_system_column, flow_sink_not_a_source_family,
-	flow_span_on_unageable_node, flow_unknown_diff_origin, flow_unknown_operator, flow_unsupported_operator,
+	flow_unknown_diff_origin, flow_unknown_operator, flow_unsupported_operator,
 };
 use reifydb_value::error::{Diagnostic, IntoDiagnostic, ValueError};
 
@@ -51,12 +51,6 @@ pub enum FlowGraphError {
 		operator: &'static str,
 		origin: Option<String>,
 	},
-
-	#[error("{operator} in flow {flow_id} declares a retention span but holds no state to age")]
-	SpanOnUnageableNode {
-		flow_id: u64,
-		operator: String,
-	},
 }
 
 impl IntoDiagnostic for FlowGraphError {
@@ -87,10 +81,6 @@ impl IntoDiagnostic for FlowGraphError {
 				operator,
 				origin,
 			} => flow_unknown_diff_origin(operator, origin),
-			FlowGraphError::SpanOnUnageableNode {
-				flow_id,
-				operator,
-			} => flow_span_on_unageable_node(&format!("flow {flow_id}"), operator.as_str()),
 		}
 	}
 }

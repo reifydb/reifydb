@@ -49,7 +49,7 @@ pub mod tests {
 		common::TimeSource,
 		interface::catalog::{
 			id::NamespaceId,
-			queue::{QueueDispatch, QueueRetention, QueueRetry},
+			queue::{QueueDispatch, QueueDone, QueueRetry},
 		},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
@@ -71,7 +71,7 @@ pub mod tests {
 			dispatch: QueueDispatch::Fifo {
 				ordered_by: None,
 			},
-			retention: QueueRetention::default(),
+			done: QueueDone::default(),
 			retry: QueueRetry::default(),
 			deduplicate: None,
 			time: TimeSource::Processing,

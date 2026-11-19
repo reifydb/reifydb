@@ -6,7 +6,6 @@ use reifydb_profiler::category::{CategorySet, ProfilerCategory, ProfilerLevel};
 pub struct ProfilerConfigurator {
 	pub categories: CategorySet,
 	pub accumulator_capacity: usize,
-	pub min_calls_for_retention: u64,
 	pub scope_local_capacity: usize,
 }
 
@@ -21,7 +20,6 @@ impl ProfilerConfigurator {
 		Self {
 			categories: CategorySet::all(),
 			accumulator_capacity: 4096,
-			min_calls_for_retention: 0,
 			scope_local_capacity: 256,
 		}
 	}

@@ -10,7 +10,7 @@ use reifydb_flow_async::{
 	window::{
 		accumulator::{
 			Contribution as AccumulatorContribution, CountedAccumulator, MergeAccumulator,
-			UnmergeAccumulator, WindowAccumulator, invertible::retained_map::RetainedAccumulator,
+			UnmergeAccumulator, WindowAccumulator, invertible::entry_map::EntryMapAccumulator,
 		},
 		engine::daba::Merge,
 		settings::WindowSettings,
@@ -26,7 +26,7 @@ use crate::{
 		column::row::{OutputRows, Row},
 		context::{GuestContext, Windowed},
 		view::ColumnsView,
-		windowed::{carry::CarryDriver, plain::PlainDriver, retained::RetainedDriver, top_k::TopKDriver},
+		windowed::{carry::CarryDriver, entry_map::EntryMapDriver, plain::PlainDriver, top_k::TopKDriver},
 	},
 };
 
@@ -250,7 +250,7 @@ pub struct PlainMarker;
 
 pub struct CarryMarker;
 
-pub struct RetainedMarker;
+pub struct EntryMapMarker;
 
 pub struct TopKMarker;
 
@@ -274,14 +274,14 @@ where
 	type Driver = CarryDriver<T>;
 }
 
-impl<T, K, V> WindowDriver<RetainedMarker> for T
+impl<T, K, V> WindowDriver<EntryMapMarker> for T
 where
-	T: Emit<Accumulator = RetainedAccumulator<K, V>>,
+	T: Emit<Accumulator = EntryMapAccumulator<K, V>>,
 	T::Output: Row,
 	K: Ord,
 	for<'a> &'a T::GroupKey: IntoEncodedKey,
 {
-	type Driver = RetainedDriver<T, K, V>;
+	type Driver = EntryMapDriver<T, K, V>;
 }
 
 impl<T, SK, R> WindowDriver<TopKMarker> for T

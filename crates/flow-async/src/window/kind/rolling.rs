@@ -37,7 +37,7 @@ mod tests {
 
 	#[test]
 	fn the_rolling_span_is_the_size_extended_by_the_lag() {
-		// Lag shifts the whole window back in time, so a lagged rolling window must retain size + lag
+		// Lag shifts the whole window back in time, so a lagged rolling window must keep size + lag
 		// or the lagged read falls off the end of the buffer. Eviction cutoff and seal policy are
 		// both built from this one span.
 		assert_eq!(RollingOverTime::new(ms(5_000), ms(0)).span(), ms(5_000));

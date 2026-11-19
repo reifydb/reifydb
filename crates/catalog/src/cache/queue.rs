@@ -67,7 +67,7 @@ impl CatalogCache {
 pub mod tests {
 	use reifydb_core::{
 		common::TimeSource,
-		interface::catalog::queue::{QueueDispatch, QueueRetention, QueueRetry},
+		interface::catalog::queue::{QueueDispatch, QueueDone, QueueRetry},
 	};
 
 	use super::*;
@@ -82,7 +82,7 @@ pub mod tests {
 			dispatch: QueueDispatch::Fifo {
 				ordered_by: None,
 			},
-			retention: QueueRetention::default(),
+			done: QueueDone::default(),
 			retry: QueueRetry::default(),
 			time: TimeSource::Processing,
 			deduplicate: None,

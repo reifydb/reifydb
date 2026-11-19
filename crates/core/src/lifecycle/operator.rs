@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use crate::{
 	interface::catalog::{config::GetConfig, flow::OperatorId},
-	row::OperatorRetention,
+	row::OperatorHorizon,
 };
 
-pub trait ListOperatorRetention: Clone + Send + Sync + 'static {
-	fn list_operator_retention(&self) -> Vec<(OperatorId, OperatorRetention)>;
+pub trait ListOperatorHorizon: Clone + Send + Sync + 'static {
+	fn list_operator_horizon(&self) -> Vec<(OperatorId, OperatorHorizon)>;
 	fn config(&self) -> Arc<dyn GetConfig>;
 }

@@ -7,7 +7,7 @@ use reifydb_core::{
 	default,
 	interface::catalog::id::ViewId,
 	internal_error,
-	lifecycle::{floor::ConsumerPositions, metrics::RetentionMetrics},
+	lifecycle::{floor::ConsumerPositions, metrics::LifecycleMetrics},
 	marker::{LatencyReader, MarkerSweep, ViewLatency},
 	metrics::sample::{MetricKind, MetricsSample, Reading},
 };
@@ -69,7 +69,7 @@ pub struct MetricsSamplerActor {
 	multi_store: MultiStore,
 	single_store: SingleStore,
 	operator_store: OperatorStore,
-	retention_metrics: RetentionMetrics,
+	lifecycle_metrics: LifecycleMetrics,
 	epoch_gauge: Arc<EpochGauge>,
 	surfaces: Arc<MetricsSurfaces>,
 	clock: Clock,
@@ -106,7 +106,7 @@ impl MetricsSamplerActor {
 		multi_store: MultiStore,
 		single_store: SingleStore,
 		operator_store: OperatorStore,
-		retention_metrics: RetentionMetrics,
+		lifecycle_metrics: LifecycleMetrics,
 		epoch_gauge: Arc<EpochGauge>,
 		surfaces: Arc<MetricsSurfaces>,
 		clock: Clock,
@@ -118,7 +118,7 @@ impl MetricsSamplerActor {
 			multi_store,
 			single_store,
 			operator_store,
-			retention_metrics,
+			lifecycle_metrics,
 			epoch_gauge,
 			surfaces,
 			clock,
@@ -232,7 +232,7 @@ impl MetricsSamplerActor {
 			Surface::Current,
 			epoch_rows(&self.collectors.engine, &self.epoch_gauge),
 		);
-		accumulator.push(MetricsDomain::Lifecycle, Surface::Current, lifecycle_rows(&self.retention_metrics));
+		accumulator.push(MetricsDomain::Lifecycle, Surface::Current, lifecycle_rows(&self.lifecycle_metrics));
 		accumulator.replace(
 			MetricsDomain::FlowLatency,
 			Surface::Current,
@@ -516,7 +516,7 @@ fn operator_persistent_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 fn epoch_rows(engine: &StandardEngine, gauge: &EpochGauge) -> Vec<MetricsRow> {
 	let epoch = engine.version_epoch();
 	let stats = epoch.stats();
-	let guaranteed = epoch.retention().guaranteed_coverage();
+	let guaranteed = epoch.sampling().guaranteed_coverage();
 	let (durable_samples, pruned) = gauge.read();
 	vec![MetricsRow {
 		dimensions: Vec::new(),
@@ -539,7 +539,7 @@ fn epoch_rows(engine: &StandardEngine, gauge: &EpochGauge) -> Vec<MetricsRow> {
 	}]
 }
 
-fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
+fn lifecycle_rows(metrics: &LifecycleMetrics) -> Vec<MetricsRow> {
 	metrics.report()
 		.into_iter()
 		.map(|(class, snapshot)| {

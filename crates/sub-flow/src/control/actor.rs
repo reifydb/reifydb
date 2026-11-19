@@ -203,7 +203,7 @@ pub struct FlowActorState {
 	hold_cache: Option<HoldCache>,
 	backlog: bool,
 	split: Option<Split>,
-	retention: Option<Pending>,
+	expired: Option<Pending>,
 }
 
 impl FlowActor {
@@ -298,7 +298,7 @@ impl FlowActor {
 		error!(flow_id = self.flow_id.0, reason = %reason, "poisoning flow");
 		self.report_poisoned(ctx, reason);
 		state.poisoned = true;
-		state.retention = None;
+		state.expired = None;
 		*self.create_snapshot.lock() = None;
 	}
 
@@ -1280,7 +1280,7 @@ impl FlowActor {
 		if state.poisoned || state.pending_stop.is_some() {
 			return;
 		}
-		let parked = state.retention.get_or_insert_with(Pending::new);
+		let parked = state.expired.get_or_insert_with(Pending::new);
 		match visibility {
 			RemoveVisibility::Announced => parked.remove(keys),
 			RemoveVisibility::Silent => {
@@ -1294,21 +1294,21 @@ impl FlowActor {
 				}
 			}
 		}
-		self.start_retention(state, ctx);
+		self.start_expire(state, ctx);
 	}
 
-	fn start_retention(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
-		if state.retention.is_none() {
+	fn start_expire(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+		if state.expired.is_none() {
 			return;
 		}
 		if state.poisoned || state.pending_stop.is_some() {
-			state.retention = None;
+			state.expired = None;
 			return;
 		}
 		if state.committing || state.backfilling {
 			return;
 		}
-		let Some(pending) = state.retention.take() else {
+		let Some(pending) = state.expired.take() else {
 			return;
 		};
 		reifydb_assertions! {
@@ -1316,7 +1316,7 @@ impl FlowActor {
 				assert!(
 					reifydb_flow_async::transaction::read::read_from(key)
 						!= reifydb_flow_async::transaction::read::ReadFrom::Query,
-					"flow {:?} committed {:?} on a retention hand-off, a key it reads back through the query pinned at its cursor, which never sees this commit",
+					"flow {:?} committed {:?} on an expire hand-off, a key it reads back through the query pinned at its cursor, which never sees this commit",
 					self.flow_id,
 					reifydb_core::key::tag::KeyTag::of(key)
 				);
@@ -1328,7 +1328,7 @@ impl FlowActor {
 		state.drain_after_commit = true;
 		let self_ref = ctx.self_ref().clone();
 		let reply: TickCommitReply = Box::new(move |result| {
-			let _ = self_ref.send(FlowActorMessage::RetentionCommitted {
+			let _ = self_ref.send(FlowActorMessage::ExpireCommitted {
 				result,
 			});
 		});
@@ -1350,7 +1350,7 @@ impl FlowActor {
 		}
 	}
 
-	fn on_retention_committed(
+	fn on_expire_committed(
 		&self,
 		state: &mut FlowActorState,
 		ctx: &Context<FlowActorMessage>,
@@ -1363,7 +1363,7 @@ impl FlowActor {
 					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 				}
 			}
-			Err(e) => self.retry_or_poison(state, ctx, format!("retention commit failed: {e}")),
+			Err(e) => self.retry_or_poison(state, ctx, format!("expire commit failed: {e}")),
 		}
 	}
 
@@ -1390,7 +1390,7 @@ impl FlowActor {
 			};
 			assert!(
 				owned,
-				"flow {:?}: a retention hand-off carried a key this flow does not own: {:?} on {:?}",
+				"flow {:?}: an expire hand-off carried a key this flow does not own: {:?} on {:?}",
 				self.flow_id,
 				tagged.as_ref().map(TaggedKey::kind),
 				storage
@@ -1504,7 +1504,7 @@ impl Actor for FlowActor {
 			hold_cache: None,
 			backlog: false,
 			split: None,
-			retention: None,
+			expired: None,
 		};
 
 		if !state.poisoned {
@@ -1578,14 +1578,14 @@ impl Actor for FlowActor {
 				committed,
 			} => {
 				self.on_slice_committed(state, ctx, advance_to, more, result, committed);
-				self.start_retention(state, ctx);
+				self.start_expire(state, ctx);
 				self.stop_if_pending(state)
 			}
 			FlowActorMessage::TickCommitted {
 				result,
 			} => {
 				self.on_tick_committed(state, ctx, result);
-				self.start_retention(state, ctx);
+				self.start_expire(state, ctx);
 				self.stop_if_pending(state)
 			}
 			FlowActorMessage::RemoveExpired {
@@ -1595,11 +1595,11 @@ impl Actor for FlowActor {
 				self.on_remove_expired(state, ctx, keys, visibility);
 				Directive::Continue
 			}
-			FlowActorMessage::RetentionCommitted {
+			FlowActorMessage::ExpireCommitted {
 				result,
 			} => {
-				self.on_retention_committed(state, ctx, result);
-				self.start_retention(state, ctx);
+				self.on_expire_committed(state, ctx, result);
+				self.start_expire(state, ctx);
 				self.stop_if_pending(state)
 			}
 			FlowActorMessage::CheckpointNow {
@@ -1621,7 +1621,7 @@ impl Actor for FlowActor {
 				delete_checkpoint,
 				reply,
 			} => {
-				state.retention = None;
+				state.expired = None;
 				state.pending_stop = Some((delete_checkpoint, reply));
 				self.stop_if_pending(state)
 			}
@@ -3786,7 +3786,7 @@ mod tick_failures {
 				..
 			} = msg
 			{
-				self.ticks.send(pending).expect("the test still listens for retention commits");
+				self.ticks.send(pending).expect("the test still listens for expire commits");
 			}
 			Directive::Continue
 		}
@@ -3796,7 +3796,7 @@ mod tick_failures {
 		}
 	}
 
-	fn retention_actor() -> (TestEngine, FlowActor, ViewId, mpsc::Receiver<Pending>) {
+	fn expire_actor() -> (TestEngine, FlowActor, ViewId, mpsc::Receiver<Pending>) {
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 
@@ -3835,7 +3835,7 @@ mod tick_failures {
 		let committer = engine
 			.spawner()
 			.spawn_ephemeral(
-				"retention-committer",
+				"expire-committer",
 				PendingRecorder {
 					ticks,
 				},
@@ -3844,7 +3844,7 @@ mod tick_failures {
 			.clone();
 		let actor = FlowActor::new(FlowActorParams {
 			engine: engine.clone(),
-			supervisor: idle(&engine, "retention-supervisor"),
+			supervisor: idle(&engine, "expire-supervisor"),
 			committer: committer.clone(),
 			terminal_committer: committer,
 			queue: CommitQueue::new(
@@ -3853,7 +3853,7 @@ mod tick_failures {
 				CommitVersion(0),
 				LOOKUP_TRACKER_ENTRIES_TESTING as usize,
 			),
-			loader: idle(&engine, "retention-loader"),
+			loader: idle(&engine, "expire-loader"),
 			control: PullLimit::new(),
 			custom_operators: timer_operators(),
 			substrate,
@@ -3888,12 +3888,11 @@ mod tick_failures {
 		assert_eq!(harness.process_one(), Some(Directive::Continue), "the hand-off must be handled");
 	}
 
-	fn next_retention_commit(ticks: &mpsc::Receiver<Pending>) -> Pending {
-		ticks.recv_timeout(Duration::from_seconds(10).unwrap().to_std())
-			.expect("the retention commit must go out")
+	fn next_expire_commit(ticks: &mpsc::Receiver<Pending>) -> Pending {
+		ticks.recv_timeout(Duration::from_seconds(10).unwrap().to_std()).expect("the expire commit must go out")
 	}
 
-	fn no_retention_commit(ticks: &mpsc::Receiver<Pending>) -> bool {
+	fn no_expire_commit(ticks: &mpsc::Receiver<Pending>) -> bool {
 		ticks.recv_timeout(Duration::from_milliseconds(200).unwrap().to_std()).is_err()
 	}
 
@@ -4712,41 +4711,41 @@ mod tick_failures {
 	#[test]
 	fn a_handed_batch_goes_out_as_one_remove_only_commit() {
 		// Without the dispatch expired view rows stay in place for ever.
-		let (_te, actor, sink, ticks) = retention_actor();
+		let (_te, actor, sink, ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 		let keys = vec![RowKey::encoded(sink, RowNumber(1)), RowKey::encoded(sink, RowNumber(2))];
 
 		hand_off(&mut harness, keys.clone());
 
-		let pending = next_retention_commit(&ticks);
-		assert!(no_retention_commit(&ticks), "one hand-off must go out as exactly one commit");
+		let pending = next_expire_commit(&ticks);
+		assert!(no_expire_commit(&ticks), "one hand-off must go out as exactly one commit");
 		assert_eq!(pending.len(), 2, "the commit must hold only the handed keys");
 		for key in &keys {
 			assert!(announced_remove(&pending, key), "each handed key must be an announced remove");
 		}
-		assert!(harness.state().committing, "the retention commit must hold the one-commit latch");
-		assert!(harness.state().retention.is_none(), "a dispatched set must leave the parked slot");
+		assert!(harness.state().committing, "the expire commit must hold the one-commit latch");
+		assert!(harness.state().expired.is_none(), "a dispatched set must leave the parked slot");
 	}
 
 	#[test]
 	fn a_batch_handed_during_a_commit_waits_and_goes_out_when_it_lands() {
 		// A flow must never have two commits in flight at once.
-		let (_te, actor, sink, ticks) = retention_actor();
+		let (_te, actor, sink, ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 		harness.state_mut().committing = true;
 		let shared = RowKey::encoded(sink, RowNumber(1));
 
 		hand_off(&mut harness, vec![shared.clone()]);
 		hand_off(&mut harness, vec![shared.clone(), RowKey::encoded(sink, RowNumber(2))]);
-		assert!(no_retention_commit(&ticks), "a hand-off during a commit must wait for it to land");
+		assert!(no_expire_commit(&ticks), "a hand-off during a commit must wait for it to land");
 
 		harness.send(FlowActorMessage::TickCommitted {
 			result: Ok(()),
 		});
 		harness.process_one();
 
-		let pending = next_retention_commit(&ticks);
-		assert!(no_retention_commit(&ticks), "the parked set must go out as one commit");
+		let pending = next_expire_commit(&ticks);
+		assert!(no_expire_commit(&ticks), "the parked set must go out as one commit");
 		assert_eq!(pending.len(), 2, "a key handed twice must land once");
 		assert!(announced_remove(&pending, &shared), "the shared key must be removed");
 	}
@@ -4754,12 +4753,12 @@ mod tick_failures {
 	#[test]
 	fn a_batch_handed_during_a_slice_commit_goes_out_when_it_lands() {
 		// Without a start after a slice commit a parked set waits until the next hand-off.
-		let (_te, actor, sink, ticks) = retention_actor();
+		let (_te, actor, sink, ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 		harness.state_mut().committing = true;
 
 		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
-		assert!(no_retention_commit(&ticks), "a hand-off during a commit must wait for it to land");
+		assert!(no_expire_commit(&ticks), "a hand-off during a commit must wait for it to land");
 
 		harness.send(FlowActorMessage::SliceCommitted {
 			advance_to: CommitVersion(0),
@@ -4769,29 +4768,29 @@ mod tick_failures {
 		});
 		harness.process_one();
 
-		next_retention_commit(&ticks);
-		assert!(no_retention_commit(&ticks), "the parked set must go out as one commit");
+		next_expire_commit(&ticks);
+		assert!(no_expire_commit(&ticks), "the parked set must go out as one commit");
 	}
 
 	#[test]
-	fn a_batch_parked_during_a_retention_commit_goes_out_when_it_lands() {
-		// Without a start after a retention commit a set parked behind it waits until the next hand-off.
-		let (_te, actor, sink, ticks) = retention_actor();
+	fn a_batch_parked_during_an_expire_commit_goes_out_when_it_lands() {
+		// Without a start after an expire commit a set parked behind it waits until the next hand-off.
+		let (_te, actor, sink, ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 		let (first, second) = (RowKey::encoded(sink, RowNumber(1)), RowKey::encoded(sink, RowNumber(2)));
 
 		hand_off(&mut harness, vec![first.clone()]);
-		next_retention_commit(&ticks);
+		next_expire_commit(&ticks);
 		hand_off(&mut harness, vec![second.clone()]);
-		assert!(no_retention_commit(&ticks), "a hand-off during a retention commit must wait for it");
+		assert!(no_expire_commit(&ticks), "a hand-off during an expire commit must wait for it");
 
-		harness.send(FlowActorMessage::RetentionCommitted {
+		harness.send(FlowActorMessage::ExpireCommitted {
 			result: Ok(()),
 		});
 		harness.process_one();
 
-		let pending = next_retention_commit(&ticks);
-		assert!(no_retention_commit(&ticks), "two hand-offs make exactly two commits");
+		let pending = next_expire_commit(&ticks);
+		assert!(no_expire_commit(&ticks), "two hand-offs make exactly two commits");
 		assert_eq!(pending.len(), 1, "the second commit must hold only the second batch");
 		assert!(announced_remove(&pending, &second), "the second commit must remove the second key");
 		assert!(!announced_remove(&pending, &first), "the first batch must not be committed twice");
@@ -4800,24 +4799,24 @@ mod tick_failures {
 	#[test]
 	fn a_poisoned_flow_drops_a_handed_batch() {
 		// A poisoned flow must never write its views.
-		let (_te, actor, sink, ticks) = retention_actor();
+		let (_te, actor, sink, ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 		harness.state_mut().poisoned = true;
 
 		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
 
-		assert!(no_retention_commit(&ticks), "a poisoned flow must not commit a hand-off");
-		assert!(harness.state().retention.is_none(), "a poisoned flow must not park a hand-off");
+		assert!(no_expire_commit(&ticks), "a poisoned flow must not commit a hand-off");
+		assert!(harness.state().expired.is_none(), "a poisoned flow must not park a hand-off");
 	}
 
 	#[test]
 	fn a_flow_that_turns_poisoned_drops_its_parked_batch() {
 		// A parked set must never outlive the poison, otherwise a poisoned flow still writes.
-		let (_te, actor, sink, ticks) = retention_actor();
+		let (_te, actor, sink, ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 		harness.state_mut().backfilling = true;
 		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
-		assert!(harness.state().retention.is_some(), "precondition: the hand-off must park during backfill");
+		assert!(harness.state().expired.is_some(), "precondition: the hand-off must park during backfill");
 		harness.state_mut().retry_count = RETRY_LIMIT;
 
 		harness.send(FlowActorMessage::Loaded {
@@ -4826,22 +4825,22 @@ mod tick_failures {
 		harness.process_one();
 
 		assert!(harness.state().poisoned, "precondition: the failed load must poison past the retry limit");
-		assert!(harness.state().retention.is_none(), "the poison must drop the parked set");
-		assert!(no_retention_commit(&ticks), "a poisoned flow must not commit its parked set");
+		assert!(harness.state().expired.is_none(), "the poison must drop the parked set");
+		assert!(no_expire_commit(&ticks), "a poisoned flow must not commit its parked set");
 	}
 
 	#[test]
 	fn a_batch_handed_during_backfill_waits_and_goes_out_when_the_backfill_commit_lands() {
 		// The set must survive the backfill and never commit during it, otherwise it races the backfill write.
-		let (_te, actor, sink, ticks) = retention_actor();
+		let (_te, actor, sink, ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 		harness.state_mut().backfilling = true;
 		harness.state_mut().committing = false;
 		let key = RowKey::encoded(sink, RowNumber(1));
 
 		hand_off(&mut harness, vec![key.clone()]);
-		assert!(no_retention_commit(&ticks), "a hand-off during backfill must wait for its end");
-		assert!(harness.state().retention.is_some(), "a hand-off during backfill must stay parked");
+		assert!(no_expire_commit(&ticks), "a hand-off during backfill must wait for its end");
+		assert!(harness.state().expired.is_some(), "a hand-off during backfill must stay parked");
 
 		harness.state_mut().committing = true;
 		harness.send(FlowActorMessage::SliceCommitted {
@@ -4852,15 +4851,15 @@ mod tick_failures {
 		});
 		harness.process_one();
 
-		let pending = next_retention_commit(&ticks);
-		assert!(no_retention_commit(&ticks), "the parked set must go out as one commit");
+		let pending = next_expire_commit(&ticks);
+		assert!(no_expire_commit(&ticks), "the parked set must go out as one commit");
 		assert!(announced_remove(&pending, &key), "the parked key must be committed once the backfill ends");
 	}
 
 	#[test]
 	fn a_failed_backfill_commit_keeps_the_batch_parked() {
 		// The set must wait for the real end of backfill, never for a failed slice reply.
-		let (_te, actor, sink, ticks) = retention_actor();
+		let (_te, actor, sink, ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 		harness.state_mut().backfilling = true;
 		harness.state_mut().committing = false;
@@ -4875,15 +4874,15 @@ mod tick_failures {
 		});
 		harness.process_one();
 
-		assert!(no_retention_commit(&ticks), "a failed backfill commit must not release the parked set");
-		assert!(harness.state().retention.is_some(), "the set must stay parked after a failed backfill commit");
+		assert!(no_expire_commit(&ticks), "a failed backfill commit must not release the parked set");
+		assert!(harness.state().expired.is_some(), "the set must stay parked after a failed backfill commit");
 		assert!(harness.state().backfilling, "precondition: a failed backfill commit must keep the backfill");
 	}
 
 	#[test]
 	fn a_stopping_flow_drops_a_parked_batch_and_refuses_new_ones() {
 		// A stopping flow must never commit a hand-off, otherwise it races the cleanup after its stop.
-		let (_te, actor, sink, ticks) = retention_actor();
+		let (_te, actor, sink, ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 		harness.state_mut().committing = true;
 		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
@@ -4895,10 +4894,10 @@ mod tick_failures {
 			reply: Box::new(move || flag.store(true, Ordering::SeqCst)),
 		});
 		harness.process_one();
-		assert!(harness.state().retention.is_none(), "the stop must drop the parked set");
+		assert!(harness.state().expired.is_none(), "the stop must drop the parked set");
 
 		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(2))]);
-		assert!(harness.state().retention.is_none(), "a stopping flow must refuse a new hand-off");
+		assert!(harness.state().expired.is_none(), "a stopping flow must refuse a new hand-off");
 
 		harness.send(FlowActorMessage::TickCommitted {
 			result: Ok(()),
@@ -4908,70 +4907,70 @@ mod tick_failures {
 			Some(Directive::Stop),
 			"the held stop must run once the commit lands"
 		);
-		assert!(no_retention_commit(&ticks), "a stopping flow must commit no hand-off");
+		assert!(no_expire_commit(&ticks), "a stopping flow must commit no hand-off");
 		assert!(replied.load(Ordering::SeqCst), "the stop reply must run");
 	}
 
 	#[test]
 	fn a_batch_handed_during_a_load_goes_out_at_once() {
 		// A load in flight never writes, so the set must go out without waiting for it.
-		let (_te, actor, sink, ticks) = retention_actor();
+		let (_te, actor, sink, ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 		harness.state_mut().awaiting_load = true;
 
 		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
 
-		next_retention_commit(&ticks);
-		assert!(no_retention_commit(&ticks), "one hand-off must go out as exactly one commit");
+		next_expire_commit(&ticks);
+		assert!(no_expire_commit(&ticks), "one hand-off must go out as exactly one commit");
 	}
 
 	#[test]
-	fn a_failed_retention_commit_counts_a_retry() {
-		// A failed retention commit must count a strike, otherwise the flow runs on a store it could not write.
-		let (_te, actor, sink, ticks) = retention_actor();
+	fn a_failed_expire_commit_counts_a_retry() {
+		// A failed expire commit must count a strike, otherwise the flow runs on a store it could not write.
+		let (_te, actor, sink, ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
-		next_retention_commit(&ticks);
+		next_expire_commit(&ticks);
 
-		harness.send(FlowActorMessage::RetentionCommitted {
+		harness.send(FlowActorMessage::ExpireCommitted {
 			result: Err(internal_error!("commit rejected")),
 		});
 		harness.process_one();
 
-		assert_eq!(harness.state().retry_count, 1, "a failed retention commit must count a strike");
+		assert_eq!(harness.state().retry_count, 1, "a failed expire commit must count a strike");
 		assert!(!harness.state().committing, "the latch must clear, otherwise the flow never drains again");
 	}
 
 	#[test]
-	fn a_landed_retention_commit_drains_again_and_is_not_a_tick() {
-		// Without the held drain the flow stalls, and a retention commit must never reset a strike.
-		let (_te, actor, sink, ticks) = retention_actor();
+	fn a_landed_expire_commit_drains_again_and_is_not_a_tick() {
+		// Without the held drain the flow stalls, and an expire commit must never reset a strike.
+		let (_te, actor, sink, ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 		harness.state_mut().retry_count = 1;
 		let backlog = harness.state().backlog;
 		let cursor = harness.state().cursor;
 		hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
-		next_retention_commit(&ticks);
-		assert!(harness.state().drain_after_commit, "precondition: the retention commit must ask for a drain");
+		next_expire_commit(&ticks);
+		assert!(harness.state().drain_after_commit, "precondition: the expire commit must ask for a drain");
 
-		harness.send(FlowActorMessage::RetentionCommitted {
+		harness.send(FlowActorMessage::ExpireCommitted {
 			result: Ok(()),
 		});
 		harness.process_one();
 
-		assert!(!harness.state().drain_after_commit, "a landed retention commit must queue the drain it held");
-		assert!(!harness.state().committing, "a landed retention commit must clear the latch");
-		assert_eq!(harness.state().backlog, backlog, "a retention commit must not touch the backlog");
-		assert_eq!(harness.state().cursor, cursor, "a retention commit must not move the cursor");
-		assert_eq!(harness.state().retry_count, 1, "a landed retention commit must not reset the strike");
+		assert!(!harness.state().drain_after_commit, "a landed expire commit must queue the drain it held");
+		assert!(!harness.state().committing, "a landed expire commit must clear the latch");
+		assert_eq!(harness.state().backlog, backlog, "an expire commit must not touch the backlog");
+		assert_eq!(harness.state().cursor, cursor, "an expire commit must not move the cursor");
+		assert_eq!(harness.state().retry_count, 1, "a landed expire commit must not reset the strike");
 	}
 
 	#[cfg(reifydb_assertions)]
 	#[test]
-	#[should_panic(expected = "a retention hand-off carried a key this flow does not own")]
+	#[should_panic(expected = "an expire hand-off carried a key this flow does not own")]
 	fn a_handed_key_of_another_flow_trips_the_ownership_assertion() {
-		// A key outside the flow's sinks must never be committed: retention routed it to the wrong writer.
-		let (te, actor, _sink, _ticks) = retention_actor();
+		// A key outside the flow's sinks must never be committed: expiry routed it to the wrong writer.
+		let (te, actor, _sink, _ticks) = expire_actor();
 		let mut harness = TestHarness::new(actor);
 
 		hand_off(&mut harness, vec![RowKey::encoded(source_view(te.inner()), RowNumber(1))]);
@@ -4981,7 +4980,7 @@ mod tick_failures {
 	fn a_handed_row_of_an_owned_queue_passes_the_ownership_assertion() {
 		// an owned queue must come from the actor's own set, otherwise a queue view the cache lost trips the
 		// assertion
-		let (_te, actor, _sink, ticks) = retention_actor();
+		let (_te, actor, _sink, ticks) = expire_actor();
 		let actor = actor.with_owned_queues(Arc::new(BTreeSet::from([QueueId(1)])));
 		let mut harness = TestHarness::new(actor);
 		let key = RowKey::encoded(QueueId(1), RowNumber(1));
@@ -4994,7 +4993,7 @@ mod tick_failures {
 
 		let pending = ticks
 			.recv_timeout(Duration::from_seconds(10).unwrap().to_std())
-			.expect("the retention commit must go out");
+			.expect("the expire commit must go out");
 		assert_eq!(pending.len(), 1);
 		assert!(matches!(
 			pending.write_at(&key),
@@ -5006,11 +5005,11 @@ mod tick_failures {
 
 	#[cfg(reifydb_assertions)]
 	#[test]
-	#[should_panic(expected = "a retention hand-off carried a key this flow does not own")]
+	#[should_panic(expected = "an expire hand-off carried a key this flow does not own")]
 	fn a_handed_row_of_a_queue_the_flow_does_not_own_trips_the_ownership_assertion() {
 		// a queue outside the actor's own set must be refused, otherwise a flow removes rows of another flow's
 		// queue
-		let (_te, actor, _sink, _ticks) = retention_actor();
+		let (_te, actor, _sink, _ticks) = expire_actor();
 		let actor = actor.with_owned_queues(Arc::new(BTreeSet::from([QueueId(1)])));
 		let mut harness = TestHarness::new(actor);
 

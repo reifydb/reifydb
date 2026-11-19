@@ -657,7 +657,7 @@ fn test_a_reserved_column_name_is_allowed_without_with() {
 
 #[test]
 fn test_update_on_a_queue_is_rejected_as_immutable() {
-	// Items leave a queue by acknowledgement or retention, never by being edited.
+	// Items leave a queue by acknowledgement or expiry, never by being edited.
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }]");
 
@@ -667,7 +667,7 @@ fn test_update_on_a_queue_is_rejected_as_immutable() {
 
 #[test]
 fn test_delete_on_a_queue_is_rejected_as_immutable() {
-	// Retention owns removal, not the caller.
+	// Expiry owns removal, not the caller.
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }]");
 

@@ -490,7 +490,7 @@ fn test_error_invalid_subscription_id() {
 }
 
 #[test]
-fn test_lifecycle_cleanup_on_disconnect() {
+fn test_cleanup_on_disconnect() {
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
 	let mut server = create_server_instance(&runtime);
@@ -517,7 +517,7 @@ fn test_lifecycle_cleanup_on_disconnect() {
 }
 
 #[test]
-fn test_lifecycle_no_callbacks_after_unsubscribe() {
+fn test_no_callbacks_after_unsubscribe() {
 	SubscriptionTestHarness::run(|mut ctx| async move {
 		let table = ctx.create_table("sub_no_cb", "id: int4, value: int4").await?;
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
@@ -1120,7 +1120,7 @@ fn test_row_number_is_stable_across_insert_update_remove() {
 	// be the identity it later updates and finally removes; if it drifted, the client would leak
 	// the stale row and delete one it never saw.
 	SubscriptionTestHarness::run(|mut ctx| async move {
-		let table = ctx.create_table("sub_rownum_lifecycle", "id: int4, name: utf8").await?;
+		let table = ctx.create_table("sub_rownum_life", "id: int4, name: utf8").await?;
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		ctx.insert(&table, "{ id: 1, name: 'a' }").await?;

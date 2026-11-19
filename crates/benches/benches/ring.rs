@@ -51,16 +51,12 @@ fn speed_up_evictor(db: &Database) {
 	let catalog = engine.catalog();
 	let mut admin = engine.begin_admin(IdentityId::system()).expect("admin txn begins");
 	let interval = ValueDuration::from_milliseconds(EVICT_INTERVAL_MILLIS).expect("interval is representable");
-	catalog.set_config(&mut admin, ConfigKey::RetentionEvictInterval, Value::Duration(interval))
+	catalog.set_config(&mut admin, ConfigKey::ExpireInterval, Value::Duration(interval))
 		.expect("evict interval is settable");
-	catalog.set_config(&mut admin, ConfigKey::RetentionEvictBatchSize, Value::Uint8(EVICT_BATCH_SIZE))
+	catalog.set_config(&mut admin, ConfigKey::ExpireBatchSize, Value::Uint8(EVICT_BATCH_SIZE))
 		.expect("evict batch size is settable");
-	catalog.set_config(
-		&mut admin,
-		ConfigKey::RetentionEvictMaxBatchesPerTick,
-		Value::Uint8(EVICT_MAX_BATCHES_PER_TICK),
-	)
-	.expect("evict batches per tick is settable");
+	catalog.set_config(&mut admin, ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(EVICT_MAX_BATCHES_PER_TICK))
+		.expect("evict batches per tick is settable");
 	admin.commit().expect("evictor config commits");
 }
 

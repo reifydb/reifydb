@@ -433,7 +433,6 @@ mod tests {
 		common::{JoinType, OnEmpty, WindowKind, WindowSize},
 		interface::catalog::id::{TableId, ViewId},
 		operator_with::{ApplyWith, DistinctWith, Emit, JoinWith, LookupWith, WindowWith},
-		row::OperatorRetention,
 	};
 
 	fn join() -> OperatorDef {
@@ -506,9 +505,7 @@ mod tests {
 			left: vec![],
 			alias: Some("price".to_string()),
 			with: LookupWith {
-				retention: Some(OperatorRetention {
-					duration: Duration::from_seconds(10).unwrap(),
-				}),
+				lateness: Some(Duration::from_seconds(10).unwrap()),
 				emit: Emit::Off,
 				exact: false,
 			},
@@ -517,7 +514,7 @@ mod tests {
 
 	#[test]
 	fn lookup_always_requests_ticks() {
-		// Left retention frees rows on ticks; without them the read-version lease never moves.
+		// Left lateness frees rows on ticks; without them the read-version lease never moves.
 		assert!(lookup(LookupObject::Table(TableId(1))).ticks());
 	}
 
@@ -539,7 +536,7 @@ mod tests {
 	}
 
 	#[test]
-	fn lookup_survives_the_persisted_encoding_with_its_right_object_and_retention() {
+	fn lookup_survives_the_persisted_encoding_with_its_right_object_and_lateness() {
 		// The DAG is stored with postcard, so a lost field registers a different lookup after restart.
 		for right in [LookupObject::Table(TableId(3)), LookupObject::View(ViewId(4))] {
 			let node = lookup(right);
@@ -558,7 +555,7 @@ mod tests {
 			assert_eq!(join_type, JoinType::Left);
 			assert_eq!(decoded_right, right);
 			assert_eq!(alias.as_deref(), Some("price"));
-			assert_eq!(with.retention.map(|r| r.duration), Some(Duration::from_seconds(10).unwrap()));
+			assert_eq!(with.lateness, Some(Duration::from_seconds(10).unwrap()));
 		}
 	}
 

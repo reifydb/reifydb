@@ -116,7 +116,7 @@ struct PendingCarry<S, Output> {
 pub struct TumblingCarryEngine<G, S: WindowAnchor, Accumulator, Carry, Output> {
 	family: KeyspaceFamily,
 	meta_sweep: MetaSweep,
-	retention: Option<SlotSpan<S>>,
+	immutable: Option<SlotSpan<S>>,
 	idle_retention: Option<SlotSpan<S>>,
 	_pd: PhantomData<(G, Accumulator, Carry, Output)>,
 }
@@ -138,7 +138,7 @@ where
 		Self {
 			family: config.base().family(),
 			meta_sweep: MetaSweep::default(),
-			retention: config.retention(),
+			immutable: config.immutable(),
 			idle_retention: config.idle_retention(),
 			_pd: PhantomData,
 		}
@@ -229,7 +229,7 @@ where
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
-		let retention = self.retention;
+		let immutable = self.immutable;
 		let batch_time = store.batch_time();
 		let mut groups: Vec<G> = buckets.keys().map(|(group, _)| group.clone()).collect();
 		groups.dedup();
@@ -374,12 +374,12 @@ where
 				meta.windows.remove(&window);
 			}
 
-			if let (Some(retention), Some(hw)) = (retention, meta.high_water) {
+			if let (Some(immutable), Some(hw)) = (immutable, meta.high_water) {
 				let to_seal: Vec<S> = meta
 					.windows
 					.keys()
 					.copied()
-					.take_while(|first| hw.span_since(*first) > retention)
+					.take_while(|first| hw.span_since(*first) > immutable)
 					.collect();
 				Self::fold_windows(meta, &to_seal);
 				for first in to_seal {
@@ -479,13 +479,13 @@ where
 			if let Some(meta) = meta {
 				windows.extend(meta.windows.range(earliest..).map(|(start, _)| *start));
 			}
-			if let Some(retention) = self.retention {
+			if let Some(immutable) = self.immutable {
 				let hw = meta.and_then(|meta| meta.high_water).map_or(newest, |hw| hw.max(newest));
 				let mut known: BTreeSet<S> = windows.clone();
 				if let Some(meta) = meta {
 					known.extend(meta.windows.keys().copied());
 				}
-				windows.extend(known.into_iter().take_while(|first| hw.span_since(*first) > retention));
+				windows.extend(known.into_iter().take_while(|first| hw.span_since(*first) > immutable));
 			}
 			for start in windows {
 				slot_of.entry((group.clone(), start)).or_insert_with(|| {
@@ -558,7 +558,7 @@ mod tests {
 		factory::coord::event_coord_at_millis,
 		operator::state::{seal::coord::Coord, test_utils::test::inner_bytes},
 		window::{
-			accumulator::{AccumulatorOp, invertible::retained_map::RetainedAccumulator, testkit::events},
+			accumulator::{AccumulatorOp, invertible::entry_map::EntryMapAccumulator, testkit::events},
 			coord::ByDateTime,
 			engine::config::WindowEngineConfig,
 		},
@@ -788,7 +788,7 @@ mod tests {
 		}
 	}
 
-	type Engine = TumblingCarryEngine<String, ByDateTime, RetainedAccumulator<u64, f64>, f64, f64>;
+	type Engine = TumblingCarryEngine<String, ByDateTime, EntryMapAccumulator<u64, f64>, f64, f64>;
 
 	const WINDOW: u64 = 60;
 
@@ -800,8 +800,8 @@ mod tests {
 		window_at(millis).to_order()
 	}
 
-	fn carry_config(retention: Option<Duration>) -> TumblingCarryConfig<ByDateTime> {
-		TumblingCarryConfig::builder(WindowEngineConfig::builder().build()).retention(retention).build()
+	fn carry_config(immutable: Option<Duration>) -> TumblingCarryConfig<ByDateTime> {
+		TumblingCarryConfig::builder(WindowEngineConfig::builder().build()).immutable(immutable).build()
 	}
 
 	fn idle_config(idle_retention: Duration) -> TumblingCarryConfig<ByDateTime> {
@@ -833,7 +833,7 @@ mod tests {
 			buckets,
 			&order,
 			|g: &String, w: ByDateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
-			RetainedAccumulator::<u64, f64>::default,
+			EntryMapAccumulator::<u64, f64>::default,
 			|_g: &String, _s: WindowSpan<ByDateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
 				(!v.is_empty()).then(|| v.values().sum::<f64>())
 			},
@@ -843,8 +843,8 @@ mod tests {
 	}
 
 	#[test]
-	fn retention_seals_old_windows_and_reclaims_accumulator_rows() {
-		// With a 2-window retention horizon, older windows must seal to the O(1) carry scalar and
+	fn immutable_seals_old_windows_and_reclaims_accumulator_rows() {
+		// With a 2-window immutable horizon, older windows must seal to the O(1) carry scalar and
 		// drop their accumulator row, so the live row count stays bounded by the horizon rather
 		// than growing with the number of windows seen.
 		let mut store = CountingStore::default();
@@ -860,9 +860,9 @@ mod tests {
 	}
 
 	#[test]
-	fn retention_seals_old_windows_and_reclaims_row_number_mappings() {
+	fn immutable_seals_old_windows_and_reclaims_row_number_mappings() {
 		// The per-(group, window) mapping is keyed by row_key, not row_number, so accumulator
-		// eviction does not reclaim it. Sealing past retention must drop it alongside the
+		// eviction does not reclaim it. Sealing past the immutable limit must drop it alongside the
 		// accumulator or the mapping keyspace grows per window forever.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(Some(millis(2 * WINDOW))));
@@ -958,7 +958,7 @@ mod tests {
 			buckets,
 			&order,
 			seal_key,
-			RetainedAccumulator::<u64, f64>::default,
+			EntryMapAccumulator::<u64, f64>::default,
 			|_g: &String, _s: WindowSpan<ByDateTime>, v: &BTreeMap<u64, f64>, p: Option<&f64>| {
 				Some(v.values().sum::<f64>() + p.copied().unwrap_or(1000.0))
 			},
@@ -969,7 +969,7 @@ mod tests {
 
 	#[test]
 	fn a_seal_folds_every_window_below_the_output_watermark_of_every_group_and_forgets_its_rows() {
-		// Without retention only the seal can free a window; every group's windows below the horizon must
+		// Without immutable only the seal can free a window; every group's windows below the horizon must
 		// lose both the accumulator row and the row-number mapping, and later windows must be left alone.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
@@ -1224,9 +1224,9 @@ mod tests {
 	}
 
 	#[test]
-	fn without_retention_every_window_accumulator_is_retained() {
+	fn without_immutable_every_window_accumulator_is_kept() {
 		// The contrast that proves the bound above comes from sealing and not some other cap: with
-		// no retention configured the engine keeps every window's accumulator forever.
+		// no immutable configured the engine keeps every window's accumulator forever.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		for i in 0..60u64 {
@@ -1235,7 +1235,7 @@ mod tests {
 		assert_eq!(
 			store.accumulator_count(),
 			60,
-			"with no retention the carry engine retains every window's accumulator row"
+			"with no immutable the carry engine keeps every window's accumulator row"
 		);
 	}
 
@@ -1263,7 +1263,7 @@ mod tests {
 				buckets,
 				&order,
 				|g: &String, w: ByDateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
-				RetainedAccumulator::<u64, f64>::default,
+				EntryMapAccumulator::<u64, f64>::default,
 				|_g: &String, _s: WindowSpan<ByDateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
 					(!v.is_empty()).then(|| v.values().sum::<f64>())
 				},
@@ -1318,7 +1318,7 @@ mod tests {
 				buckets,
 				&order,
 				|g: &String, w: ByDateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
-				RetainedAccumulator::<u64, f64>::default,
+				EntryMapAccumulator::<u64, f64>::default,
 				|_g: &String, _s: WindowSpan<ByDateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
 					(!v.is_empty()).then(|| v.values().sum::<f64>())
 				},
@@ -1368,7 +1368,7 @@ mod tests {
 				buckets,
 				&order,
 				|g: &String, w: ByDateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
-				RetainedAccumulator::<u64, f64>::default,
+				EntryMapAccumulator::<u64, f64>::default,
 				|_g: &String, _s: WindowSpan<ByDateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
 					(!v.is_empty()).then(|| v.values().sum::<f64>())
 				},

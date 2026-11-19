@@ -226,8 +226,8 @@ mod tests {
 
 	#[test]
 	fn an_eviction_instant_never_carries_the_strict_gate_plus_one() {
-		// The +1 belongs to the seal gate alone. Eviction is a retention boundary, not a gate, so
-		// carrying the +1 there retains one millisecond too much on every rolling window, forever.
+		// The +1 belongs to the seal gate alone. Eviction is a frame boundary, not a gate, so
+		// carrying the +1 there keeps one millisecond too much on every rolling window, forever.
 		let eviction = EvictionRule::rolling(ms(0));
 
 		assert_eq!(eviction.eviction_instant(at_millis(7_000)).at(), at_millis(7_000));

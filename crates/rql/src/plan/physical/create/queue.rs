@@ -44,7 +44,7 @@ impl<'bump> Compiler<'bump> {
 			partition_by: create.partition_by,
 			dispatch: create.dispatch,
 			deduplicate: create.deduplicate,
-			retention: create.retention,
+			done: create.done,
 			retry: create.retry,
 			time: create.time,
 		}))

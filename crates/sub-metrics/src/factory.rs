@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	interface::catalog::config::{ConfigKey, GetConfig},
 	internal,
-	lifecycle::metrics::RetentionMetrics,
+	lifecycle::metrics::LifecycleMetrics,
 	marker::LatencyConsumer,
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
@@ -70,7 +70,7 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 		let multi_store = ioc.resolve::<MultiStore>()?;
 		let single_store = ioc.resolve::<SingleStore>()?;
 		let operator_store = ioc.resolve::<OperatorStore>()?;
-		let retention_metrics = ioc.resolve::<RetentionMetrics>()?;
+		let lifecycle_metrics = ioc.resolve::<LifecycleMetrics>()?;
 		ioc.register_service(LatencyConsumer);
 
 		let collectors = Collectors {
@@ -89,7 +89,7 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 			&multi_store,
 			&single_store,
 			&operator_store,
-			&retention_metrics,
+			&lifecycle_metrics,
 			epoch_gauge.clone(),
 		)?;
 		ioc.register_service(sampler.actor_ref().clone());
@@ -112,7 +112,7 @@ impl MetricsSubsystemFactory {
 		multi_store: &MultiStore,
 		single_store: &SingleStore,
 		operator_store: &OperatorStore,
-		retention_metrics: &RetentionMetrics,
+		lifecycle_metrics: &LifecycleMetrics,
 		epoch_gauge: Arc<EpochGauge>,
 	) -> Result<ActorHandle<SamplerMessage>, ValueError> {
 		let surfaces = Arc::new(MetricsSurfaces::build(MetricsDomain::ALL.map(MetricsDomain::spec)));
@@ -133,7 +133,7 @@ impl MetricsSubsystemFactory {
 			multi_store.clone(),
 			single_store.clone(),
 			operator_store.clone(),
-			retention_metrics.clone(),
+			lifecycle_metrics.clone(),
 			epoch_gauge,
 			surfaces,
 			clock.clone(),

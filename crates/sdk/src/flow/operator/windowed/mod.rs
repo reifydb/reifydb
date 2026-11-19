@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod carry;
+pub mod entry_map;
 pub mod guest_as_host;
 pub mod hooks;
 pub mod operator;
 pub mod plain;
 pub mod publish;
-pub mod retained;
 pub mod rows;
 pub mod top_k;
 

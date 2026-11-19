@@ -7,8 +7,8 @@ use reifydb::{ConfigKey, testing::db::TestDb, value::value::Value};
 fn set_config_propagates_to_materialized_cache() {
 	let db = TestDb::memory();
 
-	db.admin("call system::config::set('RETENTION_EVICT_INTERVAL', duration::seconds(30))");
+	db.admin("call system::config::set('EXPIRE_INTERVAL', duration::seconds(30))");
 
-	let value = db.catalog().cache().get_config(ConfigKey::RetentionEvictInterval);
+	let value = db.catalog().cache().get_config(ConfigKey::ExpireInterval);
 	assert_eq!(value, Value::duration_seconds(30));
 }

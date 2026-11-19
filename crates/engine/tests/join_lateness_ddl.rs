@@ -20,15 +20,15 @@ fn join_view(clause: &str) -> String {
 }
 
 #[test]
-fn a_right_retention_on_a_latest_join_is_accepted() {
-	// `latest` keeps every right row per key, so a right retention is the only thing bounding that growth.
+fn a_right_lateness_on_a_latest_join_is_accepted() {
+	// `latest` keeps every right row per key, so a right lateness is the only thing bounding that growth.
 	let engine = engine_with_sources("event(at)");
 
 	engine.admin(&join_view("retention: { right: 1h }, latest: true"));
 }
 
 #[test]
-fn a_right_retention_on_a_snapshot_join_is_accepted() {
+fn a_right_lateness_on_a_snapshot_join_is_accepted() {
 	// A sealed right row retires its bytes into the pin first, so the pairs it published survive without it.
 	let engine = engine_with_sources("event(at)");
 
@@ -36,15 +36,15 @@ fn a_right_retention_on_a_snapshot_join_is_accepted() {
 }
 
 #[test]
-fn a_left_retention_on_a_latest_join_is_accepted() {
-	// The rule must key off the right side only, or it rejects the one retention these joins can honour.
+fn a_left_lateness_on_a_latest_join_is_accepted() {
+	// The rule must key off the right side only, or it rejects the one lateness these joins can honour.
 	let engine = engine_with_sources("event(at)");
 
 	engine.admin(&join_view("retention: { left: 1h }, latest: true"));
 }
 
 #[test]
-fn a_left_retention_on_a_snapshot_join_is_accepted() {
+fn a_left_lateness_on_a_snapshot_join_is_accepted() {
 	// Without this the check could reject every flagged join and the right-side tests would still pass.
 	let engine = engine_with_sources("event(at)");
 
@@ -52,8 +52,8 @@ fn a_left_retention_on_a_snapshot_join_is_accepted() {
 }
 
 #[test]
-fn a_join_retention_over_a_processing_time_source_is_rejected() {
-	// A retention frees a row once the flow watermark passes its event time, which a processing-time flow never
+fn a_join_lateness_over_a_processing_time_source_is_rejected() {
+	// A lateness frees a row once the flow watermark passes its event time, which a processing-time flow never
 	// supplies.
 	let engine = engine_with_sources("processing");
 
@@ -63,7 +63,7 @@ fn a_join_retention_over_a_processing_time_source_is_rejected() {
 }
 
 #[test]
-fn a_join_retention_over_an_event_time_source_is_accepted() {
+fn a_join_lateness_over_an_event_time_source_is_accepted() {
 	// Without this the validation could reject everything and the test above would still pass.
 	let engine = engine_with_sources("event(at)");
 
@@ -71,8 +71,8 @@ fn a_join_retention_over_an_event_time_source_is_accepted() {
 }
 
 #[test]
-fn a_join_without_a_retention_over_a_processing_time_source_is_accepted() {
-	// The rule must key off the retention, never off joins as a whole.
+fn a_join_without_a_lateness_over_a_processing_time_source_is_accepted() {
+	// The rule must key off the lateness, never off joins as a whole.
 	let engine = engine_with_sources("processing");
 
 	engine.admin(&join_view("emit: false"));

@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
-	error::diagnostic::flow::{flow_join_retention_requires_event_time, flow_rolling_lag_requires_event_time},
+	error::diagnostic::flow::{flow_join_lateness_requires_event_time, flow_rolling_lag_requires_event_time},
 	flow::{
 		dag::FlowDag,
 		operator::{FlowNode, OperatorDef},
@@ -149,13 +149,13 @@ pub fn check_window_time_requirements(
 	Ok(())
 }
 
-pub fn check_join_retention_requirements(
+pub fn check_join_lateness_requirements(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	flow: &FlowDag,
 ) -> Result<(), ValueError> {
 	let flow_name = format!("flow {}", flow.id.0);
-	let mut retained = Vec::new();
+	let mut lateness_inputs = Vec::new();
 
 	for operator_id in flow.topological_order() {
 		let Some(operator) = flow.get_operator(operator_id) else {
@@ -164,40 +164,40 @@ pub fn check_join_retention_requirements(
 		match &operator.ty {
 			OperatorDef::Join {
 				with: JoinWith {
-					retention: Some(retention),
+					lateness: Some(lateness),
 					..
 				},
 				..
 			} => {
-				if retention.left.is_some() {
-					retained.push(side_input(operator, 0)?);
+				if lateness.left.is_some() {
+					lateness_inputs.push(side_input(operator, 0)?);
 				}
-				if retention.right.is_some() {
-					retained.push(side_input(operator, 1)?);
+				if lateness.right.is_some() {
+					lateness_inputs.push(side_input(operator, 1)?);
 				}
 			}
 			OperatorDef::Lookup {
 				with: LookupWith {
-					retention: Some(_),
+					lateness: Some(_),
 					..
 				},
 				..
-			} => retained.push(side_input(operator, 0)?),
+			} => lateness_inputs.push(side_input(operator, 0)?),
 			_ => {}
 		}
 	}
 
-	if retained.is_empty() {
+	if lateness_inputs.is_empty() {
 		return Ok(());
 	}
 
 	if source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
-		return Err(ValueError(Box::new(flow_join_retention_requires_event_time(&flow_name))));
+		return Err(ValueError(Box::new(flow_join_lateness_requires_event_time(&flow_name))));
 	}
 
-	for input in retained {
+	for input in lateness_inputs {
 		if !fed_by_event_time_only(catalog, txn, flow, input)? {
-			return Err(ValueError(Box::new(flow_join_retention_requires_event_time(&flow_name))));
+			return Err(ValueError(Box::new(flow_join_lateness_requires_event_time(&flow_name))));
 		}
 	}
 
@@ -316,7 +316,7 @@ mod tests {
 			id::TableId,
 		},
 		operator_with::Emit,
-		row::{JoinRetention, OperatorRetention},
+		row::JoinLateness,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -601,7 +601,7 @@ mod tests {
 		assert!(result.is_err(), "a view with no flow must not resolve to a domain");
 	}
 
-	fn lookup(id: u64, retention: Option<Duration>) -> FlowNode {
+	fn lookup(id: u64, lateness: Option<Duration>) -> FlowNode {
 		FlowNode::new(
 			OperatorId(id),
 			OperatorDef::Lookup {
@@ -610,9 +610,7 @@ mod tests {
 				left: vec![],
 				alias: None,
 				with: LookupWith {
-					retention: retention.map(|duration| OperatorRetention {
-						duration,
-					}),
+					lateness,
 					emit: Emit::Off,
 					exact: false,
 				},
@@ -621,11 +619,6 @@ mod tests {
 	}
 
 	fn join(id: u64, left: Option<Duration>, right: Option<Duration>) -> FlowNode {
-		let retained = |duration: Option<Duration>| {
-			duration.map(|duration| OperatorRetention {
-				duration,
-			})
-		};
 		FlowNode::new(
 			OperatorId(id),
 			OperatorDef::Join {
@@ -635,9 +628,9 @@ mod tests {
 				alias: None,
 				natural: false,
 				with: JoinWith {
-					retention: Some(JoinRetention {
-						left: retained(left),
-						right: retained(right),
+					lateness: Some(JoinLateness {
+						left,
+						right,
 					}),
 					..JoinWith::default()
 				},
@@ -645,8 +638,8 @@ mod tests {
 		)
 	}
 
-	fn check_retention(harness: Harness, txn: &mut AdminTransaction) -> Result<(), ValueError> {
-		check_join_retention_requirements(
+	fn check_lateness(harness: Harness, txn: &mut AdminTransaction) -> Result<(), ValueError> {
+		check_join_lateness_requirements(
 			&Catalog::testing(),
 			&mut Transaction::Admin(txn),
 			&harness.builder.build(),
@@ -654,7 +647,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_lookup_retention_over_a_processing_source_is_rejected_with_flow_049() {
+	fn a_lookup_lateness_over_a_processing_source_is_rejected_with_flow_049() {
 		// The lookup frees left rows by event time like the join; an ingest clock frees them at random.
 		let mut txn = create_test_admin_transaction();
 		let harness = Harness::new()
@@ -664,13 +657,13 @@ mod tests {
 			.edge(1, 2)
 			.edge(2, 3);
 
-		let err = check_retention(harness, &mut txn).expect_err("a lookup retention needs event time");
+		let err = check_lateness(harness, &mut txn).expect_err("a lookup lateness needs event time");
 
 		assert_eq!(err.diagnostic().code, "FLOW_049");
 	}
 
 	#[test]
-	fn a_lookup_retention_over_an_event_source_is_accepted() {
+	fn a_lookup_lateness_over_an_event_source_is_accepted() {
 		// Event time is exactly what the left expiry measures against, so this is the shape polaris ships.
 		let mut txn = create_test_admin_transaction();
 		let harness = Harness::new()
@@ -680,12 +673,12 @@ mod tests {
 			.edge(1, 2)
 			.edge(2, 3);
 
-		check_retention(harness, &mut txn).expect("event time satisfies a lookup retention");
+		check_lateness(harness, &mut txn).expect("event time satisfies a lookup lateness");
 	}
 
 	#[test]
-	fn a_lookup_without_retention_does_not_demand_event_time() {
-		// Only a declared retention frees rows by event time; without one the check must stay silent.
+	fn a_lookup_without_lateness_does_not_demand_event_time() {
+		// Only a declared lateness frees rows by event time; without one the check must stay silent.
 		let mut txn = create_test_admin_transaction();
 		let harness = Harness::new()
 			.node(table(1, TimeDomain::Processing))
@@ -694,11 +687,11 @@ mod tests {
 			.edge(1, 2)
 			.edge(2, 3);
 
-		check_retention(harness, &mut txn).expect("no retention means no event-time requirement");
+		check_lateness(harness, &mut txn).expect("no lateness means no event-time requirement");
 	}
 
 	#[test]
-	fn a_lookup_retention_fed_by_a_time_less_source_is_rejected_with_flow_049() {
+	fn a_lookup_lateness_fed_by_a_time_less_source_is_rejected_with_flow_049() {
 		// An unmatched time-less left row reaches the lookup with no #time, so it is never armed and never
 		// freed.
 		let mut txn = create_test_admin_transaction();
@@ -713,13 +706,13 @@ mod tests {
 			.edge(3, 4)
 			.edge(4, 5);
 
-		let err = check_retention(harness, &mut txn).expect_err("a time-less row would outlive the retention");
+		let err = check_lateness(harness, &mut txn).expect_err("a time-less row would outlive the lateness");
 
 		assert_eq!(err.diagnostic().code, "FLOW_049");
 	}
 
 	#[test]
-	fn a_join_retention_on_a_side_fed_by_a_time_less_source_is_rejected_with_flow_049() {
+	fn a_join_lateness_on_a_side_fed_by_a_time_less_source_is_rejected_with_flow_049() {
 		// The event source elsewhere in the flow must not vouch for the side that actually holds time-less
 		// rows.
 		let mut txn = create_test_admin_transaction();
@@ -732,14 +725,14 @@ mod tests {
 			.edge(2, 3)
 			.edge(3, 4);
 
-		let err = check_retention(harness, &mut txn).expect_err("the left side holds rows with no #time");
+		let err = check_lateness(harness, &mut txn).expect_err("the left side holds rows with no #time");
 
 		assert_eq!(err.diagnostic().code, "FLOW_049");
 	}
 
 	#[test]
-	fn a_join_retention_on_an_event_side_is_accepted_beside_a_time_less_side() {
-		// Only the retained side is walked, otherwise a time-less reference table vetoes every right retention.
+	fn a_join_lateness_on_an_event_side_is_accepted_beside_a_time_less_side() {
+		// Only the lateness side is walked, otherwise a time-less reference table vetoes every right lateness.
 		let mut txn = create_test_admin_transaction();
 		let harness = Harness::new()
 			.node(table(1, TimeDomain::None))
@@ -750,11 +743,11 @@ mod tests {
 			.edge(2, 3)
 			.edge(3, 4);
 
-		check_retention(harness, &mut txn).expect("the retained right side is fed by event time only");
+		check_lateness(harness, &mut txn).expect("the lateness right side is fed by event time only");
 	}
 
 	#[test]
-	fn a_lookup_retention_over_a_view_of_a_time_less_flow_is_rejected_with_flow_049() {
+	fn a_lookup_lateness_over_a_view_of_a_time_less_flow_is_rejected_with_flow_049() {
 		// The view may hold rows with no #time from its time-less source, so it must not pass as event time.
 		let mut txn = create_test_admin_transaction();
 		create_namespace(&mut txn, "test");
@@ -770,7 +763,7 @@ mod tests {
 			.edge(1, 2)
 			.edge(2, 3);
 
-		let err = check_retention(harness, &mut txn).expect_err("the view carries time-less rows");
+		let err = check_lateness(harness, &mut txn).expect_err("the view carries time-less rows");
 
 		assert_eq!(err.diagnostic().code, "FLOW_049");
 	}

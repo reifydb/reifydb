@@ -26,11 +26,11 @@ use reifydb_core::{
 		any::TaggedKey,
 		queue::{QueueAttemptKey, QueueItemStateKey, QueuePartitionKey},
 	},
-	lifecycle::{metrics::RetentionMetrics, progress::Progress, task::LifecycleTask},
+	lifecycle::{metrics::LifecycleMetrics, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
-use reifydb_sub_lifecycle::{plane::RetentionPlane, queue::reap::QueueLeaseReapTask};
+use reifydb_sub_lifecycle::{plane::LifecyclePlane, queue::reap::QueueLeaseReapTask};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::{Value, frame::frame::Frame, identity::IdentityId, row_number::RowNumber};
@@ -52,7 +52,7 @@ fn reaper(t: &TestEngine) -> QueueLeaseReapTask {
 	let engine: &StandardEngine = t.inner();
 	QueueLeaseReapTask::new(
 		engine.clone(),
-		RetentionPlane::for_engine(engine, RetentionMetrics::new()),
+		LifecyclePlane::for_engine(engine, LifecycleMetrics::new()),
 		engine.clock().clone(),
 		Arc::new(engine.catalog()) as Arc<dyn GetConfig>,
 	)

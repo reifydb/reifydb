@@ -203,7 +203,7 @@ pub fn render_queue(queue: &Queue, resolver: &NameResolver) -> Result<String, Ex
 			options.push(format!("deduplicate: {{ by: {{{}}}, ttl: {} }}", by, deduplicate.ttl));
 		}
 	}
-	if let Some(done) = &queue.retention.done {
+	if let Some(done) = &queue.done.ttl {
 		options.push(format!("retention: {{ done: {} }}", done));
 	}
 	if queue.retry.attempts != Queue::DEFAULT_RETRY_ATTEMPTS || queue.retry.backoff != Queue::DEFAULT_RETRY_BACKOFF

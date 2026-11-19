@@ -933,7 +933,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_actor_lifecycle_stop() {
+	fn test_actor_stop() {
 		let system = test_system();
 		let handle = system.spawn_coordination("counter", CounterActor);
 

@@ -826,7 +826,7 @@ mod tests {
 		assert_eq!(
 			progress.complete_through(PRODUCER, cv(20)),
 			None,
-			"a reader that falls off the retained window must not be handed a position it cannot prove"
+			"a reader that falls off the kept window must not be handed a position it cannot prove"
 		);
 	}
 

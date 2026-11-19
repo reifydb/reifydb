@@ -189,7 +189,7 @@ mod tests {
 	}
 
 	#[test]
-	fn pinned_count_returns_to_zero_across_a_full_lifecycle() {
+	fn pinned_count_returns_to_zero_across_a_full_cycle() {
 		// Any leak in the arithmetic leaves a phantom floor eviction can never clear.
 		let mut count = PinnedCount::new();
 		count.insert(&row(7));

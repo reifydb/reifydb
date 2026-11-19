@@ -770,7 +770,7 @@ mod tests {
 				left: vec![],
 				alias: Some("price".to_string()),
 				with: LookupWith {
-					retention: None,
+					lateness: None,
 					emit: Emit::Off,
 					exact: false,
 				},
@@ -1043,7 +1043,7 @@ mod tests {
 				left: vec![],
 				alias: Some("price".to_string()),
 				with: LookupWith {
-					retention: None,
+					lateness: None,
 					emit: Emit::On,
 					exact: false,
 				},

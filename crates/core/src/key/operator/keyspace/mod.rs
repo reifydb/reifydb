@@ -40,8 +40,8 @@ use crate::{
 				},
 				timer::{TimerIndex, TimerWheel},
 				window::{
-					Accumulator, Emit, EngineMeta, GuestAccumulator, GuestRetainedEntry,
-					RollingMeta, RollingPane, RowIndex, Session, SessionMember, WindowMeta,
+					Accumulator, Emit, EngineMeta, GuestAccumulator, GuestMapEntry, RollingMeta,
+					RollingPane, RowIndex, Session, SessionMember, WindowMeta,
 				},
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
@@ -168,7 +168,7 @@ catalogue!(
 	SessionMember,
 	WindowMeta,
 	GuestAccumulator,
-	GuestRetainedEntry,
+	GuestMapEntry,
 	JoinLeft,
 	JoinRight,
 	JoinPublished,
@@ -228,7 +228,7 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		| KeyspaceId::ROW_INDEX
 		| KeyspaceId::WINDOW_META
 		| KeyspaceId::GUEST_ACCUMULATOR
-		| KeyspaceId::GUEST_RETAINED_ENTRY
+		| KeyspaceId::GUEST_MAP_ENTRY
 		| KeyspaceId::JOIN_LEFT
 		| KeyspaceId::JOIN_RIGHT => RootSibling::OwnerCleared,
 

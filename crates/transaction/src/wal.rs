@@ -240,7 +240,7 @@ impl MetricsCollector for CommitLogMetrics {
 		let start = cursors.start.map(Lsn::as_u64).unwrap_or(0);
 		out.push(MetricsSample::count("commit_log", "appended", appended));
 		out.push(MetricsSample::count("commit_log", "durable", cursors.durable.map(Lsn::as_u64).unwrap_or(0)));
-		out.push(MetricsSample::bytes("commit_log", "retained_bytes", cursors.bytes));
+		out.push(MetricsSample::bytes("commit_log", "kept_bytes", cursors.bytes));
 		for (name, floor) in cursors.floors {
 			let scope = format!("commit_log::floor::{name}");
 			let held = floor.map(Lsn::as_u64).unwrap_or(start);

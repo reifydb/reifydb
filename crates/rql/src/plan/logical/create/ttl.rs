@@ -31,7 +31,7 @@ impl<'bump> Compiler<'bump> {
 #[cfg(test)]
 mod tests {
 	use reifydb_rql_frontend::{bump::Bump, token::tokenize};
-	use reifydb_runtime::version_epoch::EpochRetention;
+	use reifydb_runtime::version_epoch::EpochSampling;
 
 	use super::*;
 
@@ -73,7 +73,7 @@ mod tests {
 		// The ceiling was the epoch's guaranteed coverage, past which no cutoff resolved and the class
 		// silently reclaimed nothing. No row or operator ttl consults the epoch any more.
 		let beyond =
-			format!("{}d", EpochRetention::default().guaranteed_coverage().seconds() / (24 * 60 * 60) + 1);
+			format!("{}d", EpochSampling::default().guaranteed_coverage().seconds() / (24 * 60 * 60) + 1);
 
 		assert!(compile(&beyond).is_ok(), "a ttl past the old epoch coverage must compile: {beyond}");
 		assert!(compile("3650d").is_ok(), "and there is no upper bound short of duration overflow");

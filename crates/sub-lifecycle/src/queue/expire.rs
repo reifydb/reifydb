@@ -31,7 +31,7 @@ use reifydb_core::{
 		row::RowKey,
 	},
 	lifecycle::{
-		class::{Floor, FloorTerm, RetentionClass},
+		class::{Floor, FloorTerm, LifecycleClass},
 		progress::Progress,
 		task::LifecycleTask,
 	},
@@ -54,8 +54,8 @@ use reifydb_value::{
 use tracing::{Span, debug, field::Empty, instrument, warn};
 
 use crate::{
-	plane::RetentionPlane,
-	retention::handoff::{HandOff, hand_off},
+	expire::handoff::{HandOff, hand_off},
+	plane::LifecyclePlane,
 };
 
 struct ItemCursor {
@@ -81,17 +81,17 @@ struct Swept {
 	skipped: bool,
 }
 
-pub struct QueueRetentionTask {
+pub struct QueueExpireTask {
 	engine: StandardEngine,
-	plane: RetentionPlane,
+	plane: LifecyclePlane,
 	clock: Clock,
 	config: Arc<dyn GetConfig>,
 	item_cursor: Option<ItemCursor>,
 	dedup_cursor: HashMap<QueueId, TaggedKey>,
 }
 
-impl QueueRetentionTask {
-	pub fn new(engine: StandardEngine, plane: RetentionPlane, clock: Clock, config: Arc<dyn GetConfig>) -> Self {
+impl QueueExpireTask {
+	pub fn new(engine: StandardEngine, plane: LifecyclePlane, clock: Clock, config: Arc<dyn GetConfig>) -> Self {
 		Self {
 			engine,
 			plane,
@@ -117,7 +117,7 @@ impl QueueRetentionTask {
 			queue,
 		) {
 			Ok(counters) => counters.into_iter().map(|(partition, _)| partition).collect(),
-			Err(e) => panic!("queue retention failed to list the partitions of queue {}: {}", queue.0, e),
+			Err(e) => panic!("queue expire failed to list the partitions of queue {}: {}", queue.0, e),
 		}
 	}
 
@@ -198,7 +198,7 @@ impl QueueRetentionTask {
 				queue = queue.0,
 				item = row.0,
 				attempt,
-				"a terminal queue item has no attempt record; retention will not delete it without a finish time"
+				"a terminal queue item has no attempt record; queue expire will not delete it without a finish time"
 			);
 			return Ok(None);
 		}
@@ -329,8 +329,8 @@ impl QueueRetentionTask {
 	}
 
 	fn cutoff_of(&self, queue: &Queue, now: DateTime) -> Option<(DateTime, (Floor, FloorTerm))> {
-		let ttl = queue.retention.done?;
-		let binding = self.plane.cutoff_with_binding(RetentionClass::QueueRetention, now, Some(ttl))?;
+		let ttl = queue.done.ttl?;
+		let binding = self.plane.cutoff_with_binding(LifecycleClass::QueueDoneTtl, now, Some(ttl))?;
 		match binding.0 {
 			Floor::Instant(cutoff) => Some((cutoff, binding)),
 			Floor::Version(_) => None,
@@ -345,29 +345,29 @@ struct ExpiredDeduplication {
 	scanned: usize,
 }
 
-impl LifecycleTask for QueueRetentionTask {
+impl LifecycleTask for QueueExpireTask {
 	fn name(&self) -> &'static str {
-		"queue-retention"
+		"queue-expire"
 	}
 
 	fn interval(&self) -> Duration {
-		self.config.get_config_duration(ConfigKey::QueueRetentionInterval)
+		self.config.get_config_duration(ConfigKey::QueueExpireInterval)
 	}
 
-	fn classes(&self) -> &'static [RetentionClass] {
-		&[RetentionClass::QueueRetention]
+	fn classes(&self) -> &'static [LifecycleClass] {
+		&[LifecycleClass::QueueDoneTtl]
 	}
 
-	#[instrument(name = "queue::retention::slice", level = "debug", skip_all, fields(scanned = Empty, deleted = Empty))]
+	#[instrument(name = "queue::expire::slice", level = "debug", skip_all, fields(scanned = Empty, deleted = Empty))]
 	fn run_slice(&mut self) -> Progress {
 		let now = self.clock.now();
-		let budget = (self.config.get_config_uint8(ConfigKey::QueueRetentionBatchSize) as usize).max(1);
+		let budget = (self.config.get_config_uint8(ConfigKey::QueueExpireBatchSize) as usize).max(1);
 
 		let queues = match self.queues() {
 			Ok(queues) => queues,
 			Err(e) => {
-				warn!(error = %e, "queue retention failed to list queues");
-				self.plane.record_reclamation(RetentionClass::QueueRetention, None, 0, 0);
+				warn!(error = %e, "queue expire failed to list queues");
+				self.plane.record_reclamation(LifecycleClass::QueueDoneTtl, None, 0, 0);
 				return Progress::Exhausted;
 			}
 		};
@@ -393,7 +393,7 @@ impl LifecycleTask for QueueRetentionTask {
 			let view = match self.owning_view(queue) {
 				Ok(view) => view,
 				Err(e) => panic!(
-					"queue retention failed to find the view that owns queue {}: {}",
+					"queue expire failed to find the view that owns queue {}: {}",
 					queue.id.0, e
 				),
 			};
@@ -433,7 +433,7 @@ impl LifecycleTask for QueueRetentionTask {
 					) {
 						Ok(states) => states,
 						Err(e) => {
-							warn!(queue = queue.id.0, partition = partition.0, error = %e, "queue retention failed to scan item state");
+							warn!(queue = queue.id.0, partition = partition.0, error = %e, "queue expire failed to scan item state");
 							break;
 						}
 					};
@@ -455,7 +455,7 @@ impl LifecycleTask for QueueRetentionTask {
 							Ok(Some(item)) => doomed.push(item),
 							Ok(None) => {}
 							Err(e) => {
-								warn!(queue = queue.id.0, item = row.0, error = %e, "queue retention failed to classify a terminal item")
+								warn!(queue = queue.id.0, item = row.0, error = %e, "queue expire failed to classify a terminal item")
 							}
 						}
 					}
@@ -467,7 +467,7 @@ impl LifecycleTask for QueueRetentionTask {
 								queue_skipped |= swept.skipped;
 							}
 							Err(e) => {
-								warn!(queue = queue.id.0, error = %e, "queue retention failed to delete items");
+								warn!(queue = queue.id.0, error = %e, "queue expire failed to delete items");
 								doomed.clear();
 							}
 						}
@@ -488,7 +488,7 @@ impl LifecycleTask for QueueRetentionTask {
 							partition,
 							&rows,
 						) {
-							warn!(queue = queue.id.0, partition = partition.0, error = %e, "queue retention failed to remove item state");
+							warn!(queue = queue.id.0, partition = partition.0, error = %e, "queue expire failed to remove item state");
 						}
 					}
 
@@ -509,7 +509,7 @@ impl LifecycleTask for QueueRetentionTask {
 						}
 					}
 					Err(e) => {
-						warn!(queue = queue.id.0, error = %e, "queue retention failed to sweep deduplication records")
+						warn!(queue = queue.id.0, error = %e, "queue expire failed to sweep deduplication records")
 					}
 				}
 			}
@@ -521,11 +521,11 @@ impl LifecycleTask for QueueRetentionTask {
 		span.record("scanned", scanned);
 		span.record("deleted", deleted);
 
-		self.plane.record_reclamation(RetentionClass::QueueRetention, floor, deleted, backlog + skipped);
+		self.plane.record_reclamation(LifecycleClass::QueueDoneTtl, floor, deleted, backlog + skipped);
 
 		if backlog > 0 {
-			debug!(scanned, deleted, "queue retention yielded with a backlog");
-			self.plane.record_budget_exhausted(RetentionClass::QueueRetention);
+			debug!(scanned, deleted, "queue expire yielded with a backlog");
+			self.plane.record_budget_exhausted(LifecycleClass::QueueDoneTtl);
 			Progress::Yielded
 		} else {
 			Progress::Exhausted

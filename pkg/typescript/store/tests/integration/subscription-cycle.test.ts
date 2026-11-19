@@ -11,7 +11,7 @@ const ns = namespace('sub_life');
 const items = Shape.object({id: Shape.int4(), name: Shape.utf8()});
 const subscriptionRow = Shape.object({id: Shape.uint8()});
 
-describe('subscription lifecycle against a live server', () => {
+describe('subscription cycle against a live server', () => {
     let client: WsClient;
     let store: Store;
 
@@ -55,7 +55,7 @@ describe('subscription lifecycle against a live server', () => {
         });
     });
 
-    describe('subscription lifecycle', () => {
+    describe('subscription cycle', () => {
         it('subscribing registers exactly one subscription on the server', async () => {
             const rql = `from ${await table('register')}`;
             const before = await subscriptionCount();

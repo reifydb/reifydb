@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Retention is the only destructive queue task, so most of what matters here is what it must NOT
+//! Expiry is the only destructive queue task, so most of what matters here is what it must NOT
 //! delete: anything unfinished, anything inside its declared window, and anything it cannot date.
 //!
-//! Deduplication records follow their OWN declared ttl and are not coupled to item retention: a
+//! Deduplication records follow their OWN declared ttl and are not coupled to item expiry: a
 //! swept item keeps suppressing its key until that ttl elapses. Deleting the item is a storage
 //! decision; the deduplication promise made to the caller is a separate one with its own clock.
 
@@ -22,15 +22,15 @@ use reifydb_core::{
 	},
 	key::queue::{QueueAttemptKey, QueueDeduplicationKey, QueueItemStateKey},
 	lifecycle::{
-		gate::{Gated, RetentionStartupGate},
-		metrics::RetentionMetrics,
+		gate::{Gated, LifecycleStartupGate},
+		metrics::LifecycleMetrics,
 		progress::Progress,
 		task::LifecycleTask,
 	},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
-use reifydb_sub_lifecycle::{plane::RetentionPlane, queue::retention::QueueRetentionTask};
+use reifydb_sub_lifecycle::{plane::LifecyclePlane, queue::expire::QueueExpireTask};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::{Value, duration::Duration, frame::frame::Frame};
@@ -46,11 +46,11 @@ fn engine_with_queue(declaration: &str) -> TestEngine {
 	t
 }
 
-fn sweeper(t: &TestEngine) -> QueueRetentionTask {
+fn sweeper(t: &TestEngine) -> QueueExpireTask {
 	let engine: &StandardEngine = t.inner();
-	QueueRetentionTask::new(
+	QueueExpireTask::new(
 		engine.clone(),
-		RetentionPlane::for_engine(engine, RetentionMetrics::new()),
+		LifecyclePlane::for_engine(engine, LifecycleMetrics::new()),
 		engine.clock().clone(),
 		Arc::new(engine.catalog()) as Arc<dyn GetConfig>,
 	)
@@ -146,7 +146,7 @@ fn test_a_finished_item_is_deleted_once_it_outlives_the_declared_window() {
 
 #[test]
 fn test_a_dead_item_is_swept_too_which_bounds_replayability() {
-	// Documented contract: retention bounds how long a dead item can be replayed. Keeping dead
+	// Documented contract: the done ttl bounds how long a dead item can be replayed. Keeping dead
 	// items forever would make retention.done a lie for exactly the items most likely to pile up.
 	let t = engine_with_queue(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#);
 	t.mock_clock().set_millis(0);
@@ -216,7 +216,7 @@ fn test_an_unfinished_item_is_never_swept_however_old_it_is() {
 	t.mock_clock().set_millis(86_400_000);
 	sweeper(&t).run_slice();
 
-	assert_eq!(items(&t), 2, "a leased item and a ready item both outlive any retention window");
+	assert_eq!(items(&t), 2, "a leased item and a ready item both outlive any done ttl");
 	let statuses: Vec<QueueItemStatus> = states(&t, queue).iter().map(|s| s.status).collect();
 	assert_eq!(statuses.len(), 2);
 	assert!(statuses.contains(&QueueItemStatus::Leased));
@@ -243,7 +243,7 @@ fn test_a_queue_without_a_declared_window_keeps_everything() {
 
 #[test]
 fn test_a_terminal_item_with_no_attempt_record_is_left_alone() {
-	// The terminal attempt's finished_at is the only clock retention has. With no record and the
+	// The terminal attempt's finished_at is the only clock expiry has. With no record and the
 	// item row still present, the item cannot be dated - and an undateable item must be preserved
 	// and reported, never deleted on the assumption that it is old enough.
 	let t = engine_with_queue(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#);
@@ -296,7 +296,7 @@ fn test_an_orphan_state_record_from_a_crashed_sweep_is_collected() {
 fn test_a_swept_item_keeps_suppressing_its_deduplication_key() {
 	// The deduplication window is the caller's contract and runs on its own ttl. Sweeping the item
 	// is a storage decision that must not silently re-open a key the caller was told was taken - a
-	// retention window shorter than the dedup ttl would otherwise let the same work run twice.
+	// done ttl shorter than the dedup ttl would otherwise let the same work run twice.
 	let t = engine_with_queue(
 		r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h }, deduplicate: { by: {id}, ttl: 30d } }"#,
 	);
@@ -307,7 +307,7 @@ fn test_a_swept_item_keeps_suppressing_its_deduplication_key() {
 
 	t.mock_clock().set_millis(3_600_001);
 	sweeper(&t).run_slice();
-	assert_eq!(items(&t), 0, "the item itself is past its retention window");
+	assert_eq!(items(&t), 0, "the item itself is past its done ttl");
 	assert_eq!(deduplication_count(&t, queue), 1, "the deduplication record outlives the item it named");
 
 	t.command("INSERT test::jobs [{ id: 1 }]");
@@ -357,8 +357,8 @@ fn test_a_forever_deduplication_record_is_never_swept() {
 }
 
 #[test]
-fn test_retention_does_no_work_inside_the_startup_delay() {
-	// Retention is the destructive task, so it is gated: right after boot the floors it trusts are
+fn test_expire_does_no_work_inside_the_startup_delay() {
+	// Expiry is the destructive task, so it is gated: right after boot the floors it trusts are
 	// not yet warm, and deleting on a cold floor is unrecoverable. The gate must suppress the sweep
 	// entirely, not merely narrow it.
 	let t = engine_with_queue(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#);
@@ -368,7 +368,7 @@ fn test_retention_does_no_work_inside_the_startup_delay() {
 	finish(&t);
 
 	t.mock_clock().set_millis(3_600_001);
-	let gate = RetentionStartupGate::arm(t.inner().clock().clone(), Duration::from_hours_const(1));
+	let gate = LifecycleStartupGate::arm(t.inner().clock().clone(), Duration::from_hours_const(1));
 	let mut gated = Gated::new(sweeper(&t), gate);
 	gated.run_slice();
 
@@ -388,7 +388,7 @@ fn test_a_backlog_deeper_than_the_budget_drains_across_slices() {
 		finish(&t);
 	}
 	let queue = queue_id(&t, "jobs");
-	t.set_config(ConfigKey::QueueRetentionBatchSize, Value::Uint8(2));
+	t.set_config(ConfigKey::QueueExpireBatchSize, Value::Uint8(2));
 
 	t.mock_clock().set_millis(3_600_001);
 	let mut task = sweeper(&t);
@@ -406,7 +406,7 @@ fn test_a_backlog_deeper_than_the_budget_drains_across_slices() {
 }
 
 #[test]
-fn test_retention_sweeps_a_finished_item_in_every_partition() {
+fn test_expire_sweeps_a_finished_item_in_every_partition() {
 	// Partitions have no fixed range, so a sweep that missed one would keep its history forever.
 	let t = engine_with_queue(
 		r#"CREATE QUEUE test::jobs { id: int4, region: utf8 } WITH { partition: { by: { region } }, fifo: {}, retention: { done: 1h } }"#,

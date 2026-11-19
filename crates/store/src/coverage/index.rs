@@ -241,7 +241,7 @@ mod tests {
 
 	#[test]
 	fn a_dimension_shrunk_to_nothing_leaves_the_map() {
-		// An emptied set reads exactly like an absent one, so keeping it is retention without a reader.
+		// An emptied set reads exactly like an absent one, so keeping it is memory held for no reader.
 		let mut index = index();
 		index.extend(1, e("c"), Edge::just_past(&k("c")));
 

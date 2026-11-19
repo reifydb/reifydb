@@ -292,8 +292,8 @@ impl FlowEngineInner {
 		let left_schema = entry_schema(&left_schema, &left_decoded, &left_kept);
 		let right_schema = entry_schema(&right_schema, &right_decoded, &right_kept);
 
-		let left_retention = with.retention.as_ref().and_then(|j| j.left.as_ref()).map(|t| t.duration);
-		let right_retention = with.retention.as_ref().and_then(|j| j.right.as_ref()).map(|t| t.duration);
+		let left_lateness = with.lateness.as_ref().and_then(|j| j.left);
+		let right_lateness = with.lateness.as_ref().and_then(|j| j.right);
 
 		self.operators.insert(
 			(flow_id, operator_id),
@@ -316,8 +316,8 @@ impl FlowEngineInner {
 				with.emit,
 				natural,
 				with.pick,
-				left_retention,
-				right_retention,
+				left_lateness,
+				right_lateness,
 				Arc::clone(ctx),
 			)?),
 		);
@@ -409,7 +409,7 @@ impl FlowEngineInner {
 		let right_decoded = decoded_schema(&right_stored, |id| self.catalog.find_dictionary(txn, id))?;
 		let right_schema = mark_schema(&entry_schema(&right_stored, &right_decoded, &right_kept), &right_tags)?;
 		let right_kept = right_kept.into_iter().collect();
-		let left_retention = with.retention.as_ref().map(|retention| retention.duration);
+		let left_lateness = with.lateness;
 
 		let operator = LookupOperator::new(LookupConfig {
 			operator: operator_id,
@@ -432,7 +432,7 @@ impl FlowEngineInner {
 			left_schema,
 			right_schema,
 			alias,
-			left_retention,
+			left_lateness,
 			routines: self.routines.clone(),
 			runtime_context: self.runtime_context.clone(),
 			ctx: Arc::clone(ctx),

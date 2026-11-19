@@ -5,13 +5,13 @@
 // views, but register through a separate path, so the read contract is covered twice.
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{interface::catalog::flow::OperatorId, lifecycle::operator::ListOperatorRetention};
+use reifydb_core::{interface::catalog::flow::OperatorId, lifecycle::operator::ListOperatorHorizon};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{duration::Duration, identity::IdentityId};
 
 #[test]
-fn deferred_append_view_persists_no_operator_retention() {
+fn deferred_append_view_persists_no_operator_horizon() {
 	// Append is stateless, so it must reach the catalog carrying nothing a reaper could act on.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -30,9 +30,9 @@ fn deferred_append_view_persists_no_operator_retention() {
 	let node_ids: Vec<_> =
 		catalog.get_flow_dag(&mut Transaction::Admin(&mut txn), flow.id).unwrap().get_operator_ids().collect();
 
-	let ttls = retentions_of(&catalog, &node_ids);
+	let ttls = horizons_of(&catalog, &node_ids);
 
-	assert!(ttls.is_empty(), "no operator in an append flow may carry a retention, found {ttls:?}");
+	assert!(ttls.is_empty(), "no operator in an append flow may carry a horizon, found {ttls:?}");
 }
 
 #[test]
@@ -71,7 +71,7 @@ fn deferred_join_view_persists_join_ttl() {
 	let node_ids: Vec<_> =
 		catalog.get_flow_dag(&mut Transaction::Admin(&mut txn), flow.id).unwrap().get_operator_ids().collect();
 
-	let ttls = retentions_of(&catalog, &node_ids);
+	let ttls = horizons_of(&catalog, &node_ids);
 
 	assert_eq!(
 		ttls,
@@ -80,11 +80,11 @@ fn deferred_join_view_persists_join_ttl() {
 	);
 }
 
-fn retentions_of(catalog: &Catalog, operators: &[OperatorId]) -> Vec<Duration> {
-	// Reads the list the lifecycle horizon reads, so a retention missing here never bounds history.
-	catalog.list_operator_retention()
+fn horizons_of(catalog: &Catalog, operators: &[OperatorId]) -> Vec<Duration> {
+	// Reads the list the lifecycle horizon reads, so a horizon missing here never bounds history.
+	catalog.list_operator_horizon()
 		.into_iter()
 		.filter(|(operator, _)| operators.contains(operator))
-		.map(|(_, retention)| retention.duration)
+		.map(|(_, horizon)| horizon.duration)
 		.collect()
 }

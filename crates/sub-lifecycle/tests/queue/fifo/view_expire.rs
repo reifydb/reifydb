@@ -22,7 +22,7 @@ use reifydb_core::{
 		queue::{QueueAttemptKey, QueueItemStateKey},
 		row::RowKey,
 	},
-	lifecycle::{class::RetentionClass, metrics::RetentionMetrics, progress::Progress, task::LifecycleTask},
+	lifecycle::{class::LifecycleClass, metrics::LifecycleMetrics, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::{
 	engine::StandardEngine,
@@ -37,7 +37,7 @@ use reifydb_runtime::{
 	},
 	context::transaction::TransactionContext,
 };
-use reifydb_sub_lifecycle::{plane::RetentionPlane, queue::retention::QueueRetentionTask};
+use reifydb_sub_lifecycle::{plane::LifecyclePlane, queue::expire::QueueExpireTask};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::{
@@ -86,11 +86,11 @@ fn handoff_recorder(
 		.clone()
 }
 
-fn sweeper(t: &TestEngine) -> QueueRetentionTask {
+fn sweeper(t: &TestEngine) -> QueueExpireTask {
 	let engine: &StandardEngine = t.inner();
-	QueueRetentionTask::new(
+	QueueExpireTask::new(
 		engine.clone(),
-		RetentionPlane::for_engine(engine, RetentionMetrics::new()),
+		LifecyclePlane::for_engine(engine, LifecycleMetrics::new()),
 		engine.clock().clone(),
 		Arc::new(engine.catalog()) as Arc<dyn GetConfig>,
 	)
@@ -128,7 +128,7 @@ fn enqueue(t: &TestEngine, queue: &Queue) {
 
 #[test]
 fn a_finished_view_item_with_no_running_flow_stays_in_the_view() {
-	// Without a running flow retention must leave the item, or it becomes a second writer on a view queue.
+	// Without a running flow expiry must leave the item, or it becomes a second writer on a view queue.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::src { id: int4 } WITH { time: processing }");
@@ -185,10 +185,10 @@ fn view_of_queue(t: &TestEngine) -> ViewId {
 	catalog.find_view_by_name(&mut txn, namespace.id(), "q").unwrap().unwrap().id()
 }
 
-fn retention(t: &TestEngine) -> (QueueRetentionTask, RetentionPlane) {
+fn expire(t: &TestEngine) -> (QueueExpireTask, LifecyclePlane) {
 	let engine: &StandardEngine = t.inner();
-	let plane = RetentionPlane::for_engine(engine, RetentionMetrics::new());
-	let task = QueueRetentionTask::new(
+	let plane = LifecyclePlane::for_engine(engine, LifecycleMetrics::new());
+	let task = QueueExpireTask::new(
 		engine.clone(),
 		plane.clone(),
 		engine.clock().clone(),
@@ -217,8 +217,8 @@ fn item_states(t: &TestEngine, queue: QueueId) -> usize {
 		.len()
 }
 
-fn deleted(plane: &RetentionPlane) -> u64 {
-	plane.snapshot(RetentionClass::QueueRetention).work_done
+fn deleted(plane: &LifecyclePlane) -> u64 {
+	plane.snapshot(LifecycleClass::QueueDoneTtl).work_done
 }
 
 fn record_handoffs(t: &TestEngine) -> mpsc::Receiver<(Vec<EncodedKey>, RemoveVisibility)> {
@@ -253,15 +253,15 @@ fn a_view_queue_with_no_running_flow_keeps_its_item_and_its_attempts() {
 	// A view queue with no flow must be skipped as backlog, never swept by a second writer.
 	let t = TestEngine::new();
 	let queue = finished_view_item(&t);
-	let (mut task, plane) = retention(&t);
+	let (mut task, plane) = expire(&t);
 
-	assert_eq!(task.run_slice(), Progress::Exhausted, "a skipped view queue must never make retention yield");
+	assert_eq!(task.run_slice(), Progress::Exhausted, "a skipped view queue must never make expiry yield");
 
 	assert!(row_stored(&t, queue.id), "with no flow the item row must stay");
 	assert_eq!(attempts(&t, queue.id), 1, "with no flow the attempt keys must stay");
 	assert_eq!(item_states(&t, queue.id), 1, "with no flow the item state must stay");
 	assert_eq!(
-		plane.snapshot(RetentionClass::QueueRetention).backlog_hint,
+		plane.snapshot(LifecycleClass::QueueDoneTtl).backlog_hint,
 		1,
 		"a skipped view queue must be reported as backlog"
 	);
@@ -269,18 +269,18 @@ fn a_view_queue_with_no_running_flow_keeps_its_item_and_its_attempts() {
 
 #[test]
 fn a_handed_view_item_keeps_its_attempts_until_the_row_is_gone() {
-	// Attempt keys removed at send would leave a row that retention can never date again.
+	// Attempt keys removed at send would leave a row that expiry can never date again.
 	let t = TestEngine::new();
 	let queue = finished_view_item(&t);
 	let received = record_handoffs(&t);
-	let (mut task, plane) = retention(&t);
+	let (mut task, plane) = expire(&t);
 	let before = t.current_version().unwrap();
 
 	for slice in 1..=2 {
 		task.run_slice();
 		let (keys, visibility) = received
 			.recv_timeout(Duration::from_seconds(10).unwrap().to_std())
-			.expect("retention must hand the row to the flow");
+			.expect("expiry must hand the row to the flow");
 		assert_eq!(
 			keys,
 			vec![TaggedKey::from(RowKey::new(queue.id, RowNumber(1))).encode()],
@@ -290,7 +290,7 @@ fn a_handed_view_item_keeps_its_attempts_until_the_row_is_gone() {
 		assert_eq!(attempts(&t, queue.id), 1, "slice {slice}: the attempt keys must wait for the row to go");
 		assert_eq!(item_states(&t, queue.id), 1, "slice {slice}: the item state must wait for the row to go");
 	}
-	assert_eq!(t.current_version().unwrap(), before, "retention must not commit a view queue's row itself");
+	assert_eq!(t.current_version().unwrap(), before, "expiry must not commit a view queue's row itself");
 	assert_eq!(deleted(&plane), 0, "an item must not count as deleted at send");
 }
 
@@ -300,7 +300,7 @@ fn a_view_item_whose_row_is_gone_loses_only_its_attempt_keys_and_then_its_state(
 	let t = TestEngine::new();
 	let queue = finished_view_item(&t);
 	let received = record_handoffs(&t);
-	let (mut task, plane) = retention(&t);
+	let (mut task, plane) = expire(&t);
 
 	task.run_slice();
 	received.recv_timeout(Duration::from_seconds(10).unwrap().to_std()).expect("precondition: the row is sent");
@@ -317,7 +317,7 @@ fn a_view_item_whose_row_is_gone_loses_only_its_attempt_keys_and_then_its_state(
 	assert_eq!(commits.len(), 1, "the attempt keys must go in exactly one commit");
 	assert!(
 		!commits[0].is_empty() && commits[0].iter().all(|key| matches!(key, TaggedKey::QueueAttempt(_))),
-		"retention's own commit must hold attempt keys only: {:?}",
+		"expiry's own commit must hold attempt keys only: {:?}",
 		commits[0]
 	);
 	assert!(
@@ -333,7 +333,7 @@ fn a_view_item_whose_row_is_gone_loses_only_its_attempt_keys_and_then_its_state(
 
 #[test]
 fn a_plain_queue_item_is_still_swept_in_one_commit() {
-	// The view queue branch must never leak into a plain queue, which retention still owns alone.
+	// The view queue branch must never leak into a plain queue, which expiry still owns alone.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }");
@@ -357,7 +357,7 @@ fn a_plain_queue_item_is_still_swept_in_one_commit() {
 	t.mock_clock().set_millis(3_600_001);
 	let before = t.current_version().unwrap().0;
 
-	let (mut task, _plane) = retention(&t);
+	let (mut task, _plane) = expire(&t);
 	assert_eq!(task.run_slice(), Progress::Exhausted);
 
 	assert!(!row_stored(&t, queue.id), "the plain queue row must be gone");

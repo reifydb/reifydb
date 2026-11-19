@@ -80,7 +80,7 @@ fn disabled_boot_refuses_a_leftover_wal_dir() {
 		assert!(message.contains("wal is disabled"), "unexpected boot panic: {message}");
 		Ok(())
 	})
-	.expect("temp dir lifecycle must succeed");
+	.expect("temp dir must succeed");
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn enabled_boot_refuses_a_saved_lsn_past_the_wal_head() {
 		assert!(message.contains("single.db is saved through lsn"), "unexpected boot panic: {message}");
 		Ok(())
 	})
-	.expect("temp dir lifecycle must succeed");
+	.expect("temp dir must succeed");
 }
 
 #[test]
@@ -121,7 +121,7 @@ fn enabled_wal_replays_single_records_after_restart() {
 		assert_eq!(row_count(&frames), 3, "a row was overwritten, so the sequence was not replayed");
 		Ok(())
 	})
-	.expect("temp dir lifecycle must succeed");
+	.expect("temp dir must succeed");
 }
 
 #[test]
@@ -138,5 +138,5 @@ fn a_commit_returns_with_the_wal_off() {
 		assert_eq!(row_count(&frames), 1, "the commit must be visible");
 		Ok(())
 	})
-	.expect("temp dir lifecycle must succeed");
+	.expect("temp dir must succeed");
 }

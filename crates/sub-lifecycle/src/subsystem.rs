@@ -13,7 +13,7 @@ use std::{
 
 use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
-	lifecycle::{class::RetentionClass, coverage::RetentionCoverage},
+	lifecycle::{class::LifecycleClass, coverage::LifecycleCoverage},
 };
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorHandle},
@@ -24,33 +24,33 @@ use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::error::ValueError;
 use tracing::{debug, error, info};
 
-use crate::{actor::LifecycleMessage, plane::RetentionPlane};
+use crate::{actor::LifecycleMessage, plane::LifecyclePlane};
 
 pub struct LifecycleSubsystem {
 	actor_refs: Vec<ActorRef<LifecycleMessage>>,
 	handles: Mutex<Vec<ActorHandle<LifecycleMessage>>>,
 	task_names: Vec<&'static str>,
-	covered: HashSet<RetentionClass>,
-	plane: RetentionPlane,
+	covered: HashSet<LifecycleClass>,
+	plane: LifecyclePlane,
 	running: Arc<AtomicBool>,
 }
 
-fn report_retention_classes(task_names: &[&'static str], coverage: &RetentionCoverage) {
+fn report_lifecycle_classes(task_names: &[&'static str], coverage: &LifecycleCoverage) {
 	info!(tasks = task_names.len(), names = ?task_names, "Lifecycle subsystem started");
-	for class in RetentionClass::all() {
+	for class in LifecycleClass::all() {
 		let terms: Vec<String> = class.floor_terms().iter().map(|term| term.to_string()).collect();
 		match (coverage.owner(*class), coverage.absence(*class)) {
 			(Some(owner), _) => {
-				info!(class = class.name(), owner, floor = ?terms, "lifecycle retention class")
+				info!(class = class.name(), owner, floor = ?terms, "lifecycle class")
 			}
 			(None, Some(reason)) => info!(
 				class = class.name(),
-				reason, "lifecycle retention class has no producer here; nothing can accumulate in it"
+				reason, "lifecycle class has no producer here; nothing can accumulate in it"
 			),
 			(None, None) => error!(
 				class = class.name(),
 				floor = ?terms,
-				"lifecycle retention class has NO registered executor; nothing reclaims it"
+				"lifecycle class has NO registered executor; nothing reclaims it"
 			),
 		}
 	}
@@ -60,11 +60,11 @@ impl LifecycleSubsystem {
 	pub fn new(
 		handles: Vec<ActorHandle<LifecycleMessage>>,
 		task_names: Vec<&'static str>,
-		coverage: RetentionCoverage,
-		plane: RetentionPlane,
+		coverage: LifecycleCoverage,
+		plane: LifecyclePlane,
 	) -> Self {
-		report_retention_classes(&task_names, &coverage);
-		let covered = RetentionClass::all().iter().filter(|c| coverage.is_covered(**c)).copied().collect();
+		report_lifecycle_classes(&task_names, &coverage);
+		let covered = LifecycleClass::all().iter().filter(|c| coverage.is_covered(**c)).copied().collect();
 		Self {
 			actor_refs: handles.iter().map(|handle| handle.actor_ref().clone()).collect(),
 			handles: Mutex::new(handles),
@@ -79,11 +79,11 @@ impl LifecycleSubsystem {
 		&self.task_names
 	}
 
-	pub fn covered_classes(&self) -> &HashSet<RetentionClass> {
+	pub fn covered_classes(&self) -> &HashSet<LifecycleClass> {
 		&self.covered
 	}
 
-	pub fn plane(&self) -> &RetentionPlane {
+	pub fn plane(&self) -> &LifecyclePlane {
 		&self.plane
 	}
 

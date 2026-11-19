@@ -21,8 +21,8 @@ pub fn assert_returns_every_fd(label: &str, cycles: usize, mut body: impl FnMut(
 	let after = open_fd_count();
 	assert!(
 		after <= before + FD_SLACK,
-		"{label}: open file descriptors grew from {before} to {after} across {cycles} lifecycles (slack \
-		 {FD_SLACK}); a database lifecycle is leaking fds, the SQLITE_CANTOPEN failure mode"
+		"{label}: open file descriptors grew from {before} to {after} across {cycles} cycles (slack \
+		 {FD_SLACK}); a database cycle is leaking fds, the SQLITE_CANTOPEN failure mode"
 	);
 }
 

@@ -7,9 +7,9 @@ mod dst {
 	pub mod helpers;
 
 	mod determinism;
-	mod lifecycle;
 	mod ordering;
 	mod scope;
 	mod seed;
+	mod stop;
 	mod timers;
 }

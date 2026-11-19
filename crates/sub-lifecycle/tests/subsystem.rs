@@ -8,7 +8,7 @@
 
 use reifydb_core::{
 	interface::version::ComponentType,
-	lifecycle::{metrics::RetentionMetrics, registry::LifecycleRegistry},
+	lifecycle::{metrics::LifecycleMetrics, registry::LifecycleRegistry},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
@@ -23,7 +23,7 @@ fn boot() -> (TestEngine, Box<dyn Subsystem>) {
 		.clone()
 		.register(engine.clone())
 		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new());
+		.register(LifecycleMetrics::new());
 	let subsystem =
 		Box::new(LifecycleSubsystemFactory).create(&ioc).expect("the lifecycle subsystem must always start");
 	(test_engine, subsystem)

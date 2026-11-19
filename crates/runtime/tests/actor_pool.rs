@@ -400,7 +400,7 @@ impl Actor for EphemeralActor {
 }
 
 #[test]
-fn ephemeral_lifecycle_and_spawn_task() {
+fn ephemeral_life_and_spawn_task() {
 	// Ephemeral actors share the task pool with one-shot spawn_task closures, so neither may
 	// starve the other.
 	let rt = runtime(1, 1, 2);

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},
-	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
+	lifecycle::{class::LifecycleClass, progress::Progress, task::LifecycleTask},
 };
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::value::duration::Duration;
@@ -34,8 +34,8 @@ impl LifecycleTask for CommitMergeTask {
 		self.config.get_config_duration(ConfigKey::CommitMergeInterval)
 	}
 
-	fn classes(&self) -> &'static [RetentionClass] {
-		&[RetentionClass::CommitMerge]
+	fn classes(&self) -> &'static [LifecycleClass] {
+		&[LifecycleClass::CommitMerge]
 	}
 
 	#[instrument(name = "lifecycle::store::merge::slice", level = "debug", skip_all)]

@@ -26,13 +26,13 @@ fn window_key() -> Vec<String> {
 	vec!["group".to_string(), "window_start".to_string()]
 }
 
-fn window_with(retention: Option<u64>) -> ApplyWith {
+fn window_with(immutable: Option<u64>) -> ApplyWith {
 	ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(common::WINDOW)),
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
-		immutable: retention.map(|span| WithSpan::Duration(millis(span))),
+		immutable: immutable.map(|span| WithSpan::Duration(millis(span))),
 		retention: None,
 	}
 }
@@ -45,7 +45,7 @@ fn price_sampler(none_values: bool) -> ColumnSampler {
 	}
 }
 
-fn run(none_values: bool, scenario: Scenario, seed: u64, retention: Option<u64>) -> ChaosOutcome {
+fn run(none_values: bool, scenario: Scenario, seed: u64, immutable: Option<u64>) -> ChaosOutcome {
 	ChaosHarness::<CarryDriver<TwapCarry>>::builder()
 		.with_input_shape(common::carry_shape())
 		.with_output_shape(common::carry_out_shape())
@@ -56,11 +56,11 @@ fn run(none_values: bool, scenario: Scenario, seed: u64, retention: Option<u64>)
 		.with_column("ts", samplers::u64_range(0..300))
 		.with_column("price", price_sampler(none_values))
 		.with_scenario(scenario)
-		.with(window_with(retention))
+		.with(window_with(immutable))
 		.with_oracle(move |ctx, batches| {
 			tumbling_carry_accumulator_oracle(
 				&TwapCarry,
-				&common::settings(&window_with(retention)),
+				&common::settings(&window_with(immutable)),
 				ctx,
 				batches,
 				&window_key(),
@@ -76,16 +76,16 @@ fn run(none_values: bool, scenario: Scenario, seed: u64, retention: Option<u64>)
 fn carry_matches_across_configs_and_seeds() {
 	for &seed in &common::SEEDS {
 		{
-			for retention in [None, Some(90)] {
-				run(false, common::baseline(150, SupportedOps::insert_only()), seed, retention)
+			for immutable in [None, Some(90)] {
+				run(false, common::baseline(150, SupportedOps::insert_only()), seed, immutable)
 					.assert_matches();
-				run(false, common::baseline(150, SupportedOps::no_remove()), seed, retention)
+				run(false, common::baseline(150, SupportedOps::no_remove()), seed, immutable)
 					.assert_matches();
-				run(false, common::baseline(150, SupportedOps::no_update()), seed, retention)
+				run(false, common::baseline(150, SupportedOps::no_update()), seed, immutable)
 					.assert_matches();
-				run(false, common::baseline(200, SupportedOps::all()), seed, retention)
+				run(false, common::baseline(200, SupportedOps::all()), seed, immutable)
 					.assert_matches();
-				run(false, common::full_chaos(250), seed, retention).assert_matches();
+				run(false, common::full_chaos(250), seed, immutable).assert_matches();
 			}
 		}
 	}
@@ -95,8 +95,8 @@ fn carry_matches_across_configs_and_seeds() {
 fn carry_handles_none_inputs() {
 	for &seed in &common::SEEDS {
 		{
-			for retention in [None, Some(90)] {
-				run(true, common::full_chaos(200), seed, retention).assert_matches();
+			for immutable in [None, Some(90)] {
+				run(true, common::full_chaos(200), seed, immutable).assert_matches();
 			}
 		}
 	}

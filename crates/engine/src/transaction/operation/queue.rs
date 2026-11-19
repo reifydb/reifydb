@@ -88,7 +88,7 @@ mod tests {
 		delta::{Delta, SetPre},
 		interface::catalog::{
 			id::{NamespaceId, QueueId},
-			queue::{QueueDispatch, QueueRetention, QueueRetry},
+			queue::{QueueDispatch, QueueDone, QueueRetry},
 		},
 		key::{any::TaggedKey, row::RowKey},
 	};
@@ -107,7 +107,7 @@ mod tests {
 			partition_by: vec!["tenant".to_string()],
 			dispatch: QueueDispatch::default(),
 			deduplicate: None,
-			retention: QueueRetention::default(),
+			done: QueueDone::default(),
 			retry: QueueRetry::default(),
 			time: TimeSource::None,
 		}

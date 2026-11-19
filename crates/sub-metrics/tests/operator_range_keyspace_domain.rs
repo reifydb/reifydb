@@ -91,7 +91,7 @@ fn operator_range_keyspace_pins_the_published_layout() {
 
 #[test]
 fn operator_range_keyspace_updates_rows_and_writes_no_snapshot_series() {
-	// Census retains only the keyspaces in the latest sample, dropping lifetime counters once buckets evict.
+	// Census keeps only the keyspaces in the latest sample, dropping lifetime counters once buckets evict.
 	assert_eq!(MetricsDomain::StoreOperatorRangeKeyspace.push_kind(), PushKind::Update);
 	// No series id is reserved for this domain, so a snapshot path would write into nothing.
 	assert_eq!(MetricsDomain::StoreOperatorRangeKeyspace.snapshots_path(), None);

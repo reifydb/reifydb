@@ -50,7 +50,7 @@ use crate::{
 			key::{OperatorByFlowKey, OperatorKey},
 			state::{GroupId, KeyspaceId, OperatorStateKey},
 		},
-		operator_retention::OperatorRetentionKey,
+		operator_horizon::OperatorHorizonKey,
 		output_watermark::OutputWatermarkKey,
 		partition::PartitionKey,
 		procedure::{ProcedureKey, ProcedureParamKey},
@@ -384,7 +384,7 @@ fn representative(kind: KeyTag) -> EncodedKey {
 			binding: BindingId(1),
 		}
 		.encode(),
-		KeyTag::OperatorRetention => OperatorRetentionKey {
+		KeyTag::OperatorHorizon => OperatorHorizonKey {
 			operator: OperatorId(1),
 		}
 		.encode(),

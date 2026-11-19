@@ -48,7 +48,7 @@ fn snapshot_latest_left_join(db: &TestDb, tail: &str) {
 		}}"#));
 }
 
-fn snapshot_latest_left_join_with_right_retention(db: &TestDb, tail: &str) {
+fn snapshot_latest_left_join_with_right_lateness(db: &TestDb, tail: &str) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::lhs { id: int4, k: int4, lv: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE TABLE app::rhs { id: int4, k: int4, rv: int4, ts: datetime } with { time: event(ts) }");
@@ -144,7 +144,7 @@ fn the_left_side_is_never_stored() {
 fn a_left_row_joins_only_the_newest_right_row_and_keeps_it_through_the_seal() {
 	// A sealed right row retires its bytes into the pin, so the pair it published must outlive the row itself.
 	let db = setup();
-	snapshot_latest_left_join_with_right_retention(&db, "");
+	snapshot_latest_left_join_with_right_lateness(&db, "");
 	insert_right_a(&db);
 	insert_right_b_later(&db);
 	db.await_all_flows(TIMEOUT);

@@ -38,7 +38,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_sub_lifecycle::{
 	gc::historical::actor::HistoricalGcTask,
-	plane::{RetentionPlane, ledger::FloorSource},
+	plane::{LifecyclePlane, ledger::FloorSource},
 };
 use reifydb_value::{util::cowvec::CowVec, value::Value};
 
@@ -115,7 +115,7 @@ fn visible_at(store: &StandardMultiStore, name: &str, version: u64) -> Option<St
 }
 
 fn task(store: StandardMultiStore, floor: ScriptedFloor) -> HistoricalGcTask {
-	let plane = RetentionPlane::new(Arc::new(floor), VersionEpoch::new());
+	let plane = LifecyclePlane::new(Arc::new(floor), VersionEpoch::new());
 	HistoricalGcTask::new(store, plane, Clock::testing(), Arc::new(StubConfig))
 }
 

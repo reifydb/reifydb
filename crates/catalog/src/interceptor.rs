@@ -331,14 +331,14 @@ impl PrePublishInterceptor for CatalogCacheInterceptor {
 			self.catalog.set_row_settings(*object, version, settings);
 		}
 
-		for change in &ctx.changes.operator_retention {
+		for change in &ctx.changes.operator_horizon {
 			let (operator, _) = change
 				.post
 				.as_ref()
 				.or(change.pre.as_ref())
 				.expect("Change must have either pre or post state");
-			let retention = change.post.as_ref().map(|(_, retention)| retention.clone());
-			self.catalog.set_operator_retention(*operator, version, retention);
+			let horizon = change.post.as_ref().map(|(_, horizon)| horizon.clone());
+			self.catalog.set_operator_horizon(*operator, version, horizon);
 		}
 
 		for change in &ctx.changes.primary_key {

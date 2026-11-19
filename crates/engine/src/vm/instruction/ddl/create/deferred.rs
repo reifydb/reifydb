@@ -42,7 +42,7 @@ pub(crate) fn create_deferred_view(
 		CompiledViewStorageKind::Queue {
 			partition_by,
 			dispatch,
-			retention,
+			done,
 			retry,
 		} => {
 			let queue = services.catalog.create_queue(
@@ -65,7 +65,7 @@ pub(crate) fn create_deferred_view(
 					partition_by: partition_by.clone(),
 					dispatch: dispatch.clone(),
 					deduplicate: None,
-					retention: retention.clone(),
+					done: done.clone(),
 					retry: retry.clone(),
 					time: TimeSource::None,
 				},

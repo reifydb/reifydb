@@ -1122,18 +1122,18 @@ fn a_take_operator_keeps_the_newest_rows_and_promotes_on_retraction() {
 	let mut session = Session::new(&mut harness);
 
 	session.apply(workload.insert(&[row(1, 10), row(2, 20)])).expect("apply must succeed");
-	assert_eq!(retained_identities(session.view()), vec![1, 2], "both rows fit under the limit");
+	assert_eq!(kept_identities(session.view()), vec![1, 2], "both rows fit under the limit");
 
 	session.apply(workload.insert(&[row(3, 30)])).expect("apply must succeed");
 	assert_eq!(
-		retained_identities(session.view()),
+		kept_identities(session.view()),
 		vec![2, 3],
 		"a third arrival against a limit of two must evict the oldest, not refuse the newcomer"
 	);
 
 	session.apply(workload.remove(&row(3, 30))).expect("apply must succeed");
 	assert_eq!(
-		retained_identities(session.view()),
+		kept_identities(session.view()),
 		vec![1, 2],
 		"a freed slot must promote the newest evicted row back rather than leave the view short"
 	);
@@ -1159,7 +1159,7 @@ fn an_update_does_not_make_a_row_newer_than_rows_that_arrived_after_it() {
 	session.apply(workload.insert(&[row(3, 30)])).expect("apply must succeed");
 
 	assert_eq!(
-		retained_identities(session.view()),
+		kept_identities(session.view()),
 		vec![2, 3],
 		"row 1 was updated, not re-admitted, so it must still be the oldest and the one evicted"
 	);
@@ -1179,19 +1179,19 @@ fn a_row_removed_and_inserted_back_is_the_newest_row_take_holds() {
 
 	session.apply(workload.insert(&[row(1, 10, 1), row(2, 20, 2)])).expect("apply must succeed");
 	session.apply(workload.insert(&[row(3, 30, 3)])).expect("apply must succeed");
-	assert_eq!(retained_identities(session.view()), vec![2, 3], "row 1 is the oldest, so it is the one evicted");
+	assert_eq!(kept_identities(session.view()), vec![2, 3], "row 1 is the oldest, so it is the one evicted");
 
 	// The two legs of a split update, which is the only way a row number is ever inserted twice.
 	session.apply(workload.remove(&row(1, 10, 1))).expect("apply must succeed");
 	assert_eq!(
-		retained_identities(session.view()),
+		kept_identities(session.view()),
 		vec![2, 3],
 		"retracting an evicted row touches no published row, so the view must not move"
 	);
 
 	session.apply(workload.insert(&[row(1, 11, 4)])).expect("apply must succeed");
 	assert_eq!(
-		retained_identities(session.view()),
+		kept_identities(session.view()),
 		vec![1, 3],
 		"the re-admitted row carries the newest stamp, so it must enter and evict row 2"
 	);
@@ -1226,7 +1226,7 @@ fn take_never_publishes_more_than_its_limit_or_a_row_that_is_not_live() {
 		);
 	}
 
-	// Retract from the newest end, which is where the retained rows are, so every retraction frees a
+	// Retract from the newest end, which is where the kept rows are, so every retraction frees a
 	// slot and reaches for a candidate.
 	while let Some(row) = live.pop() {
 		session.apply(workload.remove(&row)).expect("apply must succeed");
@@ -1236,7 +1236,7 @@ fn take_never_publishes_more_than_its_limit_or_a_row_that_is_not_live() {
 			session.view().len()
 		);
 		let alive: BTreeSet<i32> = live.iter().map(|r| r.identity()).collect();
-		let published = retained_identities(session.view());
+		let published = kept_identities(session.view());
 		for identity in &published {
 			assert!(
 				alive.contains(identity),
@@ -1251,7 +1251,7 @@ fn take_never_publishes_more_than_its_limit_or_a_row_that_is_not_live() {
 
 /// The identity column of every row in a published view, ascending. Take carries the source row
 /// number through, and the workload puts it in a column, so this names exactly which rows survived.
-fn retained_identities(view: &MaterializedView) -> Vec<i32> {
+fn kept_identities(view: &MaterializedView) -> Vec<i32> {
 	let mut out: Vec<i32> = view
 		.rows
 		.values()

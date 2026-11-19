@@ -59,7 +59,7 @@ pub enum FloorTerm {
 
 	ConsumerPosition,
 
-	RetentionHorizon,
+	Horizon,
 }
 
 impl FloorTerm {
@@ -69,21 +69,19 @@ impl FloorTerm {
 			Self::QueryDoneUntil => "an in-flight query reading at its snapshot version",
 			Self::LeaseMin => "a held operator-state lease",
 			Self::ConsumerPosition => "a live flow that has not yet consumed the version",
-			Self::RetentionHorizon => "epoch samples still needed to resolve the longest declared ttl",
+			Self::Horizon => "epoch samples still needed to resolve the longest declared ttl",
 		}
 	}
 
 	pub fn is_clock_driven(&self) -> bool {
 		match self {
 			Self::RowExpiry => true,
-			Self::QueryDoneUntil | Self::LeaseMin | Self::ConsumerPosition | Self::RetentionHorizon => {
-				false
-			}
+			Self::QueryDoneUntil | Self::LeaseMin | Self::ConsumerPosition | Self::Horizon => false,
 		}
 	}
 
 	pub fn all() -> &'static [Self] {
-		&[Self::RowExpiry, Self::QueryDoneUntil, Self::LeaseMin, Self::ConsumerPosition, Self::RetentionHorizon]
+		&[Self::RowExpiry, Self::QueryDoneUntil, Self::LeaseMin, Self::ConsumerPosition, Self::Horizon]
 	}
 
 	pub fn index(&self) -> usize {
@@ -102,13 +100,13 @@ impl fmt::Display for FloorTerm {
 			Self::QueryDoneUntil => write!(f, "query-done-until"),
 			Self::LeaseMin => write!(f, "lease-min"),
 			Self::ConsumerPosition => write!(f, "consumer-position"),
-			Self::RetentionHorizon => write!(f, "retention-horizon"),
+			Self::Horizon => write!(f, "horizon"),
 		}
 	}
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum RetentionClass {
+pub enum LifecycleClass {
 	RowTtl,
 
 	BufferHistoricalGc,
@@ -117,21 +115,21 @@ pub enum RetentionClass {
 
 	QueueLeaseReap,
 
-	QueueRetention,
+	QueueDoneTtl,
 
 	EpochLog,
 
 	CommitMerge,
 }
 
-impl RetentionClass {
+impl LifecycleClass {
 	pub fn all() -> &'static [Self] {
 		&[
 			Self::RowTtl,
 			Self::BufferHistoricalGc,
 			Self::PersistentFlush,
 			Self::QueueLeaseReap,
-			Self::QueueRetention,
+			Self::QueueDoneTtl,
 			Self::EpochLog,
 			Self::CommitMerge,
 		]
@@ -143,7 +141,7 @@ impl RetentionClass {
 			Self::BufferHistoricalGc => "buffer-historical-gc",
 			Self::PersistentFlush => "persistent-flush",
 			Self::QueueLeaseReap => "queue-lease-reap",
-			Self::QueueRetention => "queue-retention",
+			Self::QueueDoneTtl => "queue-done-ttl",
 			Self::EpochLog => "epoch-log",
 			Self::CommitMerge => "commit-merge",
 		}
@@ -155,7 +153,7 @@ impl RetentionClass {
 			| Self::BufferHistoricalGc
 			| Self::PersistentFlush
 			| Self::EpochLog
-			| Self::QueueRetention => true,
+			| Self::QueueDoneTtl => true,
 			Self::QueueLeaseReap | Self::CommitMerge => false,
 		}
 	}
@@ -170,8 +168,8 @@ impl RetentionClass {
 				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::ConsumerPosition]
 			}
 			Self::QueueLeaseReap | Self::CommitMerge => &[],
-			Self::QueueRetention => &[FloorTerm::RowExpiry],
-			Self::EpochLog => &[FloorTerm::RetentionHorizon],
+			Self::QueueDoneTtl => &[FloorTerm::RowExpiry],
+			Self::EpochLog => &[FloorTerm::Horizon],
 		}
 	}
 
@@ -180,7 +178,7 @@ impl RetentionClass {
 	}
 }
 
-impl fmt::Display for RetentionClass {
+impl fmt::Display for LifecycleClass {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "{}", self.name())
 	}
@@ -188,14 +186,14 @@ impl fmt::Display for RetentionClass {
 
 #[cfg(test)]
 mod tests {
-	use super::{FloorTerm, RetentionClass};
+	use super::{FloorTerm, LifecycleClass};
 
 	#[test]
 	fn every_class_declares_a_floor_term_for_exactly_the_data_it_reclaims() {
 		// A class reclaiming versioned data with no floor term deletes at head version. The converse
 		// pins the exemption: a class touching no row, version or tombstone has no honest term to
 		// name, and deleting versioned data under that exemption is what this direction catches.
-		for class in RetentionClass::all() {
+		for class in LifecycleClass::all() {
 			if class.reclaims_versioned_data() {
 				assert!(
 					!class.floor_terms().is_empty(),
@@ -212,7 +210,7 @@ mod tests {
 
 	#[test]
 	fn class_names_are_unique_so_metrics_and_reports_cannot_collide() {
-		let mut names: Vec<&str> = RetentionClass::all().iter().map(|c| c.name()).collect();
+		let mut names: Vec<&str> = LifecycleClass::all().iter().map(|c| c.name()).collect();
 		let total = names.len();
 		names.sort_unstable();
 		names.dedup();
@@ -225,7 +223,7 @@ mod tests {
 		// Row expiry is protected by MVCC-transactional discovery, not by these readers. Sharing one
 		// done until with them lets a wedged reader or a leaked query lease freeze it.
 		{
-			let class = RetentionClass::RowTtl;
+			let class = LifecycleClass::RowTtl;
 			assert!(
 				!class.constrained_by(FloorTerm::LeaseMin),
 				"{class} must not be pinned by an operator-state lease"
@@ -242,7 +240,7 @@ mod tests {
 		// Buffer history is what a live reader resolves against, so an in-flight query and a held
 		// lease must both be present. A lagging subscription rides LeaseMin through its batch lease
 		// rather than holding a term of its own.
-		let class = RetentionClass::BufferHistoricalGc;
+		let class = LifecycleClass::BufferHistoricalGc;
 
 		for term in [FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin] {
 			assert!(
@@ -259,7 +257,7 @@ mod tests {
 		// loudly: a failed acquire triggers a resync, never a silent read of reclaimed history. A
 		// term of its own would let a lagging worker pin buffer history without bound.
 		assert!(
-			RetentionClass::BufferHistoricalGc.constrained_by(FloorTerm::LeaseMin),
+			LifecycleClass::BufferHistoricalGc.constrained_by(FloorTerm::LeaseMin),
 			"an in-flight subscription batch protects its reads through its lease, so LeaseMin must stay"
 		);
 	}
@@ -269,7 +267,7 @@ mod tests {
 		// The commit buffer is RAM and empty after a restart, so only a live reader can be harmed by flushing
 		// it.
 		assert!(
-			RetentionClass::PersistentFlush.constrained_by(FloorTerm::ConsumerPosition),
+			LifecycleClass::PersistentFlush.constrained_by(FloorTerm::ConsumerPosition),
 			"flushing the in-memory buffer may only be held back by a reader that is live now"
 		);
 	}
@@ -279,15 +277,15 @@ mod tests {
 		// Pruning epoch samples below the longest declared ttl makes that ttl unresolvable: the cutoff
 		// silently becomes none and the data it governs never expires.
 		assert!(
-			RetentionClass::EpochLog.constrained_by(FloorTerm::RetentionHorizon),
-			"pruning epoch samples inside the retention horizon would make long ttls unresolvable"
+			LifecycleClass::EpochLog.constrained_by(FloorTerm::Horizon),
+			"pruning epoch samples inside the history horizon would make long ttls unresolvable"
 		);
 	}
 
 	#[test]
 	fn the_query_done_until_is_read_before_the_leases_in_every_class_that_reads_both() {
 		// Leases read first miss a lease the later done-until read passes, so gc collects it.
-		for class in RetentionClass::all() {
+		for class in LifecycleClass::all() {
 			let terms = class.floor_terms();
 			let query = terms.iter().position(|term| *term == FloorTerm::QueryDoneUntil);
 			let lease = terms.iter().position(|term| *term == FloorTerm::LeaseMin);

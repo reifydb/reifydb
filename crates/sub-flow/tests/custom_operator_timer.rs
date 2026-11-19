@@ -6,7 +6,7 @@
 //! #time, and the due timer fires inside the flow transaction that carried the flow watermark past it.
 
 use reifydb::{
-	ConfigKey, SqliteConfig, Value, WithSubsystem, embedded,
+	SqliteConfig, WithSubsystem, embedded,
 	testing::db::{TempDbPath, TestDb},
 };
 use reifydb_codec::key::encoded::EncodedKey;
@@ -126,10 +126,7 @@ impl UnmanagedOperator for Alarm {
 		let key = group_key(g);
 		let group = GroupId::of(&key);
 
-		// Per-group state, so the group has something for the retention pass to erase once it ages
-		// past its horizon. Without it a group is nothing but an identity and reclaim has no work.
 		let fired_at = timer.due.to_millis();
-		ctx.state().set(&[(unmanaged_key_in(group, &[]).expect("an empty id fits the keyspace"), fired_at)])?;
 
 		let (row_number, _is_new) = ctx.get_or_create_row_numbers(group, &[key])?.remove(0);
 		ctx.emit_insert(
@@ -148,9 +145,6 @@ fn setup() -> TestDb {
 	TestDb::from(
 		embedded::memory()
 			.with_flow(|f| f.register_unmanaged_operator::<Alarm>())
-			// The retention ledger is the only surface that reports what the reclaim pass
-			// actually erased; a short sample cadence keeps the polls inside their timeouts.
-			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
 			.expect("build memory db with flow"),
 	)

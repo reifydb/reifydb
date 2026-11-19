@@ -2,26 +2,26 @@
 // Copyright (c) 2026 ReifyDB
 
 //! The lifecycle boot report is the only place that answers "is anything reclaiming this class?".
-//! Coverage is declared by whoever executes it; operator state has no retention class of its own,
+//! Coverage is declared by whoever executes it; operator state has no lifecycle class of its own,
 //! so the report accounts only for the store-side classes.
 
 use reifydb::{WithSubsystem, embedded};
-use reifydb_core::lifecycle::{class::RetentionClass, coverage::RetentionCoverage};
+use reifydb_core::lifecycle::{class::LifecycleClass, coverage::LifecycleCoverage};
 
-fn coverage_of_a_flow_enabled_database() -> RetentionCoverage {
+fn coverage_of_a_flow_enabled_database() -> LifecycleCoverage {
 	let db = embedded::memory().with_flow(|f| f).build().expect("memory database with flow must build");
 	db.engine()
 		.ioc()
-		.try_resolve::<RetentionCoverage>()
-		.expect("the builder must register RetentionCoverage before any subsystem is created")
+		.try_resolve::<LifecycleCoverage>()
+		.expect("the builder must register LifecycleCoverage before any subsystem is created")
 }
 
-fn coverage_of_a_database_without_flow() -> RetentionCoverage {
+fn coverage_of_a_database_without_flow() -> LifecycleCoverage {
 	let db = embedded::memory().build().expect("memory database without flow must build");
 	db.engine()
 		.ioc()
-		.try_resolve::<RetentionCoverage>()
-		.expect("the builder must register RetentionCoverage before any subsystem is created")
+		.try_resolve::<LifecycleCoverage>()
+		.expect("the builder must register LifecycleCoverage before any subsystem is created")
 }
 
 #[test]
@@ -30,7 +30,7 @@ fn no_class_is_both_reclaimed_and_excused() {
 	// land on one class the report's precedence decides which is true, and the loser is a claim nobody
 	// checks - either a phantom executor or a lane excused while something still runs it.
 	for coverage in [coverage_of_a_flow_enabled_database(), coverage_of_a_database_without_flow()] {
-		for class in RetentionClass::all() {
+		for class in LifecycleClass::all() {
 			assert!(
 				!(coverage.is_covered(*class) && coverage.absence(*class).is_some()),
 				"{class} is claimed by {:?} and excused as {:?} at once",
@@ -42,12 +42,12 @@ fn no_class_is_both_reclaimed_and_excused() {
 }
 
 #[test]
-fn every_retention_class_is_either_reclaimed_or_explained() {
+fn every_lifecycle_class_is_either_reclaimed_or_explained() {
 	// What the ERROR branch is left to mean once absence is declarable: nothing unaccounted for, on any
 	// build shape, with no exemption list to bless the next lane that quietly stops registering. A class
 	// added without a decision about who reclaims it fails here rather than at 3am in a log.
 	for coverage in [coverage_of_a_flow_enabled_database(), coverage_of_a_database_without_flow()] {
-		let unaccounted: Vec<&str> = RetentionClass::all()
+		let unaccounted: Vec<&str> = LifecycleClass::all()
 			.iter()
 			.filter(|class| !coverage.is_covered(**class) && coverage.absence(**class).is_none())
 			.map(|class| class.name())
@@ -55,7 +55,7 @@ fn every_retention_class_is_either_reclaimed_or_explained() {
 
 		assert!(
 			unaccounted.is_empty(),
-			"retention classes with no executor and no declared reason: {unaccounted:?}"
+			"lifecycle classes with no executor and no declared reason: {unaccounted:?}"
 		);
 	}
 }
@@ -67,22 +67,22 @@ fn a_lifecycle_task_still_owns_the_classes_it_registered() {
 	// regressed, every non-flow class would start reporting as unreclaimed.
 	let coverage = coverage_of_a_flow_enabled_database();
 
-	assert_eq!(coverage.owner(RetentionClass::EpochLog), Some("epoch-log"));
+	assert_eq!(coverage.owner(LifecycleClass::EpochLog), Some("epoch-log"));
 }
 
 /// Executors that exist only when the store has the tier they operate on. On a memory store the
 /// factory skips them, so their classes have no owner and the boot report names them - accurate,
 /// not a defect. Every other class must be claimed on any store.
-const STORAGE_CONDITIONAL: &[RetentionClass] = &[RetentionClass::PersistentFlush];
+const STORAGE_CONDITIONAL: &[LifecycleClass] = &[LifecycleClass::PersistentFlush];
 
 #[test]
-fn every_retention_class_a_memory_database_can_reclaim_has_an_owner() {
+fn every_lifecycle_class_a_memory_database_can_reclaim_has_an_owner() {
 	// The report's ERROR branch exists to make this claim: with flow on, anything unclaimed is
 	// either genuinely unreclaimed or a lane that forgot to declare itself. Scoping to what a
 	// memory store can reclaim keeps that signal without asserting absent tiers into existence.
 	let coverage = coverage_of_a_flow_enabled_database();
 
-	let unclaimed: Vec<&str> = RetentionClass::all()
+	let unclaimed: Vec<&str> = LifecycleClass::all()
 		.iter()
 		.filter(|c| !STORAGE_CONDITIONAL.contains(c))
 		.filter(|c| !coverage.is_covered(**c))

@@ -86,9 +86,9 @@ pub(super) struct Entry<R> {
 
 	pub pending: Mutex<QueuedKeys>,
 
-	pub retained: Mutex<QueuedKeys>,
+	pub requeued: Mutex<QueuedKeys>,
 
-	pub retained_cursor: Mutex<Option<EncodedKey>>,
+	pub requeued_cursor: Mutex<Option<EncodedKey>>,
 }
 
 impl<R> Entry<R> {
@@ -96,8 +96,8 @@ impl<R> Entry<R> {
 		Self {
 			rows,
 			pending: Mutex::new(QueuedKeys::default()),
-			retained: Mutex::new(QueuedKeys::default()),
-			retained_cursor: Mutex::new(None),
+			requeued: Mutex::new(QueuedKeys::default()),
+			requeued_cursor: Mutex::new(None),
 		}
 	}
 
@@ -110,9 +110,9 @@ impl<R> Entry<R> {
 			pending.remove(key);
 		}
 		drop(pending);
-		let mut retained = self.retained.lock();
+		let mut requeued = self.requeued.lock();
 		for key in keys {
-			retained.remove(key);
+			requeued.remove(key);
 		}
 	}
 }

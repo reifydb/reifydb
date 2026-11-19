@@ -25,20 +25,20 @@ const EXPIRY_BATCH: usize = 256;
 
 #[derive(Debug, Default)]
 pub(crate) struct LookupExpiry {
-	retention: Option<Duration>,
+	lateness: Option<Duration>,
 	index: JoinExpiryIndex,
 }
 
 impl LookupExpiry {
-	pub(crate) fn new(retention: Option<Duration>) -> Self {
+	pub(crate) fn new(lateness: Option<Duration>) -> Self {
 		Self {
-			retention: retention.filter(|span| !span.is_zero()),
+			lateness: lateness.filter(|span| !span.is_zero()),
 			index: JoinExpiryIndex::default(),
 		}
 	}
 
-	pub(crate) fn retention(&self) -> Option<Duration> {
-		self.retention
+	pub(crate) fn lateness(&self) -> Option<Duration> {
+		self.lateness
 	}
 
 	pub(crate) fn timer_key() -> EncodedKey {
@@ -51,13 +51,13 @@ impl LookupExpiry {
 		cleared: &[RowNumber],
 		armed: &[(RowNumber, DateTime)],
 	) -> Result<(), ValueError> {
-		let Some(retention) = self.retention else {
+		let Some(lateness) = self.lateness else {
 			return Ok(());
 		};
 		if cleared.is_empty() && armed.is_empty() {
 			return Ok(());
 		}
-		let rule = SealRule::of(retention);
+		let rule = SealRule::of(lateness);
 		let cleared: Vec<(GroupId, RowNumber)> = cleared.iter().map(|row| (GroupId::ROOT, *row)).collect();
 		for at in host.join_expiry_clear(LEFT_SIDE, &cleared)?.into_iter().flatten() {
 			self.index.cleared(at);
@@ -72,7 +72,7 @@ impl LookupExpiry {
 	}
 
 	pub(crate) fn free_due(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<(), ValueError> {
-		if self.retention.is_none() {
+		if self.lateness.is_none() {
 			return Ok(());
 		}
 		let mut start = match self.index.min(host)? {

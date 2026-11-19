@@ -65,7 +65,7 @@ impl RangeFilter {
 }
 
 /// Every committed version of every row, including tombstones (None). Only consulted at versions >= the
-/// floor, where the store is guaranteed to still retain the visible version.
+/// floor, where the store is guaranteed to still keep the visible version.
 #[derive(Default)]
 pub struct Oracle {
 	history: BTreeMap<u64, BTreeMap<u64, Option<Vec<u8>>>>,

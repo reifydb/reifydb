@@ -82,7 +82,6 @@ impl ProfilerSubsystemFactory {
 		let instruments = Arc::new(ProfilerInstruments::new());
 		let accumulator = Arc::new(RwLock::new(ProfilerAccumulator::new(
 			cfg.accumulator_capacity,
-			0,
 			Arc::new(ProfilerInstruments::new()),
 		)));
 		let event_bus = ioc.resolve::<EventBus>()?;
@@ -95,7 +94,6 @@ impl ProfilerSubsystemFactory {
 				Arc::clone(&interner),
 				Arc::clone(&instruments),
 				cfg.accumulator_capacity,
-				cfg.min_calls_for_retention,
 				clock.clone(),
 			);
 			let collector = ProfilerCollector::spawn(&spawner, actor);

@@ -51,5 +51,5 @@ fn a_startup_config_set_before_a_crash_shapes_the_next_boot() {
 		assert_eq!(range_shards(path), 5, "the next boot must size the range buffer from the replayed config");
 		Ok(())
 	})
-	.expect("temp dir lifecycle must succeed");
+	.expect("temp dir must succeed");
 }

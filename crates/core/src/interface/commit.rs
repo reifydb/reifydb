@@ -320,7 +320,7 @@ mod exclusion_tests {
 			KeyTag::NamespaceProcedure => {}
 			KeyTag::ProcedureParam => {}
 			KeyTag::Binding => {}
-			KeyTag::OperatorRetention => {}
+			KeyTag::OperatorHorizon => {}
 			KeyTag::NamespaceBinding => {}
 			KeyTag::ColumnBlock => {}
 			KeyTag::SeriesColumnBlock => {}
@@ -525,8 +525,8 @@ mod exclusion_tests {
 	}
 
 	#[test]
-	fn test_include_operator_retention() {
-		assert!(!is_commit_excluded(KeyTag::OperatorRetention));
+	fn test_include_operator_horizon() {
+		assert!(!is_commit_excluded(KeyTag::OperatorHorizon));
 	}
 
 	#[test]

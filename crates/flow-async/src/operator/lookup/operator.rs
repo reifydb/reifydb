@@ -110,7 +110,7 @@ pub struct LookupConfig {
 	pub left_schema: SchemaRef,
 	pub right_schema: SchemaRef,
 	pub alias: Option<String>,
-	pub left_retention: Option<Duration>,
+	pub left_lateness: Option<Duration>,
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
 	pub ctx: Arc<FlowContext>,
@@ -255,7 +255,7 @@ impl LookupOperator {
 			.iter()
 			.map(|expression| LoweredExpr::new(expression.clone(), "lookup_key"))
 			.collect();
-		let expiry = LookupExpiry::new(config.left_retention);
+		let expiry = LookupExpiry::new(config.left_lateness);
 		let columns = JoinedColumnsCache::new(config.alias.clone(), false, SequenceColumn::Forward);
 		let output_sumtypes = schema_sumtypes(
 			&columns.builder(&config.left_schema, &config.right_schema)
@@ -1031,7 +1031,7 @@ impl HostOperator for LookupOperator {
 	}
 
 	fn seal_span(&self) -> Option<Duration> {
-		self.expiry.retention()
+		self.expiry.lateness()
 	}
 
 	fn output_schema(&self) -> Option<SchemaRef> {
@@ -1160,7 +1160,7 @@ mod tests {
 		batch(vec![utf8("lk", Vec::<String>::new())]).unwrap().schema()
 	}
 
-	fn lookup(table: &Table, join_type: JoinType, retention: Option<Duration>) -> LookupOperator {
+	fn lookup(table: &Table, join_type: JoinType, lateness: Option<Duration>) -> LookupOperator {
 		LookupOperator::new(LookupConfig {
 			operator: OperatorId(OP),
 			left_node: OperatorId(LEFT),
@@ -1179,7 +1179,7 @@ mod tests {
 			left_schema: left_schema(),
 			right_schema: catalog_schema(&table.columns),
 			alias: Some("r".to_string()),
-			left_retention: retention,
+			left_lateness: lateness,
 			routines: Routines::empty(),
 			runtime_context: RuntimeContext::testing(0, 1),
 			ctx: Arc::new(FlowContext::default()),
@@ -1208,7 +1208,7 @@ mod tests {
 			left_schema: left_schema(),
 			right_schema: catalog_schema(&ringbuffer.columns),
 			alias: Some("r".to_string()),
-			left_retention: None,
+			left_lateness: None,
 			routines: Routines::empty(),
 			runtime_context: RuntimeContext::testing(0, 1),
 			ctx: Arc::new(FlowContext::default()),
@@ -1908,7 +1908,7 @@ mod tests {
 		let emitted = op.on_timer(&mut TxnHostContext::new(&mut txn, OperatorId(OP)), timer).unwrap();
 
 		assert!(emitted.is_none(), "an expiry emits nothing");
-		assert_eq!(stored_read(&mut txn, 7), None, "row 7 is past event time + retention and is freed");
+		assert_eq!(stored_read(&mut txn, 7), None, "row 7 is past event time + lateness and is freed");
 		assert!(stores_a_right_row(&mut txn, 8), "row 8 outlives the fire");
 		let out = run(&mut op, &mut txn, version, Diff::remove(rows(&[Some("a")], &[7], at_millis(5_000))));
 		assert!(out.is_empty(), "an expired row has nothing left to retract");
@@ -1916,8 +1916,8 @@ mod tests {
 
 	const RIGHT: u64 = 75;
 
-	fn re_emitting(table: &Table, join_type: JoinType, retention: Option<Duration>) -> LookupOperator {
-		let mut op = lookup(table, join_type, retention);
+	fn re_emitting(table: &Table, join_type: JoinType, lateness: Option<Duration>) -> LookupOperator {
+		let mut op = lookup(table, join_type, lateness);
 		op.config.right_node = Some(OperatorId(RIGHT));
 		op.config.exact = false;
 		op
@@ -2053,7 +2053,7 @@ mod tests {
 
 	#[test]
 	fn an_expired_left_row_leaves_the_index_and_is_never_re_emitted() {
-		// a row left in the index would publish past its retention, against a view row already gone.
+		// a row left in the index would publish past its lateness, against a view row already gone.
 		let engine = TestEngine::new();
 		let table = right_table(&engine, false);
 		let first = put_right(&engine, "a", 10);

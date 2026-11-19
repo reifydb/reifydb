@@ -157,7 +157,7 @@ fn filling_past_the_budget_evicts_entries_and_releases_their_bytes() {
 }
 
 #[test]
-fn charge_and_release_balance_across_the_entry_lifecycle() {
+fn charge_and_release_balance_across_the_entry_life() {
 	let sample_key = key(group_a(), CACHED, b"a");
 	let sample_row = row("v");
 	let per_entry = footprint(&sample_key, &sample_row) as u64;

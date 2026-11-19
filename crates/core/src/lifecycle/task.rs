@@ -3,14 +3,14 @@
 
 use reifydb_value::value::duration::Duration;
 
-use crate::lifecycle::{class::RetentionClass, progress::Progress};
+use crate::lifecycle::{class::LifecycleClass, progress::Progress};
 
 pub trait LifecycleTask: Send + 'static {
 	fn name(&self) -> &'static str;
 
 	fn interval(&self) -> Duration;
 
-	fn classes(&self) -> &'static [RetentionClass];
+	fn classes(&self) -> &'static [LifecycleClass];
 
 	fn run_slice(&mut self) -> Progress;
 }

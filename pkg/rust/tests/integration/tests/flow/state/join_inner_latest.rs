@@ -42,7 +42,7 @@ fn latest_inner_join(db: &TestDb) {
 		}"#);
 }
 
-fn latest_inner_join_with_right_retention(db: &TestDb) {
+fn latest_inner_join_with_right_lateness(db: &TestDb) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::lhs { id: int4, k: int4, lv: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE TABLE app::rhs { id: int4, k: int4, rv: int4, ts: datetime } with { time: event(ts) }");
@@ -111,9 +111,9 @@ fn view_rv(db: &TestDb) -> Vec<Value> {
 
 #[test]
 fn the_losing_right_row_is_dropped_on_arrival_and_the_winner_still_seals() {
-	// The loser must go the moment the winner replaces it, and the winner must still arm its own retention.
+	// The loser must go the moment the winner replaces it, and the winner must still arm its own lateness.
 	let db = setup();
-	latest_inner_join_with_right_retention(&db);
+	latest_inner_join_with_right_lateness(&db);
 	insert_left(&db);
 	insert_right_a(&db);
 	insert_right_b_later(&db);
@@ -146,7 +146,7 @@ fn the_losing_right_row_is_dropped_on_arrival_and_the_winner_still_seals() {
 	assert_eq!(
 		await_state_keys(&db, RIGHT, 0, TIMEOUT),
 		0,
-		"and the winner's own right retention must free it, or the held row is never reclaimed; surface now: {:?}",
+		"and the winner's own right lateness must free it, or the held row is never reclaimed; surface now: {:?}",
 		db.query(SURFACE)
 	);
 }

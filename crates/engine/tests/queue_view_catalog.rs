@@ -70,7 +70,7 @@ fn every_option_reaches_the_queue_the_claim_path_reads() {
 	let queue = queue.expect("a queue view must own a queue");
 	assert_eq!(queue.partition_by, vec!["kind".to_string()]);
 	assert_eq!(queue.ordered_by(), Some("id"));
-	assert_eq!(queue.retention.done, Some(Duration::from_days(7).unwrap()));
+	assert_eq!(queue.done.ttl, Some(Duration::from_days(7).unwrap()));
 	assert_eq!(queue.retry.attempts, 9);
 	assert_eq!(queue.retry.backoff, Duration::from_seconds_const(30));
 	assert_eq!(queue.deduplicate, None, "a queue view never suppresses a change");

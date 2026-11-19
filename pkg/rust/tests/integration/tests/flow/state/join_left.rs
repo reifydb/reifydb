@@ -209,7 +209,7 @@ fn the_forgotten_pairs_published_row_survives() {
 }
 
 #[test]
-fn a_row_still_inside_its_retention_keeps_its_state_through_a_forget() {
+fn a_row_still_inside_its_lateness_keeps_its_state_through_a_forget() {
 	// A reaper that collected on arrival order rather than due time would take live rows with it.
 	let db = setup();
 	sealing_left_join(&db);

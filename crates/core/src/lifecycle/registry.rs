@@ -47,7 +47,7 @@ mod tests {
 	use reifydb_value::value::duration::Duration;
 
 	use super::*;
-	use crate::lifecycle::{class::RetentionClass, progress::Progress};
+	use crate::lifecycle::{class::LifecycleClass, progress::Progress};
 
 	struct CountingTask {
 		remaining: usize,
@@ -63,7 +63,7 @@ mod tests {
 			Duration::from_seconds(1).unwrap()
 		}
 
-		fn classes(&self) -> &'static [RetentionClass] {
+		fn classes(&self) -> &'static [LifecycleClass] {
 			&[]
 		}
 

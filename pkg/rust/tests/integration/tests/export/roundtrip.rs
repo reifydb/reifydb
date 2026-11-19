@@ -62,7 +62,7 @@ INSERT rt::rb [{ id: 1, msg: 'a' }, { id: 2, msg: 'b' }, { id: 3, msg: 'c' }, { 
 "#;
 	let (a, b, dump) = prepare(setup);
 	let a_rows = rows(&a.query("from rt::rb"));
-	assert_eq!(a_rows.len(), 3, "ring buffer should retain only capacity rows; dump:\n{dump}");
+	assert_eq!(a_rows.len(), 3, "ring buffer should keep only capacity rows; dump:\n{dump}");
 	assert_eq!(a_rows, rows(&b.query("from rt::rb")));
 }
 

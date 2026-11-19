@@ -11,7 +11,7 @@ use reifydb_core::{
 		store::EntryKind,
 	},
 	lifecycle::{
-		class::{Floor, FloorTerm, RetentionClass},
+		class::{Floor, FloorTerm, LifecycleClass},
 		metrics::GcMetrics,
 		progress::Progress,
 		task::LifecycleTask,
@@ -23,17 +23,17 @@ use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::value::duration::Duration;
 use tracing::{debug, instrument, trace};
 
-use crate::plane::RetentionPlane;
+use crate::plane::LifecyclePlane;
 
 pub struct Actor {
 	store: StandardMultiStore,
-	plane: RetentionPlane,
+	plane: LifecyclePlane,
 	clock: Clock,
 	config: Arc<dyn GetConfig>,
 }
 
 impl Actor {
-	pub fn new(store: StandardMultiStore, plane: RetentionPlane, clock: Clock, config: Arc<dyn GetConfig>) -> Self {
+	pub fn new(store: StandardMultiStore, plane: LifecyclePlane, clock: Clock, config: Arc<dyn GetConfig>) -> Self {
 		Self {
 			store,
 			plane,
@@ -50,7 +50,7 @@ impl Actor {
 	#[inline]
 	fn finish_sweep(&self, cutoff: CommitVersion, binding: FloorTerm, backlog: u64, stats: &GcMetrics) {
 		self.plane.record_reclamation(
-			RetentionClass::BufferHistoricalGc,
+			LifecycleClass::BufferHistoricalGc,
 			Some((Floor::Version(cutoff), binding)),
 			stats.versions_dropped,
 			backlog,
@@ -98,12 +98,12 @@ impl Actor {
 	fn run_sweep(&self) -> u64 {
 		let buffer = self.store.commit();
 		let now = self.clock.now();
-		let floor = self.plane.cutoff_with_binding(RetentionClass::BufferHistoricalGc, now, None);
+		let floor = self.plane.cutoff_with_binding(LifecycleClass::BufferHistoricalGc, now, None);
 		let Some((cutoff, binding)) = floor
 			.and_then(|(floor, term)| floor.version().map(|version| (version, term)))
 			.filter(|(version, _)| version.0 != 0)
 		else {
-			self.plane.record_reclamation(RetentionClass::BufferHistoricalGc, floor, 0, 0);
+			self.plane.record_reclamation(LifecycleClass::BufferHistoricalGc, floor, 0, 0);
 			return 0;
 		};
 		let entry_kinds = buffer.list_all_entry_kinds();
@@ -130,7 +130,7 @@ pub struct HistoricalGcTask {
 }
 
 impl HistoricalGcTask {
-	pub fn new(store: StandardMultiStore, plane: RetentionPlane, clock: Clock, config: Arc<dyn GetConfig>) -> Self {
+	pub fn new(store: StandardMultiStore, plane: LifecyclePlane, clock: Clock, config: Arc<dyn GetConfig>) -> Self {
 		Self {
 			actor: Actor::new(store, plane, clock, config),
 		}
@@ -146,8 +146,8 @@ impl LifecycleTask for HistoricalGcTask {
 		self.actor.config.get_config_duration(ConfigKey::HistoricalGcInterval)
 	}
 
-	fn classes(&self) -> &'static [RetentionClass] {
-		&[RetentionClass::BufferHistoricalGc]
+	fn classes(&self) -> &'static [LifecycleClass] {
+		&[LifecycleClass::BufferHistoricalGc]
 	}
 
 	#[instrument(name = "lifecycle::gc::historical::slice", level = "debug", skip_all)]

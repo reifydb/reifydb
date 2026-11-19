@@ -421,7 +421,7 @@ pub mod tests {
 		assert_eq!(
 			optimized.len(),
 			1,
-			"the pending-writes path only retains the latest write per key, so the Set is gone before \
+			"the pending-writes path only keeps the latest write per key, so the Set is gone before \
 			 optimize_deltas runs and the Remove survives as a tombstone"
 		);
 		assert!(matches!(optimized[0], Delta::Remove { .. }));

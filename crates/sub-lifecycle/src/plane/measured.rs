@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask};
+use reifydb_core::lifecycle::{class::LifecycleClass, progress::Progress, task::LifecycleTask};
 use reifydb_value::value::duration::Duration;
 
-use crate::plane::RetentionPlane;
+use crate::plane::LifecyclePlane;
 
 pub struct Measured<T: LifecycleTask> {
 	inner: T,
-	plane: RetentionPlane,
+	plane: LifecyclePlane,
 }
 
 impl<T: LifecycleTask> Measured<T> {
-	pub fn new(inner: T, plane: RetentionPlane) -> Self {
+	pub fn new(inner: T, plane: LifecyclePlane) -> Self {
 		Self {
 			inner,
 			plane,
@@ -29,7 +29,7 @@ impl<T: LifecycleTask> LifecycleTask for Measured<T> {
 		self.inner.interval()
 	}
 
-	fn classes(&self) -> &'static [RetentionClass] {
+	fn classes(&self) -> &'static [LifecycleClass] {
 		self.inner.classes()
 	}
 
@@ -50,13 +50,13 @@ mod tests {
 
 	use reifydb_core::{
 		common::CommitVersion,
-		lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
+		lifecycle::{class::LifecycleClass, progress::Progress, task::LifecycleTask},
 	};
 	use reifydb_runtime::version_epoch::VersionEpoch;
 	use reifydb_value::value::duration::Duration;
 
 	use super::Measured;
-	use crate::plane::{RetentionPlane, ledger::FloorSource};
+	use crate::plane::{LifecyclePlane, ledger::FloorSource};
 
 	struct NoFloors;
 
@@ -74,8 +74,8 @@ mod tests {
 		}
 	}
 
-	fn plane() -> RetentionPlane {
-		RetentionPlane::new(Arc::new(NoFloors), VersionEpoch::new())
+	fn plane() -> LifecyclePlane {
+		LifecyclePlane::new(Arc::new(NoFloors), VersionEpoch::new())
 	}
 
 	struct TwoClassTask {
@@ -91,8 +91,8 @@ mod tests {
 			Duration::from_seconds(1).unwrap()
 		}
 
-		fn classes(&self) -> &'static [RetentionClass] {
-			&[RetentionClass::RowTtl, RetentionClass::QueueRetention]
+		fn classes(&self) -> &'static [LifecycleClass] {
+			&[LifecycleClass::RowTtl, LifecycleClass::QueueDoneTtl]
 		}
 
 		fn run_slice(&mut self) -> Progress {
@@ -104,7 +104,7 @@ mod tests {
 	#[test]
 	fn a_slice_records_liveness_for_every_class_the_task_owns() {
 		// A task may declare more than one class, and recording only the first leaves the rest reading
-		// as dead in the retention report.
+		// as dead in the lifecycle report.
 		let plane = plane();
 		let runs = Arc::new(AtomicU64::new(0));
 		let mut task = Measured::new(
@@ -117,8 +117,8 @@ mod tests {
 		task.run_slice();
 
 		assert_eq!(runs.load(Ordering::SeqCst), 1, "the wrapped task must still run exactly once");
-		assert_eq!(plane.snapshot(RetentionClass::RowTtl).slices, 1);
-		assert_eq!(plane.snapshot(RetentionClass::QueueRetention).slices, 1);
+		assert_eq!(plane.snapshot(LifecycleClass::RowTtl).slices, 1);
+		assert_eq!(plane.snapshot(LifecycleClass::QueueDoneTtl).slices, 1);
 	}
 
 	#[test]
@@ -136,7 +136,7 @@ mod tests {
 			task.run_slice();
 		}
 
-		let snapshot = plane.snapshot(RetentionClass::RowTtl);
+		let snapshot = plane.snapshot(LifecycleClass::RowTtl);
 		assert_eq!(snapshot.slices, 5, "every slice must be counted");
 		assert_eq!(snapshot.stuck_slices, 0, "liveness must not be read as a reclamation of zero");
 		assert_eq!(snapshot.work_done, 0, "the wrapper must not invent work it cannot measure");
@@ -144,7 +144,7 @@ mod tests {
 
 	#[test]
 	fn a_task_owning_no_class_records_nothing() {
-		// Non-reclaiming tasks must not appear in the retention report at all.
+		// Non-reclaiming tasks must not appear in the lifecycle report at all.
 		struct Bystander;
 
 		impl LifecycleTask for Bystander {
@@ -156,7 +156,7 @@ mod tests {
 				Duration::from_seconds(1).unwrap()
 			}
 
-			fn classes(&self) -> &'static [RetentionClass] {
+			fn classes(&self) -> &'static [LifecycleClass] {
 				&[]
 			}
 
@@ -172,7 +172,7 @@ mod tests {
 
 		assert!(
 			plane.report().iter().all(|(_, snapshot)| snapshot.slices == 0),
-			"a task that owns no retention class must leave every class counter untouched"
+			"a task that owns no lifecycle class must leave every class counter untouched"
 		);
 	}
 }

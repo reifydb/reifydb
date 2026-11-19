@@ -12,7 +12,7 @@ use reifydb_core::{common::CommitVersion, lifecycle::task::LifecycleTask};
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_sub_lifecycle::{
 	gc::historical::actor::HistoricalGcTask,
-	plane::{RetentionPlane, ledger::EngineFloors},
+	plane::{LifecyclePlane, ledger::EngineFloors},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -409,7 +409,7 @@ fn force_gc_and_flush(db: &TestDb) -> CommitVersion {
 	let store = match engine.multi_owned().store() {
 		MultiStore::Standard(store) => store.clone(),
 	};
-	let plane = RetentionPlane::new(Arc::new(EngineFloors::new(engine.clone())), engine.version_epoch().clone());
+	let plane = LifecyclePlane::new(Arc::new(EngineFloors::new(engine.clone())), engine.version_epoch().clone());
 	let mut gc = HistoricalGcTask::new(store.clone(), plane, engine.clock().clone(), Arc::new(engine.catalog()));
 	while gc.run_slice().is_yielded() {}
 	store.flush_pending_blocking();

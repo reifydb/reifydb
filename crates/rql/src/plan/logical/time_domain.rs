@@ -182,7 +182,7 @@ mod tests {
 
 	#[test]
 	fn a_time_less_object_may_not_declare_a_row_ttl() {
-		// An object worth a retention policy is worth an explicit clock. Both silence and an explicit
+		// An object worth a row ttl is worth an explicit clock. Both silence and an explicit
 		// `time: none` are rejected, because under the new default they mean the same thing and
 		// letting silence through would leave exactly the hole the default was changed to close.
 		let ttl = || Some(Fragment::statement("1m", 2, 20));
@@ -198,7 +198,7 @@ mod tests {
 	#[test]
 	fn an_object_that_carries_time_may_declare_a_row_ttl() {
 		// The rejection above must be scoped to time-less objects only. Rejecting every row ttl would
-		// break every declaration that pairs retention with a real clock.
+		// break every declaration that pairs a row ttl with a real clock.
 		let ttl = || Some(Fragment::statement("1m", 2, 20));
 
 		assert_eq!(

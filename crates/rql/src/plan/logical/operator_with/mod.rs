@@ -206,7 +206,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_distinct_with_retention_duration_only_is_rejected() {
+	fn test_distinct_with_lateness_duration_only_is_rejected() {
 		let bump = Bump::new();
 		let source = "DISTINCT { x } WITH { lateness: 1h }";
 		let mut result = parse_str(&bump, source).unwrap();
@@ -222,7 +222,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_distinct_with_retention_full_config_is_rejected() {
+	fn test_distinct_with_lateness_full_config_is_rejected() {
 		let bump = Bump::new();
 		let source = "DISTINCT { x } WITH { lateness: 5m, on: updated }";
 		let mut result = parse_str(&bump, source).unwrap();

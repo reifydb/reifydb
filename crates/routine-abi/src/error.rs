@@ -92,7 +92,7 @@ impl IntoDiagnostic for QueueError {
 				fragment,
 				label: Some("unknown item".to_string()),
 				help: Some(
-					"Check the item number; retention may already have swept it, which closes its replay window"
+					"Check the item number; expiry may already have swept it, which closes its replay window"
 						.to_string(),
 				),
 				notes: vec![format!("queue: {}", queue), format!("item: {}", item)],

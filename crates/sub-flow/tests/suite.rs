@@ -23,8 +23,8 @@ mod deferred_backfill;
 mod deferred_over_transactional;
 #[path = "digest_view.rs"]
 mod digest_view;
-#[path = "digest_view_lifecycle.rs"]
-mod digest_view_lifecycle;
+#[path = "digest_view_cycle.rs"]
+mod digest_view_cycle;
 #[path = "digest_view_sink_write.rs"]
 mod digest_view_sink_write;
 #[path = "digest_view_sort_key.rs"]

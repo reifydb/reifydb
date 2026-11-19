@@ -15,17 +15,15 @@ use super::instruments::ProfilerInstruments;
 pub struct ProfilerAccumulator {
 	records: HashMap<SpanIdent, AggregateRecord>,
 	capacity: usize,
-	min_calls_for_retention: u64,
 	instruments: Arc<ProfilerInstruments>,
 }
 
 impl ProfilerAccumulator {
-	pub fn new(capacity: usize, min_calls_for_retention: u64, instruments: Arc<ProfilerInstruments>) -> Self {
+	pub fn new(capacity: usize, instruments: Arc<ProfilerInstruments>) -> Self {
 		instruments.accumulator_capacity.set(capacity as f64);
 		Self {
 			records: HashMap::with_capacity(capacity.min(4096)),
 			capacity,
-			min_calls_for_retention,
 			instruments,
 		}
 	}
@@ -107,9 +105,6 @@ impl ProfilerAccumulator {
 		let mut victim: Option<(SpanIdent, u64)> = None;
 		for (ident, record) in &self.records {
 			let calls = record.calls;
-			if calls >= self.min_calls_for_retention && self.min_calls_for_retention > 0 {
-				continue;
-			}
 			match victim {
 				None => victim = Some((*ident, calls)),
 				Some((_, v_calls)) if calls < v_calls => victim = Some((*ident, calls)),
@@ -117,11 +112,6 @@ impl ProfilerAccumulator {
 			}
 		}
 		if let Some((ident, _)) = victim {
-			self.records.remove(&ident);
-			self.instruments.accumulator_evictions.inc();
-		} else if let Some((ident, _)) =
-			self.records.iter().min_by_key(|(_, r)| r.calls).map(|(k, v)| (*k, v.calls))
-		{
 			self.records.remove(&ident);
 			self.instruments.accumulator_evictions.inc();
 		}
@@ -156,7 +146,7 @@ mod tests {
 	#[test]
 	fn upsert_folds_repeats() {
 		let interner = DimInterner::new();
-		let mut acc = ProfilerAccumulator::new(8, 0, Arc::new(ProfilerInstruments::new()));
+		let mut acc = ProfilerAccumulator::new(8, Arc::new(ProfilerInstruments::new()));
 		let ident = make_ident(ProfilerCategory::Query, 1);
 		acc.upsert(ident, "vm::execute", 100, 100, &[0; MAX_EXTRAS], &interner);
 		acc.upsert(ident, "vm::execute", 50, 50, &[0; MAX_EXTRAS], &interner);
@@ -171,7 +161,7 @@ mod tests {
 	#[test]
 	fn capacity_cap_triggers_eviction() {
 		let interner = DimInterner::new();
-		let mut acc = ProfilerAccumulator::new(2, 0, Arc::new(ProfilerInstruments::new()));
+		let mut acc = ProfilerAccumulator::new(2, Arc::new(ProfilerInstruments::new()));
 		for i in 1..=3 {
 			let ident = make_ident(ProfilerCategory::Storage, i);
 			acc.upsert(ident, "store::single::get", 10, 10, &[0; MAX_EXTRAS], &interner);
@@ -182,7 +172,7 @@ mod tests {
 	#[test]
 	fn top_n_orders_by_total_us() {
 		let interner = DimInterner::new();
-		let mut acc = ProfilerAccumulator::new(8, 0, Arc::new(ProfilerInstruments::new()));
+		let mut acc = ProfilerAccumulator::new(8, Arc::new(ProfilerInstruments::new()));
 		let a = make_ident(ProfilerCategory::Flow, 1);
 		let b = make_ident(ProfilerCategory::Flow, 2);
 		acc.upsert(a, "flow::engine::apply", 100, 100, &[0; MAX_EXTRAS], &interner);

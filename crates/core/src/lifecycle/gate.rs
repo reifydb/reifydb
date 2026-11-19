@@ -9,10 +9,10 @@ use std::sync::{
 use reifydb_runtime::context::clock::Clock;
 use reifydb_value::value::duration::Duration;
 
-use crate::lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask};
+use crate::lifecycle::{class::LifecycleClass, progress::Progress, task::LifecycleTask};
 
 #[derive(Clone)]
-pub struct RetentionStartupGate {
+pub struct LifecycleStartupGate {
 	inner: Arc<Inner>,
 }
 
@@ -23,7 +23,7 @@ struct Inner {
 	skipped_slices: AtomicU64,
 }
 
-impl RetentionStartupGate {
+impl LifecycleStartupGate {
 	pub fn arm(clock: Clock, delay: Duration) -> Self {
 		let armed_at_nanos = clock.now().to_nanos();
 		Self {
@@ -62,11 +62,11 @@ impl RetentionStartupGate {
 
 pub struct Gated<T: LifecycleTask> {
 	inner: T,
-	gate: RetentionStartupGate,
+	gate: LifecycleStartupGate,
 }
 
 impl<T: LifecycleTask> Gated<T> {
-	pub fn new(inner: T, gate: RetentionStartupGate) -> Self {
+	pub fn new(inner: T, gate: LifecycleStartupGate) -> Self {
 		Self {
 			inner,
 			gate,
@@ -83,7 +83,7 @@ impl<T: LifecycleTask> LifecycleTask for Gated<T> {
 		self.inner.interval()
 	}
 
-	fn classes(&self) -> &'static [RetentionClass] {
+	fn classes(&self) -> &'static [LifecycleClass] {
 		self.inner.classes()
 	}
 
@@ -106,8 +106,8 @@ mod tests {
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_value::value::duration::Duration;
 
-	use super::{Gated, RetentionStartupGate};
-	use crate::lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask};
+	use super::{Gated, LifecycleStartupGate};
+	use crate::lifecycle::{class::LifecycleClass, progress::Progress, task::LifecycleTask};
 
 	fn mock() -> (Clock, MockClock) {
 		let mock = MockClock::from_millis(0);
@@ -119,7 +119,7 @@ mod tests {
 		// The whole point of the gate: the first tick after a restart must not delete. A gate that starts
 		// open would let a process that was down longer than its TTLs mass-evict on tick one.
 		let (clock, _mock) = mock();
-		let gate = RetentionStartupGate::arm(clock, Duration::from_seconds(300).unwrap());
+		let gate = LifecycleStartupGate::arm(clock, Duration::from_seconds(300).unwrap());
 
 		assert!(!gate.is_open(), "a freshly armed gate must hold reclamation back for its startup delay");
 	}
@@ -129,7 +129,7 @@ mod tests {
 		// Tests and single-shot tools need reclamation without waiting out a startup delay; zero delay is the
 		// documented way to ask for that, so it must not accidentally still gate.
 		let (clock, _mock) = mock();
-		let gate = RetentionStartupGate::open(clock);
+		let gate = LifecycleStartupGate::open(clock);
 
 		assert!(gate.is_open(), "zero delay must mean no gating at all");
 	}
@@ -137,7 +137,7 @@ mod tests {
 	#[test]
 	fn the_gate_opens_once_the_startup_delay_has_elapsed() {
 		let (clock, mock) = mock();
-		let gate = RetentionStartupGate::arm(clock, Duration::from_seconds(60).unwrap());
+		let gate = LifecycleStartupGate::arm(clock, Duration::from_seconds(60).unwrap());
 		assert!(!gate.is_open(), "precondition: still inside the startup delay");
 
 		mock.advance_secs(59);
@@ -152,7 +152,7 @@ mod tests {
 		// The gate is a startup guard, not a rate limiter; re-closing it later would stall reclamation
 		// permanently on any clock that is not strictly monotonic across reads.
 		let (clock, mock) = mock();
-		let gate = RetentionStartupGate::arm(clock, Duration::from_seconds(60).unwrap());
+		let gate = LifecycleStartupGate::arm(clock, Duration::from_seconds(60).unwrap());
 		mock.advance_secs(60);
 		assert!(gate.is_open(), "precondition: released");
 
@@ -174,8 +174,8 @@ mod tests {
 			Duration::from_seconds(1).unwrap()
 		}
 
-		fn classes(&self) -> &'static [RetentionClass] {
-			&[RetentionClass::RowTtl]
+		fn classes(&self) -> &'static [LifecycleClass] {
+			&[LifecycleClass::RowTtl]
 		}
 
 		fn run_slice(&mut self) -> Progress {
@@ -190,7 +190,7 @@ mod tests {
 		// would try to reclaim the whole backlog at once. The gate must stop the work itself, not
 		// merely record that it happened.
 		let (clock, _mock) = mock();
-		let gate = RetentionStartupGate::arm(clock, Duration::from_seconds(300).unwrap());
+		let gate = LifecycleStartupGate::arm(clock, Duration::from_seconds(300).unwrap());
 		let slices = Arc::new(AtomicU64::new(0));
 		let mut task = Gated::new(
 			CountingTask {
@@ -210,7 +210,7 @@ mod tests {
 		// The other half: a gate that never releases is indistinguishable from reclamation being disabled,
 		// which is the failure this whole subsystem exists to make impossible.
 		let (clock, mock) = mock();
-		let gate = RetentionStartupGate::arm(clock, Duration::from_seconds(60).unwrap());
+		let gate = LifecycleStartupGate::arm(clock, Duration::from_seconds(60).unwrap());
 		let slices = Arc::new(AtomicU64::new(0));
 		let mut task = Gated::new(
 			CountingTask {
@@ -232,7 +232,7 @@ mod tests {
 		// The name and cadence are how the lane schedules a class and how the report and metrics key it. A
 		// wrapper that renamed or re-timed its inner task would make the gated class untraceable.
 		let (clock, _mock) = mock();
-		let gate = RetentionStartupGate::arm(clock, Duration::from_seconds(300).unwrap());
+		let gate = LifecycleStartupGate::arm(clock, Duration::from_seconds(300).unwrap());
 		let task = Gated::new(
 			CountingTask {
 				slices: Arc::new(AtomicU64::new(0)),
@@ -250,7 +250,7 @@ mod tests {
 		// counter is what distinguishes "deliberately held back" from "silently not running", which is the
 		// exact ambiguity this subsystem exists to remove.
 		let (clock, _mock) = mock();
-		let gate = RetentionStartupGate::arm(clock, Duration::from_seconds(300).unwrap());
+		let gate = LifecycleStartupGate::arm(clock, Duration::from_seconds(300).unwrap());
 
 		for _ in 0..3 {
 			if !gate.is_open() {

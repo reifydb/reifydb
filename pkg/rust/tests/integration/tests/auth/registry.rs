@@ -73,7 +73,7 @@ fn engine_and_auth_service_share_one_provider_registry() {
 
 #[test]
 fn a_registered_provider_serves_both_credential_creation_and_login() {
-	// One registration must reach both halves of the credential lifecycle.
+	// One registration must reach both halves of the credential life.
 	// Creating the credential proves the engine half, logging in proves the service half.
 	let db = TestDb::from(embedded::memory().with_auth_provider(PinProvider).build().expect("build"));
 

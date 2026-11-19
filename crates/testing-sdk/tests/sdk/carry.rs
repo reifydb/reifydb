@@ -13,8 +13,8 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::{
-		accumulator::invertible::retained_map::RetainedAccumulator, coord::ByDateTime,
-		settings::WindowSettings, span::WindowSpan,
+		accumulator::invertible::entry_map::EntryMapAccumulator, coord::ByDateTime, settings::WindowSettings,
+		span::WindowSpan,
 	},
 };
 use reifydb_sdk::{
@@ -99,7 +99,7 @@ impl OperatorMetadata for Probe {
 impl WindowedOperator for Probe {
 	type Coord = ByDateTime;
 	type GroupKey = String;
-	type Accumulator = RetainedAccumulator<u64, f64>;
+	type Accumulator = EntryMapAccumulator<u64, f64>;
 	type Output = CarryOut;
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
@@ -139,8 +139,8 @@ impl WindowedOperator for Probe {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> RetainedAccumulator<u64, f64> {
-		RetainedAccumulator::default()
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> EntryMapAccumulator<u64, f64> {
+		EntryMapAccumulator::default()
 	}
 }
 
@@ -239,7 +239,7 @@ fn a_carry_window_folds_past_the_lateness_horizon_and_drops_its_accumulator_rows
 #[test]
 fn a_carry_window_with_no_immutable_keeps_every_accumulator() {
 	// Without immutable the fold must not run: every window's accumulator row stays, so state grows with the
-	// windows crossed. A default retention would fold here and hide behind a bounded store.
+	// windows crossed. A default immutable would fold here and hide behind a bounded store.
 	let short = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(), 20)
 		.snapshot_state()
 		.len();

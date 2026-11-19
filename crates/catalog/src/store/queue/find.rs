@@ -5,7 +5,7 @@ use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, QueueId},
-		queue::{Queue, QueueRetention, QueueRetry},
+		queue::{Queue, QueueDone, QueueRetry},
 	},
 	key::{namespace::NamespaceQueueKey, queue::QueueKey},
 };
@@ -31,8 +31,8 @@ impl CatalogStore {
 		let namespace = NamespaceId(queue::get_namespace(&bytes));
 		let name = queue::get_name(&bytes).to_string();
 
-		let retention = QueueRetention {
-			done: queue::try_get_retention_done(&bytes),
+		let done = QueueDone {
+			ttl: queue::try_get_done_ttl(&bytes),
 		};
 		let retry = QueueRetry {
 			attempts: queue::get_retry_attempts(&bytes),
@@ -45,7 +45,7 @@ impl CatalogStore {
 			columns: Self::list_columns(rx, id)?,
 			partition_by: decode_partition_by(&bytes),
 			dispatch: decode_dispatch(&bytes),
-			retention,
+			done,
 			retry,
 			deduplicate: decode_deduplicate(&bytes),
 			time: decode_queue_time(&bytes),
@@ -87,7 +87,7 @@ pub mod tests {
 		common::TimeSource,
 		interface::catalog::{
 			id::{NamespaceId, QueueId},
-			queue::{QueueDispatch, QueueRetention, QueueRetry},
+			queue::{QueueDispatch, QueueDone, QueueRetry},
 		},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
@@ -108,7 +108,7 @@ pub mod tests {
 				dispatch: QueueDispatch::Fifo {
 					ordered_by: None,
 				},
-				retention: QueueRetention::default(),
+				done: QueueDone::default(),
 				retry: QueueRetry::default(),
 				deduplicate: None,
 				time: TimeSource::Processing,

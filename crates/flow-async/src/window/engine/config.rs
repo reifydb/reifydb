@@ -61,7 +61,7 @@ impl WindowEngineConfigBuilder {
 
 pub struct TumblingCarryConfig<S: WindowAnchor> {
 	base: WindowEngineConfig,
-	retention: Option<SlotSpan<S>>,
+	immutable: Option<SlotSpan<S>>,
 	idle_retention: Option<SlotSpan<S>>,
 }
 
@@ -74,8 +74,8 @@ impl<S: WindowAnchor> TumblingCarryConfig<S> {
 		self.base.clone()
 	}
 
-	pub fn retention(&self) -> Option<SlotSpan<S>> {
-		self.retention
+	pub fn immutable(&self) -> Option<SlotSpan<S>> {
+		self.immutable
 	}
 
 	pub fn idle_retention(&self) -> Option<SlotSpan<S>> {
@@ -85,7 +85,7 @@ impl<S: WindowAnchor> TumblingCarryConfig<S> {
 
 pub struct TumblingCarryConfigBuilder<S: WindowAnchor> {
 	base: WindowEngineConfig,
-	retention: Option<SlotSpan<S>>,
+	immutable: Option<SlotSpan<S>>,
 	idle_retention: Option<SlotSpan<S>>,
 }
 
@@ -93,13 +93,13 @@ impl<S: WindowAnchor> TumblingCarryConfigBuilder<S> {
 	fn new(base: WindowEngineConfig) -> Self {
 		Self {
 			base,
-			retention: None,
+			immutable: None,
 			idle_retention: None,
 		}
 	}
 
-	pub fn retention(mut self, retention: Option<SlotSpan<S>>) -> Self {
-		self.retention = retention;
+	pub fn immutable(mut self, immutable: Option<SlotSpan<S>>) -> Self {
+		self.immutable = immutable;
 		self
 	}
 
@@ -111,7 +111,7 @@ impl<S: WindowAnchor> TumblingCarryConfigBuilder<S> {
 	pub fn build(self) -> TumblingCarryConfig<S> {
 		TumblingCarryConfig {
 			base: self.base,
-			retention: self.retention,
+			immutable: self.immutable,
 			idle_retention: self.idle_retention,
 		}
 	}
@@ -133,7 +133,7 @@ mod tests {
 	fn a_carry_config_forwards_its_base() {
 		let config: TumblingCarryConfig<ByDateTime> =
 			TumblingCarryConfig::builder(WindowEngineConfig::builder().expire_batch(7).build())
-				.retention(None)
+				.immutable(None)
 				.build();
 
 		assert_eq!(config.base().expire_batch(), 7, "the carry config must not detach a fresh base");

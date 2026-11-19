@@ -425,39 +425,20 @@ pub fn flow_rolling_lag_requires_event_time(flow: &str) -> Diagnostic {
 	}
 }
 
-pub fn flow_join_retention_requires_event_time(flow: &str) -> Diagnostic {
+pub fn flow_join_lateness_requires_event_time(flow: &str) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_049".to_string(),
 		rql: None,
-		message: format!("{flow} declares a join retention but its sources supply no event time"),
+		message: format!("{flow} declares a join lateness but its sources supply no event time"),
 		column: None,
 		fragment: Fragment::None,
 		label: None,
 		help: Some(
-			"a join retention frees a row once the operator watermark passes its own event time, which only has \
+			"a join lateness frees a row once the operator watermark passes its own event time, which only has \
 			 meaning against a source-supplied event time. Declare `with { time: event(<column>) }` on the \
-			 source object this flow reads, or remove the retention."
+			 source object this flow reads, or remove the lateness."
 				.to_string(),
 		),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_span_on_unageable_node(flow: &str, operator: &str) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_045".to_string(),
-		rql: None,
-		message: format!("{operator} in {flow} declares a retention span but holds no state to age"),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some(format!(
-			"Spans are only meaningful on operators that keep keyed state - join, distinct, append, \
-			 apply and aggregate. {operator} keeps none, so the span would be accepted and never \
-			 consulted. Move the span to the stateful operator downstream, or remove it."
-		)),
 		notes: vec![],
 		cause: None,
 		operator_chain: None,

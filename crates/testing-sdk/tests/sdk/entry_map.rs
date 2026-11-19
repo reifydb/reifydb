@@ -12,7 +12,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_flow_async::window::{
-	accumulator::invertible::retained_map::RetainedAccumulator, coord::ByDateTime, settings::WindowSettings,
+	accumulator::invertible::entry_map::EntryMapAccumulator, coord::ByDateTime, settings::WindowSettings,
 	span::WindowSpan,
 };
 use reifydb_sdk::{
@@ -23,9 +23,9 @@ use reifydb_sdk::{
 		context::{GuestContext, Windowed},
 		view::{ColumnsView, RowView},
 		windowed::{
+			entry_map::EntryMapDriver,
 			operator::{Emit, NoRolling, WindowedOperator},
 			plain::PlainDriver,
-			retained::RetainedDriver,
 		},
 	},
 	row,
@@ -51,22 +51,22 @@ use reifydb_value::{
 
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, PartialEq, HeapSize)]
-struct RetainedOut {
+struct EntryMapOut {
 	group: String,
 	count: u64,
 	volume: f64,
 }
 
-row!(RetainedOut {
+row!(EntryMapOut {
 	group: String,
 	count: u64,
 	volume: f64
 });
 
-struct TestRetained;
+struct TestEntryMap;
 
-impl OperatorMetadata for TestRetained {
-	const NAME: &'static str = "test_retained";
+impl OperatorMetadata for TestEntryMap {
+	const NAME: &'static str = "test_entry_map";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -74,11 +74,11 @@ impl OperatorMetadata for TestRetained {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl WindowedOperator for TestRetained {
+impl WindowedOperator for TestEntryMap {
 	type Coord = ByDateTime;
 	type GroupKey = String;
-	type Accumulator = RetainedAccumulator<u64, i64>;
-	type Output = RetainedOut;
+	type Accumulator = EntryMapAccumulator<u64, i64>;
+	type Output = EntryMapOut;
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
@@ -122,12 +122,12 @@ impl WindowedOperator for TestRetained {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> RetainedAccumulator<u64, i64> {
-		RetainedAccumulator::default()
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> EntryMapAccumulator<u64, i64> {
+		EntryMapAccumulator::default()
 	}
 }
 
-impl Emit for TestRetained {
+impl Emit for TestEntryMap {
 	type Kinds = NoRolling;
 
 	fn build_output(
@@ -135,8 +135,8 @@ impl Emit for TestRetained {
 		group: &String,
 		_span: WindowSpan<ByDateTime>,
 		value: &BTreeMap<u64, i64>,
-	) -> Option<RetainedOut> {
-		Some(RetainedOut {
+	) -> Option<EntryMapOut> {
+		Some(EntryMapOut {
 			group: group.clone(),
 			count: value.len() as u64,
 			volume: value.values().sum::<i64>() as f64,
@@ -144,8 +144,8 @@ impl Emit for TestRetained {
 	}
 }
 
-type Retained = RetainedDriver<TestRetained, u64, i64>;
-type Plain = PlainDriver<TestRetained>;
+type EntryMap = EntryMapDriver<TestEntryMap, u64, i64>;
+type Plain = PlainDriver<TestEntryMap>;
 
 fn input_row(rn: u64, group: &str, key: u64, at: u64, value: i64) -> CoreRow {
 	TestOperatorRowBuilder::new(rn)
@@ -194,9 +194,9 @@ fn seen(out: &Change) -> Seen {
 
 #[test]
 fn parity_with_plain_driver() {
-	// The retained driver replaces the plain one for retained operators, so any drift is a wrong row downstream.
+	// The entry map driver replaces the plain one for entry map operators, so any drift is a wrong row downstream.
 	let mut plain = InProcessOperatorHarnessBuilder::<Plain>::new().with(with()).build().expect("harness");
-	let mut retained = InProcessOperatorHarnessBuilder::<Retained>::new().with(with()).build().expect("harness");
+	let mut entry_map = InProcessOperatorHarnessBuilder::<EntryMap>::new().with(with()).build().expect("harness");
 	let batches: Vec<Change> = vec![
 		TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 1, 0, 10))
@@ -214,13 +214,13 @@ fn parity_with_plain_driver() {
 	];
 	for (step, batch) in batches.into_iter().enumerate() {
 		let theirs = plain.apply(batch.clone()).expect("plain apply");
-		let ours = retained.apply(batch).expect("retained apply");
+		let ours = entry_map.apply(batch).expect("entry map apply");
 		assert_eq!(seen(&ours), seen(&theirs), "step {step}");
 	}
 	plain.advance_flow_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
-	retained.advance_flow_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
+	entry_map.advance_flow_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
 	let close = TestChangeBuilder::new().insert(input_row(6, "ETH", 1, 120_000, 1)).build();
 	let theirs = plain.apply(close.clone()).expect("plain apply");
-	let ours = retained.apply(close).expect("retained apply");
+	let ours = entry_map.apply(close).expect("entry map apply");
 	assert_eq!(seen(&ours), seen(&theirs), "close");
 }

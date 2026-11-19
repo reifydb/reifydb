@@ -9,7 +9,7 @@ use std::{
 	},
 };
 
-use crate::lifecycle::class::{Floor, FloorTerm, RetentionClass};
+use crate::lifecycle::class::{Floor, FloorTerm, LifecycleClass};
 #[derive(Debug, Default)]
 pub struct GcMetrics {
 	pub objects_scanned: u64,
@@ -149,23 +149,23 @@ impl ClassCounters {
 }
 
 #[derive(Clone, Default)]
-pub struct RetentionMetrics {
-	classes: Arc<BTreeMap<RetentionClass, ClassCounters>>,
+pub struct LifecycleMetrics {
+	classes: Arc<BTreeMap<LifecycleClass, ClassCounters>>,
 }
 
-impl RetentionMetrics {
+impl LifecycleMetrics {
 	pub fn new() -> Self {
-		let classes = RetentionClass::all().iter().map(|class| (*class, ClassCounters::default())).collect();
+		let classes = LifecycleClass::all().iter().map(|class| (*class, ClassCounters::default())).collect();
 		Self {
 			classes: Arc::new(classes),
 		}
 	}
 
-	fn counters(&self, class: RetentionClass) -> Option<&ClassCounters> {
+	fn counters(&self, class: LifecycleClass) -> Option<&ClassCounters> {
 		self.classes.get(&class)
 	}
 
-	pub fn record_liveness(&self, class: RetentionClass) {
+	pub fn record_liveness(&self, class: LifecycleClass) {
 		if let Some(counters) = self.counters(class) {
 			counters.slices.fetch_add(1, Ordering::Relaxed);
 		}
@@ -173,7 +173,7 @@ impl RetentionMetrics {
 
 	pub fn record_reclamation(
 		&self,
-		class: RetentionClass,
+		class: LifecycleClass,
 		floor: Option<(Floor, FloorTerm)>,
 		work_done: u64,
 		backlog_hint: u64,
@@ -195,23 +195,23 @@ impl RetentionMetrics {
 		}
 	}
 
-	pub fn record_budget_exhausted(&self, class: RetentionClass) {
+	pub fn record_budget_exhausted(&self, class: LifecycleClass) {
 		if let Some(counters) = self.counters(class) {
 			counters.budget_exhausted_slices.fetch_add(1, Ordering::Relaxed);
 		}
 	}
 
-	pub fn record_gated(&self, class: RetentionClass) {
+	pub fn record_gated(&self, class: LifecycleClass) {
 		if let Some(counters) = self.counters(class) {
 			counters.gated_slices.fetch_add(1, Ordering::Relaxed);
 		}
 	}
 
-	pub fn snapshot(&self, class: RetentionClass) -> ClassSnapshot {
+	pub fn snapshot(&self, class: LifecycleClass) -> ClassSnapshot {
 		self.counters(class).map(ClassCounters::snapshot).unwrap_or_default()
 	}
 
-	pub fn report(&self) -> Vec<(RetentionClass, ClassSnapshot)> {
+	pub fn report(&self) -> Vec<(LifecycleClass, ClassSnapshot)> {
 		self.classes.iter().map(|(class, counters)| (*class, counters.snapshot())).collect()
 	}
 }
@@ -228,10 +228,10 @@ fn decode_binding(encoded: u64) -> Option<FloorTerm> {
 mod tests {
 	use reifydb_value::value::datetime::DateTime;
 
-	use super::{RetentionMetrics, STARVATION_WINDOW_NANOS, StuckOnset};
+	use super::{LifecycleMetrics, STARVATION_WINDOW_NANOS, StuckOnset};
 	use crate::{
 		common::CommitVersion,
-		lifecycle::class::{Floor, FloorTerm, RetentionClass},
+		lifecycle::class::{Floor, FloorTerm, LifecycleClass},
 	};
 
 	const HOUR_NANOS: i64 = 3_600 * 1_000_000_000;
@@ -252,8 +252,8 @@ mod tests {
 		// sequence below is what a budgeted sweep across a ttl ladder produces - the reported cutoff
 		// swinging between a short-lived and a long-lived object - which the pinned predicate reads as
 		// a floor moving backwards and alarms on.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtl;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::RowTtl;
 
 		for step in 0..20i64 {
 			let floor = match step % 2 {
@@ -275,8 +275,8 @@ mod tests {
 		// slices that only scan, and the lane re-runs it every few milliseconds. That is a healthy
 		// catch-up, not starvation, and alarming on it buries the real signal under dozens of lines a
 		// second.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtl;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::RowTtl;
 		let step = STARVATION_WINDOW_NANOS as i64 / 100;
 
 		for slice in 0..50i64 {
@@ -291,8 +291,8 @@ mod tests {
 		// The condition worth waking someone for is a class that has held a backlog and reclaimed
 		// nothing for long enough that it cannot be a sweep in progress. It must still speak once per
 		// window rather than once per slice, because the lane re-slices at its catch-up cadence.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtl;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::RowTtl;
 
 		assert_eq!(metrics.record_reclamation(class, expiry_floor(BASE), 0, 7), StuckOnset::Quiet);
 		assert_eq!(
@@ -320,8 +320,8 @@ mod tests {
 		// A class that drains some of its backlog is making progress, and the clock it is measured
 		// against keeps running. Without restarting the window, the accumulated age of an old stall
 		// would alarm on a class that has since recovered.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtl;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::RowTtl;
 
 		metrics.record_reclamation(class, expiry_floor(BASE), 0, 4);
 		metrics.record_reclamation(class, expiry_floor(BASE + STARVATION_WINDOW_NANOS as i64), 12, 4);
@@ -365,8 +365,8 @@ mod tests {
 	fn an_externally_pinned_floor_is_still_reported_as_pinned() {
 		// Splitting the alarm by binding must not retire the case it exists for: a lease, a query or a
 		// consumer holding the floor down is a real pin, diagnosed by naming the party responsible.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::BufferHistoricalGc;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::BufferHistoricalGc;
 		let floor = Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin));
 
 		assert_eq!(metrics.record_reclamation(class, floor, 0, 3), StuckOnset::Quiet);
@@ -387,16 +387,16 @@ mod tests {
 		// "No floor" and "nothing eligible" are different states. A database that declares no ttl at
 		// all resolves no cutoff and has nothing to reclaim, which is not a fault; the same missing
 		// cutoff with rows waiting behind it means the class can reclaim nothing and must be heard.
-		let idle = RetentionMetrics::new();
+		let idle = LifecycleMetrics::new();
 		assert_eq!(
-			idle.record_reclamation(RetentionClass::RowTtl, None, 0, 0),
+			idle.record_reclamation(LifecycleClass::RowTtl, None, 0, 0),
 			StuckOnset::Quiet,
 			"an unresolvable floor with nothing eligible is not a fault to alarm on"
 		);
 
-		let waiting = RetentionMetrics::new();
+		let waiting = LifecycleMetrics::new();
 		assert_eq!(
-			waiting.record_reclamation(RetentionClass::RowTtl, None, 0, 3),
+			waiting.record_reclamation(LifecycleClass::RowTtl, None, 0, 3),
 			StuckOnset::FloorUnresolvable,
 			"the same missing cutoff with work waiting behind it must still be reported"
 		);
@@ -406,11 +406,11 @@ mod tests {
 	fn every_class_is_present_from_construction() {
 		// A class that only appears in the report once it has done work is invisible exactly when it matters:
 		// the report is how an operator checks whether a class is running at all.
-		let metrics = RetentionMetrics::new();
+		let metrics = LifecycleMetrics::new();
 
 		assert_eq!(
 			metrics.report().len(),
-			RetentionClass::all().len(),
+			LifecycleClass::all().len(),
 			"the report must enumerate every class before any of them has run"
 		);
 	}
@@ -419,8 +419,8 @@ mod tests {
 	fn a_slice_that_reclaims_nothing_on_a_frozen_floor_counts_as_stuck() {
 		// A class that keeps ticking and reports success while its floor never moves reclaims nothing;
 		// it has to be counted, or it reads as idle.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtl;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::RowTtl;
 
 		metrics.record_reclamation(
 			class,
@@ -447,8 +447,8 @@ mod tests {
 		// None means the epoch could not resolve a cutoff - the exact state in which TTLs silently stopped
 		// firing. It must surface, because the executor's own behaviour (delete nothing) is indistinguishable
 		// from having nothing to do.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtl;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::RowTtl;
 
 		metrics.record_reclamation(class, None, 0, 0);
 
@@ -457,8 +457,8 @@ mod tests {
 
 	#[test]
 	fn an_advancing_floor_with_work_is_never_stuck() {
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtl;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::RowTtl;
 
 		metrics.record_reclamation(
 			class,
@@ -483,8 +483,8 @@ mod tests {
 	fn the_binding_term_is_reported_so_a_stuck_class_names_what_holds_it() {
 		// "buffer-historical-gc is stuck" is not actionable; "stuck on lease-min" points at a leaked
 		// or long-held lease, while the same class stuck on query-done-until points at a wedged query.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::BufferHistoricalGc;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::BufferHistoricalGc;
 
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
 
@@ -499,8 +499,8 @@ mod tests {
 	fn an_unresolvable_floor_reports_no_binding_term() {
 		// No cutoff means no term bound it. Reporting a stale binding would send an operator after a reader
 		// that is not the problem.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtl;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::RowTtl;
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 1, 0);
 
 		metrics.record_reclamation(class, None, 0, 0);
@@ -512,8 +512,8 @@ mod tests {
 	fn progress_clears_the_stuck_streak_so_the_alarm_can_fire_again() {
 		// The alarm fires on the transition into stuck. Without clearing on progress a class that recovers and
 		// wedges a second time would stay silent for the rest of the process lifetime.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtl;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::RowTtl;
 
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
@@ -532,8 +532,8 @@ mod tests {
 		// An idle database freezes its floor and reclaims nothing every tick. That is counted, because a
 		// human reading the report should see it, but it must not be an alarm or the alarm becomes noise on
 		// every quiet system.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtl;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::RowTtl;
 
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
@@ -546,8 +546,8 @@ mod tests {
 	fn a_frozen_floor_with_work_waiting_reports_the_backlog() {
 		// The alarm condition: rows are eligible, the floor will not move, nothing is being reclaimed. Only
 		// the backlog distinguishes this from the idle case above.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtl;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::RowTtl;
 
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 3);
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 3);
@@ -562,28 +562,28 @@ mod tests {
 	fn classes_account_independently() {
 		// Accounting is per class so one wedged class is visible as one wedged class, not smeared
 		// across the others.
-		let metrics = RetentionMetrics::new();
+		let metrics = LifecycleMetrics::new();
 
-		metrics.record_reclamation(RetentionClass::QueueRetention, None, 0, 0);
+		metrics.record_reclamation(LifecycleClass::QueueDoneTtl, None, 0, 0);
 		metrics.record_reclamation(
-			RetentionClass::RowTtl,
+			LifecycleClass::RowTtl,
 			Some((Floor::Version(CommitVersion(5)), FloorTerm::QueryDoneUntil)),
 			3,
 			0,
 		);
 
-		assert_eq!(metrics.snapshot(RetentionClass::QueueRetention).stuck_slices, 1);
-		assert_eq!(metrics.snapshot(RetentionClass::RowTtl).stuck_slices, 0);
-		assert_eq!(metrics.snapshot(RetentionClass::QueueRetention).work_done, 0);
-		assert_eq!(metrics.snapshot(RetentionClass::RowTtl).work_done, 3);
+		assert_eq!(metrics.snapshot(LifecycleClass::QueueDoneTtl).stuck_slices, 1);
+		assert_eq!(metrics.snapshot(LifecycleClass::RowTtl).stuck_slices, 0);
+		assert_eq!(metrics.snapshot(LifecycleClass::QueueDoneTtl).work_done, 0);
+		assert_eq!(metrics.snapshot(LifecycleClass::RowTtl).work_done, 3);
 	}
 
 	#[test]
 	fn a_backlog_that_survives_a_full_budget_is_visible() {
 		// Draining under budget is healthy; draining under budget while the backlog stays high is losing
 		// ground. Only both counters together distinguish them.
-		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtl;
+		let metrics = LifecycleMetrics::new();
+		let class = LifecycleClass::RowTtl;
 
 		metrics.record_reclamation(
 			class,

@@ -31,7 +31,7 @@ use reifydb_store_multi::{
 	store::StandardMultiStore,
 };
 use reifydb_sub_lifecycle::{
-	plane::{RetentionPlane, ledger::FloorSource},
+	plane::{LifecyclePlane, ledger::FloorSource},
 	store::flush::PersistentFlushTask,
 };
 use reifydb_value::{
@@ -124,7 +124,7 @@ fn seeded_task(store: &StandardMultiStore, budget: u64) -> PersistentFlushTask {
 	store.set_flush_floor(Arc::new(StaticFloor(CommitVersion(u64::MAX))));
 	store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
 
-	let plane = RetentionPlane::new(Arc::new(Unpinned), VersionEpoch::new());
+	let plane = LifecyclePlane::new(Arc::new(Unpinned), VersionEpoch::new());
 	PersistentFlushTask::new(
 		store.flush_engine().expect("a persistent store must build a flush engine"),
 		Arc::new(StubConfig(budget)),

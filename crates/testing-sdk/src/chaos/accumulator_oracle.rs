@@ -531,7 +531,7 @@ where
 	let mut last_visible: HashMap<CarryWindowKey<A>, A::Output> = HashMap::new();
 	let past_output_watermark =
 		<A::Coord as SealDomain>::SIZE_DOMAIN == WindowSizeDomain::Time || !settings.lateness.is_zero();
-	let retention = if past_output_watermark {
+	let immutable = if past_output_watermark {
 		None
 	} else {
 		settings.immutable
@@ -627,9 +627,9 @@ where
 				meta.windows.remove(&coord);
 			}
 
-			if let (Some(retention), Some(hw)) = (retention, meta.high_water) {
+			if let (Some(immutable), Some(hw)) = (immutable, meta.high_water) {
 				while let Some((&first, carry_out)) = meta.windows.iter().next() {
-					if hw.span_since(first) <= retention {
+					if hw.span_since(first) <= immutable {
 						break;
 					}
 					let carry_out = carry_out.clone();

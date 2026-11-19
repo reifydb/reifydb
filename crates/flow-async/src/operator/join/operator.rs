@@ -187,8 +187,8 @@ pub struct JoinOperator {
 	pub(crate) emit: Emit,
 	natural: bool,
 	pub(crate) pick: Option<JoinPick>,
-	left_retention: Option<Duration>,
-	right_retention: Option<Duration>,
+	left_lateness: Option<Duration>,
+	right_lateness: Option<Duration>,
 	ctx: Arc<FlowContext>,
 	forget_fires: Counter,
 	expiry: JoinExpiryIndex,
@@ -212,8 +212,8 @@ impl JoinOperator {
 		emit: Emit,
 		natural: bool,
 		pick: Option<JoinPick>,
-		left_retention: Option<Duration>,
-		right_retention: Option<Duration>,
+		left_lateness: Option<Duration>,
+		right_lateness: Option<Duration>,
 		ctx: Arc<FlowContext>,
 	) -> Result<Self, ValueError> {
 		let left_node = left.operator;
@@ -254,8 +254,8 @@ impl JoinOperator {
 			emit,
 			natural,
 			pick,
-			left_retention: left_retention.filter(|span| !span.is_zero()),
-			right_retention: right_retention.filter(|span| !span.is_zero()),
+			left_lateness: left_lateness.filter(|span| !span.is_zero()),
+			right_lateness: right_lateness.filter(|span| !span.is_zero()),
 			ctx,
 			forget_fires: Counter::new("flow.operator.join.seal_fires_total", "Join seal timer fires"),
 			expiry: JoinExpiryIndex::default(),
@@ -263,10 +263,10 @@ impl JoinOperator {
 		})
 	}
 
-	pub(crate) fn retention_of(&self, side: JoinSide) -> Option<Duration> {
+	pub(crate) fn lateness_of(&self, side: JoinSide) -> Option<Duration> {
 		match side {
-			JoinSide::Left => self.left_retention,
-			JoinSide::Right => self.right_retention,
+			JoinSide::Left => self.left_lateness,
+			JoinSide::Right => self.right_lateness,
 		}
 	}
 
@@ -277,8 +277,8 @@ impl JoinOperator {
 		}
 	}
 
-	fn widest_retention(&self) -> Option<Duration> {
-		match (self.retention_of(JoinSide::Left), self.retention_of(JoinSide::Right)) {
+	fn widest_lateness(&self) -> Option<Duration> {
+		match (self.lateness_of(JoinSide::Left), self.lateness_of(JoinSide::Right)) {
 			(Some(left), Some(right)) => Some(left.max(right)),
 			(left, right) => left.or(right),
 		}
@@ -340,13 +340,13 @@ impl JoinOperator {
 		cleared: &[(GroupId, RowNumber)],
 		armed: &[(GroupId, RowNumber, DateTime)],
 	) -> Result<(), ValueError> {
-		let Some(retention) = self.retention_of(side) else {
+		let Some(lateness) = self.lateness_of(side) else {
 			return Ok(());
 		};
 		if cleared.is_empty() && armed.is_empty() {
 			return Ok(());
 		}
-		let rule = SealRule::of(retention);
+		let rule = SealRule::of(lateness);
 
 		for at in host.join_expiry_clear(side.tag(), cleared)?.into_iter().flatten() {
 			self.expiry.cleared(at);
@@ -373,7 +373,7 @@ impl JoinOperator {
 		columns: &RecordBatch,
 		keys: &[Option<Hash128>],
 	) -> Result<(), ValueError> {
-		if self.retention_of(side).is_none() {
+		if self.lateness_of(side).is_none() {
 			return Ok(());
 		}
 		let times = row_times(columns)?;
@@ -397,7 +397,7 @@ impl JoinOperator {
 		columns: &RecordBatch,
 		keys: &[Option<Hash128>],
 	) -> Result<(), ValueError> {
-		if self.retention_of(side).is_none() {
+		if self.lateness_of(side).is_none() {
 			return Ok(());
 		}
 		let row_numbers = require_row_numbers(columns)?;
@@ -418,10 +418,10 @@ impl JoinOperator {
 		pre: Option<RecordBatch>,
 		post: RecordBatch,
 	) -> Result<(Option<RecordBatch>, RecordBatch), ValueError> {
-		let (Some(retention), Some(flow_watermark)) = (self.retention_of(side), host.flow_watermark()?) else {
+		let (Some(lateness), Some(flow_watermark)) = (self.lateness_of(side), host.flow_watermark()?) else {
 			return Ok((pre, post));
 		};
-		let horizon = <ByDateTime as SealDomain>::horizon(ByDateTime(flow_watermark), retention).0;
+		let horizon = <ByDateTime as SealDomain>::horizon(ByDateTime(flow_watermark), lateness).0;
 		let kept = time_at_or_after(&post, horizon)?;
 		if kept.false_count() == 0 {
 			return Ok((pre, post));
@@ -440,7 +440,7 @@ impl JoinOperator {
 		keys: (Option<Hash128>, Option<Hash128>),
 		moves: &mut ExpiryMoves,
 	) -> Result<(), ValueError> {
-		if self.retention_of(side).is_none() {
+		if self.lateness_of(side).is_none() {
 			return Ok(());
 		}
 		if let Some(group) = self.expiry_group(side, keys.0) {
@@ -499,7 +499,7 @@ impl JoinOperator {
 	}
 
 	fn free_due_join_rows(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<(), ValueError> {
-		let Some(span) = self.widest_retention() else {
+		let Some(span) = self.widest_lateness() else {
 			return Ok(());
 		};
 		let retry = fired.at().saturating_add(span);
@@ -1110,7 +1110,7 @@ impl HostOperator for JoinOperator {
 	}
 
 	fn seal_span(&self) -> Option<Duration> {
-		self.widest_retention()
+		self.widest_lateness()
 	}
 }
 
@@ -1296,7 +1296,7 @@ impl JoinOperator {
 		let pre_keys = self.compute_join_keys(pre, self.lowered_exprs_of(side))?;
 		let post_keys = self.compute_join_keys(post, self.lowered_exprs_of(side))?;
 		let row_count = post.num_rows();
-		let post_times = match self.retention_of(side) {
+		let post_times = match self.lateness_of(side) {
 			Some(_) => row_times(post)?,
 			None => Vec::new(),
 		};
@@ -1454,16 +1454,16 @@ mod seal_tests {
 		},
 	};
 
-	fn join(operator: u64, left_retention: Option<Duration>, right_retention: Option<Duration>) -> JoinOperator {
-		join_with(operator, Emit::On, None, left_retention, right_retention)
+	fn join(operator: u64, left_lateness: Option<Duration>, right_lateness: Option<Duration>) -> JoinOperator {
+		join_with(operator, Emit::On, None, left_lateness, right_lateness)
 	}
 
 	fn join_with(
 		operator: u64,
 		emit: Emit,
 		pick: Option<JoinPick>,
-		left_retention: Option<Duration>,
-		right_retention: Option<Duration>,
+		left_lateness: Option<Duration>,
+		right_lateness: Option<Duration>,
 	) -> JoinOperator {
 		JoinOperator::new(
 			JoinSideConfig {
@@ -1484,8 +1484,8 @@ mod seal_tests {
 			emit,
 			false,
 			pick,
-			left_retention,
-			right_retention,
+			left_lateness,
+			right_lateness,
 			Arc::new(FlowContext::default()),
 		)
 		.expect("the join operator must build")
@@ -1882,7 +1882,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn an_inserted_row_is_armed_one_retention_past_its_own_event_time() {
+	fn an_inserted_row_is_armed_one_lateness_past_its_own_event_time() {
 		// the join expiry must be the row's own event time, not wall-clock, or a backfilled row evicts on
 		// arrival
 		let engine = TestEngine::new();
@@ -1896,7 +1896,7 @@ mod seal_tests {
 		assert_eq!(
 			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
-			"the due time is event time + retention + the strict gate step"
+			"the due time is event time + lateness + the strict gate step"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 1, "and exactly one maintenance timer covers the operator");
 	}
@@ -1962,7 +1962,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_row_still_inside_its_retention_survives_a_maintenance_tick() {
+	fn a_row_still_inside_its_lateness_survives_a_maintenance_tick() {
 		// The gate is strict: a row whose due time lands one tick past the fire must not expire yet.
 		let engine = TestEngine::new();
 		let mut op = join(3, Some(seconds(10)), None);
@@ -2050,12 +2050,12 @@ mod seal_tests {
 			Some(at_millis(15_001)),
 			"the left join expiry must still name the left row's own last write"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "and a side with no retention must arm nothing of its own");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "and a side with no lateness must arm nothing of its own");
 	}
 
 	#[test]
-	fn a_join_without_a_retention_arms_nothing_at_all() {
-		// Arming without a retention leaves one timer and one join expiry per row that nothing ever collects.
+	fn a_join_without_a_lateness_arms_nothing_at_all() {
+		// Arming without a lateness leaves one timer and one join expiry per row that nothing ever collects.
 		let engine = TestEngine::new();
 		let mut op = join(7, None, None);
 		let mut txn = txn_at(&engine, 100);
@@ -2067,7 +2067,7 @@ mod seal_tests {
 		assert_eq!(
 			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
 			None,
-			"no retention means no join expiry"
+			"no lateness means no join expiry"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 0, "and no timer");
 	}
@@ -2125,11 +2125,7 @@ mod seal_tests {
 
 		fire(&mut op, &mut txn, at_millis(15_001));
 
-		assert_eq!(
-			side_rows(&op, &mut txn, group, JoinSide::Left),
-			0,
-			"the left row is past its own retention"
-		);
+		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 0, "the left row is past its own lateness");
 		assert_eq!(
 			side_rows(&op, &mut txn, group, JoinSide::Right),
 			1,
@@ -2138,7 +2134,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_row_short_of_its_own_retention_holds_the_groups_timer_open() {
+	fn a_row_short_of_its_own_lateness_holds_the_groups_timer_open() {
 		// The two sides expire on independent spans, so the group re-arms on whichever join expiry is next due.
 		let engine = TestEngine::new();
 		let mut op = join(11, Some(seconds(10)), Some(seconds(3_600)));
@@ -2151,15 +2147,11 @@ mod seal_tests {
 
 		fire(&mut op, &mut txn, at_millis(15_001));
 
-		assert_eq!(
-			side_rows(&op, &mut txn, group, JoinSide::Left),
-			0,
-			"the left row is past its own retention"
-		);
+		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 0, "the left row is past its own lateness");
 		assert_eq!(
 			join_expiry_of(&op, &mut txn, group, JoinSide::Right, 99),
 			Some(at_millis(3_609_001)),
-			"the right row keeps the join expiry its own longer retention gave it"
+			"the right row keeps the join expiry its own longer lateness gave it"
 		);
 		assert_eq!(
 			armed_timers(&op, &mut txn),
@@ -2169,8 +2161,8 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_latest_join_expires_both_sides_on_their_own_retentions() {
-		// A latest join holds one right row per key, and that row must still arm its own retention.
+	fn a_latest_join_expires_both_sides_on_their_own_lateness() {
+		// A latest join holds one right row per key, and that row must still arm its own lateness.
 		let engine = TestEngine::new();
 		let mut op = join_with(12, Emit::On, Some(JoinPick::latest()), Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
@@ -2188,7 +2180,7 @@ mod seal_tests {
 		assert_eq!(
 			join_expiry_of(&op, &mut txn, group, JoinSide::Right, 99),
 			Some(at_millis(19_001)),
-			"the right row is an ordinary kept row and must expire on its own retention"
+			"the right row is an ordinary kept row and must expire on its own lateness"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 1, "and one timer covers the group's earliest join expiry");
 	}
@@ -2269,7 +2261,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_snapshot_join_expires_both_sides_on_their_own_retentions() {
+	fn a_snapshot_join_expires_both_sides_on_their_own_lateness() {
 		// A sealed right row retires its bytes into the pin, so pinning it no longer means it may never expire.
 		let engine = TestEngine::new();
 		let mut op = join_with(13, Emit::Off, None, Some(seconds(10)), Some(seconds(10)));

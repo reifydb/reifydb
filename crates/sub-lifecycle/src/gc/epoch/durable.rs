@@ -8,7 +8,7 @@ use reifydb_core::{
 		WithEventBus,
 		catalog::config::{ConfigKey, GetConfig},
 	},
-	lifecycle::{class::RetentionClass, gate::RetentionStartupGate, progress::Progress, task::LifecycleTask},
+	lifecycle::{class::LifecycleClass, gate::LifecycleStartupGate, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::version_epoch::{EpochSeconds, VersionEpoch};
@@ -19,7 +19,7 @@ use reifydb_value::{
 };
 use tracing::{debug, instrument, warn};
 
-use crate::{gc::epoch::log::EpochLog, plane::horizon::max_retention_horizon};
+use crate::{gc::epoch::log::EpochLog, plane::horizon::history_horizon};
 
 const PRUNE_BUDGET: usize = 1024;
 
@@ -52,13 +52,13 @@ pub fn hydrate_into(engine: &StandardEngine, horizon: Duration, epoch: &VersionE
 pub struct EpochLogTask {
 	engine: StandardEngine,
 	catalog: Catalog,
-	gate: RetentionStartupGate,
+	gate: LifecycleStartupGate,
 	log: EpochLog,
 	pruned_since_emit: Count,
 }
 
 impl EpochLogTask {
-	pub fn new(engine: StandardEngine, gate: RetentionStartupGate) -> Self {
+	pub fn new(engine: StandardEngine, gate: LifecycleStartupGate) -> Self {
 		let catalog = engine.catalog();
 		Self {
 			log: EpochLog::new(engine.clone()),
@@ -97,7 +97,7 @@ impl EpochLogTask {
 
 	#[instrument(name = "lifecycle::gc::epoch::prune", level = "debug", skip_all)]
 	fn prune(&mut self, now: EpochSeconds) -> Result<Progress, ValueError> {
-		let horizon = max_retention_horizon(&self.catalog);
+		let horizon = history_horizon(&self.catalog);
 		let Some(cutoff) = now.to_datetime().checked_sub(horizon) else {
 			return Ok(Progress::Exhausted);
 		};
@@ -116,11 +116,7 @@ impl EpochLogTask {
 		txn.commit_unchecked()?;
 
 		self.pruned_since_emit = self.pruned_since_emit.saturating_add(Count::new(drained as u64));
-		debug!(
-			pruned = drained,
-			cutoff = cutoff.to_nanos(),
-			"pruned epoch samples beyond the retention horizon"
-		);
+		debug!(pruned = drained, cutoff = cutoff.to_nanos(), "pruned epoch samples beyond the history horizon");
 
 		if drained >= PRUNE_BUDGET {
 			Ok(Progress::Yielded)
@@ -139,8 +135,8 @@ impl LifecycleTask for EpochLogTask {
 		self.catalog.get_config_duration(ConfigKey::EpochBucketInterval)
 	}
 
-	fn classes(&self) -> &'static [RetentionClass] {
-		&[RetentionClass::EpochLog]
+	fn classes(&self) -> &'static [LifecycleClass] {
+		&[LifecycleClass::EpochLog]
 	}
 
 	#[instrument(name = "lifecycle::gc::epoch::slice", level = "debug", skip_all)]

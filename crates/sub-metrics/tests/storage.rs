@@ -133,8 +133,6 @@ impl Runner {
 				persistent: None,
 				point: None,
 				range: None,
-				retention: Default::default(),
-				merge_config: Default::default(),
 				event_bus: event_bus.clone(),
 				spawner: spawner.clone(),
 				clock: Clock::Real,

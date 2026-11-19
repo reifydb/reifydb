@@ -41,7 +41,7 @@ use reifydb_core::{
 		view::View,
 		windowed_view_group::WindowedViewGroup,
 	},
-	row::{OperatorRetention, RowSettings},
+	row::{OperatorHorizon, RowSettings},
 };
 use reifydb_value::value::{
 	datetime::DateTime, dictionary::DictionaryId, identity::IdentityId, partition::Partition,
@@ -410,7 +410,7 @@ pub struct TransactionalCatalogChanges {
 
 	pub row_settings: Vec<Change<(StorageId, RowSettings)>>,
 
-	pub operator_retention: Vec<Change<(OperatorId, OperatorRetention)>>,
+	pub operator_horizon: Vec<Change<(OperatorId, OperatorHorizon)>>,
 
 	pub primary_key: Vec<Change<(ObjectId, PrimaryKey)>>,
 
@@ -448,7 +448,7 @@ pub struct CatalogChangesSavepoint {
 	view_len: usize,
 	windowed_view_group_len: usize,
 	row_settings_len: usize,
-	operator_retention_len: usize,
+	operator_horizon_len: usize,
 	primary_key_len: usize,
 	log_len: usize,
 }
@@ -491,7 +491,7 @@ impl TransactionalCatalogChanges {
 			view_len: self.view.len(),
 			windowed_view_group_len: self.windowed_view_group.len(),
 			row_settings_len: self.row_settings.len(),
-			operator_retention_len: self.operator_retention.len(),
+			operator_horizon_len: self.operator_horizon.len(),
 			primary_key_len: self.primary_key.len(),
 			log_len: self.log.len(),
 		}
@@ -528,7 +528,7 @@ impl TransactionalCatalogChanges {
 		self.view.truncate(sp.view_len);
 		self.windowed_view_group.truncate(sp.windowed_view_group_len);
 		self.row_settings.truncate(sp.row_settings_len);
-		self.operator_retention.truncate(sp.operator_retention_len);
+		self.operator_horizon.truncate(sp.operator_horizon_len);
 		self.primary_key.truncate(sp.primary_key_len);
 		self.log.truncate(sp.log_len);
 	}
@@ -1012,7 +1012,7 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
-	pub fn add_operator_retention_change(&mut self, change: Change<(OperatorId, OperatorRetention)>) {
+	pub fn add_operator_horizon_change(&mut self, change: Change<(OperatorId, OperatorHorizon)>) {
 		let operator = change
 			.post
 			.as_ref()
@@ -1020,8 +1020,8 @@ impl TransactionalCatalogChanges {
 			.map(|(o, _)| *o)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.operator_retention.push(change);
-		self.log.push(Operation::OperatorRetention {
+		self.operator_horizon.push(change);
+		self.log.push(Operation::OperatorHorizon {
 			operator,
 			op,
 		});
@@ -1168,7 +1168,7 @@ pub enum Operation {
 		object: ObjectId,
 		op: OperationType,
 	},
-	OperatorRetention {
+	OperatorHorizon {
 		operator: OperatorId,
 		op: OperationType,
 	},
@@ -1212,7 +1212,7 @@ impl TransactionalCatalogChanges {
 			view: Vec::new(),
 			windowed_view_group: Vec::new(),
 			row_settings: Vec::new(),
-			operator_retention: Vec::new(),
+			operator_horizon: Vec::new(),
 			primary_key: Vec::new(),
 			log: Vec::new(),
 		}

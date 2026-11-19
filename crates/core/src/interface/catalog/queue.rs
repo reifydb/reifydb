@@ -31,7 +31,7 @@ pub struct Queue {
 	pub partition_by: Vec<String>,
 	pub dispatch: QueueDispatch,
 	pub deduplicate: Option<QueueDeduplicate>,
-	pub retention: QueueRetention,
+	pub done: QueueDone,
 	pub retry: QueueRetry,
 	pub time: TimeSource,
 }
@@ -100,8 +100,8 @@ impl QueueDeduplicate {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct QueueRetention {
-	pub done: Option<Duration>,
+pub struct QueueDone {
+	pub ttl: Option<Duration>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

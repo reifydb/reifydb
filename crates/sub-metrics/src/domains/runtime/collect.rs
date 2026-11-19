@@ -76,11 +76,7 @@ fn push_allocator_samples(out: &mut Vec<MetricsSample>, jemalloc: &Option<Jemall
 		));
 	} else if let Some(a) = alloc {
 		out.push(MetricsSample::bytes("allocator", "heap_live_bytes", ByteSize::from_bytes(a.heap_live)));
-		out.push(MetricsSample::bytes(
-			"allocator",
-			"heap_free_retained_bytes",
-			ByteSize::from_bytes(a.heap_free_retained),
-		));
+		out.push(MetricsSample::bytes("allocator", "heap_free_bytes", ByteSize::from_bytes(a.heap_free)));
 		out.push(MetricsSample::bytes("allocator", "heap_arena_bytes", ByteSize::from_bytes(a.heap_arena)));
 		out.push(MetricsSample::bytes("allocator", "heap_mmap_bytes", ByteSize::from_bytes(a.heap_mmap)));
 	}
@@ -155,7 +151,7 @@ fn push_derived_samples(
 			));
 			out.push(MetricsSample::ratio(
 				"derived",
-				"heap_retention_ratio",
+				"heap_unused_ratio",
 				(p.rss_anon as f64 - j.allocated as f64) / p.rss_anon as f64,
 			));
 		}
@@ -164,7 +160,7 @@ fn push_derived_samples(
 	{
 		out.push(MetricsSample::ratio(
 			"derived",
-			"heap_retention_ratio",
+			"heap_unused_ratio",
 			(p.rss_anon as f64 - a.heap_live as f64) / p.rss_anon as f64,
 		));
 	}
@@ -201,7 +197,7 @@ fn push_mvcc(c: &Collectors, out: &mut Vec<MetricsSample>) {
 
 struct AllocMem {
 	heap_live: u64,
-	heap_free_retained: u64,
+	heap_free: u64,
 	heap_arena: u64,
 	heap_mmap: u64,
 }
@@ -213,7 +209,7 @@ fn collect_allocator() -> Option<AllocMem> {
 	let mi = unsafe { mallinfo2() };
 	Some(AllocMem {
 		heap_live: mi.uordblks as u64,
-		heap_free_retained: mi.fordblks as u64,
+		heap_free: mi.fordblks as u64,
 		heap_arena: mi.arena as u64,
 		heap_mmap: mi.hblkhd as u64,
 	})

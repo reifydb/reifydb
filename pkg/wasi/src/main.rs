@@ -30,7 +30,7 @@ use reifydb_core::{
 		catalog::config::ConfigKey,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	lifecycle::metrics::RetentionMetrics,
+	lifecycle::metrics::LifecycleMetrics,
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
 };
@@ -98,8 +98,6 @@ impl Bridge {
 			persistent: None,
 			point: None,
 			range: None,
-			retention: Default::default(),
-			merge_config: Default::default(),
 			event_bus: eventbus.clone(),
 			spawner: spawner.clone(),
 			clock: Clock::Real,
@@ -130,7 +128,7 @@ impl Bridge {
 		ioc = ioc.register(single_store.clone());
 		ioc = ioc.register(operator_store.clone());
 
-		ioc = ioc.register(RetentionMetrics::new());
+		ioc = ioc.register(LifecycleMetrics::new());
 
 		let ioc_ref = ioc.clone();
 

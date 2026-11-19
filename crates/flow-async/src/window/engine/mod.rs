@@ -7,7 +7,7 @@ pub mod pane;
 pub mod publish;
 pub mod tumbling;
 pub mod tumbling_carry;
-pub mod tumbling_retained;
+pub mod tumbling_entry_map;
 
 use std::{ops::Bound, slice::from_ref};
 
@@ -325,12 +325,12 @@ impl IntoGroupStateKey for &WindowStateKey {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct RetainedEntryKey {
+pub struct MapEntryKey {
 	pub group: GroupId,
 	pub slot: EncodedKey,
 }
 
-impl RetainedEntryKey {
+impl MapEntryKey {
 	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
 		Self {
 			group,
@@ -339,17 +339,17 @@ impl RetainedEntryKey {
 	}
 }
 
-impl HeapSize for RetainedEntryKey {
+impl HeapSize for MapEntryKey {
 	fn heap_size(&self) -> usize {
 		self.slot.heap_size()
 	}
 }
 
-impl IntoGroupStateKey for &RetainedEntryKey {
+impl IntoGroupStateKey for &MapEntryKey {
 	fn into_group_state_key(self) -> GroupStateKey {
 		OperatorStateKey::inner_encoded(
 			self.group,
-			KeyspaceId::GUEST_RETAINED_ENTRY,
+			KeyspaceId::GUEST_MAP_ENTRY,
 			KeyspaceFamily::Guest.suffix(&self.slot),
 		)
 	}

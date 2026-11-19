@@ -82,7 +82,7 @@ mod tests {
 
 	#[test]
 	fn a_flipped_bit_anywhere_in_the_version_is_caught_by_the_checksum() {
-		// decision 239: retention unlinks segments on this number, and half the bit flips in the
+		// decision 239: gc unlinks segments on this number, and half the bit flips in the
 		// version word raise it. A raised floor deletes records a reader still needs, silently and for
 		// good, so every flip has to fail the decode and fall back to pinning at the beginning.
 		for at in 8..HINT_BYTES {

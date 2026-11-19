@@ -17,11 +17,11 @@ mod call_mixed_op;
 mod data_types;
 mod filtered;
 mod integration;
-mod lifecycle;
 mod multiple;
 mod notifications;
 mod reconnect;
 mod stress;
+mod unsubscribe;
 
 /// Create a unique test table name to avoid conflicts between tests
 pub fn unique_table_name(prefix: &str) -> String {

@@ -5,21 +5,21 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{config::GetConfig, flow::OperatorId},
-	lifecycle::operator::ListOperatorRetention,
-	row::OperatorRetention,
+	lifecycle::operator::ListOperatorHorizon,
+	row::OperatorHorizon,
 };
 
 use crate::catalog::Catalog;
 
-impl ListOperatorRetention for Catalog {
-	fn list_operator_retention(&self) -> Vec<(OperatorId, OperatorRetention)> {
+impl ListOperatorHorizon for Catalog {
+	fn list_operator_horizon(&self) -> Vec<(OperatorId, OperatorHorizon)> {
 		self.cache
-			.operator_retention
+			.operator_horizon
 			.iter()
 			.filter_map(|entry| {
 				let operator = *entry.key();
-				let retention = entry.value().get_latest()?;
-				Some((operator, retention))
+				let horizon = entry.value().get_latest()?;
+				Some((operator, horizon))
 			})
 			.collect()
 	}

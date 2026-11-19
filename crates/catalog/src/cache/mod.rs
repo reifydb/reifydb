@@ -16,7 +16,7 @@ pub mod identity_attribute_value;
 pub mod load;
 pub mod migration;
 pub mod namespace;
-pub mod operator_retention;
+pub mod operator_horizon;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
@@ -84,7 +84,7 @@ use reifydb_core::{
 		vtable::{VTable, VTableId},
 		windowed_view_group::WindowedViewGroup,
 	},
-	row::{OperatorRetention, RowSettings},
+	row::{OperatorHorizon, RowSettings},
 	util::multi::MultiVersionContainer,
 };
 use reifydb_runtime::sync::mutex::Mutex;
@@ -131,7 +131,7 @@ pub type MultiVersionSource = MultiVersionContainer<Source>;
 pub type MultiVersionSink = MultiVersionContainer<Sink>;
 pub type MultiVersionWindowedViewGroup = MultiVersionContainer<WindowedViewGroup>;
 pub type MultiVersionRowSettings = MultiVersionContainer<RowSettings>;
-pub type MultiVersionOperatorRetention = MultiVersionContainer<OperatorRetention>;
+pub type MultiVersionOperatorHorizon = MultiVersionContainer<OperatorHorizon>;
 pub type MultiVersionConfig = MultiVersionContainer<Value>;
 pub type MultiVersionAuthentication = MultiVersionContainer<Authentication>;
 
@@ -197,7 +197,7 @@ pub struct CatalogCacheInner {
 
 	pub(crate) relationships_by_source: SkipMap<TableId, Vec<RelationshipId>>,
 
-	pub(crate) operator_retention: SkipMap<OperatorId, MultiVersionOperatorRetention>,
+	pub(crate) operator_horizon: SkipMap<OperatorId, MultiVersionOperatorHorizon>,
 
 	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionary>,
 
@@ -335,7 +335,7 @@ impl CatalogCache {
 			relationships_by_name: SkipMap::new(),
 			relationships_by_source: SkipMap::new(),
 			row_settings: SkipMap::new(),
-			operator_retention: SkipMap::new(),
+			operator_horizon: SkipMap::new(),
 			dictionaries: SkipMap::new(),
 			dictionaries_by_name: SkipMap::new(),
 			sumtypes: SkipMap::new(),
@@ -653,11 +653,11 @@ mod config_validation_tests {
 	}
 
 	#[test]
-	fn test_retention_evict_interval_accepts_zero() {
+	fn test_expire_interval_accepts_zero() {
 		// Keys without bespoke validation still accept zero-Duration values.
 		let catalog = CatalogCache::new();
 		let zero = Value::Duration(TypeDuration::from_seconds(0).unwrap());
-		assert!(catalog.set_config(ConfigKey::RetentionEvictInterval, CommitVersion(1), zero).is_ok());
+		assert!(catalog.set_config(ConfigKey::ExpireInterval, CommitVersion(1), zero).is_ok());
 	}
 
 	#[allow(dead_code)]

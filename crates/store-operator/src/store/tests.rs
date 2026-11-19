@@ -467,7 +467,7 @@ fn a_checkpoint_merge_without_an_interlock_is_unaffected() {
 		store.checkpoint_floor().unwrap(),
 		Some(CommitVersion(10)),
 		"the floor must hold at the durable version of a flow whose delete is still buffered, because a \
-		 crash loses the buffer and sends that flow back to 10; raising the floor to 20 would let retention \
+		 crash loses the buffer and sends that flow back to 10; raising the floor to 20 would let gc \
 		 reap the versions the restart needs"
 	);
 }

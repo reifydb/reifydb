@@ -259,7 +259,7 @@ impl IntoDiagnostic for TransactionError {
 				column: None,
 				fragment: Fragment::None,
 				label: None,
-				help: Some("The consumer lagged past retained MVCC history and must resync from a \
+				help: Some("The consumer lagged past kept MVCC history and must resync from a \
 					    fresh snapshot instead of resuming its position"
 					.to_string()),
 				notes: vec![],

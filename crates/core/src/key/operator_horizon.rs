@@ -15,12 +15,12 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, KeyCodec, Hash)]
-#[key(tag = OperatorRetention)]
-pub struct OperatorRetentionKey {
+#[key(tag = OperatorHorizon)]
+pub struct OperatorHorizonKey {
 	pub operator: OperatorId,
 }
 
-impl OperatorRetentionKey {
+impl OperatorHorizonKey {
 	pub fn new(operator: impl Into<OperatorId>) -> Self {
 		Self {
 			operator: operator.into(),
@@ -45,28 +45,28 @@ pub mod tests {
 	};
 
 	#[test]
-	fn test_operator_retention_key_roundtrip() {
-		let key = OperatorRetentionKey {
+	fn test_operator_horizon_key_roundtrip() {
+		let key = OperatorHorizonKey {
 			operator: OperatorId(12345),
 		};
 
 		let encoded = key.encode();
-		let decoded = OperatorRetentionKey::decode(&encoded).unwrap();
+		let decoded = OperatorHorizonKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);
 	}
 
 	#[test]
-	fn test_operator_retention_key_rejects_other_kind() {
+	fn test_operator_horizon_key_rejects_other_kind() {
 		let other = RowSettingsKey::encoded(StorageId::Table(TableId(1)));
-		assert!(OperatorRetentionKey::decode(&other).is_none());
+		assert!(OperatorHorizonKey::decode(&other).is_none());
 	}
 
 	#[test]
 	fn test_order_preserving() {
-		let key1 = OperatorRetentionKey {
+		let key1 = OperatorHorizonKey {
 			operator: OperatorId(1),
 		};
-		let key2 = OperatorRetentionKey {
+		let key2 = OperatorHorizonKey {
 			operator: OperatorId(2),
 		};
 
@@ -81,19 +81,19 @@ pub mod tests {
 mod verify_byte_identical {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::OperatorRetentionKey;
+	use super::OperatorHorizonKey;
 	use crate::interface::catalog::flow::OperatorId;
 
-	fn legacy_encode(key: &OperatorRetentionKey) -> Vec<u8> {
+	fn legacy_encode(key: &OperatorHorizonKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(OperatorRetentionKey::TAG as u8).extend_u64(key.operator);
+		serializer.extend_u8(OperatorHorizonKey::TAG as u8).extend_u64(key.operator);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 
 	#[test]
 	fn matches_legacy_byte_layout() {
 		for operator in [0u64, 1, 42, 12345, u64::MAX] {
-			let key = OperatorRetentionKey {
+			let key = OperatorHorizonKey {
 				operator: OperatorId(operator),
 			};
 			assert_eq!(legacy_encode(&key), key.encode().as_slice().to_vec(), "operator={operator:#x}");

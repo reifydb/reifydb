@@ -119,7 +119,7 @@ mod tests {
 
 	#[test]
 	fn an_explicit_zero_still_issues_the_pragma() {
-		// ZERO and None are different instructions: zero asks SQLite to retain no page cache, None
+		// ZERO and None are different instructions: zero asks SQLite to keep no page cache, None
 		// declines to configure it at all. Treating ZERO as unset would silently restore the 2000 KiB
 		// per-connection default.
 		let (conn, path) = scratch("zero");

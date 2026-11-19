@@ -28,8 +28,8 @@ use reifydb_core::{
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
 	lifecycle::{
-		class::{Floor, FloorTerm, RetentionClass},
-		metrics::RetentionMetrics,
+		class::{Floor, FloorTerm, LifecycleClass},
+		metrics::LifecycleMetrics,
 		progress::Progress,
 		task::LifecycleTask,
 	},
@@ -57,12 +57,12 @@ use reifydb_value::{
 use tracing::{debug, instrument, warn};
 
 use crate::{
-	plane::RetentionPlane,
-	retention::{
+	expire::{
 		handoff::{HandOff, hand_off},
 		scan,
 		scan::ExpiryCursor,
 	},
+	plane::LifecyclePlane,
 };
 
 type CursorKey = (StorageId, EncodedKey);
@@ -86,7 +86,7 @@ impl EvictorState {
 
 	fn record_failure(&mut self, storage: StorageId, error: &ValueError, budget: &mut u64, tally: &mut ClassTally) {
 		if is_conflict(error) {
-			debug!(?storage, "retention eviction conflicted; retrying next tick");
+			debug!(?storage, "expire conflicted; retrying next tick");
 			self.forget(storage);
 			*budget = budget.saturating_sub(1);
 			tally.backlog += 1;
@@ -95,11 +95,9 @@ impl EvictorState {
 		let failures = self.failures.entry(storage).or_default();
 		*failures += 1;
 		if *failures >= EVICT_CONSECUTIVE_FAILURE_LIMIT {
-			panic!(
-				"retention eviction failed {failures} consecutive times for storage {storage:?}: {error}"
-			);
+			panic!("expire failed {failures} consecutive times for storage {storage:?}: {error}");
 		}
-		warn!(?storage, failures = *failures, error = %error, "retention eviction failed; resetting cursors, retrying next tick");
+		warn!(?storage, failures = *failures, error = %error, "expire failed; resetting cursors, retrying next tick");
 		self.forget(storage);
 		*budget = budget.saturating_sub(1);
 	}
@@ -128,17 +126,17 @@ struct TickStats {
 
 pub struct Evictor {
 	engine: StandardEngine,
-	plane: RetentionPlane,
+	plane: LifecyclePlane,
 	store: StandardMultiStore,
 }
 
 impl Evictor {
 	pub fn new(engine: StandardEngine) -> Self {
-		let plane = RetentionPlane::for_engine(&engine, RetentionMetrics::new());
+		let plane = LifecyclePlane::for_engine(&engine, LifecycleMetrics::new());
 		Self::with_plane(engine, plane)
 	}
 
-	pub fn with_plane(engine: StandardEngine, plane: RetentionPlane) -> Self {
+	pub fn with_plane(engine: StandardEngine, plane: LifecyclePlane) -> Self {
 		let store = match engine.multi_owned().store() {
 			MultiStore::Standard(store) => store.clone(),
 		};
@@ -149,21 +147,21 @@ impl Evictor {
 		}
 	}
 
-	pub fn plane(&self) -> &RetentionPlane {
+	pub fn plane(&self) -> &LifecyclePlane {
 		&self.plane
 	}
 
-	#[instrument(name = "lifecycle::retention::evict::tick", level = "debug", skip_all, fields(class = %target))]
-	fn run_tick(&self, state: &mut EvictorState, target: RetentionClass, now: DateTime) -> Progress {
+	#[instrument(name = "lifecycle::expire::evict::tick", level = "debug", skip_all, fields(class = %target))]
+	fn run_tick(&self, state: &mut EvictorState, target: LifecycleClass, now: DateTime) -> Progress {
 		if state.running {
-			debug!("retention eviction tick already in progress, skipping");
+			debug!("expire tick already in progress, skipping");
 			return Progress::Exhausted;
 		}
 		state.running = true;
 
 		let catalog = self.engine.catalog();
-		let batch_size = catalog.get_config_uint8(ConfigKey::RetentionEvictBatchSize) as usize;
-		let mut budget = catalog.get_config_uint8(ConfigKey::RetentionEvictMaxBatchesPerTick);
+		let batch_size = catalog.get_config_uint8(ConfigKey::ExpireBatchSize) as usize;
+		let mut budget = catalog.get_config_uint8(ConfigKey::ExpireMaxBatchesPerTick);
 		let mut stats = TickStats::default();
 
 		let mut tally = ClassTally::default();
@@ -175,7 +173,7 @@ impl Evictor {
 			.into_iter()
 			.filter_map(|(storage, settings)| {
 				let ttl = settings.ttl?;
-				(RetentionClass::RowTtl == target).then_some((storage, ttl))
+				(LifecycleClass::RowTtl == target).then_some((storage, ttl))
 			})
 			.collect();
 
@@ -245,7 +243,7 @@ impl Evictor {
 				objects_scanned = stats.objects_scanned,
 				objects_skipped = stats.objects_skipped,
 				rows_expired = stats.rows_expired,
-				"retention eviction tick completed"
+				"expire tick completed"
 			);
 		}
 		self.engine.event_bus().emit(RowsExpiredEvent::new(
@@ -281,12 +279,12 @@ impl Evictor {
 
 	fn expiry_cutoff(&self, now: DateTime, ttl: &Ttl) -> Option<(Cutoff, FloorTerm)> {
 		let (floor, binding) =
-			self.plane.cutoff_with_binding(RetentionClass::RowTtl, now, Some(ttl.duration))?;
+			self.plane.cutoff_with_binding(LifecycleClass::RowTtl, now, Some(ttl.duration))?;
 		Some((Cutoff(floor.instant()?), binding))
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "lifecycle::retention::evict::object", level = "debug", skip_all)]
+	#[instrument(name = "lifecycle::expire::evict::object", level = "debug", skip_all)]
 	fn evict_storage(
 		&self,
 		state: &mut EvictorState,
@@ -328,7 +326,7 @@ impl Evictor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "lifecycle::retention::evict::view", level = "debug", skip_all)]
+	#[instrument(name = "lifecycle::expire::evict::view", level = "debug", skip_all)]
 	fn evict_view(
 		&self,
 		state: &mut EvictorState,
@@ -380,7 +378,7 @@ impl Evictor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "lifecycle::retention::evict::rows", level = "debug", skip_all)]
+	#[instrument(name = "lifecycle::expire::evict::rows", level = "debug", skip_all)]
 	fn evict_rows(
 		&self,
 		state: &mut EvictorState,
@@ -474,7 +472,7 @@ impl Evictor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "lifecycle::retention::evict::rows_batch", level = "trace", skip_all)]
+	#[instrument(name = "lifecycle::expire::evict::rows_batch", level = "trace", skip_all)]
 	fn evict_rows_batch(
 		&self,
 		state: &mut EvictorState,
@@ -565,7 +563,7 @@ impl Evictor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "lifecycle::retention::evict::ringbuffer", level = "debug", skip_all)]
+	#[instrument(name = "lifecycle::expire::evict::ringbuffer", level = "debug", skip_all)]
 	fn evict_ringbuffer(
 		&self,
 		state: &mut EvictorState,
@@ -596,7 +594,7 @@ impl Evictor {
 		Ok(())
 	}
 
-	#[instrument(name = "lifecycle::retention::evict::ringbuffer_batch", level = "trace", skip_all)]
+	#[instrument(name = "lifecycle::expire::evict::ringbuffer_batch", level = "trace", skip_all)]
 	fn evict_ringbuffer_batch(
 		&self,
 		state: &mut EvictorState,
@@ -669,7 +667,7 @@ impl Evictor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "lifecycle::retention::evict::series", level = "debug", skip_all)]
+	#[instrument(name = "lifecycle::expire::evict::series", level = "debug", skip_all)]
 	fn evict_series(
 		&self,
 		state: &mut EvictorState,
@@ -695,7 +693,7 @@ impl Evictor {
 		}
 	}
 
-	#[instrument(name = "lifecycle::retention::evict::series_batch", level = "trace", skip_all)]
+	#[instrument(name = "lifecycle::expire::evict::series_batch", level = "trace", skip_all)]
 	fn evict_series_batch(
 		&self,
 		state: &mut EvictorState,
@@ -794,18 +792,18 @@ fn advance_cursor(state: &mut EvictorState, cursor_key: CursorKey, next: Option<
 	}
 }
 
-pub struct RetentionEvictTask {
+pub struct ExpireTask {
 	evictor: Evictor,
 	state: EvictorState,
-	class: RetentionClass,
+	class: LifecycleClass,
 }
 
-impl RetentionEvictTask {
-	pub fn silent(engine: StandardEngine, plane: RetentionPlane) -> Self {
-		Self::for_class(engine, plane, RetentionClass::RowTtl)
+impl ExpireTask {
+	pub fn silent(engine: StandardEngine, plane: LifecyclePlane) -> Self {
+		Self::for_class(engine, plane, LifecycleClass::RowTtl)
 	}
 
-	fn for_class(engine: StandardEngine, plane: RetentionPlane, class: RetentionClass) -> Self {
+	fn for_class(engine: StandardEngine, plane: LifecyclePlane, class: LifecycleClass) -> Self {
 		Self {
 			evictor: Evictor::with_plane(engine, plane),
 			state: EvictorState::default(),
@@ -814,26 +812,26 @@ impl RetentionEvictTask {
 	}
 }
 
-impl LifecycleTask for RetentionEvictTask {
+impl LifecycleTask for ExpireTask {
 	fn name(&self) -> &'static str {
 		match self.class {
-			RetentionClass::RowTtl => "retention-evict-silent",
-			_ => "retention-evict",
+			LifecycleClass::RowTtl => "expire-silent",
+			_ => "expire",
 		}
 	}
 
 	fn interval(&self) -> Duration {
-		self.evictor.engine.catalog().get_config_duration(ConfigKey::RetentionEvictInterval)
+		self.evictor.engine.catalog().get_config_duration(ConfigKey::ExpireInterval)
 	}
 
-	fn classes(&self) -> &'static [RetentionClass] {
+	fn classes(&self) -> &'static [LifecycleClass] {
 		match self.class {
-			RetentionClass::RowTtl => &[RetentionClass::RowTtl],
+			LifecycleClass::RowTtl => &[LifecycleClass::RowTtl],
 			_ => &[],
 		}
 	}
 
-	#[instrument(name = "lifecycle::retention::evict::slice", level = "debug", skip_all)]
+	#[instrument(name = "lifecycle::expire::evict::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
 		let now = self.evictor.engine.clock().now();
 		self.evictor.run_tick(&mut self.state, self.class, now)
@@ -904,7 +902,7 @@ mod tests {
 		test.mock_clock().advance_secs(HOUR.seconds() + 1);
 	}
 
-	fn tick_now(test: &TestEngine, state: &mut EvictorState, class: RetentionClass) -> Progress {
+	fn tick_now(test: &TestEngine, state: &mut EvictorState, class: LifecycleClass) -> Progress {
 		Evictor::new(test.inner().clone()).run_tick(state, class, test.mock_clock().now())
 	}
 
@@ -1073,7 +1071,7 @@ mod tests {
 		let mut state = EvictorState::default();
 		Evictor::new((*test).clone()).run_tick(
 			&mut state,
-			RetentionClass::RowTtl,
+			LifecycleClass::RowTtl,
 			first_write.checked_add(HOUR.to_duration()).unwrap(),
 		);
 
@@ -1101,7 +1099,7 @@ mod tests {
 		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 		assert_eq!(
 			row_count(&test, "from test::t"),
 			0,
@@ -1124,7 +1122,7 @@ mod tests {
 
 		let before = test.current_version().unwrap();
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 		let after = test.current_version().unwrap();
 
 		assert_eq!(row_count(&test, "from test::t"), 0);
@@ -1176,7 +1174,7 @@ mod tests {
 		assert!(!stored.is_empty(), "precondition: rows must exist before they can expire");
 		let before = test.current_version().unwrap();
 		let mut state = EvictorState::default();
-		tick_now(test, &mut state, RetentionClass::RowTtl);
+		tick_now(test, &mut state, LifecycleClass::RowTtl);
 		let after = test.current_version().unwrap();
 		assert!(after > before, "the eviction must be a real commit");
 		assert!(stored_rows(test, keyspaces).is_empty(), "every expired row must be gone");
@@ -1308,7 +1306,7 @@ mod tests {
 		age_past_ttl(&test);
 		let before = test.current_version().unwrap();
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert_eq!(stored_rows(&test, &table_keyspaces(visible)).len(), 1);
 		assert_eq!(stored_rows(&test, &table_keyspaces(default)).len(), 1);
@@ -1397,7 +1395,7 @@ mod tests {
 
 		let before = test.current_version().unwrap();
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 		let after = test.current_version().unwrap();
 
 		assert_eq!(row_count(&test, "from test::t"), 0);
@@ -1427,7 +1425,7 @@ mod tests {
 		test.command("INSERT test::rb [{ a: \"eu\", v: 30 }]");
 
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::rb"), 1, "only the eu row inserted after the epoch survives");
 
@@ -1456,7 +1454,7 @@ mod tests {
 		test.command("INSERT test::rb [{ v: 3 }]");
 
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::rb"), 1);
 		let partitions = ringbuffer_partitions(&test, "rb");
@@ -1464,7 +1462,7 @@ mod tests {
 		assert_eq!(partitions[0].metadata.count, 1);
 
 		age_past_ttl(&test);
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::rb"), 0);
 		let partitions = ringbuffer_partitions(&test, "rb");
@@ -1486,7 +1484,7 @@ mod tests {
 		test.command("INSERT test::rb [{ v: 3 }]");
 
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::rb"), 1);
 		let partitions = ringbuffer_partitions(&test, "rb");
@@ -1502,20 +1500,20 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
-		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
-		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(2));
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }, { v: 4 }, { v: 5 }]");
 		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 		assert_eq!(
 			row_count(&test, "from test::t"),
 			1,
 			"tick one is capped at 2 batches x 2 rows; one expired row must be left over"
 		);
 
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 		assert_eq!(row_count(&test, "from test::t"), 0, "the cursor must resume and drain the leftover");
 	}
 
@@ -1550,7 +1548,7 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected = "retention eviction failed 5 consecutive times")]
+	#[should_panic(expected = "expire failed 5 consecutive times")]
 	fn any_other_repeated_error_still_panics_at_the_limit() {
 		// Only the conflict is expected; absorbing any other error would keep eviction running on wrong data.
 		let mut state = EvictorState::default();
@@ -1602,7 +1600,7 @@ mod tests {
 		);
 
 		let mut state = EvictorState::default();
-		Evictor::new((*test).clone()).run_tick(&mut state, RetentionClass::RowTtl, now);
+		Evictor::new((*test).clone()).run_tick(&mut state, LifecycleClass::RowTtl, now);
 
 		assert_eq!(row_count(&test, "from test::t"), 2, "nothing may be evicted on a guess about age");
 	}
@@ -1615,8 +1613,8 @@ mod tests {
 		test.admin(
 			"create series test::s { k: int8, v: int4 } WITH { time: processing, key: k, row: { ttl: 1h } }",
 		);
-		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(50));
-		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1_000));
+		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(50));
+		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(1_000));
 		let expired: Vec<String> = (0..4_000).map(|k| format!("{{ k: {k}, v: 1 }}")).collect();
 		test.command(&format!("INSERT test::s [{}]", expired.join(", ")));
 		age_past_ttl(&test);
@@ -1634,7 +1632,7 @@ mod tests {
 				}
 			});
 			let mut state = EvictorState::default();
-			tick_now(&test, &mut state, RetentionClass::RowTtl);
+			tick_now(&test, &mut state, LifecycleClass::RowTtl);
 			done.store(true, Ordering::Release);
 		});
 
@@ -1664,7 +1662,7 @@ mod tests {
 		assert_eq!(series_metadata(&test, "s").row_count, 3);
 
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::s"), 1);
 		assert_eq!(
@@ -1702,7 +1700,7 @@ mod tests {
 
 		test.command("DELETE test::dml FILTER v < 3");
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::dml"), 2);
 		assert_eq!(row_count(&test, "from test::evicted"), 2);
@@ -1751,16 +1749,16 @@ mod tests {
 
 		age_past_ttl(&test);
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert!(
 			storage_rows(&test, standalone, true).is_empty(),
-			"a standalone ring buffer must remain owned by the retention evictor"
+			"a standalone ring buffer must remain owned by the expire task"
 		);
 		assert_eq!(
 			storage_rows(&test, view, true).len(),
 			1,
-			"the retention evictor must skip ring-buffer-backed views"
+			"the expire task must skip ring-buffer-backed views"
 		);
 		assert_eq!(
 			partition_metadata_values(&test, view),
@@ -1790,7 +1788,7 @@ mod tests {
 
 		age_past_ttl(&test);
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert_eq!(
 			storage_rows(&test, view, false).len(),
@@ -1807,13 +1805,13 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
-		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
-		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(2));
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }, { v: 4 }, { v: 5 }, { v: 6 }]");
 		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		let progress = tick_now(&test, &mut state, RetentionClass::RowTtl);
+		let progress = tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert_eq!(
 			progress,
@@ -1822,7 +1820,7 @@ mod tests {
 		);
 		assert_eq!(row_count(&test, "from test::t"), 2, "the tick is capped at 2 batches x 2 rows");
 
-		let drained = tick_now(&test, &mut state, RetentionClass::RowTtl);
+		let drained = tick_now(&test, &mut state, LifecycleClass::RowTtl);
 		assert_eq!(
 			drained,
 			Progress::Exhausted,
@@ -1839,14 +1837,14 @@ mod tests {
 		test.admin("create namespace test;");
 		test.admin("create table test::t1 { v: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.admin("create table test::t2 { v: int4 } with { time: processing, row: { ttl: 1h } }");
-		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
-		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
+		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(1));
 		test.command("INSERT test::t1 [{ v: 1 }, { v: 2 }]");
 		test.command("INSERT test::t2 [{ v: 1 }, { v: 2 }]");
 		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		let progress = tick_now(&test, &mut state, RetentionClass::RowTtl);
+		let progress = tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert_eq!(
 			progress,
@@ -1872,15 +1870,15 @@ mod tests {
 				"create table test::{name} {{ v: int4 }} with {{ time: processing, row: {{ ttl: 1h }} }}"
 			));
 		}
-		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
-		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(2));
 		age_past_ttl(&test);
 		for name in ["t1", "t2", "t3", "t4"] {
 			test.command(&format!("INSERT test::{name} [{{ v: 1 }}, {{ v: 2 }}]"));
 		}
 
 		let mut state = EvictorState::default();
-		let progress = tick_now(&test, &mut state, RetentionClass::RowTtl);
+		let progress = tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert_eq!(
 			progress,
@@ -1901,7 +1899,7 @@ mod tests {
 	fn every_object_is_visited_across_ticks_when_backlog_exceeds_the_budget() {
 		// A tick must resume where the previous one stopped, or the budget is spent on the same
 		// leading objects every time and everything behind them starves - expired rows never
-		// reclaimed, which presents as an unbounded memory leak rather than a retention bug.
+		// reclaimed, which presents as an unbounded memory leak rather than an expiry bug.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		for name in ["t1", "t2", "t3", "t4"] {
@@ -1912,13 +1910,13 @@ mod tests {
 				"INSERT test::{name} [{{ v: 1 }}, {{ v: 2 }}, {{ v: 3 }}, {{ v: 4 }}, {{ v: 5 }}, {{ v: 6 }}]"
 			));
 		}
-		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
-		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(2));
 		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
 		for _ in 0..4 {
-			tick_now(&test, &mut state, RetentionClass::RowTtl);
+			tick_now(&test, &mut state, LifecycleClass::RowTtl);
 		}
 
 		for name in ["t1", "t2", "t3", "t4"] {
@@ -1941,8 +1939,8 @@ mod tests {
 		test.admin("create namespace test;");
 		test.admin("create table test::short { v: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.admin("create table test::long { v: int4 } with { time: processing, row: { ttl: 4h } }");
-		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
-		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
+		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(1));
 		// The clock starts at the epoch, where `now - 4h` underflows and the 4h object would resolve no
 		// cutoff at all; it has to sit past the longest declared ttl for either object to have a floor.
 		test.mock_clock().advance_secs(FOUR_HOURS.seconds() + HOUR.seconds());
@@ -1953,7 +1951,7 @@ mod tests {
 		let evictor = Evictor::new(test.inner().clone());
 		let now = test.mock_clock().now();
 		let mut state = EvictorState::default();
-		let progress = evictor.run_tick(&mut state, RetentionClass::RowTtl, now);
+		let progress = evictor.run_tick(&mut state, LifecycleClass::RowTtl, now);
 
 		assert_eq!(
 			progress,
@@ -1961,7 +1959,7 @@ mod tests {
 			"precondition: the budget must run out before the tick ever reaches test::long"
 		);
 		assert_eq!(
-			evictor.plane().snapshot(RetentionClass::RowTtl).floor_version,
+			evictor.plane().snapshot(LifecycleClass::RowTtl).floor_version,
 			now.checked_sub(FOUR_HOURS.to_duration()).unwrap().to_order(),
 			"the floor must come from the 4h object this tick never visited, because that is the \
 			 oldest cutoff the class is still bound by"
@@ -1979,8 +1977,8 @@ mod tests {
 		test.admin("create namespace test;");
 		test.admin("create table test::short { v: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.admin("create table test::long { v: int4 } with { time: processing, row: { ttl: 4h } }");
-		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
-		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
+		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(1));
 		// The clock starts at the epoch, where `now - 4h` underflows and the 4h object would resolve no
 		// cutoff at all; it has to sit past the longest declared ttl for either object to have a floor.
 		test.mock_clock().advance_secs(FOUR_HOURS.seconds() + HOUR.seconds());
@@ -1990,20 +1988,20 @@ mod tests {
 
 		let evictor = Evictor::new(test.inner().clone());
 		let mut state = EvictorState::default();
-		evictor.run_tick(&mut state, RetentionClass::RowTtl, test.mock_clock().now());
+		evictor.run_tick(&mut state, LifecycleClass::RowTtl, test.mock_clock().now());
 
 		assert_eq!(
 			row_count(&test, "from test::short"),
 			0,
 			"precondition: the first tick must spend its whole budget on the 1h object"
 		);
-		let first = evictor.plane().snapshot(RetentionClass::RowTtl).floor_version;
+		let first = evictor.plane().snapshot(LifecycleClass::RowTtl).floor_version;
 
 		test.mock_clock().advance_secs(600);
 		let second = test.mock_clock().now();
-		evictor.run_tick(&mut state, RetentionClass::RowTtl, second);
+		evictor.run_tick(&mut state, LifecycleClass::RowTtl, second);
 
-		let snapshot = evictor.plane().snapshot(RetentionClass::RowTtl);
+		let snapshot = evictor.plane().snapshot(LifecycleClass::RowTtl);
 
 		assert_eq!(
 			snapshot.floor_version,
@@ -2037,7 +2035,7 @@ mod tests {
 		);
 
 		let mut state = EvictorState::default();
-		let progress = Evictor::new((*test).clone()).run_tick(&mut state, RetentionClass::RowTtl, now);
+		let progress = Evictor::new((*test).clone()).run_tick(&mut state, LifecycleClass::RowTtl, now);
 
 		assert_eq!(progress, Progress::Exhausted, "an unresolvable floor must not spin the lane");
 		assert_eq!(row_count(&test, "from test::t"), 2, "and nothing may be evicted on a guess about age");
@@ -2239,7 +2237,7 @@ mod tests {
 
 		let evictor = Evictor::new(test.inner().clone());
 		let mut state = EvictorState::default();
-		evictor.run_tick(&mut state, RetentionClass::RowTtl, test.mock_clock().now());
+		evictor.run_tick(&mut state, LifecycleClass::RowTtl, test.mock_clock().now());
 
 		let (keys, sent) = next_handoff(&received);
 		assert_eq!(keys, vec![RowKey::encoded(view, RowNumber(1))], "the hand-off must carry exactly its row");
@@ -2252,7 +2250,7 @@ mod tests {
 		);
 		assert_eq!(storage_rows(&test, StorageId::View(view), false).len(), 1, "the row waits for its flow");
 		assert_eq!(
-			evictor.plane().snapshot(RetentionClass::RowTtl).work_done,
+			evictor.plane().snapshot(LifecycleClass::RowTtl).work_done,
 			1,
 			"a handed row must count as expired at send"
 		);
@@ -2275,7 +2273,7 @@ mod tests {
 		let evictor = Evictor::new(test.inner().clone());
 		let mut state = EvictorState::default();
 		for tick in 1..=6 {
-			let progress = evictor.run_tick(&mut state, RetentionClass::RowTtl, test.mock_clock().now());
+			let progress = evictor.run_tick(&mut state, LifecycleClass::RowTtl, test.mock_clock().now());
 			assert_eq!(
 				progress,
 				Progress::Exhausted,
@@ -2283,7 +2281,7 @@ mod tests {
 			);
 			assert!(state.failures.is_empty(), "tick {tick}: a skipped view must never count as a failure");
 			assert_eq!(
-				evictor.plane().snapshot(RetentionClass::RowTtl).backlog_hint,
+				evictor.plane().snapshot(LifecycleClass::RowTtl).backlog_hint,
 				1,
 				"tick {tick}: a skipped view with expired rows must be reported as backlog"
 			);
@@ -2312,10 +2310,10 @@ mod tests {
 
 		let evictor = Evictor::new(test.inner().clone());
 		let mut state = EvictorState::default();
-		evictor.run_tick(&mut state, RetentionClass::RowTtl, test.mock_clock().now());
+		evictor.run_tick(&mut state, LifecycleClass::RowTtl, test.mock_clock().now());
 
 		assert_eq!(
-			evictor.plane().snapshot(RetentionClass::RowTtl).backlog_hint,
+			evictor.plane().snapshot(LifecycleClass::RowTtl).backlog_hint,
 			0,
 			"a view with no expired rows must report no backlog"
 		);
@@ -2347,15 +2345,15 @@ mod tests {
 	fn a_skipped_view_is_scanned_from_its_first_row_again() {
 		// Without forgetting the cursor a skip strands the rows it scanned past until the next full pass.
 		let (test, bytes) = view_test();
-		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(1));
-		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(10));
+		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(1));
+		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(10));
 		let view = ttl_view(&test, "v", "", 3, &bytes);
 		age_past_ttl(&test);
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		let received = record_handoffs(&test, view);
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		let mut keys = Vec::new();
 		while let Ok((batch, _)) = received.recv_timeout(Duration::from_milliseconds(200).unwrap().to_std()) {
@@ -2374,8 +2372,8 @@ mod tests {
 	fn handed_off_views_never_make_the_evictor_yield() {
 		// A handed-off view must never yield, otherwise the evictor respins on rows only the flow can remove.
 		let (test, bytes) = view_test();
-		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(1));
-		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(1));
+		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(2));
 		let first = ttl_view(&test, "v", "", 3, &bytes);
 		let second = ttl_view(&test, "w", "", 3, &bytes);
 		let _first = record_handoffs(&test, first);
@@ -2384,11 +2382,11 @@ mod tests {
 
 		let evictor = Evictor::new(test.inner().clone());
 		let mut state = EvictorState::default();
-		let progress = evictor.run_tick(&mut state, RetentionClass::RowTtl, test.mock_clock().now());
+		let progress = evictor.run_tick(&mut state, LifecycleClass::RowTtl, test.mock_clock().now());
 
 		assert_eq!(progress, Progress::Exhausted, "handed-off views over budget must never yield");
 		assert!(
-			evictor.plane().snapshot(RetentionClass::RowTtl).backlog_hint > 0,
+			evictor.plane().snapshot(LifecycleClass::RowTtl).backlog_hint > 0,
 			"views left over budget must still be reported as backlog"
 		);
 		drop(test);
@@ -2398,8 +2396,8 @@ mod tests {
 	fn a_table_backlog_still_yields_next_to_handed_off_views() {
 		// The view rule must never switch off the catch-up tick for a table the evictor writes itself.
 		let (test, bytes) = view_test();
-		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(1));
-		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
+		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(1));
+		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(2));
 		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }]");
 		let view = ttl_view(&test, "v", "", 3, &bytes);
@@ -2407,7 +2405,7 @@ mod tests {
 		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		let progress = tick_now(&test, &mut state, RetentionClass::RowTtl);
+		let progress = tick_now(&test, &mut state, LifecycleClass::RowTtl);
 
 		assert_eq!(progress, Progress::Yielded, "a table over budget must still yield for catch-up");
 		drop(test);
@@ -2438,6 +2436,6 @@ mod tests {
 		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 	}
 }

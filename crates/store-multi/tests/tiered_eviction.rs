@@ -62,8 +62,6 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 		point: Some(MultiPointConfig::testing()),
 		range: Some(MultiRangeConfig::testing()),
 		persistent: Some(persistent),
-		retention: Default::default(),
-		merge_config: Default::default(),
 		event_bus,
 		spawner,
 		clock,

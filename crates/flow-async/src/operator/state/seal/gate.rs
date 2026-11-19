@@ -127,7 +127,7 @@ mod tests {
 
 	#[test]
 	fn forget_rearms_on_the_bare_span_and_never_on_the_seal_instant() {
-		// Rolling eviction is a retention boundary, not a gate, so it carries neither the seal nor
+		// Rolling eviction is a frame boundary, not a gate, so it carries neither the seal nor
 		// the strict-gate +1. Both mistakes silently keep too much state on every group, forever.
 		let mut store = MockStore::recording_timers();
 		let gate = EvictionGate::new(ms(1_000));

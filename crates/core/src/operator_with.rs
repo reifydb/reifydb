@@ -15,7 +15,7 @@ use crate::{
 	common::{OnEmpty, WindowKind, WindowSize},
 	error::CoreError,
 	internal_error,
-	row::{JoinPick, JoinRetention, OperatorRetention},
+	row::{JoinLateness, JoinPick},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,7 +87,7 @@ impl ChangesWith {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct JoinWith {
-	pub retention: Option<JoinRetention>,
+	pub lateness: Option<JoinLateness>,
 	pub emit: Emit,
 	pub pick: Option<JoinPick>,
 	pub exact: bool,
@@ -95,7 +95,7 @@ pub struct JoinWith {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LookupWith {
-	pub retention: Option<OperatorRetention>,
+	pub lateness: Option<Duration>,
 	pub emit: Emit,
 	pub exact: bool,
 }

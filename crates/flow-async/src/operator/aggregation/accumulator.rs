@@ -1567,7 +1567,7 @@ mod tests {
 
 	#[test]
 	fn unmerge_to_empty_resets_sum_exactly() {
-		// When the last coord of a group expires the slot must reset to exactly none, not retain
+		// When the last coord of a group expires the slot must reset to exactly none, not keep
 		// float dust.
 		let kinds = [SlotKind::Sum];
 		let mut running = counted(&kinds);

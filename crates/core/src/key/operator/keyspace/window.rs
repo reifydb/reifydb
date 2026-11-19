@@ -80,7 +80,7 @@ pub struct GuestAccumulatorKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct GuestRetainedEntryKey {
+pub struct GuestMapEntryKey {
 	pub group: Desc<GroupId>,
 	pub slot: Asc<[u8; 16]>,
 }
@@ -317,14 +317,14 @@ impl Keyspace for GuestAccumulator {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct GuestRetainedEntry;
+pub struct GuestMapEntry;
 
-impl Keyspace for GuestRetainedEntry {
-	const ID: KeyspaceId = KeyspaceId::GUEST_RETAINED_ENTRY;
-	const NAME: &'static str = "GUEST_RETAINED_ENTRY";
+impl Keyspace for GuestMapEntry {
+	const ID: KeyspaceId = KeyspaceId::GUEST_MAP_ENTRY;
+	const NAME: &'static str = "GUEST_MAP_ENTRY";
 	const RANGE_CACHED: bool = true;
 
-	type GroupedKey = GuestRetainedEntryKey;
+	type GroupedKey = GuestMapEntryKey;
 	type Suffix = Asc<[u8; 16]>;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
@@ -332,7 +332,7 @@ impl Keyspace for GuestRetainedEntry {
 	}
 
 	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
-		GuestRetainedEntryKey {
+		GuestMapEntryKey {
 			group: Desc(group),
 			slot: suffix,
 		}

@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::{IndexType, JoinType},
 	interface::catalog::{
 		procedure::RunAs,
-		queue::{QueueDispatch, QueueRetention, QueueRetry},
+		queue::{QueueDispatch, QueueDone, QueueRetry},
 		ringbuffer::EvictionVisibility,
 	},
 	sort::SortDirection,
@@ -684,7 +684,7 @@ pub enum AstViewStorageKind {
 	Queue {
 		partition_by: Vec<String>,
 		dispatch: QueueDispatch,
-		retention: QueueRetention,
+		done: QueueDone,
 		retry: QueueRetry,
 	},
 }
@@ -692,7 +692,7 @@ pub enum AstViewStorageKind {
 #[derive(Debug)]
 pub struct AstQueueViewOptions<'bump> {
 	pub dispatch: AstQueueDispatch<'bump>,
-	pub retention: Option<AstQueueRetention<'bump>>,
+	pub done: Option<AstQueueDone<'bump>>,
 	pub retry: Option<AstQueueRetry<'bump>>,
 }
 
@@ -919,7 +919,7 @@ pub struct AstCreateQueue<'bump> {
 	pub partition_by: Vec<String>,
 	pub dispatch: AstQueueDispatch<'bump>,
 	pub deduplicate: Option<AstQueueDeduplicate<'bump>>,
-	pub retention: Option<AstQueueRetention<'bump>>,
+	pub done: Option<AstQueueDone<'bump>>,
 	pub retry: Option<AstQueueRetry<'bump>>,
 	pub time_declaration: AstTimeDeclaration<'bump>,
 }
@@ -943,8 +943,8 @@ pub struct AstQueueDeduplicate<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstQueueRetention<'bump> {
-	pub done: Option<Token<'bump>>,
+pub struct AstQueueDone<'bump> {
+	pub ttl: Option<Token<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

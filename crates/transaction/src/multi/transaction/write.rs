@@ -84,7 +84,7 @@ pub struct WriteSavepoint {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub(crate) enum Lifecycle {
+pub(crate) enum Phase {
 	Active,
 	QueryDone,
 	Discarded,
@@ -112,7 +112,7 @@ pub struct MultiWriteTransaction {
 
 	rewrites: BTreeMap<TaggedKey, Rewrite>,
 
-	pub(crate) lifecycle: Lifecycle,
+	pub(crate) phase: Phase,
 
 	pub(crate) self_lease: Option<VersionLeaseGuard>,
 
@@ -143,7 +143,7 @@ impl MultiWriteTransaction {
 			committed_pres: BTreeMap::new(),
 			rebases: BTreeMap::new(),
 			rewrites: BTreeMap::new(),
-			lifecycle: Lifecycle::Active,
+			phase: Phase::Active,
 			self_lease: None,
 			pending_query_pin: None,
 			#[cfg(feature = "testing")]
@@ -151,22 +151,22 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	fn transition_to(&mut self, next: Lifecycle) {
+	fn transition_to(&mut self, next: Phase) {
 		reifydb_assertions! {
 			assert!(matches!(
-				(self.lifecycle, next),
-				(Lifecycle::Active, Lifecycle::QueryDone)
-					| (Lifecycle::Active, Lifecycle::Discarded)
-					| (Lifecycle::QueryDone, Lifecycle::Discarded)
+				(self.phase, next),
+				(Phase::Active, Phase::QueryDone)
+					| (Phase::Active, Phase::Discarded)
+					| (Phase::QueryDone, Phase::Discarded)
 			));
 		}
-		self.lifecycle = next;
+		self.phase = next;
 	}
 }
 
 impl Drop for MultiWriteTransaction {
 	fn drop(&mut self) {
-		if self.lifecycle != Lifecycle::Discarded {
+		if self.phase != Phase::Discarded {
 			self.discard();
 		}
 	}
@@ -305,7 +305,7 @@ impl MultiWriteTransaction {
 		&mut self,
 		entries: impl IntoIterator<Item = (TaggedKey, EncodedBytes, SetPre), IntoIter: ExactSizeIterator>,
 	) -> Result<(), ValueError> {
-		if self.lifecycle == Lifecycle::Discarded {
+		if self.phase == Phase::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		let entries = entries.into_iter();
@@ -366,7 +366,7 @@ impl MultiWriteTransaction {
 		ctx: &TransactionContext,
 		entries: Vec<(TaggedKey, Option<EncodedBytes>)>,
 	) -> Result<(), ValueError> {
-		if self.lifecycle == Lifecycle::Discarded {
+		if self.phase == Phase::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		if entries.is_empty() {
@@ -435,7 +435,7 @@ impl MultiWriteTransaction {
 		key = ?key
 	))]
 	fn remove_unobserved_any(&mut self, ctx: &TransactionContext, key: TaggedKey) -> Result<(), ValueError> {
-		if self.lifecycle == Lifecycle::Discarded {
+		if self.phase == Phase::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		#[cfg(feature = "testing")]
@@ -485,7 +485,7 @@ impl MultiWriteTransaction {
 	}
 
 	fn remove_deltas(&mut self, deltas: impl ExactSizeIterator<Item = Delta>) -> Result<(), ValueError> {
-		if self.lifecycle == Lifecycle::Discarded {
+		if self.phase == Phase::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		if deltas.len() == 0 {
@@ -528,7 +528,7 @@ impl MultiWriteTransaction {
 
 	#[instrument(name = "transaction::multi::rollback", level = "debug", skip(self), fields(txn_id = %self.id))]
 	pub fn rollback(&mut self) -> Result<(), ValueError> {
-		if self.lifecycle == Lifecycle::Discarded {
+		if self.phase == Phase::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 
@@ -548,7 +548,7 @@ impl MultiWriteTransaction {
 		ctx: &TransactionContext,
 		keys: &[TaggedKey],
 	) -> Result<Vec<Option<TransactionValue>>, ValueError> {
-		if self.lifecycle == Lifecycle::Discarded {
+		if self.phase == Phase::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		#[cfg(feature = "testing")]
@@ -587,7 +587,7 @@ impl MultiWriteTransaction {
 		ctx: &TransactionContext,
 		keys: &[TaggedKey],
 	) -> Result<Vec<Option<TransactionValue>>, ValueError> {
-		if self.lifecycle == Lifecycle::Discarded {
+		if self.phase == Phase::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		if keys.is_empty() {
@@ -605,7 +605,7 @@ impl MultiWriteTransaction {
 		keys = keys.len()
 	))]
 	pub fn contains(&mut self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<bool>, ValueError> {
-		if self.lifecycle == Lifecycle::Discarded {
+		if self.phase == Phase::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		if keys.is_empty() {
@@ -719,7 +719,7 @@ impl MultiWriteTransaction {
 		&mut self,
 		mut deltas: CowVec<Delta>,
 	) -> Result<(CommitVersion, Lsn, DateTime, CowVec<Delta>), ValueError> {
-		if self.lifecycle == Lifecycle::Discarded {
+		if self.phase == Phase::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		let base_version = self.base_version();
@@ -772,7 +772,7 @@ impl MultiWriteTransaction {
 		&mut self,
 		deltas: CowVec<Delta>,
 	) -> Result<(CommitVersion, Lsn, DateTime, CowVec<Delta>), ValueError> {
-		if self.lifecycle == Lifecycle::Discarded {
+		if self.phase == Phase::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		let _ = mem::take(&mut self.conflicts);
@@ -858,9 +858,9 @@ impl MultiWriteTransaction {
 
 	#[inline]
 	fn release_read_snapshot(&mut self, base_version: CommitVersion) {
-		if self.lifecycle == Lifecycle::Active {
+		if self.phase == Phase::Active {
 			self.oracle.query.mark_finished(base_version);
-			self.transition_to(Lifecycle::QueryDone);
+			self.transition_to(Phase::QueryDone);
 		}
 	}
 
@@ -1099,12 +1099,12 @@ impl MultiWriteTransaction {
 		if let Some(v) = self.pending_query_pin.take() {
 			self.oracle.query.mark_finished(v);
 		}
-		match self.lifecycle {
-			Lifecycle::Discarded => return,
-			Lifecycle::Active => self.oracle.query.mark_finished(self.version),
-			Lifecycle::QueryDone => {}
+		match self.phase {
+			Phase::Discarded => return,
+			Phase::Active => self.oracle.query.mark_finished(self.version),
+			Phase::QueryDone => {}
 		}
-		self.transition_to(Lifecycle::Discarded);
+		self.transition_to(Phase::Discarded);
 	}
 
 	pub(crate) fn take_self_lease(&mut self) -> Option<VersionLeaseGuard> {

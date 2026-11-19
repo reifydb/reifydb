@@ -283,7 +283,7 @@ impl KeyspaceId {
 
 	pub const CUSTOM_MANAGED_LATEST: Self = Self(0x20);
 
-	pub const GUEST_RETAINED_ENTRY: Self = Self(0x21);
+	pub const GUEST_MAP_ENTRY: Self = Self(0x21);
 
 	pub const LOOKUP_READ: Self = Self(0x22);
 
@@ -337,7 +337,7 @@ impl KeyspaceId {
 			Self::CUSTOM_MANAGED => "CUSTOM_MANAGED",
 			Self::CUSTOM_MANAGED_DUE => "CUSTOM_MANAGED_DUE",
 			Self::CUSTOM_MANAGED_LATEST => "CUSTOM_MANAGED_LATEST",
-			Self::GUEST_RETAINED_ENTRY => "GUEST_RETAINED_ENTRY",
+			Self::GUEST_MAP_ENTRY => "GUEST_MAP_ENTRY",
 			Self::LOOKUP_READ => "LOOKUP_READ",
 			Self::SESSION_MEMBER => "SESSION_MEMBER",
 			Self::ROLLING_PANE => "ROLLING_PANE",
@@ -373,7 +373,7 @@ const WINDOWED_KEYSPACES: [KeyspaceId; 15] = [
 	KeyspaceId::ROLLING_EXPIRY,
 	KeyspaceId::TUMBLING_EXPIRY,
 	KeyspaceId::REAP_QUEUE,
-	KeyspaceId::GUEST_RETAINED_ENTRY,
+	KeyspaceId::GUEST_MAP_ENTRY,
 	KeyspaceId::GUEST_ROW_MAPPING,
 	KeyspaceId::ROLLING_META,
 	KeyspaceId::ROLLING_PANE,
@@ -1021,7 +1021,7 @@ mod tests {
 		("CUSTOM_MANAGED", KeyspaceId::CUSTOM_MANAGED, Phase::Data, false),
 		("CUSTOM_MANAGED_DUE", KeyspaceId::CUSTOM_MANAGED_DUE, Phase::Data, true),
 		("CUSTOM_MANAGED_LATEST", KeyspaceId::CUSTOM_MANAGED_LATEST, Phase::Data, true),
-		("GUEST_RETAINED_ENTRY", KeyspaceId::GUEST_RETAINED_ENTRY, Phase::Data, true),
+		("GUEST_MAP_ENTRY", KeyspaceId::GUEST_MAP_ENTRY, Phase::Data, true),
 		("LOOKUP_READ", KeyspaceId::LOOKUP_READ, Phase::Data, true),
 		("SESSION_MEMBER", KeyspaceId::SESSION_MEMBER, Phase::Data, true),
 		("ROLLING_PANE", KeyspaceId::ROLLING_PANE, Phase::Data, true),
@@ -1618,7 +1618,7 @@ mod tests {
 				KeyspaceId::REAP_QUEUE,
 				KeyspaceId::GUEST_ACCUMULATOR,
 				KeyspaceId::TUMBLING_EXPIRY,
-				KeyspaceId::GUEST_RETAINED_ENTRY,
+				KeyspaceId::GUEST_MAP_ENTRY,
 				KeyspaceId::SESSION_MEMBER,
 				KeyspaceId::ROLLING_PANE,
 				KeyspaceId::GUEST_ROW_MAPPING,

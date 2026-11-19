@@ -21,10 +21,10 @@ use reifydb_flow_async::{
 		seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	},
 	window::{
-		accumulator::{AccumulatorOp, invertible::retained_map::RetainedAccumulator},
+		accumulator::{AccumulatorOp, invertible::entry_map::EntryMapAccumulator},
 		engine::{
 			EmitKind, WindowReindex,
-			tumbling_retained::{RetainedEntry, RetainedHeader, RetainedTumblingEngine},
+			tumbling_entry_map::{EntryMapHeader, EntryMapTumblingEngine, MapEntry},
 		},
 		settings::WindowSettings,
 		span::{WindowSpan, window_row_key},
@@ -61,7 +61,7 @@ const FORGET_BATCH: usize = 256;
 
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 type Buckets<A, K, V> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Vec<(K, V)>>;
-type Engine<A, K, V> = RetainedTumblingEngine<
+type Engine<A, K, V> = EntryMapTumblingEngine<
 	<A as WindowedOperator>::GroupKey,
 	<A as WindowedOperator>::Coord,
 	K,
@@ -69,9 +69,9 @@ type Engine<A, K, V> = RetainedTumblingEngine<
 	<A as WindowedOperator>::Output,
 >;
 
-pub struct RetainedDriver<A, K, V>
+pub struct EntryMapDriver<A, K, V>
 where
-	A: Emit<Accumulator = RetainedAccumulator<K, V>>,
+	A: Emit<Accumulator = EntryMapAccumulator<K, V>>,
 	A::Output: Row,
 	K: Ord,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
@@ -83,17 +83,17 @@ where
 	settings: WindowSettings<A::Coord>,
 }
 
-impl<A, K, V> RetainedDriver<A, K, V>
+impl<A, K, V> EntryMapDriver<A, K, V>
 where
-	A: Emit<Accumulator = RetainedAccumulator<K, V>> + Send + Sync + 'static,
+	A: Emit<Accumulator = EntryMapAccumulator<K, V>> + Send + Sync + 'static,
 	A::Output: Row,
 	A::Output: Clone + StateCodec + HeapSize,
 	A::GroupKey: Send + Sync,
 	K: Ord + Clone + Debug + HeapSize + StateCodec + Send + Sync,
 	V: Clone + Debug + PartialEq + HeapSize + Send + Sync,
-	RetainedEntry<K, V>: OperatorState,
-	RetainedHeader<A::Output>: OperatorState,
-	RetainedAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
+	MapEntry<K, V>: OperatorState,
+	EntryMapHeader<A::Output>: OperatorState,
+	EntryMapAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn window_span(&self, coord: A::Coord) -> WindowSpan<A::Coord> {
@@ -324,9 +324,9 @@ where
 	}
 }
 
-impl<A, K, V> OperatorMetadata for RetainedDriver<A, K, V>
+impl<A, K, V> OperatorMetadata for EntryMapDriver<A, K, V>
 where
-	A: Emit<Accumulator = RetainedAccumulator<K, V>> + 'static,
+	A: Emit<Accumulator = EntryMapAccumulator<K, V>> + 'static,
 	A::Output: Row,
 	K: Ord,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
@@ -339,17 +339,17 @@ where
 	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
 }
 
-impl<A, K, V> MountedOperator for RetainedDriver<A, K, V>
+impl<A, K, V> MountedOperator for EntryMapDriver<A, K, V>
 where
-	A: Emit<Accumulator = RetainedAccumulator<K, V>> + Send + Sync + 'static,
+	A: Emit<Accumulator = EntryMapAccumulator<K, V>> + Send + Sync + 'static,
 	A::Output: Row,
 	A::Output: Clone + StateCodec + HeapSize,
 	A::GroupKey: Send + Sync,
 	K: Ord + Clone + Debug + HeapSize + StateCodec + Send + Sync + 'static,
 	V: Clone + Debug + PartialEq + HeapSize + Send + Sync + 'static,
-	RetainedEntry<K, V>: OperatorState,
-	RetainedHeader<A::Output>: OperatorState,
-	RetainedAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
+	MapEntry<K, V>: OperatorState,
+	EntryMapHeader<A::Output>: OperatorState,
+	EntryMapAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	type Class = Windowed;
@@ -375,7 +375,7 @@ where
 		let aggregator = A::create(operator_id, params, with)?;
 		Ok(Self {
 			aggregator,
-			engine: RetainedTumblingEngine::new(window_engine_config(params)),
+			engine: EntryMapTumblingEngine::new(window_engine_config(params)),
 			reap_queue_empty: false,
 			seal_span,
 			settings,
@@ -454,7 +454,7 @@ mod tests {
 			impl WindowedOperator for $name {
 				type Coord = $coord;
 				type GroupKey = u64;
-				type Accumulator = RetainedAccumulator<u64, i64>;
+				type Accumulator = EntryMapAccumulator<u64, i64>;
 				type Output = Out;
 
 				fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
@@ -501,8 +501,8 @@ mod tests {
 						.collect()
 				}
 
-				fn new_accumulator(&self, _: &WindowSettings<$coord>) -> RetainedAccumulator<u64, i64> {
-					RetainedAccumulator::default()
+				fn new_accumulator(&self, _: &WindowSettings<$coord>) -> EntryMapAccumulator<u64, i64> {
+					EntryMapAccumulator::default()
 				}
 			}
 
@@ -545,9 +545,9 @@ mod tests {
 			..ApplyWith::default()
 		};
 		assert!(
-			RetainedDriver::<TimeProbe, u64, i64>::create(OperatorId(1), &params(), &tumbling).is_ok(),
+			EntryMapDriver::<TimeProbe, u64, i64>::create(OperatorId(1), &params(), &tumbling).is_ok(),
 			"precondition"
 		);
-		assert!(RetainedDriver::<TimeProbe, u64, i64>::create(OperatorId(1), &params(), &sliding).is_err());
+		assert!(EntryMapDriver::<TimeProbe, u64, i64>::create(OperatorId(1), &params(), &sliding).is_err());
 	}
 }

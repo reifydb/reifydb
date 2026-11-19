@@ -10,9 +10,9 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::CommitVersion,
 	lifecycle::{
-		class::{Floor, FloorTerm, RetentionClass},
+		class::{Floor, FloorTerm, LifecycleClass},
 		floor::FlushFloor,
-		metrics::{ClassSnapshot, RetentionMetrics, StuckOnset},
+		metrics::{ClassSnapshot, LifecycleMetrics, StuckOnset},
 	},
 };
 use reifydb_engine::engine::StandardEngine;
@@ -23,21 +23,21 @@ use tracing::warn;
 use crate::plane::ledger::{EngineFloors, FloorSource, HorizonLedger};
 
 #[derive(Clone)]
-pub struct RetentionPlane {
+pub struct LifecyclePlane {
 	inner: Arc<Inner>,
 }
 
 struct Inner {
 	ledger: HorizonLedger,
-	metrics: RetentionMetrics,
+	metrics: LifecycleMetrics,
 }
 
-impl RetentionPlane {
+impl LifecyclePlane {
 	pub fn new(source: Arc<dyn FloorSource>, epoch: VersionEpoch) -> Self {
-		Self::with_metrics(source, epoch, RetentionMetrics::new())
+		Self::with_metrics(source, epoch, LifecycleMetrics::new())
 	}
 
-	pub fn with_metrics(source: Arc<dyn FloorSource>, epoch: VersionEpoch, metrics: RetentionMetrics) -> Self {
+	pub fn with_metrics(source: Arc<dyn FloorSource>, epoch: VersionEpoch, metrics: LifecycleMetrics) -> Self {
 		Self {
 			inner: Arc::new(Inner {
 				ledger: HorizonLedger::new(source, epoch),
@@ -46,17 +46,17 @@ impl RetentionPlane {
 		}
 	}
 
-	pub fn for_engine(engine: &StandardEngine, metrics: RetentionMetrics) -> Self {
+	pub fn for_engine(engine: &StandardEngine, metrics: LifecycleMetrics) -> Self {
 		Self::with_metrics(Arc::new(EngineFloors::new(engine.clone())), engine.version_epoch().clone(), metrics)
 	}
 
-	pub fn cutoff(&self, class: RetentionClass, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
+	pub fn cutoff(&self, class: LifecycleClass, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
 		self.inner.ledger.cutoff(class, now, ttl)
 	}
 
 	pub fn cutoff_with_binding(
 		&self,
-		class: RetentionClass,
+		class: LifecycleClass,
 		now: DateTime,
 		ttl: Option<Duration>,
 	) -> Option<(Floor, FloorTerm)> {
@@ -67,13 +67,13 @@ impl RetentionPlane {
 		self.inner.ledger.expiry_cutoff(now, ttl)
 	}
 
-	pub fn record_liveness(&self, class: RetentionClass) {
+	pub fn record_liveness(&self, class: LifecycleClass) {
 		self.inner.metrics.record_liveness(class);
 	}
 
 	pub fn record_reclamation(
 		&self,
-		class: RetentionClass,
+		class: LifecycleClass,
 		floor: Option<(Floor, FloorTerm)>,
 		work_done: u64,
 		backlog_hint: u64,
@@ -90,7 +90,7 @@ impl RetentionPlane {
 				binding = %binding,
 				protects = binding.protects(),
 				backlog = backlog_hint,
-				"retention class has eligible work but its floor will not advance"
+				"lifecycle class has eligible work but its floor will not advance"
 			),
 			StuckOnset::Starved {
 				binding,
@@ -100,28 +100,28 @@ impl RetentionPlane {
 				binding = %binding,
 				ages_by = binding.protects(),
 				backlog = backlog_hint,
-				"retention class has not reclaimed anything while its backlog persisted"
+				"lifecycle class has not reclaimed anything while its backlog persisted"
 			),
 			StuckOnset::FloorUnresolvable => warn!(
 				class = class.name(),
-				"retention class has no resolvable floor; it can reclaim nothing"
+				"lifecycle class has no resolvable floor; it can reclaim nothing"
 			),
 		}
 	}
 
-	pub fn record_budget_exhausted(&self, class: RetentionClass) {
+	pub fn record_budget_exhausted(&self, class: LifecycleClass) {
 		self.inner.metrics.record_budget_exhausted(class);
 	}
 
-	pub fn record_gated(&self, class: RetentionClass) {
+	pub fn record_gated(&self, class: LifecycleClass) {
 		self.inner.metrics.record_gated(class);
 	}
 
-	pub fn snapshot(&self, class: RetentionClass) -> ClassSnapshot {
+	pub fn snapshot(&self, class: LifecycleClass) -> ClassSnapshot {
 		self.inner.metrics.snapshot(class)
 	}
 
-	pub fn report(&self) -> Vec<(RetentionClass, ClassSnapshot)> {
+	pub fn report(&self) -> Vec<(LifecycleClass, ClassSnapshot)> {
 		self.inner.metrics.report()
 	}
 
@@ -134,14 +134,14 @@ impl RetentionPlane {
 }
 
 struct PlaneFlushFloor {
-	plane: RetentionPlane,
+	plane: LifecyclePlane,
 	clock: Clock,
 }
 
 impl FlushFloor for PlaneFlushFloor {
 	fn floor(&self) -> CommitVersion {
 		let now = self.clock.now();
-		match self.plane.cutoff(RetentionClass::PersistentFlush, now, None) {
+		match self.plane.cutoff(LifecycleClass::PersistentFlush, now, None) {
 			Some(Floor::Version(version)) => version,
 			Some(Floor::Instant(_)) | None => CommitVersion(0),
 		}

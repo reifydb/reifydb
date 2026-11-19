@@ -22,7 +22,7 @@ use crate::operator::{
 	host::HostContext,
 	join::{
 		Identity,
-		published::{PublishedJoinContext, publish_slot, retain_published_slot, retire_slot, withdraw_slot},
+		published::{PublishedJoinContext, current_published_slot, publish_slot, retire_slot, withdraw_slot},
 		state::JoinSide,
 	},
 };
@@ -380,7 +380,7 @@ pub(crate) fn republished_slot(
 	if left != require_row_numbers(post)?[idx] {
 		return Ok(None);
 	}
-	retain_published_slot(host, ctx, group, left)
+	current_published_slot(host, ctx, group, left)
 }
 
 pub(crate) fn update_diff(withdrawn: Option<RecordBatch>, published: Option<RecordBatch>) -> Vec<Diff> {

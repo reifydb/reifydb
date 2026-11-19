@@ -218,7 +218,7 @@ mod tests {
 				column::{Column, ColumnIndex},
 				id::{ColumnId, NamespaceId, QueueId, ViewId},
 				namespace::Namespace,
-				queue::{QueueDispatch, QueueRetention, QueueRetry},
+				queue::{QueueDispatch, QueueDone, QueueRetry},
 				view::{QueueView, ViewKind},
 			},
 			resolved::ResolvedNamespace,
@@ -294,7 +294,7 @@ mod tests {
 				ordered_by: options.ordered_by,
 			},
 			deduplicate: None,
-			retention: QueueRetention::default(),
+			done: QueueDone::default(),
 			retry: QueueRetry::default(),
 			time: TimeSource::None,
 		};

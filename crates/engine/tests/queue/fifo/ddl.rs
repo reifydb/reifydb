@@ -25,7 +25,7 @@ fn test_create_queue_with_bare_dispatch_applies_defaults() {
 
 	assert!(queue.partition_by.is_empty());
 	assert_eq!(queue.ordered_by(), None);
-	assert_eq!(queue.retention.done, None);
+	assert_eq!(queue.done.ttl, None);
 	assert_eq!(queue.retry.attempts, Queue::DEFAULT_RETRY_ATTEMPTS);
 	assert_eq!(queue.retry.backoff, Queue::DEFAULT_RETRY_BACKOFF);
 	assert_eq!(queue.columns.len(), 2);
@@ -47,7 +47,7 @@ fn test_create_queue_with_all_options_round_trips() {
 
 	assert_eq!(queue.partition_by, vec!["kind".to_string()]);
 	assert_eq!(queue.ordered_by(), Some("order_id"));
-	assert_eq!(queue.retention.done, Some(Duration::from_days(7).unwrap()));
+	assert_eq!(queue.done.ttl, Some(Duration::from_days(7).unwrap()));
 	assert_eq!(queue.retry.attempts, 9);
 	assert_eq!(queue.retry.backoff, Duration::from_seconds_const(30));
 }
@@ -221,7 +221,7 @@ fn test_queue_resolves_as_a_queue_not_another_primitive() {
 }
 
 #[test]
-fn test_retention_only_queue_keeps_its_duration() {
+fn test_done_ttl_only_queue_keeps_its_duration() {
 	// Covers the codec path for an optional Duration that only the WITH block supplies.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
@@ -229,7 +229,7 @@ fn test_retention_only_queue_keeps_its_duration() {
 
 	let queue = find_queue(&t, "test", "jobs").unwrap();
 
-	assert_eq!(queue.retention.done, Some(Duration::from_hours_const(1)));
+	assert_eq!(queue.done.ttl, Some(Duration::from_hours_const(1)));
 	assert_eq!(queue.retry.attempts, Queue::DEFAULT_RETRY_ATTEMPTS);
 	assert_eq!(queue.retry.backoff, Queue::DEFAULT_RETRY_BACKOFF);
 }

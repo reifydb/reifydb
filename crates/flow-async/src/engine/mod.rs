@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 mod dispatch;
-mod lifecycle;
+mod flows;
 pub mod output_watermark_hold;
 mod process;
 pub mod register;

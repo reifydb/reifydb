@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::CommitVersion,
 	lifecycle::{
-		class::{Floor, FloorTerm, RetentionClass},
+		class::{Floor, FloorTerm, LifecycleClass},
 		floor::ConsumerPositions,
 	},
 };
@@ -50,20 +50,20 @@ impl HorizonLedger {
 	pub fn term(&self, term: FloorTerm, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
 		match term {
 			FloorTerm::RowExpiry => self.expiry_instant(now, ttl?).map(Floor::Instant),
-			FloorTerm::RetentionHorizon => self.expiry_cutoff(now, ttl?).map(Floor::Version),
+			FloorTerm::Horizon => self.expiry_cutoff(now, ttl?).map(Floor::Version),
 			FloorTerm::QueryDoneUntil => Some(Floor::Version(self.source.query_done_until())),
 			FloorTerm::LeaseMin => Some(Floor::Version(self.source.lease_min())),
 			FloorTerm::ConsumerPosition => Some(Floor::Version(self.source.consumer_position())),
 		}
 	}
 
-	pub fn cutoff(&self, class: RetentionClass, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
+	pub fn cutoff(&self, class: LifecycleClass, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
 		self.cutoff_with_binding(class, now, ttl).map(|(floor, _)| floor)
 	}
 
 	pub fn cutoff_with_binding(
 		&self,
-		class: RetentionClass,
+		class: LifecycleClass,
 		now: DateTime,
 		ttl: Option<Duration>,
 	) -> Option<(Floor, FloorTerm)> {
@@ -123,7 +123,7 @@ impl FloorSource for EngineFloors {
 		let saved = self
 			.engine
 			.saved_lookup_floor()
-			.unwrap_or_else(|e| panic!("retention cannot read the saved lookup positions: {e}"))
+			.unwrap_or_else(|e| panic!("lifecycle cannot read the saved lookup positions: {e}"))
 			.unwrap_or(CommitVersion(u64::MAX));
 		running.min(saved)
 	}
@@ -173,7 +173,7 @@ mod tests {
 
 	#[test]
 	fn a_clock_driven_term_is_exactly_one_that_resolves_to_an_instant() {
-		// The retention alarm splits on is_clock_driven: a term classified that way can never be
+		// The lifecycle alarm splits on is_clock_driven: a term classified that way can never be
 		// reported as pinned, because `now - ttl` is arithmetic no other party contributes to. A
 		// version floor is somebody else's progress - a reader, a lease, a consumer, an unflushed
 		// write - and classifying one of those as clock-driven would silently retire the only alarm
@@ -244,7 +244,7 @@ mod tests {
 	#[test]
 	fn a_lease_taken_between_the_floor_reads_is_never_below_the_cutoff() {
 		// A cutoff above a lease taken mid-read lets gc collect the version that reader holds.
-		for class in [RetentionClass::BufferHistoricalGc, RetentionClass::PersistentFlush] {
+		for class in [LifecycleClass::BufferHistoricalGc, LifecycleClass::PersistentFlush] {
 			let ledger = HorizonLedger::new(Arc::new(RacingFloors::new()), VersionEpoch::new());
 
 			let cutoff = ledger.cutoff(class, now(), None);

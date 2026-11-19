@@ -342,7 +342,7 @@ mod tests {
 
 	#[test]
 	fn test_unbounded_never_evicts_on_put() {
-		// An unbounded slab must retain every key so eviction stays solely the pop_tail
+		// An unbounded slab must keep every key so eviction stays solely the pop_tail
 		// loop's decision, not the map's.
 		let mut cache = SlabLru::unbounded();
 		for k in 0..10_000i32 {

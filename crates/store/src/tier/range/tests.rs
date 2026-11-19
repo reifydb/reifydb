@@ -318,7 +318,7 @@ fn a_lookup_hit_refreshes_the_partition_against_eviction() {
 }
 
 #[test]
-fn charge_and_release_balance_across_the_partition_lifecycle() {
+fn charge_and_release_balance_across_the_partition_life() {
 	let per_partition = per_partition_bytes();
 	let tier = tier(per_partition * 2);
 	let k = key(group_a(), KeyspaceId::ACCUMULATOR, b"a");

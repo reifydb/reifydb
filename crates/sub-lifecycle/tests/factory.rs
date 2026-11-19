@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	lifecycle::{
-		class::RetentionClass, coverage::RetentionCoverage, metrics::RetentionMetrics,
+		class::LifecycleClass, coverage::LifecycleCoverage, metrics::LifecycleMetrics,
 		registry::LifecycleRegistry,
 	},
 	util::ioc::IocContainer,
@@ -27,12 +27,11 @@ use reifydb_value::value::duration::Duration;
 
 /// Classes that must register on EVERY boot, under every store configuration. If one of these ever becomes
 /// conditional, the leak it guards against comes back silently.
-const ALWAYS_ON: [&str; 5] =
-	["retention-evict-silent", "historical-gc", "epoch-log", "queue-lease-reap", "queue-retention"];
+const ALWAYS_ON: [&str; 5] = ["expire-silent", "historical-gc", "epoch-log", "queue-lease-reap", "queue-expire"];
 
 /// Classes this subsystem registers no lifecycle task for on this fixture; adding one is a reviewed decision that
 /// exempts it from the coverage assertion below. Persistent-flush needs a flush engine the memory store lacks.
-const CONDITIONAL: [RetentionClass; 1] = [RetentionClass::PersistentFlush];
+const CONDITIONAL: [LifecycleClass; 1] = [LifecycleClass::PersistentFlush];
 
 fn lifecycle(subsystem: &dyn Subsystem) -> &LifecycleSubsystem {
 	subsystem
@@ -62,7 +61,7 @@ fn the_epoch_log_registers_even_though_nothing_visibly_depends_on_it() {
 		.clone()
 		.register(engine.clone())
 		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new());
+		.register(LifecycleMetrics::new());
 
 	let names = task_names(create(&ioc).as_ref());
 
@@ -84,7 +83,7 @@ fn omits_persistent_flush_when_the_store_has_no_persistent_tier() {
 		.clone()
 		.register(engine.clone())
 		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new());
+		.register(LifecycleMetrics::new());
 
 	let names = task_names(create(&ioc).as_ref());
 
@@ -106,7 +105,7 @@ fn drains_the_registry_so_the_subsystem_is_the_sole_owner_of_every_task() {
 		.clone()
 		.register(engine.clone())
 		.register(registry.clone())
-		.register(RetentionMetrics::new());
+		.register(LifecycleMetrics::new());
 
 	let subsystem = create(&ioc);
 
@@ -125,7 +124,7 @@ fn drains_the_registry_so_the_subsystem_is_the_sole_owner_of_every_task() {
 fn tasks_registered_by_other_crates_are_adopted_by_the_plane() {
 	// The registry lets other subsystems put work on this lane instead of spawning their own timer; ignoring
 	// pre-registered tasks sends every such crate back to running maintenance out-of-band.
-	use reifydb_core::lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask};
+	use reifydb_core::lifecycle::{class::LifecycleClass, progress::Progress, task::LifecycleTask};
 	use reifydb_value::value::duration::Duration;
 
 	struct ForeignTask;
@@ -139,7 +138,7 @@ fn tasks_registered_by_other_crates_are_adopted_by_the_plane() {
 		}
 
 		// Borrows the lane without owning a class in this crate's matrix.
-		fn classes(&self) -> &'static [RetentionClass] {
+		fn classes(&self) -> &'static [LifecycleClass] {
 			&[]
 		}
 
@@ -152,7 +151,7 @@ fn tasks_registered_by_other_crates_are_adopted_by_the_plane() {
 	let engine: StandardEngine = test_engine.inner().clone();
 	let registry = LifecycleRegistry::new();
 	registry.register(Box::new(ForeignTask));
-	let ioc = engine.ioc().clone().register(engine.clone()).register(registry).register(RetentionMetrics::new());
+	let ioc = engine.ioc().clone().register(engine.clone()).register(registry).register(LifecycleMetrics::new());
 
 	let names = task_names(create(&ioc).as_ref());
 
@@ -179,7 +178,7 @@ fn every_registered_class_has_a_distinct_name() {
 		.clone()
 		.register(engine.clone())
 		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new());
+		.register(LifecycleMetrics::new());
 
 	let names = task_names(create(&ioc).as_ref());
 	let mut unique = names.clone();
@@ -189,7 +188,7 @@ fn every_registered_class_has_a_distinct_name() {
 }
 
 #[test]
-fn no_retention_class_is_left_without_an_executor_by_accident() {
+fn no_lifecycle_class_is_left_without_an_executor_by_accident() {
 	// A class with nothing registered to execute it reclaims nothing while the subsystem reports healthy, so
 	// only the classes named in CONDITIONAL above may be uncovered here.
 	let test_engine = TestEngine::new();
@@ -199,11 +198,11 @@ fn no_retention_class_is_left_without_an_executor_by_accident() {
 		.clone()
 		.register(engine.clone())
 		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new());
+		.register(LifecycleMetrics::new());
 	let subsystem = create(&ioc);
 
 	let covered = lifecycle(subsystem.as_ref()).covered_classes();
-	let unexplained: Vec<&str> = RetentionClass::all()
+	let unexplained: Vec<&str> = LifecycleClass::all()
 		.iter()
 		.filter(|class| !covered.contains(class) && !CONDITIONAL.contains(class))
 		.map(|class| class.name())
@@ -211,13 +210,13 @@ fn no_retention_class_is_left_without_an_executor_by_accident() {
 
 	assert!(
 		unexplained.is_empty(),
-		"retention classes with no registered executor and no declared condition: {unexplained:?}"
+		"lifecycle classes with no registered executor and no declared condition: {unexplained:?}"
 	);
 }
 
 /// Classes the factory registers no task for on a memory store, each because the tier it operates on is
 /// absent. The factory must say so on the shared registry rather than leave the boot report to guess.
-const PERSISTENT_ONLY: [RetentionClass; 1] = [RetentionClass::PersistentFlush];
+const PERSISTENT_ONLY: [LifecycleClass; 1] = [LifecycleClass::PersistentFlush];
 
 #[test]
 fn a_store_without_a_persistent_tier_declares_the_persistent_lanes_absent() {
@@ -226,13 +225,13 @@ fn a_store_without_a_persistent_tier_declares_the_persistent_lanes_absent() {
 	// same branch that skips the task owes the report a reason.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
-	let coverage = RetentionCoverage::new();
+	let coverage = LifecycleCoverage::new();
 	let ioc = engine
 		.ioc()
 		.clone()
 		.register(engine.clone())
 		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new())
+		.register(LifecycleMetrics::new())
 		.register(coverage.clone());
 
 	create(&ioc);
@@ -257,19 +256,19 @@ fn the_factory_declares_onto_the_registered_coverage_not_a_private_default() {
 	// outcome as never declaring at all.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
-	let coverage = RetentionCoverage::new();
+	let coverage = LifecycleCoverage::new();
 	let ioc = engine
 		.ioc()
 		.clone()
 		.register(engine.clone())
 		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new())
+		.register(LifecycleMetrics::new())
 		.register(coverage.clone());
 
 	create(&ioc);
 
-	assert_eq!(coverage.owner(RetentionClass::EpochLog), Some("epoch-log"));
-	assert_eq!(coverage.absence(RetentionClass::PersistentFlush), Some("store has no flush engine"));
+	assert_eq!(coverage.owner(LifecycleClass::EpochLog), Some("epoch-log"));
+	assert_eq!(coverage.absence(LifecycleClass::PersistentFlush), Some("store has no flush engine"));
 }
 
 #[test]
@@ -283,7 +282,7 @@ fn every_class_reports_a_slice_once_the_lane_has_run_each_task() {
 		.clone()
 		.register(engine.clone())
 		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new());
+		.register(LifecycleMetrics::new());
 	let subsystem = create(&ioc);
 	let lifecycle = lifecycle(subsystem.as_ref());
 

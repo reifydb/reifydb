@@ -4,7 +4,7 @@
 //! The take corpus.
 //!
 //! Take does not group, so the group column of the shared row shape is free and this workload spends
-//! it on the source row number. That is what lets the claim name *which* rows were retained rather
+//! it on the source row number. That is what lets the claim name *which* rows were kept rather
 //! than only how many: take passes source row numbers through to its output, but the comparison
 //! framework keys a claim on output columns, and a row number is not one until a column carries it.
 //!

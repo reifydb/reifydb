@@ -10,7 +10,7 @@ use std::{
 	time::Duration as StdDuration,
 };
 
-use reifydb_core::lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask};
+use reifydb_core::lifecycle::{class::LifecycleClass, progress::Progress, task::LifecycleTask};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
@@ -34,7 +34,7 @@ impl LifecycleTask for Fast {
 		Duration::from_milliseconds(1).unwrap()
 	}
 
-	fn classes(&self) -> &'static [RetentionClass] {
+	fn classes(&self) -> &'static [LifecycleClass] {
 		&[]
 	}
 
@@ -66,7 +66,7 @@ impl LifecycleTask for Stall {
 		Duration::from_seconds(600).unwrap()
 	}
 
-	fn classes(&self) -> &'static [RetentionClass] {
+	fn classes(&self) -> &'static [LifecycleClass] {
 		&[]
 	}
 

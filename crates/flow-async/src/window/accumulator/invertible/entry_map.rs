@@ -11,11 +11,11 @@ use crate::window::accumulator::{MergeAccumulator, WindowAccumulator};
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RetainedMap<K: Ord, V> {
+pub struct EntryMap<K: Ord, V> {
 	entries: BTreeMap<K, V>,
 }
 
-impl<K: Ord, V> Default for RetainedMap<K, V> {
+impl<K: Ord, V> Default for EntryMap<K, V> {
 	fn default() -> Self {
 		Self {
 			entries: BTreeMap::new(),
@@ -23,7 +23,7 @@ impl<K: Ord, V> Default for RetainedMap<K, V> {
 	}
 }
 
-impl<K: Ord, V> RetainedMap<K, V> {
+impl<K: Ord, V> EntryMap<K, V> {
 	pub fn insert(&mut self, key: K, value: V) {
 		self.entries.insert(key, value);
 	}
@@ -45,7 +45,7 @@ impl<K: Ord, V> RetainedMap<K, V> {
 	}
 }
 
-impl<K: Ord + HeapSize, V: HeapSize> HeapSize for RetainedMap<K, V> {
+impl<K: Ord + HeapSize, V: HeapSize> HeapSize for EntryMap<K, V> {
 	fn heap_size(&self) -> usize {
 		self.entries.heap_size()
 	}
@@ -53,23 +53,23 @@ impl<K: Ord + HeapSize, V: HeapSize> HeapSize for RetainedMap<K, V> {
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
-pub struct RetainedAccumulator<K: Ord, V> {
-	map: RetainedMap<K, V>,
+pub struct EntryMapAccumulator<K: Ord, V> {
+	map: EntryMap<K, V>,
 }
 
-impl<K: Ord, V> Default for RetainedAccumulator<K, V> {
+impl<K: Ord, V> Default for EntryMapAccumulator<K, V> {
 	fn default() -> Self {
 		Self {
-			map: RetainedMap::default(),
+			map: EntryMap::default(),
 		}
 	}
 }
 
-impl<K, V> WindowAccumulator for RetainedAccumulator<K, V>
+impl<K, V> WindowAccumulator for EntryMapAccumulator<K, V>
 where
 	K: Ord + Clone + Debug,
 	V: Clone + Debug + PartialEq,
-	RetainedAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
+	EntryMapAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
 {
 	type Contributions = Vec<(K, V)>;
 	type Output = BTreeMap<K, V>;
@@ -97,11 +97,11 @@ where
 	}
 }
 
-impl<K, V> MergeAccumulator for RetainedAccumulator<K, V>
+impl<K, V> MergeAccumulator for EntryMapAccumulator<K, V>
 where
 	K: Ord + Clone + Debug,
 	V: Clone + Debug + PartialEq,
-	RetainedAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
+	EntryMapAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
 {
 	fn merge(&mut self, other: &Self) {
 		for (key, value) in other.map.entries() {
@@ -114,7 +114,7 @@ where
 	}
 }
 
-impl<K: Ord + HeapSize, V: HeapSize> HeapSize for RetainedAccumulator<K, V> {
+impl<K: Ord + HeapSize, V: HeapSize> HeapSize for EntryMapAccumulator<K, V> {
 	fn heap_size(&self) -> usize {
 		self.map.heap_size()
 	}
@@ -134,7 +134,7 @@ mod tests {
 	#[operator_state]
 	#[derive(Clone, Debug, Default)]
 	struct LastAccumulator {
-		retained: RetainedMap<u64, i64>,
+		entry_map: EntryMap<u64, i64>,
 	}
 
 	impl HeapSize for LastAccumulator {
@@ -149,37 +149,37 @@ mod tests {
 
 		fn add(&mut self, contributions: &[(u64, i64)]) {
 			for contribution in contributions {
-				self.retained.insert(contribution.0, contribution.1);
+				self.entry_map.insert(contribution.0, contribution.1);
 			}
 		}
 
 		fn remove(&mut self, contributions: &[(u64, i64)]) {
 			for contribution in contributions {
-				self.retained.remove(&contribution.0);
+				self.entry_map.remove(&contribution.0);
 			}
 		}
 
 		fn finalize(&self) -> Option<i64> {
-			self.retained.entries().last_key_value().map(|(_, v)| *v)
+			self.entry_map.entries().last_key_value().map(|(_, v)| *v)
 		}
 
 		fn rows(&self) -> Option<u64> {
-			Some(self.retained.len() as u64)
+			Some(self.entry_map.len() as u64)
 		}
 	}
 
 	#[test]
-	fn retained_add_remove_is_inverse_for_fresh_key() {
+	fn entry_map_add_remove_is_inverse_for_fresh_key() {
 		assert_add_remove_is_inverse::<LastAccumulator>(&[(1u64, 10i64), (2, 20)], (3u64, 30i64));
 	}
 
 	#[test]
-	fn retained_is_order_independent_for_distinct_keys() {
+	fn entry_map_is_order_independent_for_distinct_keys() {
 		assert_order_independent::<LastAccumulator>(&[(1u64, 10i64), (2, 20), (3, 30)]);
 	}
 
 	#[test]
-	fn retained_add_over_existing_key_then_remove_deletes() {
+	fn entry_map_add_over_existing_key_then_remove_deletes() {
 		let mut accumulator = CountedAccumulator::new(LastAccumulator::default());
 		accumulator.add(&[(1u64, 10i64)]);
 		accumulator.add(&[(1u64, 99i64)]);
@@ -189,30 +189,30 @@ mod tests {
 	}
 
 	#[test]
-	fn retained_map_roundtrip() {
-		let mut rm: RetainedMap<u64, i64> = RetainedMap::default();
+	fn entry_map_roundtrip() {
+		let mut rm: EntryMap<u64, i64> = EntryMap::default();
 		rm.insert(1, 10);
 		rm.insert(2, 20);
 		let bytes = rm.encode_state().expect("encode");
-		let restored: RetainedMap<u64, i64> = decode(&bytes).expect("decode");
+		let restored: EntryMap<u64, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, rm);
 		assert_eq!(restored.len(), 2);
 	}
 
 	#[test]
-	fn retained_acc_add_remove_is_inverse_for_fresh_key() {
-		assert_add_remove_is_inverse::<RetainedAccumulator<u64, i64>>(&[(1u64, 10i64), (2, 20)], (3u64, 30i64));
+	fn entry_map_acc_add_remove_is_inverse_for_fresh_key() {
+		assert_add_remove_is_inverse::<EntryMapAccumulator<u64, i64>>(&[(1u64, 10i64), (2, 20)], (3u64, 30i64));
 	}
 
 	#[test]
-	fn retained_acc_is_order_independent_for_distinct_keys() {
-		assert_order_independent::<RetainedAccumulator<u64, i64>>(&[(1u64, 10i64), (2, 20), (3, 30)]);
+	fn entry_map_acc_is_order_independent_for_distinct_keys() {
+		assert_order_independent::<EntryMapAccumulator<u64, i64>>(&[(1u64, 10i64), (2, 20), (3, 30)]);
 	}
 
 	#[test]
-	fn retained_acc_finalize_returns_whole_map() {
-		let mut accumulator: CountedAccumulator<RetainedAccumulator<u64, i64>> =
-			CountedAccumulator::new(RetainedAccumulator::default());
+	fn entry_map_acc_finalize_returns_whole_map() {
+		let mut accumulator: CountedAccumulator<EntryMapAccumulator<u64, i64>> =
+			CountedAccumulator::new(EntryMapAccumulator::default());
 		assert!(accumulator.is_empty());
 		assert_eq!(accumulator.finalize(), None);
 		accumulator.add(&[(2, 20)]);
@@ -224,9 +224,9 @@ mod tests {
 	}
 
 	#[test]
-	fn retained_acc_add_over_existing_key_then_remove_deletes() {
-		let mut accumulator: CountedAccumulator<RetainedAccumulator<u64, i64>> =
-			CountedAccumulator::new(RetainedAccumulator::default());
+	fn entry_map_acc_add_over_existing_key_then_remove_deletes() {
+		let mut accumulator: CountedAccumulator<EntryMapAccumulator<u64, i64>> =
+			CountedAccumulator::new(EntryMapAccumulator::default());
 		accumulator.add(&[(1, 10)]);
 		accumulator.add(&[(1, 99)]);
 		accumulator.remove(&[(1, 99)]);
@@ -235,9 +235,9 @@ mod tests {
 	}
 
 	#[test]
-	fn retained_acc_remove_of_a_superseded_value_keeps_the_current_one() {
+	fn entry_map_acc_remove_of_a_superseded_value_keeps_the_current_one() {
 		// An update fans out as remove(pre) then add(post); a reordered pair must not delete the live value.
-		let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
+		let mut accumulator: EntryMapAccumulator<u64, i64> = EntryMapAccumulator::default();
 		accumulator.add(&[(1, 10)]);
 		accumulator.add(&[(1, 99)]);
 		accumulator.remove(&[(1, 10)]);
@@ -248,10 +248,10 @@ mod tests {
 	#[test]
 	fn a_merge_unions_the_panes_and_the_later_pane_wins_a_shared_key() {
 		// Panes merge oldest first, so a key both hold must keep the later pane's value, never the older one.
-		let mut older: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
+		let mut older: EntryMapAccumulator<u64, i64> = EntryMapAccumulator::default();
 		older.add(&[(1, 10)]);
 		older.add(&[(2, 20)]);
-		let mut later: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
+		let mut later: EntryMapAccumulator<u64, i64> = EntryMapAccumulator::default();
 		later.add(&[(2, 99)]);
 		later.add(&[(3, 30)]);
 		older.merge(&later);
@@ -260,19 +260,19 @@ mod tests {
 	}
 
 	#[test]
-	fn retained_acc_roundtrip() {
-		let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
+	fn entry_map_acc_roundtrip() {
+		let mut accumulator: EntryMapAccumulator<u64, i64> = EntryMapAccumulator::default();
 		accumulator.add(&[(1, 10)]);
 		accumulator.add(&[(2, 20)]);
 		let bytes = accumulator.encode_state().expect("encode");
-		let restored: RetainedAccumulator<u64, i64> = decode(&bytes).expect("decode");
+		let restored: EntryMapAccumulator<u64, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, accumulator);
 	}
 
 	#[test]
-	fn retained_does_not_compact() {
-		// a retained map keeps every sample, so a rolling window over it must never be accepted
-		let accumulator: RetainedAccumulator<u64, f64> = RetainedAccumulator::default();
+	fn entry_map_does_not_compact() {
+		// an entry map keeps every sample, so a rolling window over it must never be accepted
+		let accumulator: EntryMapAccumulator<u64, f64> = EntryMapAccumulator::default();
 		assert!(!accumulator.compacts());
 	}
 }

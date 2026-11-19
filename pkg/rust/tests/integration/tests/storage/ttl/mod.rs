@@ -23,14 +23,11 @@ pub fn ttl_db(path: impl AsRef<std::path::Path>, extra: impl IntoIterator<Item =
 	let overrides: Vec<(ConfigKey, Value)> = extra.into_iter().collect();
 	let mut configs: Vec<(ConfigKey, Value)> = vec![
 		(ConfigKey::LifecycleStartupDelay, Value::duration_seconds(1)),
-		(ConfigKey::RetentionEvictInterval, Value::duration_seconds(1)),
+		(ConfigKey::ExpireInterval, Value::duration_seconds(1)),
 		(ConfigKey::EpochBucketInterval, Value::duration_seconds(1)),
 		(ConfigKey::MultiFlushInterval, Value::duration_seconds(1)),
-		(ConfigKey::RetentionEvictBatchSize, ConfigKey::RetentionEvictBatchSize.production_value()),
-		(
-			ConfigKey::RetentionEvictMaxBatchesPerTick,
-			ConfigKey::RetentionEvictMaxBatchesPerTick.production_value(),
-		),
+		(ConfigKey::ExpireBatchSize, ConfigKey::ExpireBatchSize.production_value()),
+		(ConfigKey::ExpireMaxBatchesPerTick, ConfigKey::ExpireMaxBatchesPerTick.production_value()),
 	]
 	.into_iter()
 	.filter(|(key, _)| !overrides.iter().any(|(over, _)| over == key))
@@ -40,10 +37,7 @@ pub fn ttl_db(path: impl AsRef<std::path::Path>, extra: impl IntoIterator<Item =
 }
 
 pub fn one_row_per_tick() -> [(ConfigKey, Value); 2] {
-	[
-		(ConfigKey::RetentionEvictBatchSize, Value::Uint8(1)),
-		(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1)),
-	]
+	[(ConfigKey::ExpireBatchSize, Value::Uint8(1)), (ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(1))]
 }
 
 pub const PARTITIONS: usize = 64;

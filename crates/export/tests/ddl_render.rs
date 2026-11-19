@@ -7,7 +7,7 @@ use reifydb_core::{
 		column::{Column, ColumnIndex},
 		dictionary::Dictionary,
 		id::{ColumnId, NamespaceId, QueueId, RingBufferId, SeriesId, TableId},
-		queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
+		queue::{Queue, QueueDispatch, QueueDone, QueueRetry},
 		ringbuffer::RingBuffer,
 		series::{Series, SeriesEncoding, SeriesKey, TimestampPrecision},
 		storage::StorageId,
@@ -451,7 +451,7 @@ fn enum_structured_column_absorbs_field_columns() {
 	);
 }
 
-fn queue(retention: QueueRetention, retry: QueueRetry, partition_by: &[&str], ordered_by: Option<&str>) -> Queue {
+fn queue(done: QueueDone, retry: QueueRetry, partition_by: &[&str], ordered_by: Option<&str>) -> Queue {
 	Queue {
 		id: QueueId(1),
 		namespace: NamespaceId(NS),
@@ -465,7 +465,7 @@ fn queue(retention: QueueRetention, retry: QueueRetry, partition_by: &[&str], or
 			ordered_by: ordered_by.map(|s| s.to_string()),
 		},
 		deduplicate: None,
-		retention,
+		done,
 		retry,
 		time: TimeSource::Processing,
 	}
@@ -475,8 +475,8 @@ fn queue(retention: QueueRetention, retry: QueueRetry, partition_by: &[&str], or
 fn queue_with_all_options() {
 	// Durations must come back quoted, or the emitted statement will not re-parse.
 	let q = queue(
-		QueueRetention {
-			done: Some(Duration::from_days(7).unwrap()),
+		QueueDone {
+			ttl: Some(Duration::from_days(7).unwrap()),
 		},
 		QueueRetry {
 			attempts: 9,
@@ -496,7 +496,7 @@ fn queue_with_all_options() {
 fn queue_with_only_defaults_still_renders_the_dispatch_block() {
 	// The dispatch block is mandatory for the export to re-parse, but emitting the inner defaults
 	// would freeze today's values into every exported schema.
-	let q = queue(QueueRetention::default(), QueueRetry::default(), &[], None);
+	let q = queue(QueueDone::default(), QueueRetry::default(), &[], None);
 
 	assert_eq!(
 		render_queue(&q, &resolver()).unwrap(),
@@ -507,7 +507,7 @@ fn queue_with_only_defaults_still_renders_the_dispatch_block() {
 #[test]
 fn queue_renders_every_partition_column_in_order() {
 	// Reordering the columns would re-hash every partition value after an import.
-	let q = queue(QueueRetention::default(), QueueRetry::default(), &["kind", "id"], None);
+	let q = queue(QueueDone::default(), QueueRetry::default(), &["kind", "id"], None);
 
 	assert_eq!(
 		render_queue(&q, &resolver()).unwrap(),

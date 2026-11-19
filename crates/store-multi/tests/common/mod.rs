@@ -78,8 +78,6 @@ impl Runner {
 			persistent: None,
 			point: None,
 			range: None,
-			retention: Default::default(),
-			merge_config: Default::default(),
 			event_bus: EventBus::new(&spawner),
 			spawner,
 			clock: Clock::Real,

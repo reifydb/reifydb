@@ -268,9 +268,9 @@ impl<R: Read> CommitStore<R> {
 			metrics.historical_bytes = metrics.historical_bytes.saturating_add(tallies.historical_bytes);
 			metrics.current_entries = metrics.current_entries.saturating_add(Count::new(tallies.keys));
 			let pending = entry.pending.lock().bytes();
-			let retained = entry.retained.lock().bytes();
+			let requeued = entry.requeued.lock().bytes();
 			metrics.queued_bytes =
-				metrics.queued_bytes.saturating_add(ByteSize::from_bytes((pending + retained) as u64));
+				metrics.queued_bytes.saturating_add(ByteSize::from_bytes((pending + requeued) as u64));
 		}
 		metrics
 	}
@@ -407,36 +407,36 @@ impl<R: Read + Remove> CommitStore<R> {
 			return (Vec::new(), 0);
 		};
 
-		let retained_len = entry.retained.lock().len();
-		let pending_room = batch - retained_len.min(batch - batch / 2);
+		let requeued_len = entry.requeued.lock().len();
+		let pending_room = batch - requeued_len.min(batch - batch / 2);
 		let mut pending = entry.pending.lock();
 		let mut keys: Vec<EncodedKey> = iter::from_fn(|| pending.pop_first()).take(pending_room).collect();
 		let remaining = pending.len() as u64;
 		drop(pending);
 
-		let retained_room = batch - keys.len();
-		let cursor = entry.retained_cursor.lock().clone();
-		let mut retained = entry.retained.lock();
+		let requeued_room = batch - keys.len();
+		let cursor = entry.requeued_cursor.lock().clone();
+		let mut requeued = entry.requeued.lock();
 		let taken: Vec<EncodedKey> = match &cursor {
-			Some(cursor) => retained
+			Some(cursor) => requeued
 				.range((Bound::Excluded(cursor), Bound::Unbounded))
-				.chain(retained.range(..=cursor))
-				.take(retained_room)
+				.chain(requeued.range(..=cursor))
+				.take(requeued_room)
 				.cloned()
 				.collect(),
-			None => retained.iter().take(retained_room).cloned().collect(),
+			None => requeued.iter().take(requeued_room).cloned().collect(),
 		};
 		for key in &taken {
-			retained.remove(key);
+			requeued.remove(key);
 		}
-		drop(retained);
+		drop(requeued);
 		if let Some(last) = taken.last() {
-			*entry.retained_cursor.lock() = Some(last.clone());
+			*entry.requeued_cursor.lock() = Some(last.clone());
 		}
 		keys.extend(taken);
 
 		let mut pairs: Vec<(EncodedKey, CommitVersion)> = Vec::new();
-		let mut retained: Vec<EncodedKey> = Vec::new();
+		let mut requeued: Vec<EncodedKey> = Vec::new();
 		let found = entry.rows.versions_batch(&keys);
 		for (key, versions) in keys.into_iter().zip(found) {
 			let listed = versions.partition_point(|version| *version <= cutoff).saturating_sub(1);
@@ -462,11 +462,11 @@ impl<R: Read + Remove> CommitStore<R> {
 
 			pairs.extend(versions[..listed].iter().map(|version| (key.clone(), *version)));
 			if requeue {
-				retained.push(key);
+				requeued.push(key);
 			}
 		}
 
-		entry.retained.lock().extend(retained);
+		entry.requeued.lock().extend(requeued);
 
 		if pairs.is_empty() {
 			return (Vec::new(), remaining);

@@ -412,7 +412,7 @@ fn assert_views_match_the_frame(db: &TestDb, model: &Model, kind: FrameKind, ste
 	}
 }
 
-fn rolling_lifecycle(kind: FrameKind) {
+fn rolling_cycle(kind: FrameKind) {
 	let db = memory();
 	declare(&db, kind);
 	let mut model = Model::default();
@@ -444,5 +444,5 @@ fn rolling_lifecycle(kind: FrameKind) {
 #[test]
 fn a_duration_rolling_percentile_view_equals_batch_over_the_frame_through_inserts_deletes_and_updates() {
 	// A running digest that misses an eviction or a retraction answers from rows the frame no longer holds.
-	rolling_lifecycle(FrameKind::Duration);
+	rolling_cycle(FrameKind::Duration);
 }

@@ -101,13 +101,13 @@ impl BucketIndex {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct EpochRetention {
+pub struct EpochSampling {
 	pub fine_samples: usize,
 	pub coarse_bucket: EpochSpan,
 	pub max_samples: usize,
 }
 
-impl Default for EpochRetention {
+impl Default for EpochSampling {
 	fn default() -> Self {
 		Self {
 			fine_samples: DEFAULT_FINE_SAMPLES,
@@ -117,7 +117,7 @@ impl Default for EpochRetention {
 	}
 }
 
-impl EpochRetention {
+impl EpochSampling {
 	pub fn guaranteed_coverage(&self) -> EpochSpan {
 		EpochSpan(
 			(self.max_samples.saturating_sub(self.fine_samples) as u64)
@@ -134,7 +134,7 @@ pub struct VersionEpoch {
 #[derive(Debug)]
 struct Inner {
 	sealed: RwLock<BTreeMap<EpochSeconds, u64>>,
-	retention: RwLock<EpochRetention>,
+	sampling: RwLock<EpochSampling>,
 	open: Mutex<OpenBucket>,
 	floor_none_returns: AtomicU64,
 }
@@ -180,29 +180,29 @@ impl Default for VersionEpoch {
 
 impl VersionEpoch {
 	pub fn new() -> Self {
-		Self::with_retention(EpochRetention::default())
+		Self::with_sampling(EpochSampling::default())
 	}
 
-	pub fn with_retention(retention: EpochRetention) -> Self {
+	pub fn with_sampling(sampling: EpochSampling) -> Self {
 		Self {
 			inner: Arc::new(Inner {
 				sealed: RwLock::new(BTreeMap::new()),
-				retention: RwLock::new(retention),
+				sampling: RwLock::new(sampling),
 				open: Mutex::new(OpenBucket::default()),
 				floor_none_returns: AtomicU64::new(0),
 			}),
 		}
 	}
 
-	pub fn retention(&self) -> EpochRetention {
-		*self.inner.retention.read()
+	pub fn sampling(&self) -> EpochSampling {
+		*self.inner.sampling.read()
 	}
 
-	pub fn set_retention(&self, retention: EpochRetention) {
-		*self.inner.retention.write() = retention;
+	pub fn set_sampling(&self, sampling: EpochSampling) {
+		*self.inner.sampling.write() = sampling;
 		let mut sealed = self.inner.sealed.write();
-		if sealed.len() > retention.max_samples {
-			compact(&mut sealed, &retention);
+		if sealed.len() > sampling.max_samples {
+			compact(&mut sealed, &sampling);
 		}
 	}
 
@@ -217,11 +217,11 @@ impl VersionEpoch {
 	}
 
 	fn seal(&self, at: EpochSeconds, version: u64) {
-		let retention = *self.inner.retention.read();
+		let sampling = *self.inner.sampling.read();
 		let mut sealed = self.inner.sealed.write();
 		merge_max(&mut sealed, at, version);
-		if sealed.len() > retention.max_samples {
-			compact(&mut sealed, &retention);
+		if sealed.len() > sampling.max_samples {
+			compact(&mut sealed, &sampling);
 		}
 	}
 
@@ -229,11 +229,11 @@ impl VersionEpoch {
 		if version == 0 {
 			return;
 		}
-		let retention = *self.inner.retention.read();
+		let sampling = *self.inner.sampling.read();
 		let mut sealed = self.inner.sealed.write();
 		merge_max(&mut sealed, at, version);
-		if sealed.len() > retention.max_samples {
-			compact(&mut sealed, &retention);
+		if sealed.len() > sampling.max_samples {
+			compact(&mut sealed, &sampling);
 		}
 	}
 
@@ -279,13 +279,13 @@ fn merge_max(samples: &mut BTreeMap<EpochSeconds, u64>, key: EpochSeconds, versi
 	}
 }
 
-fn compact(samples: &mut BTreeMap<EpochSeconds, u64>, retention: &EpochRetention) {
-	if !retention.coarse_bucket.is_zero() {
-		let coarse_len = samples.len().saturating_sub(retention.fine_samples);
+fn compact(samples: &mut BTreeMap<EpochSeconds, u64>, sampling: &EpochSampling) {
+	if !sampling.coarse_bucket.is_zero() {
+		let coarse_len = samples.len().saturating_sub(sampling.fine_samples);
 		let mut drops = Vec::new();
 		let mut kept_bucket: Option<u64> = None;
 		for &key in samples.keys().take(coarse_len) {
-			let bucket = key.seconds() / retention.coarse_bucket.seconds();
+			let bucket = key.seconds() / sampling.coarse_bucket.seconds();
 			match kept_bucket {
 				Some(previous) if previous == bucket => drops.push(key),
 				_ => kept_bucket = Some(bucket),
@@ -296,7 +296,7 @@ fn compact(samples: &mut BTreeMap<EpochSeconds, u64>, retention: &EpochRetention
 		}
 	}
 
-	while samples.len() > retention.max_samples {
+	while samples.len() > sampling.max_samples {
 		let oldest = *samples.keys().next().expect("samples is non-empty during compaction");
 		samples.remove(&oldest);
 	}
@@ -304,14 +304,14 @@ fn compact(samples: &mut BTreeMap<EpochSeconds, u64>, retention: &EpochRetention
 
 #[cfg(test)]
 mod tests {
-	use super::{BUCKET_WIDTH, EpochRetention, EpochSeconds, EpochSpan, MIN_TTL, VersionEpoch};
+	use super::{BUCKET_WIDTH, EpochSampling, EpochSeconds, EpochSpan, MIN_TTL, VersionEpoch};
 
 	fn sec(seconds: u64) -> EpochSeconds {
 		EpochSeconds::new(seconds)
 	}
 
 	fn small() -> VersionEpoch {
-		VersionEpoch::with_retention(EpochRetention {
+		VersionEpoch::with_sampling(EpochSampling {
 			fine_samples: 5,
 			coarse_bucket: EpochSpan::new(10),
 			max_samples: 50,
@@ -435,8 +435,8 @@ mod tests {
 	#[test]
 	fn thinning_never_reports_a_version_newer_than_the_true_floor() {
 		// A cutoff that is too NEW deletes rows a reader can still resolve. Thinning must therefore only ever
-		// answer with an older version, never a newer one, so coarsening over-retains instead of over-deleting.
-		let exact = VersionEpoch::with_retention(EpochRetention {
+		// answer with an older version, never a newer one, so coarsening over-keeps instead of over-deleting.
+		let exact = VersionEpoch::with_sampling(EpochSampling {
 			fine_samples: 5,
 			coarse_bucket: EpochSpan::new(10),
 			max_samples: 10_000,
@@ -460,7 +460,7 @@ mod tests {
 
 	#[test]
 	fn the_newest_samples_keep_full_resolution() {
-		// Short TTLs need a precise cutoff; coarsening the recent end would over-retain rows whose whole
+		// Short TTLs need a precise cutoff; coarsening the recent end would over-keep rows whose whole
 		// purpose is to expire quickly. Precision at the recent end is one bucket, not one coarse bucket.
 		let epoch = small();
 		for i in 1..=400u64 {
@@ -472,11 +472,11 @@ mod tests {
 	}
 
 	#[test]
-	fn a_narrowed_retention_compacts_the_existing_map_immediately() {
+	fn a_narrowed_sampling_compacts_the_existing_map_immediately() {
 		// Boot replaces the constructed default with the configured rule after hydration has already filled the
 		// map. Applying it lazily would leave the map over budget until the next sample, which on an idle
 		// database is unbounded.
-		let epoch = VersionEpoch::with_retention(EpochRetention {
+		let epoch = VersionEpoch::with_sampling(EpochSampling {
 			fine_samples: 5,
 			coarse_bucket: EpochSpan::new(10),
 			max_samples: 10_000,
@@ -486,7 +486,7 @@ mod tests {
 		}
 		assert_eq!(epoch.sample_count(), 399, "precondition: nothing compacted under the wide rule");
 
-		epoch.set_retention(EpochRetention {
+		epoch.set_sampling(EpochSampling {
 			fine_samples: 5,
 			coarse_bucket: EpochSpan::new(10),
 			max_samples: 50,
@@ -523,14 +523,14 @@ mod tests {
 	}
 
 	#[test]
-	fn guaranteed_coverage_exceeds_the_default_retention_horizon_floor() {
+	fn guaranteed_coverage_exceeds_the_default_min_history_horizon() {
 		// The horizon floor promises 7 days of enforceable ttl. Coverage below it means the promise is a
 		// silent no-op for every ttl in between.
 		let week = EpochSpan::new(7 * 24 * 60 * 60);
 
 		assert!(
-			EpochRetention::default().guaranteed_coverage() >= week,
-			"default epoch coverage must reach the default MaxRetentionHorizonFloor"
+			EpochSampling::default().guaranteed_coverage() >= week,
+			"default epoch coverage must reach the default MinHistoryHorizon"
 		);
 	}
 

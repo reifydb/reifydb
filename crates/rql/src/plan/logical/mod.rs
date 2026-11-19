@@ -41,7 +41,7 @@ use reifydb_core::{
 			namespace::Namespace,
 			procedure::RunAs,
 			property::ColumnPropertyKind,
-			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
+			queue::{QueueDeduplicate, QueueDispatch, QueueDone, QueueRetry},
 			ringbuffer::EvictionVisibility,
 			series::SeriesKey,
 		},
@@ -679,7 +679,7 @@ pub struct CreateQueueNode<'bump> {
 	pub partition_by: Vec<String>,
 	pub dispatch: QueueDispatch,
 	pub deduplicate: Option<QueueDeduplicate>,
-	pub retention: QueueRetention,
+	pub done: QueueDone,
 	pub retry: QueueRetry,
 	pub time: TimeSource,
 }

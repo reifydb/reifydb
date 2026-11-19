@@ -474,7 +474,7 @@ fn create_without_a_window_reports_flow_065() {
 
 #[test]
 fn a_rolling_top_k_time_window_arms_a_seal_timer() {
-	// A driver with a lateness must always acquire a seal retention policy.
+	// A driver with a lateness must always arm a seal timer.
 	let mut h = harness!(TopVolume, rolling(3, Some(1), 117)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 7, 10.0)).build()).expect("apply");
 

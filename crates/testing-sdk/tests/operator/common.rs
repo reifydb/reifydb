@@ -27,8 +27,8 @@ use reifydb_flow_async::{
 		accumulator::{
 			Contribution, Contributions, MergeAccumulator, WindowAccumulator,
 			invertible::{
-				keyed::KeyedInvertibleAccumulator, moments::Moments, multiset::Multiset,
-				ordf64::OrdF64, retained_map::RetainedAccumulator,
+				entry_map::EntryMapAccumulator, keyed::KeyedInvertibleAccumulator, moments::Moments,
+				multiset::Multiset, ordf64::OrdF64,
 			},
 			one,
 		},
@@ -813,7 +813,7 @@ impl OperatorMetadata for TwapCarry {
 impl WindowedOperator for TwapCarry {
 	type Coord = ByDateTime;
 	type GroupKey = String;
-	type Accumulator = RetainedAccumulator<u64, f64>;
+	type Accumulator = EntryMapAccumulator<u64, f64>;
 	type Output = CarryOut;
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
@@ -858,8 +858,8 @@ impl WindowedOperator for TwapCarry {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> RetainedAccumulator<u64, f64> {
-		RetainedAccumulator::default()
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> EntryMapAccumulator<u64, f64> {
+		EntryMapAccumulator::default()
 	}
 }
 

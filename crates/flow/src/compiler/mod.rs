@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::{catalog::Catalog, store::operator_retention::create::create_operator_retention};
+use reifydb_catalog::{catalog::Catalog, store::operator_horizon::create::create_operator_horizon};
 use reifydb_core::{
 	error::diagnostic::{
 		flow::{
@@ -22,7 +22,7 @@ use reifydb_core::{
 		view::View,
 	},
 	internal_err,
-	row::OperatorRetention,
+	row::OperatorHorizon,
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::query::QueryPlan;
@@ -169,20 +169,20 @@ impl FlowCompiler {
 		Ok(operator_id)
 	}
 
-	pub(crate) fn write_operator_retention(
+	pub(crate) fn write_operator_horizon(
 		&self,
 		txn: &mut Transaction<'_>,
 		operator_id: OperatorId,
-		retention: Option<Duration>,
+		horizon: Option<Duration>,
 	) -> Result<(), ValueError> {
 		if self.ephemeral {
 			return Ok(());
 		}
-		if let Some(duration) = retention {
-			create_operator_retention(
+		if let Some(duration) = horizon {
+			create_operator_horizon(
 				txn.admin_mut(),
 				operator_id,
-				&OperatorRetention {
+				&OperatorHorizon {
 					duration,
 				},
 			)?;

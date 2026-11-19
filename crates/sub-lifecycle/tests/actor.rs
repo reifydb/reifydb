@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask};
+use reifydb_core::lifecycle::{class::LifecycleClass, progress::Progress, task::LifecycleTask};
 use reifydb_runtime::{
 	actor::{testing::TestHarness, traits::Directive},
 	sync::{mutex::Mutex, waiter::WaiterHandle},
@@ -47,7 +47,7 @@ impl LifecycleTask for ScriptedTask {
 	}
 
 	// These tests pin the lane's scheduling contract, not reclamation.
-	fn classes(&self) -> &'static [RetentionClass] {
+	fn classes(&self) -> &'static [LifecycleClass] {
 		&[]
 	}
 

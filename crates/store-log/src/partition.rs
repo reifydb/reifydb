@@ -817,8 +817,8 @@ mod tests {
 
 	#[test]
 	fn a_full_segment_rolls_and_the_sealed_index_carries_the_range() {
-		// the range is the reason roll exists before retention: an index sealed without it
-		// reads back as absent, and retention cannot tell how old the segment is.
+		// the range is the reason roll exists before gc: an index sealed without it
+		// reads back as absent, and gc cannot tell how old the segment is.
 		let (fs, _, mut partition) = fixture();
 		let first = record(500, &[0u8; 200]);
 		let second = record(501, &[0u8; 200]);
@@ -864,7 +864,7 @@ mod tests {
 	#[test]
 	fn an_aged_segment_rolls_even_though_it_has_room() {
 		// decision 42: without the age bound a short ttl is rounded up to a whole segment,
-		// because retention can only unlink a sealed one.
+		// because gc can only unlink a sealed one.
 		let (_, clock, mut partition) = fixture();
 		partition.append(&record(500, b"small")).unwrap();
 
@@ -1237,7 +1237,7 @@ mod tests {
 
 	#[test]
 	fn purge_unlinks_a_sealed_pair_older_than_the_ttl() {
-		// this is the whole point of the crate: retention is an unlink of a whole segment, never a
+		// this is the whole point of the crate: gc is an unlink of a whole segment, never a
 		// delete inside a file, so both halves of the pair have to leave the directory.
 		let (fs, _, mut partition) = rolled();
 
@@ -1269,7 +1269,7 @@ mod tests {
 	fn a_sealed_segment_that_is_still_the_active_one_is_never_purged() {
 		// a crash between the seal and the pair that should have followed it leaves the newest segment
 		// sealed and carrying a range, so it looks exactly like a purge candidate. The rule that the
-		// last base is never a candidate is the only thing between retention and the head of the log.
+		// last base is never a candidate is the only thing between gc and the head of the log.
 		let (fs, mock, mut partition) = fixture();
 		partition.append(&record(500, b"only")).unwrap();
 		partition.seal().unwrap();
@@ -1316,7 +1316,7 @@ mod tests {
 	#[test]
 	fn a_reader_that_has_recorded_nothing_holds_every_segment() {
 		// a registered reader pins at zero, so registering before reading must not be a window in
-		// which retention races ahead and unlinks what the reader was about to read.
+		// which gc races ahead and unlinks what the reader was about to read.
 		let (_, _, mut partition) = rolled();
 		partition.register("flow-3").unwrap();
 
@@ -1433,7 +1433,7 @@ mod tests {
 	fn a_truncation_below_the_oldest_surviving_index_is_refused() {
 		// the records the caller wants gone are already gone, so the request cannot be
 		// honoured: a follower this far behind needs a snapshot, and emptying the log would
-		// hide that behind something that looks healthy. Retention only ever raises the floor
+		// hide that behind something that looks healthy. GC only ever raises the floor
 		// past entries the compaction point covers, and the point never passes the commit
 		// index, so a cut below the floor is always a cut into the committed prefix and it is
 		// the commit guard that refuses it.

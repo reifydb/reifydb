@@ -2065,7 +2065,7 @@ fn floor(db: &TestDb) -> Option<CommitVersion> {
 
 #[test]
 fn a_backfill_holds_the_checkpoint_floor_at_v_until_its_checkpoint_commits() {
-	// With no floor at V between the snapshot and the checkpoint, commit log retention can reap the changes after
+	// With no floor at V between the snapshot and the checkpoint, commit log gc can reap the changes after
 	// V.
 	let db = memory();
 	run(&db, &bulk("bf::src"));

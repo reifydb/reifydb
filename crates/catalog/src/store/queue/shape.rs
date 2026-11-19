@@ -13,7 +13,7 @@ catalog_shape! {
 		name: utf8,
 		partition_by: utf8,
 		ordered_by: utf8,
-		retention_done: Duration?,
+		done_ttl: Duration?,
 		retry_attempts: u32,
 		retry_backoff: Duration,
 		deduplicate_by: utf8,

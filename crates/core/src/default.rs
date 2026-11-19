@@ -17,7 +17,7 @@ pub mod query {
 	pub const MEMORY_LIMIT_TESTING: ByteSize = ByteSize::from_mib(1);
 }
 
-pub mod retention {
+pub mod lifecycle {
 	use reifydb_value::value::duration::Duration;
 
 	pub const EVICT_INTERVAL: Duration = Duration::from_seconds_const(60);
@@ -211,9 +211,9 @@ pub mod queue {
 	pub const LEASE_REAP_BATCH_SIZE: u64 = 1024;
 	pub const LEASE_REAP_BATCH_SIZE_TESTING: u64 = 16;
 
-	pub const RETENTION_INTERVAL: Duration = Duration::from_seconds_const(60);
-	pub const RETENTION_INTERVAL_TESTING: Duration = Duration::from_seconds_const(60);
+	pub const EXPIRE_INTERVAL: Duration = Duration::from_seconds_const(60);
+	pub const EXPIRE_INTERVAL_TESTING: Duration = Duration::from_seconds_const(60);
 
-	pub const RETENTION_BATCH_SIZE: u64 = 1024;
-	pub const RETENTION_BATCH_SIZE_TESTING: u64 = 16;
+	pub const EXPIRE_BATCH_SIZE: u64 = 1024;
+	pub const EXPIRE_BATCH_SIZE_TESTING: u64 = 16;
 }

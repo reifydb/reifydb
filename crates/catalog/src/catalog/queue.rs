@@ -8,7 +8,7 @@ use reifydb_core::{
 		change::CatalogTrackQueueChangeOperations,
 		id::{NamespaceId, QueueId},
 		property::ColumnPropertyKind,
-		queue::{Queue, QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
+		queue::{Queue, QueueDeduplicate, QueueDispatch, QueueDone, QueueRetry},
 	},
 	internal,
 };
@@ -49,7 +49,7 @@ pub struct QueueToCreate {
 	pub partition_by: Vec<String>,
 	pub dispatch: QueueDispatch,
 	pub deduplicate: Option<QueueDeduplicate>,
-	pub retention: QueueRetention,
+	pub done: QueueDone,
 	pub retry: QueueRetry,
 	pub time: TimeSource,
 }
@@ -85,7 +85,7 @@ impl From<QueueToCreate> for StoreQueueToCreate {
 			partition_by: to_create.partition_by,
 			dispatch: to_create.dispatch,
 			deduplicate: to_create.deduplicate,
-			retention: to_create.retention,
+			done: to_create.done,
 			retry: to_create.retry,
 			time: to_create.time,
 		}

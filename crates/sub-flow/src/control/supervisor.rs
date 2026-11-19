@@ -2046,7 +2046,7 @@ mod tests {
 
 	#[test]
 	fn an_unreadable_checkpoint_list_fails_the_reap_instead_of_reaping_nothing() {
-		// a list read as empty reaps nothing, so every orphan keeps pinning commit log retention forever
+		// a list read as empty reaps nothing, so every orphan keeps pinning commit log gc forever
 		let (store, _guard) = OperatorStore::testing_memory_with_persistent_sqlite();
 		store.checkpoint_set(FlowId(2), checkpoint_at(20)).unwrap();
 		store.shutdown().unwrap();
@@ -2059,7 +2059,7 @@ mod tests {
 
 	#[test]
 	fn bootstrap_reaps_a_checkpoint_whose_flow_the_catalog_no_longer_lists() {
-		// the retention floor is the minimum over these rows, so one orphan pins commit log truncation forever
+		// the gc floor is the minimum over these rows, so one orphan pins commit log truncation forever
 		let store = OperatorStore::testing_memory();
 		store.checkpoint_set(FlowId(1), checkpoint_at(10)).unwrap();
 		store.checkpoint_set(FlowId(2), checkpoint_at(20)).unwrap();
@@ -2128,7 +2128,7 @@ mod tests {
 		assert!(
 			store.checkpoint_get(FlowId(1)).unwrap().is_none(),
 			"the delete must not be conditional on the handle; leaving the row behind turns every such \
-			 drop into a permanent pin on commit log retention"
+			 drop into a permanent pin on commit log gc"
 		);
 	}
 

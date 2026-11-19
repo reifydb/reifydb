@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::store::WalCheckpoint,
-	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
+	lifecycle::{class::LifecycleClass, progress::Progress, task::LifecycleTask},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -32,7 +32,7 @@ impl LifecycleTask for CommitLogCheckpointTask {
 		self.interval
 	}
 
-	fn classes(&self) -> &'static [RetentionClass] {
+	fn classes(&self) -> &'static [LifecycleClass] {
 		&[]
 	}
 

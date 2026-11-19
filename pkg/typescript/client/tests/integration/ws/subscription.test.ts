@@ -876,7 +876,7 @@ describe('WebSocket Subscriptions', () => {
         }, 10000);
     });
 
-    describe('Cleanup and Lifecycle', () => {
+    describe('Cleanup', () => {
         it('should clean up subscriptions on disconnect', async () => {
             const tableName = createTestTableName('sub_cleanup');
             await createTestTable(wsClient, tableName, ['id Int4']);

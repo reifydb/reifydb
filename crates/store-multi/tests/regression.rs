@@ -163,7 +163,7 @@ fn between_scan_keeps_commit_rows_above_a_fully_filtered_persistent_chunk() {
 
 #[test]
 fn between_rev_scan_keeps_commit_rows_below_a_fully_filtered_persistent_chunk() {
-	// The reverse horizon retains keys at or above itself, so the row at risk is the lowest key.
+	// The reverse horizon keeps keys at or above itself, so the row at risk is the lowest key.
 	let (store, _guard) = store_with_two_stale_chunks(1, 2 * SCAN_CHUNK + 1);
 
 	let scanned: Vec<(Vec<u8>, u64)> = store

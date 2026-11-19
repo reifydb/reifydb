@@ -501,7 +501,6 @@ impl ServerBuilder {
 			let instruments = Arc::new(ProfilerInstruments::new());
 			let accumulator = Arc::new(RwLock::new(ProfilerAccumulator::new(
 				cfg.accumulator_capacity,
-				0,
 				Arc::new(ProfilerInstruments::new()),
 			)));
 			let actor = ProfilerCollectorActor::new(
@@ -509,7 +508,6 @@ impl ServerBuilder {
 				Arc::clone(&interner),
 				Arc::clone(&instruments),
 				cfg.accumulator_capacity,
-				cfg.min_calls_for_retention,
 				clock.clone(),
 			);
 			let collector = ProfilerCollector::spawn(&spawner, actor);

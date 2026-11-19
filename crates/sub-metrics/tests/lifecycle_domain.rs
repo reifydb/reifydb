@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-//! `system::metric::lifecycle::current` exposes the retention plane's per-class ledger.
+//! `system::metric::lifecycle::current` exposes the lifecycle plane's per-class ledger.
 //!
 //! Without it the ledger is in-process only, so an operator cannot tell a class that is keeping up from one that
 //! has never run - both read as "no complaints". Driven end to end because an unregistered vtable, an unresolved
 //! IoC handle and a sampler that never spawns all leave the surface empty.
 
 use reifydb::{ConfigKey, Value, embedded as db_embedded, testing::db::TestDb};
-use reifydb_core::lifecycle::class::RetentionClass;
+use reifydb_core::lifecycle::class::LifecycleClass;
 use reifydb_value::value::duration::Duration;
 
 const TIMEOUT: Duration = Duration::from_seconds_const(10);
@@ -24,17 +24,17 @@ fn db_with_refresh() -> TestDb {
 }
 
 #[test]
-fn lifecycle_current_reports_every_retention_class_before_any_of_them_has_run() {
+fn lifecycle_current_reports_every_lifecycle_class_before_any_of_them_has_run() {
 	// A class that only appears once it has done work is invisible exactly when it matters, because "never
 	// registered" and "nothing to do" produce the same empty surface.
 	let db = db_with_refresh();
-	let want = RetentionClass::all().len();
+	let want = LifecycleClass::all().len();
 
 	let rows = db.await_row_count("from system::metric::lifecycle::current", want, TIMEOUT);
 
 	assert_eq!(
 		rows, want,
-		"the domain must serve one row per retention class ({want}) from the first refresh; a class missing here \
+		"the domain must serve one row per lifecycle class ({want}) from the first refresh; a class missing here \
 		 is a class an operator cannot tell is dead"
 	);
 }
@@ -44,10 +44,10 @@ fn lifecycle_current_names_each_class_so_a_row_can_be_attributed() {
 	// Row count alone would pass if every row carried the same class name. The class column is the join key an
 	// operator filters on, so each row must name a distinct, real class.
 	let db = db_with_refresh();
-	let want = RetentionClass::all().len();
+	let want = LifecycleClass::all().len();
 	db.await_row_count("from system::metric::lifecycle::current", want, TIMEOUT);
 
-	for class in RetentionClass::all() {
+	for class in LifecycleClass::all() {
 		let rql = format!("from system::metric::lifecycle::current filter {{ class == '{}' }}", class.name());
 		assert_eq!(db.row_count(&rql), 1, "class {} must be addressable by name in the surface", class.name());
 	}
@@ -65,7 +65,7 @@ fn lifecycle_current_populates_without_per_domain_opt_in() {
 			.expect("build"),
 	);
 
-	let want = RetentionClass::all().len();
+	let want = LifecycleClass::all().len();
 	let rows = db.await_row_count("from system::metric::lifecycle::current", want, TIMEOUT);
 	assert_eq!(rows, want, "the sampler must publish the lifecycle ledger without any per-domain opt-in");
 }

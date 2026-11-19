@@ -7,10 +7,10 @@ use reifydb_core::{
 	default,
 	interface::catalog::config::{ConfigKey, GetConfig},
 	lifecycle::{
-		class::RetentionClass,
-		coverage::RetentionCoverage,
-		gate::{Gated, RetentionStartupGate},
-		metrics::RetentionMetrics,
+		class::LifecycleClass,
+		coverage::LifecycleCoverage,
+		gate::{Gated, LifecycleStartupGate},
+		metrics::LifecycleMetrics,
 		registry::LifecycleRegistry,
 		task::LifecycleTask,
 	},
@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
 	actor::system::ActorSpawner,
-	version_epoch::{BUCKET_WIDTH, EpochRetention, EpochSpan},
+	version_epoch::{BUCKET_WIDTH, EpochSampling, EpochSpan},
 };
 use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
@@ -30,13 +30,13 @@ use tracing::{info, warn};
 use crate::store::flush::PersistentFlushTask;
 use crate::{
 	actor::LifecycleActor,
+	expire::evictor::ExpireTask,
 	gc::{
 		epoch::durable::{EpochLogTask, hydrate},
 		historical::actor::HistoricalGcTask,
 	},
-	plane::{RetentionPlane, horizon::max_retention_horizon, measured::Measured},
-	queue::{reap::QueueLeaseReapTask, retention::QueueRetentionTask},
-	retention::evictor::RetentionEvictTask,
+	plane::{LifecyclePlane, horizon::history_horizon, measured::Measured},
+	queue::{expire::QueueExpireTask, reap::QueueLeaseReapTask},
 	store::{checkpoint::CommitLogCheckpointTask, merge::CommitMergeTask},
 	subsystem::LifecycleSubsystem,
 };
@@ -56,17 +56,17 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let registry = ioc.resolve::<LifecycleRegistry>()?;
-		let coverage = ioc.try_resolve::<RetentionCoverage>().unwrap_or_default();
+		let coverage = ioc.try_resolve::<LifecycleCoverage>().unwrap_or_default();
 
 		let store = match engine.multi_owned().store() {
 			MultiStore::Standard(s) => s.clone(),
 		};
 		let catalog = engine.catalog();
 
-		let plane = RetentionPlane::for_engine(&engine, ioc.resolve::<RetentionMetrics>()?);
+		let plane = LifecyclePlane::for_engine(&engine, ioc.resolve::<LifecycleMetrics>()?);
 		store.set_flush_floor(plane.flush_floor(engine.clock().clone()));
 
-		let gate = RetentionStartupGate::arm(
+		let gate = LifecycleStartupGate::arm(
 			engine.clock().clone(),
 			catalog.get_config_duration(ConfigKey::LifecycleStartupDelay),
 		);
@@ -77,21 +77,21 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 			bucket_seconds >= BUCKET_WIDTH.seconds(),
 			"EpochBucketInterval is {bucket}, below the {}s epoch resolution: it would truncate to zero \
 			 and silently disable coarse compaction, so the sample map would bound by count instead of \
-			 by the retention horizon",
+			 by the history horizon",
 			BUCKET_WIDTH.seconds()
 		);
-		let retention = EpochRetention {
+		let sampling = EpochSampling {
 			coarse_bucket: EpochSpan::new(bucket_seconds),
-			..EpochRetention::default()
+			..EpochSampling::default()
 		};
-		engine.version_epoch().set_retention(retention);
+		engine.version_epoch().set_sampling(sampling);
 		info!(
 			bucket = %bucket,
-			coverage_days = retention.guaranteed_coverage().seconds() / (24 * 60 * 60),
-			"version epoch retention applied"
+			coverage_days = sampling.guaranteed_coverage().seconds() / (24 * 60 * 60),
+			"version epoch sampling applied"
 		);
 
-		let horizon = max_retention_horizon(&catalog);
+		let horizon = history_horizon(&catalog);
 		match hydrate(&engine, horizon) {
 			Ok(samples) => info!(samples, horizon = %horizon, "version epoch hydrated"),
 			Err(e) => {
@@ -104,7 +104,7 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 			plane.clone(),
 		)));
 		registry.register(Box::new(Measured::new(
-			Gated::new(RetentionEvictTask::silent(engine.clone(), plane.clone()), gate.clone()),
+			Gated::new(ExpireTask::silent(engine.clone(), plane.clone()), gate.clone()),
 			plane.clone(),
 		)));
 		let config: Arc<dyn GetConfig> = Arc::new(catalog.clone());
@@ -112,7 +112,7 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 		if let Some(flush) = persistent_flush(&store, &config, &plane, &engine) {
 			registry.register(flush);
 		} else {
-			coverage.absent(RetentionClass::PersistentFlush, NO_FLUSH_ENGINE);
+			coverage.absent(LifecycleClass::PersistentFlush, NO_FLUSH_ENGINE);
 			let checkpoint = store
 				.wal_checkpoint()
 				.expect("a store without a flush engine still needs its commit log checkpoint");
@@ -132,7 +132,7 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 
 		registry.register(Box::new(Measured::new(
 			Gated::new(
-				QueueRetentionTask::new(
+				QueueExpireTask::new(
 					engine.clone(),
 					plane.clone(),
 					engine.clock().clone(),
@@ -176,7 +176,7 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 fn persistent_flush(
 	store: &StandardMultiStore,
 	config: &Arc<dyn GetConfig>,
-	plane: &RetentionPlane,
+	plane: &LifecyclePlane,
 	engine: &StandardEngine,
 ) -> Option<Box<dyn LifecycleTask>> {
 	let flush_engine = store.flush_engine()?;
@@ -196,7 +196,7 @@ fn persistent_flush(
 fn persistent_flush(
 	_store: &StandardMultiStore,
 	_config: &Arc<dyn GetConfig>,
-	_plane: &RetentionPlane,
+	_plane: &LifecyclePlane,
 	_engine: &StandardEngine,
 ) -> Option<Box<dyn LifecycleTask>> {
 	None

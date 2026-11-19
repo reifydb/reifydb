@@ -415,7 +415,7 @@ pub fn remove_item_states(
 				queue = queue.0,
 				partition = partition.0,
 				item = row.0,
-				"retention skipped an item that stopped being terminal under it"
+				"queue expire skipped an item that stopped being terminal under it"
 			);
 			continue;
 		}

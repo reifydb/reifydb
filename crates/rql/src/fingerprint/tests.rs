@@ -185,7 +185,7 @@ fn lookup_right_object_is_part_of_the_fingerprint() {
 }
 
 #[test]
-fn lookup_retention_value_is_not_part_of_the_pattern() {
+fn lookup_lateness_value_is_not_part_of_the_pattern() {
 	assert_eq!(
 		fp(
 			"FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { emit: false, retention: { left: 10s } }"

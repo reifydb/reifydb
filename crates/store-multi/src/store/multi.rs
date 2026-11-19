@@ -2434,8 +2434,6 @@ mod probe_tests {
 			persistent: Some(PersistentConfig::sqlite(sqlite_config)),
 			point: Some(MultiPointConfig::testing()),
 			range: Some(MultiRangeConfig::testing()),
-			retention: Default::default(),
-			merge_config: Default::default(),
 			event_bus,
 			spawner,
 			clock,

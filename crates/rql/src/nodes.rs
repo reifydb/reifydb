@@ -20,7 +20,7 @@ use reifydb_core::{
 			namespace::Namespace,
 			procedure::{ProcedureParam, RqlTrigger, RunAs},
 			property::ColumnPropertyKind,
-			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
+			queue::{QueueDeduplicate, QueueDispatch, QueueDone, QueueRetry},
 			relationship::RelationshipCardinality,
 			ringbuffer::EvictionVisibility,
 			series::{SeriesEncoding, SeriesKey},
@@ -67,7 +67,7 @@ pub enum CompiledViewStorageKind {
 	Queue {
 		partition_by: Vec<String>,
 		dispatch: QueueDispatch,
-		retention: QueueRetention,
+		done: QueueDone,
 		retry: QueueRetry,
 	},
 }
@@ -173,7 +173,7 @@ pub struct CreateQueueNode {
 	pub partition_by: Vec<String>,
 	pub dispatch: QueueDispatch,
 	pub deduplicate: Option<QueueDeduplicate>,
-	pub retention: QueueRetention,
+	pub done: QueueDone,
 	pub retry: QueueRetry,
 	pub time: TimeSource,
 }

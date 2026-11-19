@@ -34,7 +34,7 @@ use reifydb_flow::{
 	context::FlowContext,
 	error::FlowGraphError,
 	operator::source::decoded_schema,
-	time_domain::{check_join_retention_requirements, check_window_time_requirements},
+	time_domain::{check_join_lateness_requirements, check_window_time_requirements},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{error::ValueError, reifydb_assertions};
@@ -68,7 +68,7 @@ impl FlowEngineInner {
 		}
 
 		check_window_time_requirements(&self.catalog, txn, &flow)?;
-		check_join_retention_requirements(&self.catalog, txn, &flow)?;
+		check_join_lateness_requirements(&self.catalog, txn, &flow)?;
 
 		if !flow.has_timed_source() {
 			info!(

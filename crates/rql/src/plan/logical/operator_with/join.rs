@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	operator_with::{Emit, JoinWith},
-	row::{JoinPick, JoinRetention, OperatorRetention},
+	row::{JoinLateness, JoinPick},
 	sort::{SortDirection, SortKey},
 };
 use reifydb_rql_frontend::{
@@ -49,7 +49,7 @@ impl<'bump> Compiler<'bump> {
 		let mut exact = None;
 		for entry in entries(with) {
 			match entry.key.word() {
-				Some("retention") => join.retention = Some(compile_join_retention(entry)?),
+				Some("retention") => join.lateness = Some(compile_join_lateness(entry)?),
 				Some("emit") => join.emit = compile_join_emit(entry)?,
 				Some("exact") => exact = Some((boolean(entry)?, entry)),
 				Some(keyword @ ("latest" | "earliest")) => {
@@ -72,7 +72,7 @@ impl<'bump> Compiler<'bump> {
 		}
 		join.exact = exact_or_default(exact, join.emit)?;
 		if let Some(entry) = column_pick
-			&& join.retention.as_ref().is_some_and(|retention| retention.right.is_some())
+			&& join.lateness.as_ref().is_some_and(|lateness| lateness.right.is_some())
 		{
 			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
@@ -89,28 +89,26 @@ impl<'bump> Compiler<'bump> {
 	}
 }
 
-fn compile_join_retention(entry: &AstOperatorWithEntry<'_>) -> Result<JoinRetention, ValueError> {
+fn compile_join_lateness(entry: &AstOperatorWithEntry<'_>) -> Result<JoinLateness, ValueError> {
 	let Some(AstOperatorWithValue::Block(sides)) = &entry.value else {
 		return Err(unknown_key(entry, "a block such as { left: 1h, right: 2h }"));
 	};
-	let mut retention = JoinRetention {
+	let mut lateness = JoinLateness {
 		left: None,
 		right: None,
 	};
 	for side in sides {
 		let (slot, context) = match side.key.word() {
-			Some("left") => (&mut retention.left, "the 'left' side"),
-			Some("right") => (&mut retention.right, "the 'right' side"),
+			Some("left") => (&mut lateness.left, "the 'left' side"),
+			Some("right") => (&mut lateness.right, "the 'right' side"),
 			_ => return Err(unknown_key(side, "'left' or 'right'")),
 		};
-		*slot = Some(OperatorRetention {
-			duration: compile_duration(literal(side)?, DurationBound::Positive, context)?,
-		});
+		*slot = Some(compile_duration(literal(side)?, DurationBound::Positive, context)?);
 	}
-	if retention.left.is_none() && retention.right.is_none() {
+	if lateness.left.is_none() && lateness.right.is_none() {
 		return Err(unknown_key(entry, "at least one of 'left' or 'right'"));
 	}
-	Ok(retention)
+	Ok(lateness)
 }
 
 fn compile_join_pick(
@@ -259,17 +257,17 @@ mod tests {
 	#[test]
 	fn test_inner_join_with_ttl_both_sides() {
 		let with = join_with(&join("retention: { left: 1h, right: 2d }")).unwrap();
-		let retention = with.retention.expect("expected retention block");
-		assert_eq!(retention.left.expect("left side present").duration, hours(1));
-		assert_eq!(retention.right.expect("right side present").duration, hours(48));
+		let lateness = with.lateness.expect("expected lateness block");
+		assert_eq!(lateness.left.expect("left side present"), hours(1));
+		assert_eq!(lateness.right.expect("right side present"), hours(48));
 	}
 
 	#[test]
 	fn test_inner_join_with_ttl_only_left() {
 		let with = join_with(&join("retention: { left: 10m }")).unwrap();
-		let retention = with.retention.expect("expected retention block");
-		assert_eq!(retention.left.expect("left present").duration, Duration::from_minutes(10).unwrap());
-		assert!(retention.right.is_none(), "right side must be absent when only left is given");
+		let lateness = with.lateness.expect("expected lateness block");
+		assert_eq!(lateness.left.expect("left present"), Duration::from_minutes(10).unwrap());
+		assert!(lateness.right.is_none(), "right side must be absent when only left is given");
 	}
 
 	#[test]
@@ -278,21 +276,21 @@ mod tests {
 			"left join { from orders } as o using (id, o.user_id) with { retention: { right: 1d } }",
 		)
 		.unwrap();
-		let retention = with.retention.expect("expected retention block");
-		assert!(retention.left.is_none());
-		assert_eq!(retention.right.unwrap().duration, hours(24));
+		let lateness = with.lateness.expect("expected lateness block");
+		assert!(lateness.left.is_none());
+		assert_eq!(lateness.right.unwrap(), hours(24));
 	}
 
 	#[test]
 	fn test_join_with_ttl_empty_body_rejected() {
-		assert!(join_with(&join("retention: { }")).is_err(), "expected error for empty join retention body");
+		assert!(join_with(&join("retention: { }")).is_err(), "expected error for empty join lateness body");
 	}
 
 	#[test]
 	fn test_join_with_old_single_ttl_shorthand_rejected() {
 		assert!(
 			join_with(&join("retention: 1h")).is_err(),
-			"expected error for legacy shorthand: retention on join now requires explicit 'left'/'right' keys"
+			"expected error for legacy shorthand: lateness on join now requires explicit 'left'/'right' keys"
 		);
 	}
 
@@ -300,17 +298,17 @@ mod tests {
 	fn test_join_with_unknown_side_key_rejected() {
 		assert!(
 			join_with(&join("retention: { middle: 1h }")).is_err(),
-			"expected error for unknown side key in join retention"
+			"expected error for unknown side key in join lateness"
 		);
 	}
 
 	#[test]
 	fn test_join_with_ttl_and_emit() {
 		let with = join_with(&join("retention: { left: 5m }, emit: false")).unwrap();
-		assert_eq!(with.emit, Emit::Off, "emit should still parse alongside per-side retention");
-		let retention = with.retention.expect("expected retention");
-		assert!(retention.left.is_some());
-		assert!(retention.right.is_none());
+		assert_eq!(with.emit, Emit::Off, "emit should still parse alongside per-side lateness");
+		let lateness = with.lateness.expect("expected lateness");
+		assert!(lateness.left.is_some());
+		assert!(lateness.right.is_none());
 	}
 
 	#[test]
@@ -412,7 +410,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_join_rejects_a_column_ordered_pick_with_a_right_retention() {
+	fn test_join_rejects_a_column_ordered_pick_with_a_right_lateness() {
 		// The pick can crown a row that seals before one it outranked, which was never stored to fall back to.
 		for source in [
 			join("latest: { o.total }, retention: { right: 2s }"),
@@ -422,26 +420,26 @@ mod tests {
 			let err = parse_err(&source);
 			assert!(
 				err.contains("right"),
-				"the rejection must name the side that cannot be retained, got: {err}"
+				"the rejection must name the side that cannot be kept, got: {err}"
 			);
 		}
 	}
 
 	#[test]
-	fn test_join_accepts_a_column_ordered_pick_without_a_right_retention() {
-		// Only the right side clashes, so a left retention must never be swept up by the rejection.
+	fn test_join_accepts_a_column_ordered_pick_without_a_right_lateness() {
+		// Only the right side clashes, so a left lateness must never be swept up by the rejection.
 		let (_, pick) = parse_inner(&join("latest: { o.total }, retention: { left: 1h }"));
-		assert!(pick.is_some(), "a left retention alone must stay legal beside a column-ordered pick");
+		assert!(pick.is_some(), "a left lateness alone must stay legal beside a column-ordered pick");
 	}
 
 	#[test]
-	fn test_join_accepts_a_time_ordered_pick_with_a_right_retention() {
+	fn test_join_accepts_a_time_ordered_pick_with_a_right_lateness() {
 		// A pick by time crowns the newest row, which seals last, so no row it outranked can outlive it.
 		let (_, pick) = parse_inner(&join("latest: true, retention: { left: 1h, right: 2s }"));
 		assert_eq!(
 			pick,
 			Some(vec![(TIME_COLUMN_NAME.to_string(), SortDirection::Desc)]),
-			"latest: true must stay legal beside a right retention"
+			"latest: true must stay legal beside a right lateness"
 		);
 	}
 

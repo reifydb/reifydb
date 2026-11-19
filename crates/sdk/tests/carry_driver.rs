@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::{
-		accumulator::invertible::retained_map::RetainedAccumulator,
+		accumulator::invertible::entry_map::EntryMapAccumulator,
 		coord::{ByDateTime, ByU8},
 		settings::WindowSettings,
 		span::WindowSpan,
@@ -75,7 +75,7 @@ impl OperatorMetadata for LateCarry {
 impl WindowedOperator for LateCarry {
 	type Coord = ByDateTime;
 	type GroupKey = String;
-	type Accumulator = RetainedAccumulator<u64, f64>;
+	type Accumulator = EntryMapAccumulator<u64, f64>;
 	type Output = LateOut;
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
@@ -120,8 +120,8 @@ impl WindowedOperator for LateCarry {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> RetainedAccumulator<u64, f64> {
-		RetainedAccumulator::default()
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> EntryMapAccumulator<u64, f64> {
+		EntryMapAccumulator::default()
 	}
 }
 
@@ -354,7 +354,7 @@ impl OperatorMetadata for SlotCarry {
 impl WindowedOperator for SlotCarry {
 	type Coord = ByU8;
 	type GroupKey = String;
-	type Accumulator = RetainedAccumulator<u64, f64>;
+	type Accumulator = EntryMapAccumulator<u64, f64>;
 	type Output = LateOut;
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
@@ -374,8 +374,8 @@ impl WindowedOperator for SlotCarry {
 		Ok(vec![None; rows.len()])
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<ByU8>) -> RetainedAccumulator<u64, f64> {
-		RetainedAccumulator::default()
+	fn new_accumulator(&self, _settings: &WindowSettings<ByU8>) -> EntryMapAccumulator<u64, f64> {
+		EntryMapAccumulator::default()
 	}
 }
 

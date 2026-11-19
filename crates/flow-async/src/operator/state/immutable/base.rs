@@ -311,7 +311,7 @@ mod tests {
 
 	#[test]
 	fn without_an_immutable_span_no_distance_is_far_enough_to_fold() {
-		// Every differential test compares against this arm, so it must retain every slot it is given.
+		// Every differential test compares against this arm, so it must keep every slot it is given.
 		let mut base: ImmutableBase<ByDateTime, i64> = ImmutableBase::default();
 		base.push(event_coord_at_millis(0), 1);
 		base.push(event_coord_at_millis(1_000_000), 2);

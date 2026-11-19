@@ -26,7 +26,7 @@ use crate::store::{
 	migration::shape::{migration::SHAPE as MIGRATION_SHAPE, migration_event::SHAPE as MIGRATION_EVENT_SHAPE},
 	namespace::shape::namespace::SHAPE as NAMESPACE_SHAPE,
 	operator::shape::{operator::SHAPE as OPERATOR_SHAPE, operator_by_flow::SHAPE as OPERATOR_BY_FLOW_SHAPE},
-	operator_retention::shape::operator_retention::SHAPE as OPERATOR_RETENTION_SHAPE,
+	operator_horizon::shape::operator_horizon::SHAPE as OPERATOR_HORIZON_SHAPE,
 	policy::shape::{policy::SHAPE as POLICY_SHAPE, policy_op::SHAPE as POLICY_OP_SHAPE},
 	primary_key::shape::primary_key::SHAPE as PRIMARY_KEY_SHAPE,
 	procedure::shape::{
@@ -212,12 +212,7 @@ fn pinned() -> Vec<Pin> {
 			0x9c6a56d9c54b58c3,
 			&["id", "name", "parent_id", "grpc", "local_name", "token"],
 		),
-		(
-			"operator_retention::operator_retention",
-			&*OPERATOR_RETENTION_SHAPE,
-			0xf8e6653f9f9c4f19,
-			&["duration"],
-		),
+		("operator_horizon::operator_horizon", &*OPERATOR_HORIZON_SHAPE, 0xf8e6653f9f9c4f19, &["duration"]),
 		("operator::operator", &*OPERATOR_SHAPE, 0xa93d5c45f91e4225, &["id", "flow", "type", "data"]),
 		("operator::operator_by_flow", &*OPERATOR_BY_FLOW_SHAPE, 0x511118ba66efb6ed, &["flow", "id"]),
 		(
@@ -260,14 +255,14 @@ fn pinned() -> Vec<Pin> {
 		(
 			"queue::queue",
 			&*QUEUE_SHAPE,
-			0x40281c3e3664af79,
+			0xa4432f226ee4f41f,
 			&[
 				"id",
 				"namespace",
 				"name",
 				"partition_by",
 				"ordered_by",
-				"retention_done",
+				"done_ttl",
 				"retry_attempts",
 				"retry_backoff",
 				"deduplicate_by",

@@ -222,7 +222,7 @@ mod queue_item_state_key_tests {
 
 	#[test]
 	fn test_item_scan_excludes_neighbouring_items_and_queues() {
-		// Retention and repeat-detection both enumerate one item's attempts. If the scan
+		// Expiry and repeat-detection both enumerate one item's attempts. If the scan
 		// leaked into the adjacent row, acking item 5 would observe item 6's history and
 		// report a repeat for work that was never done.
 		let range = QueueAttemptKey::item_scan(QueueId(3), RowNumber(5)).encode();
@@ -236,7 +236,7 @@ mod queue_item_state_key_tests {
 
 	#[test]
 	fn test_queue_scan_covers_every_item_of_one_queue_only() {
-		// DROP QUEUE teardown and step-5 retention both sweep by queue; a range that missed
+		// DROP QUEUE teardown and step-5 expiry both sweep by queue; a range that missed
 		// row 0 or spilled into the next queue would either leak audit rows forever or delete
 		// another queue's history.
 		let range = QueueAttemptKey::queue_scan(QueueId(3)).encode();
@@ -325,7 +325,7 @@ mod queue_deduplication_key_tests {
 
 	#[test]
 	fn test_full_scan_contains_only_the_target_queue() {
-		// Keys are stored bitwise-inverted, so a bound derived with the wrong sign makes the retention
+		// Keys are stored bitwise-inverted, so a bound derived with the wrong sign makes the expiry
 		// sweep either miss its own records or delete a neighbouring queue's.
 		let range = QueueDeduplicationKey::full_scan(QueueId(3)).encode();
 		let Bound::Included(start) = &range.start else {

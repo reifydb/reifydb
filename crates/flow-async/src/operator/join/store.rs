@@ -491,7 +491,7 @@ mod tests {
 	#[test]
 	fn removing_an_absent_row_is_invisible_to_every_reader() {
 		// remove_row_in no longer reads before deleting, so it can be handed a row number that the
-		// retention sweep already reclaimed, or one that was never stored under this group at all.
+		// lateness sweep already reclaimed, or one that was never stored under this group at all.
 		// The tombstone that produces must stay invisible: siblings under the key must still scan in
 		// order, the key must still report present, and the absent row must still read as absent.
 		let engine = TestEngine::new();
@@ -700,7 +700,7 @@ mod tests {
 	fn set_row_shape_persists_a_second_distinct_shape_on_the_same_instance() {
 		// A side's row shape is not uniform for its whole lifetime: a column that is all none in
 		// one batch and typed in the next yields a different fingerprint, so every distinct shape
-		// has to be retained rather than only the first.
+		// has to be kept rather than only the first.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(23);

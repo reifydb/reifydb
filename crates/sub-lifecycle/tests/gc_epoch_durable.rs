@@ -10,7 +10,7 @@
 use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},
 	key::{any::TaggedKey, system::VersionEpochKey},
-	lifecycle::{gate::RetentionStartupGate, progress::Progress, task::LifecycleTask},
+	lifecycle::{gate::LifecycleStartupGate, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -85,8 +85,8 @@ fn engine_without_epoch_listener() -> TestEngine {
 	TestEngine::builder().build()
 }
 
-fn open_gate(engine: &StandardEngine) -> RetentionStartupGate {
-	RetentionStartupGate::open(engine.clock().clone())
+fn open_gate(engine: &StandardEngine) -> LifecycleStartupGate {
+	LifecycleStartupGate::open(engine.clock().clone())
 }
 
 #[test]
@@ -335,7 +335,7 @@ fn pruning_drops_samples_beyond_the_horizon_and_keeps_the_ones_inside_it() {
 	let t = TestEngine::new();
 	let engine: StandardEngine = t.inner().clone();
 	let clock = t.mock_clock();
-	let horizon = engine.catalog().get_config_duration(ConfigKey::MaxRetentionHorizonFloor);
+	let horizon = engine.catalog().get_config_duration(ConfigKey::MinHistoryHorizon);
 	assert_eq!(horizon, Duration::from_days(7).unwrap(), "precondition: the default horizon floor is seven days");
 
 	commit_a_version(&engine, "ingest", 1);
@@ -364,7 +364,7 @@ fn pruning_is_held_back_while_the_startup_gate_is_closed() {
 	let clock = t.mock_clock();
 
 	commit_a_version(&engine, "ingest", 1);
-	let gated = RetentionStartupGate::arm(engine.clock().clone(), Duration::from_days(30).unwrap());
+	let gated = LifecycleStartupGate::arm(engine.clock().clone(), Duration::from_days(30).unwrap());
 	let mut task = EpochLogTask::new(engine.clone(), gated.clone());
 	task.run_slice();
 	let ancient = durable_samples(&engine)[0].0;
@@ -436,7 +436,7 @@ fn the_gate_is_the_only_thing_between_a_cold_start_and_the_whole_backlog() {
 	// The factory relies on this when it arms the gate: an open gate reclaims immediately, otherwise the startup
 	// delay is decorative.
 	let t = TestEngine::new();
-	let gate = RetentionStartupGate::arm(Clock::Mock(t.mock_clock()), Duration::from_seconds(0).unwrap());
+	let gate = LifecycleStartupGate::arm(Clock::Mock(t.mock_clock()), Duration::from_seconds(0).unwrap());
 
 	assert!(gate.is_open(), "a zero delay gate must not hold back the first reclamation slice");
 }

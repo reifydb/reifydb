@@ -90,15 +90,15 @@ fn an_or_connector_is_lookup_002() {
 }
 
 #[test]
-fn a_retention_without_left_is_ast_005() {
-	// An empty retention block still leaves the left side unbounded.
+fn a_lateness_without_left_is_ast_005() {
+	// An empty lateness block still leaves the left side unbounded.
 	let engine = engine();
 	assert_code(&engine.query_err(&lookup(BLOCK, USING, " WITH { retention: { } }")), "AST_005");
 }
 
 #[test]
-fn a_right_retention_is_ast_005() {
-	// A lookup keeps no right rows, so a right retention has nothing to expire.
+fn a_right_lateness_is_ast_005() {
+	// A lookup keeps no right rows, so a right lateness has nothing to expire.
 	let engine = engine();
 	let with = " WITH { retention: { left: 10s, right: 10s } }";
 	assert_code(&engine.query_err(&lookup(BLOCK, USING, with)), "AST_005");

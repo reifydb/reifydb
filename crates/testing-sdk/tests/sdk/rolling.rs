@@ -449,7 +449,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 
 #[test]
 fn a_rolling_time_window_arms_a_seal_timer() {
-	// a driver with a required window must always acquire a seal retention policy
+	// a driver with a required window must always arm a seal timer
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new()
 		.with(window_with())
 		.build()

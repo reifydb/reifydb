@@ -26,7 +26,7 @@ use crate::{
 		Compiler, CreateDeferredViewNode, LogicalPlan,
 		create::{
 			check_view_partition,
-			queue::{compile_dispatch, compile_retention, compile_retry},
+			queue::{compile_dispatch, compile_done, compile_retry},
 			reject_dictionary_on_decimal,
 		},
 		reserved::reject_reserved_column_name,
@@ -96,7 +96,7 @@ impl<'bump> Compiler<'bump> {
 						&queue_columns,
 						&view_ns_segments,
 					)?,
-					retention: compile_retention(options.retention.as_ref())?,
+					done: compile_done(options.done.as_ref())?,
 					retry: compile_retry(options.retry.as_ref())?,
 				}
 			}

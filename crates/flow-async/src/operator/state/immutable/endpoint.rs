@@ -214,7 +214,7 @@ mod tests {
 
 	#[test]
 	fn immutable_endpoint_matches_the_unsealed_arm_for_in_order_adds() {
-		// Freezing the open and replaying the tail must reproduce exactly what retaining everything gives.
+		// Freezing the open and replaying the tail must reproduce exactly what keeping everything gives.
 		assert_arms_agree(
 			ImmutableEndpoint::<ByDateTime, i64>::immutable(millis(5)),
 			ImmutableEndpoint::<ByDateTime, i64>::default(),

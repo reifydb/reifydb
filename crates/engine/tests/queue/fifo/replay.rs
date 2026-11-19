@@ -453,7 +453,7 @@ fn test_replaying_the_same_item_twice_is_refused_the_second_time() {
 #[test]
 fn test_replay_of_an_unknown_item_is_refused() {
 	// The item number comes from a human reading a dashboard, so typos are the common case. It is
-	// also the same answer an item swept by retention gives, because retention removes the
+	// also the same answer an item swept by expiry gives, because expiry removes the
 	// scheduling state - that is the documented end of an item's replay window, not a bug.
 	let t = engine_with_queue(ONE_PARTITION);
 	t.command("INSERT test::jobs [{ id: 1 }]");

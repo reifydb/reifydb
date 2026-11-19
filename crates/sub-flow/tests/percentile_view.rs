@@ -615,7 +615,7 @@ fn assert_percentile_views_match_batch(db: &TestDb, step: &str) {
 	}
 }
 
-fn percentile_lifecycle(latency: Latency) {
+fn percentile_cycle(latency: Latency) {
 	let db = memory();
 	declare_percentile_views(&db, latency);
 	let rows = corpus(latency);
@@ -639,19 +639,19 @@ fn percentile_lifecycle(latency: Latency) {
 #[test]
 fn a_float8_percentile_view_equals_batch_through_inserts_deletes_and_updates() {
 	// A shared slot that drifts on retraction gives every percentile read from it a wrong answer.
-	percentile_lifecycle(Latency::Float8);
+	percentile_cycle(Latency::Float8);
 }
 
 #[test]
 fn an_int4_percentile_view_equals_batch_through_inserts_deletes_and_updates() {
 	// An int4 input must read back as float8 percentiles exactly as the batch query reads them.
-	percentile_lifecycle(Latency::Int4);
+	percentile_cycle(Latency::Int4);
 }
 
 #[test]
 fn a_duration_percentile_view_equals_batch_through_inserts_deletes_and_updates() {
 	// A duration input must read back as duration percentiles, otherwise the view column loses its unit.
-	percentile_lifecycle(Latency::Duration);
+	percentile_cycle(Latency::Duration);
 }
 
 fn declare_frozen_view(db: &TestDb) {

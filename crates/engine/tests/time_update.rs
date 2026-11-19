@@ -85,7 +85,7 @@ fn an_event_time_update_of_an_unrelated_column_leaves_time_alone() {
 }
 
 #[test]
-fn a_ringbuffer_update_follows_the_same_lifecycle_as_a_table() {
+fn a_ringbuffer_update_follows_the_same_life_as_a_table() {
 	// The ringbuffer must keep #time on a processing-time update, otherwise it re-dates rows to the clock.
 	let t = engine();
 	t.admin("CREATE RINGBUFFER test::recent { id: int4, note: utf8 } WITH { capacity: 8, time: processing }");
@@ -98,7 +98,7 @@ fn a_ringbuffer_update_follows_the_same_lifecycle_as_a_table() {
 }
 
 #[test]
-fn a_series_update_follows_the_same_lifecycle_as_a_table() {
+fn a_series_update_follows_the_same_life_as_a_table() {
 	// An update must keep #time from the populator, never from the series key or the clock.
 	let t = engine();
 	t.admin("CREATE SERIES test::metrics { ts: int8, note: utf8 } WITH { key: ts, time: processing }");

@@ -197,7 +197,7 @@ impl FlowGraphAnalyzer {
 					..
 				} => {
 					(with.emit != Emit::Off || !with.exact)
-						&& with.retention.is_none() && !(*join_type == JoinType::Left
+						&& with.lateness.is_none() && !(*join_type == JoinType::Left
 						&& with.emit != Emit::Off && with
 						.pick
 						.is_none())
@@ -205,7 +205,7 @@ impl FlowGraphAnalyzer {
 				OperatorDef::Lookup {
 					with,
 					..
-				} => (with.emit != Emit::Off || !with.exact) && with.retention.is_none(),
+				} => (with.emit != Emit::Off || !with.exact) && with.lateness.is_none(),
 				_ => false,
 			})
 		});
@@ -492,7 +492,7 @@ pub mod tests {
 			id::{RingBufferId, TableId, ViewId},
 		},
 		operator_with::{AggregateWith, ApplyWith, Emit, JoinWith, LookupWith, WindowWith},
-		row::{JoinPick, JoinRetention, OperatorRetention},
+		row::{JoinLateness, JoinPick},
 		sort::{SortDirection, SortKey},
 	};
 	use reifydb_value::{fragment::Fragment, value::duration::Duration};
@@ -1275,9 +1275,7 @@ pub mod tests {
 	#[test]
 	fn an_operator_that_needs_every_version_keeps_its_flow_from_collapsing() {
 		// One of these collapsed would drop in-between rows or pair a left row with a later right version.
-		let retention = || OperatorRetention {
-			duration: second(),
-		};
+		let lateness = second;
 		let refused = vec![
 			("append", OperatorDef::Append {}),
 			(
@@ -1338,11 +1336,11 @@ pub mod tests {
 				}),
 			),
 			(
-				"join with retention",
+				"join with lateness",
 				join_with(JoinWith {
-					retention: Some(JoinRetention {
+					lateness: Some(JoinLateness {
 						left: None,
-						right: Some(retention()),
+						right: Some(lateness()),
 					}),
 					..JoinWith::default()
 				}),
@@ -1356,9 +1354,9 @@ pub mod tests {
 				}),
 			),
 			(
-				"lookup with retention",
+				"lookup with lateness",
 				lookup_with(LookupWith {
-					retention: Some(retention()),
+					lateness: Some(lateness()),
 					..LookupWith::default()
 				}),
 			),

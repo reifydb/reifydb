@@ -285,7 +285,7 @@ fn an_expiry_moved_later_in_the_batch_wins_over_the_committed_earlier_one() {
 
 #[test]
 fn a_re_arm_removes_the_due_row_of_the_instant_it_left_behind() {
-	// A re-arm that only writes the new due row leaves the old one due first, freeing the row a retention early.
+	// A re-arm that only writes the new due row leaves the old one due first, freeing the row a lateness early.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 5_000);
@@ -419,7 +419,7 @@ fn the_due_page_never_returns_a_join_expiry_the_batch_already_removed() {
 
 #[test]
 fn the_due_page_stops_at_the_fire_and_never_reaches_past_it() {
-	// A page that overshoots the flow watermark frees rows that are still inside their own retention.
+	// A page that overshoots the flow watermark frees rows that are still inside their own lateness.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 5_000);
@@ -601,7 +601,7 @@ fn a_re_arm_raised_on_a_later_transaction_is_a_replace_too() {
 #[test]
 fn the_two_sides_of_one_row_number_never_share_a_due_row() {
 	// Both keyspaces key on side before row, so a side byte that failed to separate them would let one side's clear
-	// free the other side's row while its retention still runs.
+	// free the other side's row while its lateness still runs.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 3_000);
@@ -626,7 +626,7 @@ fn the_two_sides_of_one_row_number_never_share_a_due_row() {
 #[test]
 fn an_expiry_past_the_high_bit_of_its_nanosecond_encoding_is_not_due_before_one_below_it() {
 	// Read as a signed integer the later instant goes negative and sorts earliest, which frees a row whose
-	// retention has not run out.
+	// lateness has not run out.
 	const BELOW_HIGH_BIT: u64 = 9_223_372_036_854;
 	const ABOVE_HIGH_BIT: u64 = 9_223_372_036_855;
 

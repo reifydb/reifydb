@@ -6,7 +6,6 @@ use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_commit::store::CommitStore;
-use reifydb_value::value::duration::Duration;
 
 use crate::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
 
@@ -16,8 +15,6 @@ pub struct MultiStoreConfig {
 	pub persistent: Option<PersistentConfig>,
 	pub point: Option<MultiPointConfig>,
 	pub range: Option<MultiRangeConfig>,
-	pub retention: RetentionConfig,
-	pub merge_config: MergeConfig,
 	pub event_bus: EventBus,
 	pub spawner: ActorSpawner,
 	pub clock: Clock,
@@ -32,8 +29,6 @@ impl MultiStoreConfig {
 			persistent: None,
 			point: None,
 			range: None,
-			retention: Default::default(),
-			merge_config: Default::default(),
 			event_bus,
 			spawner,
 			clock,
@@ -49,8 +44,6 @@ impl MultiStoreConfig {
 			persistent: Some(persistent),
 			point: None,
 			range: None,
-			retention: Default::default(),
-			merge_config: Default::default(),
 			event_bus,
 			spawner,
 			clock,
@@ -84,37 +77,5 @@ impl PersistentConfig {
 	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
 		let (storage, guard) = MultiPersistentTier::sqlite_in_memory();
 		(Self::opened(storage), guard)
-	}
-}
-
-#[derive(Clone, Debug)]
-pub struct RetentionConfig {
-	pub buffer: Duration,
-	pub persistent: Duration,
-}
-
-#[derive(Clone, Debug)]
-pub struct MergeConfig {
-	pub merge_threshold_rows: usize,
-	pub merge_batch_size: usize,
-	pub enable_auto_eviction: bool,
-}
-
-impl Default for RetentionConfig {
-	fn default() -> Self {
-		Self {
-			buffer: Duration::from_seconds(300).unwrap(),
-			persistent: Duration::from_seconds(3600).unwrap(),
-		}
-	}
-}
-
-impl Default for MergeConfig {
-	fn default() -> Self {
-		Self {
-			merge_threshold_rows: 100_000,
-			merge_batch_size: 10_000,
-			enable_auto_eviction: true,
-		}
 	}
 }

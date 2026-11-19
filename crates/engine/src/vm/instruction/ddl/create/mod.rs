@@ -33,7 +33,7 @@ use reifydb_core::{
 use reifydb_evaluate::{expression::udf_extract::extract_udf_calls, stack::SymbolTable};
 use reifydb_flow::{
 	compiler::compile_flow,
-	time_domain::{check_join_retention_requirements, check_window_time_requirements, source_time_domain},
+	time_domain::{check_join_lateness_requirements, check_window_time_requirements, source_time_domain},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::{nodes::CompiledViewStorageKind, query::QueryPlan};
@@ -366,7 +366,7 @@ pub(crate) fn check_flow_dag(
 	ioc: &IocContainer,
 ) -> Result<(), ValueError> {
 	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), dag)?;
-	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), dag)?;
+	check_join_lateness_requirements(catalog, &mut Transaction::Admin(txn), dag)?;
 	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), dag, operators)?;
 	check_operator_with_requirements(dag, operators)?;
 	if let Some(registration) = ioc.try_resolve::<FlowRegistrationCheckRef>() {

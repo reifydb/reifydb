@@ -33,7 +33,7 @@ fn last_value_roundtrip() {
 	let bytes = lv.encode_state().expect("encode");
 	let restored: LastValue<i64> = decode(&bytes).expect("decode");
 	assert_eq!(restored, lv);
-	assert_eq!(restored.finalize(), Some(42), "retained value survives roundtrip");
+	assert_eq!(restored.finalize(), Some(42), "kept value survives roundtrip");
 }
 
 #[test]

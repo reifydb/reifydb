@@ -62,7 +62,7 @@ pub enum FlowActorMessage {
 		visibility: RemoveVisibility,
 	},
 
-	RetentionCommitted {
+	ExpireCommitted {
 		result: Result<(), ValueError>,
 	},
 

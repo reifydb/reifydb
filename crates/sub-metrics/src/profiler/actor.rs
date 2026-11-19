@@ -47,7 +47,6 @@ pub struct ProfilerCollectorActor {
 	interner: Arc<DimInterner>,
 	instruments: Arc<ProfilerInstruments>,
 	horizon_capacity: usize,
-	horizon_retention_floor: u64,
 	clock: Clock,
 }
 
@@ -74,7 +73,6 @@ impl ProfilerCollectorActor {
 		interner: Arc<DimInterner>,
 		instruments: Arc<ProfilerInstruments>,
 		horizon_capacity: usize,
-		horizon_retention_floor: u64,
 		clock: Clock,
 	) -> Self {
 		Self {
@@ -82,7 +80,6 @@ impl ProfilerCollectorActor {
 			interner,
 			instruments,
 			horizon_capacity,
-			horizon_retention_floor,
 			clock,
 		}
 	}
@@ -194,11 +191,7 @@ impl Actor for ProfilerCollectorActor {
 			processed_summaries: 0,
 			processed_batches: 0,
 			processed_records: 0,
-			horizon: ProfilerAccumulator::new(
-				self.horizon_capacity,
-				self.horizon_retention_floor,
-				Arc::clone(&self.instruments),
-			),
+			horizon: ProfilerAccumulator::new(self.horizon_capacity, Arc::clone(&self.instruments)),
 			targets: None,
 			last_snapshot: None,
 		}

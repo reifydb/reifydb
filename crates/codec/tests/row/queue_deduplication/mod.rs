@@ -103,7 +103,7 @@ fn a_freshly_allocated_row_already_carries_the_shape_it_was_allocated_from() {
 
 #[test]
 fn the_wall_clock_stamps_survive_a_freeze_and_stay_disjoint() {
-	// Retention sweeps on updated_at, so one shared stamp slot makes every record look either immortal or already
+	// Expiry sweeps on updated_at, so one shared stamp slot makes every record look either immortal or already
 	// expired.
 	let mut row = shape().allocate_queue_deduplication();
 	row.set_timestamps(DateTime::from_nanos(11), DateTime::from_nanos(22));

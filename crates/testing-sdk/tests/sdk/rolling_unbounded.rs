@@ -10,7 +10,7 @@ use reifydb_core::{
 	operator_with::{ApplyWith, WithSpan},
 };
 use reifydb_flow_async::window::{
-	accumulator::invertible::retained_map::RetainedAccumulator, coord::ByDateTime, settings::WindowSettings,
+	accumulator::invertible::entry_map::EntryMapAccumulator, coord::ByDateTime, settings::WindowSettings,
 	span::WindowSpan,
 };
 use reifydb_sdk::{
@@ -78,10 +78,10 @@ fn extracts(cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<(Strin
 		.collect()
 }
 
-struct RetainedPlain;
+struct EntryMapPlain;
 
-impl OperatorMetadata for RetainedPlain {
-	const NAME: &'static str = "retained_plain";
+impl OperatorMetadata for EntryMapPlain {
+	const NAME: &'static str = "entry_map_plain";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -89,10 +89,10 @@ impl OperatorMetadata for RetainedPlain {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl WindowedOperator for RetainedPlain {
+impl WindowedOperator for EntryMapPlain {
 	type Coord = ByDateTime;
 	type GroupKey = String;
-	type Accumulator = RetainedAccumulator<u64, f64>;
+	type Accumulator = EntryMapAccumulator<u64, f64>;
 	type Output = Latest;
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
@@ -112,12 +112,12 @@ impl WindowedOperator for RetainedPlain {
 		extracts(cols, rows)
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> RetainedAccumulator<u64, f64> {
-		RetainedAccumulator::default()
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> EntryMapAccumulator<u64, f64> {
+		EntryMapAccumulator::default()
 	}
 }
 
-impl Emit for RetainedPlain {
+impl Emit for EntryMapPlain {
 	type Kinds = AllKinds;
 
 	fn build_output(
@@ -134,10 +134,10 @@ impl Emit for RetainedPlain {
 	}
 }
 
-struct RetainedTopK;
+struct EntryMapTopK;
 
-impl OperatorMetadata for RetainedTopK {
-	const NAME: &'static str = "retained_top_k";
+impl OperatorMetadata for EntryMapTopK {
+	const NAME: &'static str = "entry_map_top_k";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -145,10 +145,10 @@ impl OperatorMetadata for RetainedTopK {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl WindowedOperator for RetainedTopK {
+impl WindowedOperator for EntryMapTopK {
 	type Coord = ByDateTime;
 	type GroupKey = String;
-	type Accumulator = RetainedAccumulator<u64, f64>;
+	type Accumulator = EntryMapAccumulator<u64, f64>;
 	type Output = BTreeMap<u64, Latest>;
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
@@ -168,12 +168,12 @@ impl WindowedOperator for RetainedTopK {
 		extracts(cols, rows)
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> RetainedAccumulator<u64, f64> {
-		RetainedAccumulator::default()
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> EntryMapAccumulator<u64, f64> {
+		EntryMapAccumulator::default()
 	}
 }
 
-impl Emit for RetainedTopK {
+impl Emit for EntryMapTopK {
 	type Kinds = AllKinds;
 
 	fn build_output(
@@ -224,10 +224,10 @@ fn tumbling_with() -> ApplyWith {
 }
 
 #[test]
-fn a_plain_rolling_window_over_retained_partials_reports_flow_092() {
-	// retained partials keep every sample, so create must refuse them before any group leaks
+fn a_plain_rolling_window_over_entry_map_partials_reports_flow_092() {
+	// entry map partials keep every sample, so create must refuse them before any group leaks
 	let Err(err) =
-		InProcessOperatorHarnessBuilder::<PlainDriver<RetainedPlain>>::new().with(rolling_with()).build()
+		InProcessOperatorHarnessBuilder::<PlainDriver<EntryMapPlain>>::new().with(rolling_with()).build()
 	else {
 		panic!("create must refuse a rolling window whose partials never compact");
 	};
@@ -235,9 +235,9 @@ fn a_plain_rolling_window_over_retained_partials_reports_flow_092() {
 }
 
 #[test]
-fn a_top_k_rolling_window_over_retained_partials_reports_flow_092() {
-	// retained partials keep every sample, so create must refuse them before any group leaks
-	let Err(err) = InProcessOperatorHarnessBuilder::<TopKDriver<RetainedTopK>>::new().with(rolling_with()).build()
+fn a_top_k_rolling_window_over_entry_map_partials_reports_flow_092() {
+	// entry map partials keep every sample, so create must refuse them before any group leaks
+	let Err(err) = InProcessOperatorHarnessBuilder::<TopKDriver<EntryMapTopK>>::new().with(rolling_with()).build()
 	else {
 		panic!("create must refuse a rolling window whose partials never compact");
 	};
@@ -245,10 +245,10 @@ fn a_top_k_rolling_window_over_retained_partials_reports_flow_092() {
 }
 
 #[test]
-fn a_tumbling_window_over_retained_partials_is_accepted() {
+fn a_tumbling_window_over_entry_map_partials_is_accepted() {
 	// a tumbling window never merges partials, so the rolling refusal must never reach it
-	InProcessOperatorHarnessBuilder::<PlainDriver<RetainedPlain>>::new()
+	InProcessOperatorHarnessBuilder::<PlainDriver<EntryMapPlain>>::new()
 		.with(tumbling_with())
 		.build()
-		.expect("a tumbling window over retained partials must be accepted");
+		.expect("a tumbling window over entry map partials must be accepted");
 }

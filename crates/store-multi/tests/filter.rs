@@ -82,8 +82,6 @@ fn store_at(config: SqliteConfig) -> StandardMultiStore {
 		persistent: Some(PersistentConfig::sqlite(config)),
 		point: Some(MultiPointConfig::testing()),
 		range: Some(MultiRangeConfig::testing()),
-		retention: Default::default(),
-		merge_config: Default::default(),
 		event_bus,
 		spawner,
 		clock,

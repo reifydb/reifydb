@@ -210,7 +210,7 @@ mod tests {
 	#[test]
 	fn a_registered_reader_pins_at_zero_until_it_records() {
 		// registration is what makes a reader count, and a reader that has read nothing must
-		// hold the whole log rather than let retention run ahead of it.
+		// hold the whole log rather than let gc run ahead of it.
 		let fs = fixture();
 		register(&fs, dir(), "flow-3").unwrap();
 
@@ -252,7 +252,7 @@ mod tests {
 	fn a_hint_that_does_not_decode_pins_at_zero() {
 		// decision 234: the hint is published without an fsync, so a crash can leave the name
 		// durable over zero bytes. Treating that as absent would let purge unlink segments the
-		// reader still needs; pinning at zero over retains and heals on the next record.
+		// reader still needs; pinning at zero over keeps and heals on the next record.
 		let fs = fixture();
 		register(&fs, dir(), "flow-3").unwrap();
 		record(&fs, dir(), "flow-3", LogVersion::new(900)).unwrap();

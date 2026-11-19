@@ -87,5 +87,5 @@ name = "operator"
 path = "tests/operator.rs"
 
 [[test]]
-name = "fd_lifecycle"
-path = "tests/fd_lifecycle.rs"
+name = "fd_cycle"
+path = "tests/fd_cycle.rs"

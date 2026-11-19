@@ -37,7 +37,7 @@ use reifydb_core::{
 		catalog::config::ConfigKey,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	lifecycle::{coverage::RetentionCoverage, metrics::RetentionMetrics, registry::LifecycleRegistry},
+	lifecycle::{coverage::LifecycleCoverage, metrics::LifecycleMetrics, registry::LifecycleRegistry},
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
 };
@@ -273,8 +273,6 @@ impl WasmDB {
 			persistent: None,
 			point: None,
 			range: None,
-			retention: Default::default(),
-			merge_config: Default::default(),
 			event_bus: eventbus.clone(),
 			spawner: spawner.clone(),
 			clock: clock.clone(),
@@ -315,9 +313,9 @@ impl WasmDB {
 
 		ioc = ioc.register(operator_store.clone());
 
-		ioc = ioc.register(RetentionMetrics::new());
+		ioc = ioc.register(LifecycleMetrics::new());
 
-		ioc = ioc.register(LifecycleRegistry::new()).register(RetentionCoverage::new());
+		ioc = ioc.register(LifecycleRegistry::new()).register(LifecycleCoverage::new());
 
 		let ioc_ref = ioc.clone();
 

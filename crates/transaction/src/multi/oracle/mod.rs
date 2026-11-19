@@ -1099,7 +1099,7 @@ mod tests {
 
 	#[test]
 	fn test_range_op_with_keys_scans_all_windows_not_just_bloom_matches() {
-		// A range op must scan every retained window: a bloom match on the transaction's own keys
+		// A range op must scan every kept window: a bloom match on the transaction's own keys
 		// would skip the window where the range conflict actually lives.
 		// The window size is pinned to 500, so v=50 and v=750 land in different windows.
 		let oracle = create_windowed_oracle(49);
@@ -1159,7 +1159,7 @@ mod tests {
 			matches!(r_3, CreateCommitResult::Conflict(_)),
 			"T3's range 'a..z' overlaps T_a's write of 'alpha' (v=750 > 100), \
 			 but T3's specific write key 'beta' only bloom-matches window @ 0. \
-			 Range ops must force a scan of all retained windows, including window @ 500."
+			 Range ops must force a scan of all kept windows, including window @ 500."
 		);
 	}
 

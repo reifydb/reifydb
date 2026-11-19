@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		procedure::RunAs,
-		queue::{QueueDispatch, QueueRetention, QueueRetry},
+		queue::{QueueDispatch, QueueDone, QueueRetry},
 		ringbuffer::EvictionVisibility,
 	},
 	sort::SortDirection,
@@ -26,7 +26,7 @@ use crate::{
 			AstCreateRingBuffer, AstCreateSeries, AstCreateSumType, AstCreateTable, AstCreateTest,
 			AstCreateTransactionalView, AstIndexColumn, AstOperatorWithEntry, AstOperatorWithKey,
 			AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstQueueDeduplicate,
-			AstQueueDispatch, AstQueueFifo, AstQueueRetention, AstQueueRetry, AstQueueViewOptions,
+			AstQueueDispatch, AstQueueDone, AstQueueFifo, AstQueueRetry, AstQueueViewOptions,
 			AstRelationshipCardinality, AstRelationshipJunction, AstRowSettings, AstSeriesEncoding,
 			AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType, AstTypeParameter,
 			AstVariant, AstViewStorageKind, AstViewWithClause, AstWindowedViewGroupMember,
@@ -64,7 +64,7 @@ const TIME_VALUES: &str = "'none', 'event(<column>)', or 'processing'";
 const QUEUE_VIEW_OPTION_KEYS: &str = "'partition', 'fifo', 'retention', or 'retry'";
 const QUEUE_FIFO_KEYS: &str = "'ordered_by'";
 const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
-const QUEUE_RETENTION_KEYS: &str = "'done'";
+const QUEUE_DONE_KEYS: &str = "'done'";
 const QUEUE_RETRY_KEYS: &str = "'attempts' or 'backoff'";
 const ROW_CONFIG_KEYS: &str = "'ttl', 'persistent', or 'on'";
 const EVICTION_REASONS: &str = "'ttl'";
@@ -1410,7 +1410,7 @@ impl<'bump> Parser<'bump> {
 
 		let mut partition_by: Vec<String> = Vec::new();
 		let mut dispatch = None;
-		let mut retention = None;
+		let mut done = None;
 		let mut retry = None;
 
 		loop {
@@ -1430,7 +1430,7 @@ impl<'bump> Parser<'bump> {
 					}
 					dispatch = Some(AstQueueDispatch::Fifo(self.parse_queue_fifo(key)?));
 				}
-				"retention" => retention = Some(self.parse_queue_retention()?),
+				"retention" => done = Some(self.parse_queue_done()?),
 				"retry" => retry = Some(self.parse_queue_retry()?),
 				"deduplicate" => {
 					return Err(unsupported_queue_view_option(
@@ -1473,13 +1473,13 @@ impl<'bump> Parser<'bump> {
 			storage_kind: AstViewStorageKind::Queue {
 				partition_by,
 				dispatch: QueueDispatch::default(),
-				retention: QueueRetention::default(),
+				done: QueueDone::default(),
 				retry: QueueRetry::default(),
 			},
 			settings: None,
 			queue: Some(AstQueueViewOptions {
 				dispatch,
-				retention,
+				done,
 				retry,
 			}),
 		}))
@@ -1826,7 +1826,7 @@ impl<'bump> Parser<'bump> {
 		let mut partition_by: Vec<String> = Vec::new();
 		let mut dispatch = None;
 		let mut deduplicate = None;
-		let mut retention = None;
+		let mut done = None;
 		let mut retry = None;
 		let mut time_declaration = AstTimeDeclaration::default();
 
@@ -1857,7 +1857,7 @@ impl<'bump> Parser<'bump> {
 						deduplicate = Some(self.parse_queue_deduplicate(key)?);
 					}
 					"retention" => {
-						retention = Some(self.parse_queue_retention()?);
+						done = Some(self.parse_queue_done()?);
 					}
 					"retry" => {
 						retry = Some(self.parse_queue_retry()?);
@@ -1895,7 +1895,7 @@ impl<'bump> Parser<'bump> {
 			partition_by,
 			dispatch,
 			deduplicate,
-			retention,
+			done,
 			retry,
 			time_declaration,
 		}))
@@ -2000,7 +2000,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_queue_retention(&mut self) -> Result<AstQueueRetention<'bump>, ValueError> {
+	fn parse_queue_done(&mut self) -> Result<AstQueueDone<'bump>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut done = None;
@@ -2012,14 +2012,14 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key = self.consume_queue_option_key(QUEUE_RETENTION_KEYS)?;
+			let key = self.consume_queue_option_key(QUEUE_DONE_KEYS)?;
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
 				"done" => {
 					done = Some(self.consume_duration("'done'")?);
 				}
-				_other => return Err(unexpected_queue_option(&key, QUEUE_RETENTION_KEYS)),
+				_other => return Err(unexpected_queue_option(&key, QUEUE_DONE_KEYS)),
 			}
 
 			self.skip_new_line()?;
@@ -2035,8 +2035,8 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::CloseCurly)?;
 
-		Ok(AstQueueRetention {
-			done,
+		Ok(AstQueueDone {
+			ttl: done,
 		})
 	}
 
@@ -4662,19 +4662,19 @@ pub mod tests {
 				columns,
 				partition_by,
 				dispatch,
-				retention,
+				done,
 				retry,
 				..
 			}) => {
 				let AstQueueDispatch::Fifo(fifo) = dispatch;
 				format!(
-					"ns={:?} name={} columns={:?} partition_by={:?} ordered_by={:?} retention={:?} retry={:?}",
+					"ns={:?} name={} columns={:?} partition_by={:?} ordered_by={:?} done={:?} retry={:?}",
 					queue.namespace.iter().map(|n| n.text().to_string()).collect::<Vec<_>>(),
 					queue.name.text(),
 					columns.iter().map(|c| c.name.text().to_string()).collect::<Vec<_>>(),
 					partition_by,
 					fifo.ordered_by.map(|t| t.fragment.text().to_string()),
-					retention.as_ref().map(|r| r.done.map(|t| t.fragment.text().to_string())),
+					done.as_ref().map(|r| r.ttl.map(|t| t.fragment.text().to_string())),
 					retry.as_ref().map(|r| (
 						r.attempts.map(|t| t.fragment.text().to_string()),
 						r.backoff.map(|t| t.fragment.text().to_string())
@@ -4707,7 +4707,7 @@ pub mod tests {
 
 		assert_eq!(
 			rendered,
-			r#"ns=["ns"] name=jobs columns=["order_id", "kind"] partition_by=["kind"] ordered_by=Some("order_id") retention=Some(Some("7d")) retry=Some((Some("5"), Some("10s")))"#
+			r#"ns=["ns"] name=jobs columns=["order_id", "kind"] partition_by=["kind"] ordered_by=Some("order_id") done=Some(Some("7d")) retry=Some((Some("5"), Some("10s")))"#
 		);
 	}
 
@@ -4719,7 +4719,7 @@ pub mod tests {
 
 		assert_eq!(
 			rendered,
-			r#"ns=["ns"] name=jobs columns=["order_id"] partition_by=[] ordered_by=None retention=None retry=None"#
+			r#"ns=["ns"] name=jobs columns=["order_id"] partition_by=[] ordered_by=None done=None retry=None"#
 		);
 	}
 
@@ -4758,7 +4758,7 @@ pub mod tests {
 		);
 
 		assert!(rendered.contains(r#"partition_by=["region", "id"]"#), "got: {}", rendered);
-		assert!(rendered.contains("ordered_by=None retention=None retry=None"), "got: {}", rendered);
+		assert!(rendered.contains("ordered_by=None done=None retry=None"), "got: {}", rendered);
 	}
 
 	#[test]
@@ -4787,12 +4787,12 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_create_queue_with_retention_only() {
+	fn test_create_queue_with_done_ttl_only() {
 		let rendered = parse_queue_ast(
 			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#,
 		);
 
-		assert!(rendered.contains(r#"retention=Some(Some("1h"))"#), "got: {}", rendered);
+		assert!(rendered.contains(r#"done=Some(Some("1h"))"#), "got: {}", rendered);
 		assert!(rendered.contains("retry=None"), "got: {}", rendered);
 	}
 
@@ -4814,12 +4814,12 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_create_queue_unknown_retention_key_rejected() {
+	fn test_create_queue_unknown_done_key_rejected() {
 		let msg = parse_queue_must_fail(
 			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retention: { dead: 7d } }"#,
 		);
 
-		assert!(msg.contains("done"), "error should name the valid retention key, got: {}", msg);
+		assert!(msg.contains("done"), "error should name the valid done key, got: {}", msg);
 	}
 
 	#[test]
@@ -5660,7 +5660,7 @@ mod queue_view_tests {
 		};
 		assert_eq!(partition_by, &vec!["id".to_string()]);
 		let options = view.queue.expect("the options must reach the logical plan");
-		assert!(options.retention.is_some());
+		assert!(options.done.is_some());
 		assert!(options.retry.is_some());
 		let AstQueueDispatch::Fifo(fifo) = options.dispatch;
 		assert_eq!(fifo.ordered_by.map(|t| t.fragment.text().to_string()), Some("id".to_string()));

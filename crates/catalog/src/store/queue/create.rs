@@ -7,7 +7,7 @@ use reifydb_core::{
 		column::{Column, ColumnIndex},
 		id::{NamespaceId, QueueId},
 		property::ColumnPropertyKind,
-		queue::{Queue, QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
+		queue::{Queue, QueueDeduplicate, QueueDispatch, QueueDone, QueueRetry},
 	},
 	key::{namespace::NamespaceQueueKey, queue::QueueKey},
 };
@@ -46,7 +46,7 @@ pub struct QueueToCreate {
 	pub partition_by: Vec<String>,
 	pub dispatch: QueueDispatch,
 	pub deduplicate: Option<QueueDeduplicate>,
-	pub retention: QueueRetention,
+	pub done: QueueDone,
 	pub retry: QueueRetry,
 	pub time: TimeSource,
 }
@@ -118,7 +118,7 @@ impl CatalogStore {
 			partition_by: to_create.partition_by.clone(),
 			dispatch: to_create.dispatch.clone(),
 			deduplicate: to_create.deduplicate.clone(),
-			retention: to_create.retention.clone(),
+			done: to_create.done.clone(),
 			retry: to_create.retry.clone(),
 			time: to_create.time.clone(),
 		}
@@ -160,8 +160,8 @@ impl CatalogStore {
 		queue::set_name(&mut row, to_create.name.text());
 		queue::set_partition_by(&mut row, to_create.partition_by.join(","));
 		encode_dispatch(&mut row, &to_create.dispatch);
-		if let Some(done) = to_create.retention.done {
-			queue::set_retention_done(&mut row, done);
+		if let Some(ttl) = to_create.done.ttl {
+			queue::set_done_ttl(&mut row, ttl);
 		}
 		queue::set_retry_attempts(&mut row, to_create.retry.attempts);
 		queue::set_retry_backoff(&mut row, to_create.retry.backoff);
@@ -223,7 +223,7 @@ pub mod tests {
 		common::TimeSource,
 		interface::catalog::{
 			id::NamespaceId,
-			queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
+			queue::{Queue, QueueDispatch, QueueDone, QueueRetry},
 		},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
@@ -254,8 +254,8 @@ pub mod tests {
 			dispatch: QueueDispatch::Fifo {
 				ordered_by: Some("payload".to_string()),
 			},
-			retention: QueueRetention {
-				done: Some(Duration::from_seconds_const(604800)),
+			done: QueueDone {
+				ttl: Some(Duration::from_seconds_const(604800)),
 			},
 			retry: QueueRetry {
 				attempts: 9,
@@ -282,7 +282,7 @@ pub mod tests {
 		assert_eq!(created.namespace, namespace.id());
 		assert_eq!(created.partition_by, vec!["payload".to_string()]);
 		assert_eq!(created.ordered_by(), Some("payload"));
-		assert_eq!(created.retention.done, Some(Duration::from_seconds_const(604800)));
+		assert_eq!(created.done.ttl, Some(Duration::from_seconds_const(604800)));
 		assert_eq!(created.retry.attempts, 9);
 		assert_eq!(created.retry.backoff, Duration::from_seconds_const(30));
 		assert_eq!(created.columns.len(), 1);
@@ -291,7 +291,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_queue_without_optional_options() {
-		// An absent ordered_by and an absent retention must read back as none, not as an
+		// An absent ordered_by and an absent done ttl must read back as none, not as an
 		// empty-string column name or a zero duration.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
@@ -306,7 +306,7 @@ pub mod tests {
 				dispatch: QueueDispatch::Fifo {
 					ordered_by: None,
 				},
-				retention: QueueRetention::default(),
+				done: QueueDone::default(),
 				retry: QueueRetry::default(),
 				deduplicate: None,
 				time: TimeSource::Processing,
@@ -316,7 +316,7 @@ pub mod tests {
 
 		assert!(created.partition_by.is_empty());
 		assert_eq!(created.ordered_by(), None);
-		assert_eq!(created.retention.done, None);
+		assert_eq!(created.done.ttl, None);
 		assert_eq!(created.retry.attempts, Queue::DEFAULT_RETRY_ATTEMPTS);
 		assert_eq!(created.retry.backoff, Queue::DEFAULT_RETRY_BACKOFF);
 	}
@@ -344,7 +344,7 @@ pub mod tests {
 mod time_declaration_tests {
 	use reifydb_core::{
 		common::TimeSource,
-		interface::catalog::queue::{QueueDispatch, QueueRetention, QueueRetry},
+		interface::catalog::queue::{QueueDispatch, QueueDone, QueueRetry},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -363,7 +363,7 @@ mod time_declaration_tests {
 				ordered_by: None,
 			},
 			deduplicate: None,
-			retention: QueueRetention::default(),
+			done: QueueDone::default(),
 			retry: QueueRetry::default(),
 			time,
 		}

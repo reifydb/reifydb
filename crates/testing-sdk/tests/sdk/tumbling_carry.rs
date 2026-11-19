@@ -13,8 +13,8 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::{
-		accumulator::invertible::retained_map::RetainedAccumulator, coord::ByDateTime,
-		settings::WindowSettings, span::WindowSpan,
+		accumulator::invertible::entry_map::EntryMapAccumulator, coord::ByDateTime, settings::WindowSettings,
+		span::WindowSpan,
 	},
 };
 use reifydb_sdk::{
@@ -80,7 +80,7 @@ impl OperatorMetadata for TestCarry {
 impl WindowedOperator for TestCarry {
 	type Coord = ByDateTime;
 	type GroupKey = String;
-	type Accumulator = RetainedAccumulator<u64, f64>;
+	type Accumulator = EntryMapAccumulator<u64, f64>;
 	type Output = CarryOut;
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
@@ -125,8 +125,8 @@ impl WindowedOperator for TestCarry {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> RetainedAccumulator<u64, f64> {
-		RetainedAccumulator::default()
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> EntryMapAccumulator<u64, f64> {
+		EntryMapAccumulator::default()
 	}
 }
 
@@ -169,7 +169,7 @@ fn window_order(millis: u64) -> u64 {
 fn input_row(rn: u64, group: &str, ts: u64, price: f64) -> CoreRow {
 	// The window coordinate IS #time now - the operator no longer returns one - so `ts` is
 	// stamped as the row's time and kept as a column only because the accumulator keys its
-	// retained observations by it. An unstamped row would sit at the epoch and every window
+	// kept observations by it. An unstamped row would sit at the epoch and every window
 	// here would silently collapse into one bucket.
 	TestOperatorRowBuilder::new(rn)
 		.with_values(vec![Value::Utf8(group.into()), Value::Uint8(ts), Value::float8(price)])
@@ -330,7 +330,7 @@ impl OperatorMetadata for SealedCarry {
 impl WindowedOperator for SealedCarry {
 	type Coord = ByDateTime;
 	type GroupKey = String;
-	type Accumulator = RetainedAccumulator<u64, f64>;
+	type Accumulator = EntryMapAccumulator<u64, f64>;
 	type Output = CarryOut;
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
@@ -360,8 +360,8 @@ impl WindowedOperator for SealedCarry {
 		TestCarry.extract(ctx, cols, rows)
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> RetainedAccumulator<u64, f64> {
-		RetainedAccumulator::default()
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> EntryMapAccumulator<u64, f64> {
+		EntryMapAccumulator::default()
 	}
 }
 
@@ -473,7 +473,7 @@ fn a_flow_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
 
 #[test]
 fn a_carry_time_window_arms_a_seal_timer() {
-	// a driver with a required window must always acquire a seal retention policy
+	// a driver with a required window must always arm a seal timer
 	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(window_with())
 		.build()

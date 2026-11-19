@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+mod expire;
 mod reap;
-mod retention;
-mod view_retention;
+mod view_expire;

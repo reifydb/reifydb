@@ -15,7 +15,7 @@ function setup() {
     return {client, store, errors};
 }
 
-describe('subscription lifecycle', () => {
+describe('subscription cycle', () => {
     it('first subscribe creates a loading entry and calls the client once', async () => {
         const {client, store} = setup();
         store.subscribe(items, null);

@@ -39,7 +39,7 @@ use crate::{
 	window::{
 		accumulator::{AccumulatorEvents, AccumulatorOp},
 		engine::{
-			BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep, RetainedEntryKey, WindowReindex,
+			BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MapEntryKey, MetaSweep, WindowReindex,
 			WindowStateKey,
 			config::WindowEngineConfig,
 			group_hash, meta_key_for, note_when_expiry_capped,
@@ -62,7 +62,7 @@ struct PendingEmit<G, S, O> {
 	group: G,
 	span: WindowSpan<S>,
 	header_key: GroupStateKey,
-	header: RetainedHeader<O>,
+	header: EntryMapHeader<O>,
 }
 
 struct WindowSlots<K> {
@@ -72,7 +72,7 @@ struct WindowSlots<K> {
 	entries: BTreeMap<K, usize>,
 }
 
-struct RetainedSession<G, S, K> {
+struct EntryMapSession<G, S, K> {
 	batch: StateBatch,
 	metas: BTreeMap<G, (usize, BatchMeta<S>)>,
 	windows: HashMap<(G, WindowSpan<S>), WindowSlots<K>>,
@@ -85,7 +85,7 @@ fn slot_value<T: OperatorState>(batch: &StateBatch, slot: usize) -> Result<Optio
 	}
 }
 
-pub struct RetainedResult<G, S, O> {
+pub struct EntryMapResult<G, S, O> {
 	pub row_number: RowNumber,
 	pub group: G,
 	pub group_id: GroupId,
@@ -98,14 +98,14 @@ pub struct RetainedResult<G, S, O> {
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
-pub struct RetainedHeader<O> {
+pub struct EntryMapHeader<O> {
 	count: u64,
 	row: Option<RowNumber>,
 	first_time: DateTime,
 	last_output: Option<O>,
 }
 
-impl<O: HeapSize> HeapSize for RetainedHeader<O> {
+impl<O: HeapSize> HeapSize for EntryMapHeader<O> {
 	fn heap_size(&self) -> usize {
 		self.last_output.heap_size()
 	}
@@ -113,21 +113,21 @@ impl<O: HeapSize> HeapSize for RetainedHeader<O> {
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
-pub struct RetainedEntry<K, V> {
+pub struct MapEntry<K, V> {
 	key: K,
 	value: V,
 }
 
-impl<K: HeapSize, V: HeapSize> HeapSize for RetainedEntry<K, V> {
+impl<K: HeapSize, V: HeapSize> HeapSize for MapEntry<K, V> {
 	fn heap_size(&self) -> usize {
 		self.key.heap_size() + self.value.heap_size()
 	}
 }
 
-impl<G, S, K, V, O> Reaper for RetainedTumblingEngine<G, S, K, V, O>
+impl<G, S, K, V, O> Reaper for EntryMapTumblingEngine<G, S, K, V, O>
 where
 	S: WindowAnchor + Hash,
-	RetainedHeader<O>: OperatorState,
+	EntryMapHeader<O>: OperatorState,
 {
 	fn reap(
 		&mut self,
@@ -141,7 +141,7 @@ where
 			if key.keyspace() != Some(header_keyspace) {
 				continue;
 			}
-			let header: RetainedHeader<O> = decode(row)?;
+			let header: EntryMapHeader<O> = decode(row)?;
 			if let (Some(group), Some(number)) = (key.group(), header.row) {
 				kept.push((group, number));
 			}
@@ -154,14 +154,14 @@ where
 	}
 }
 
-pub struct RetainedTumblingEngine<G, S, K, V, O> {
+pub struct EntryMapTumblingEngine<G, S, K, V, O> {
 	meta_sweep: MetaSweep,
 	expire_batch: usize,
 	expiry: ExpiryIndex<TumblingExpiry>,
 	_pd: PhantomData<(G, S, K, V, fn() -> O)>,
 }
 
-impl<G, S, K, V, O> RetainedTumblingEngine<G, S, K, V, O>
+impl<G, S, K, V, O> EntryMapTumblingEngine<G, S, K, V, O>
 where
 	G: Clone + Eq + Ord + Hash + Debug,
 	S: WindowAnchor + Hash,
@@ -171,9 +171,9 @@ where
 	K: StateCodec,
 	GroupMeta<S>: OperatorState,
 	TumblingIndexEntry<G, S>: OperatorState,
-	RetainedEntry<K, V>: OperatorState,
+	MapEntry<K, V>: OperatorState,
 	O: Clone,
-	RetainedHeader<O>: OperatorState,
+	EntryMapHeader<O>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
@@ -225,7 +225,7 @@ where
 		order: &[(G, WindowSpan<S>)],
 		slot_key: SK,
 		build_output: BO,
-	) -> Result<Vec<RetainedResult<G, S, O>>, ValueError>
+	) -> Result<Vec<EntryMapResult<G, S, O>>, ValueError>
 	where
 		SK: Fn(&G, S) -> (GroupId, EncodedKey),
 		BO: Fn(&G, WindowSpan<S>, &BTreeMap<K, V>) -> Option<O>,
@@ -247,7 +247,7 @@ where
 		}
 		let mut session = Self::open_session(store, &buckets, &slot_resolved)?;
 		let pending = self.apply_events(store, &mut session, buckets, order)?;
-		let RetainedSession {
+		let EntryMapSession {
 			mut batch,
 			metas,
 			..
@@ -272,7 +272,7 @@ where
 		store: &mut dyn StateStore,
 		pending: Vec<PendingEmit<G, S, O>>,
 		build_output: BO,
-	) -> Result<Vec<RetainedResult<G, S, O>>, ValueError>
+	) -> Result<Vec<EntryMapResult<G, S, O>>, ValueError>
 	where
 		BO: Fn(&G, WindowSpan<S>, &BTreeMap<K, V>) -> Option<O>,
 	{
@@ -325,7 +325,7 @@ where
 
 		let mut withdrawn: Vec<GroupId> = Vec::new();
 		let mut headers: Vec<(GroupStateKey, EncodedPodRow)> = Vec::with_capacity(pending.len());
-		let mut results: Vec<RetainedResult<G, S, O>> = Vec::with_capacity(pending.len());
+		let mut results: Vec<EntryMapResult<G, S, O>> = Vec::with_capacity(pending.len());
 		for (index, emit) in pending.into_iter().enumerate() {
 			let PendingEmit {
 				group_id,
@@ -338,13 +338,13 @@ where
 			if header.count == 0 {
 				let Some(row_number) = header.row else {
 					return internal_err!(
-						"a retained window holding published entries must already own its row; \
+						"an entry map window holding published entries must already own its row; \
 						 withdrawing it without one would leave its published row behind (group={:?})",
 						group_id
 					);
 				};
 				withdrawn.push(group_id);
-				results.push(RetainedResult {
+				results.push(EntryMapResult {
 					row_number,
 					group,
 					group_id,
@@ -362,14 +362,14 @@ where
 				(None, Some((row_number, false))) => (row_number, EmitKind::Update),
 				(None, None) => {
 					return internal_err!(
-						"a publishing retained window was left without a row (group={:?})",
+						"a publishing entry map window was left without a row (group={:?})",
 						group_id
 					);
 				}
 			};
 			let Some(entries) = read.remove(&group_id) else {
 				return internal_err!(
-					"the entry read skipped publishing retained window {:?}",
+					"the entry read skipped publishing entry map window {:?}",
 					group_id
 				);
 			};
@@ -377,7 +377,7 @@ where
 			header.row = Some(row_number);
 			header.last_output = value.clone();
 			headers.push((header_key, header.encode_state()?));
-			results.push(RetainedResult {
+			results.push(EntryMapResult {
 				row_number,
 				group,
 				group_id,
@@ -409,38 +409,36 @@ where
 		let mut total: u64 = 0;
 		for (group, count) in windows {
 			if read.insert(*group, BTreeMap::new()).is_some() {
-				return internal_err!("a retained entry read names window {:?} twice", group);
+				return internal_err!("a map entry read names window {:?} twice", group);
 			}
 			total = match total.checked_add(*count) {
 				Some(total) => total,
-				None => return internal_err!("retained window counts overflow the entry read"),
+				None => return internal_err!("entry map window counts overflow the entry read"),
 			};
 		}
 		let Ok(limit) = usize::try_from(total) else {
-			return internal_err!("retained window counts overflow the entry read (total={})", total);
+			return internal_err!("entry map window counts overflow the entry read (total={})", total);
 		};
 		let ids: Vec<GroupId> = windows.iter().map(|(group, _)| *group).collect();
-		let sweep = store.group_sweep(&ids, limit, KeyspaceMask::of([KeyspaceId::GUEST_RETAINED_ENTRY]))?;
+		let sweep = store.group_sweep(&ids, limit, KeyspaceMask::of([KeyspaceId::GUEST_MAP_ENTRY]))?;
 		if !sweep.complete {
 			return internal_err!(
-				"retained windows hold more entries than their headers count (limit={})",
+				"entry map windows hold more entries than their headers count (limit={})",
 				limit
 			);
 		}
 		for (key, row) in sweep.rows {
 			let Some(entries) = key.group().and_then(|group| read.get_mut(&group)) else {
-				return internal_err!(
-					"a retained entry read returned a row of a window it did not name"
-				);
+				return internal_err!("a map entry read returned a row of a window it did not name");
 			};
-			let entry: RetainedEntry<K, V> = decode(&row)?;
+			let entry: MapEntry<K, V> = decode(&row)?;
 			entries.insert(entry.key, entry.value);
 		}
 		for (group, count) in windows {
 			let held = read[group].len() as u64;
 			if held != *count {
 				return internal_err!(
-					"retained window {:?} holds {} entries but its header counts {}",
+					"entry map window {:?} holds {} entries but its header counts {}",
 					group,
 					held,
 					count
@@ -450,15 +448,15 @@ where
 		Ok(read)
 	}
 
-	fn entry_key(group: GroupId, key: &K) -> Result<RetainedEntryKey, ValueError> {
-		Ok(RetainedEntryKey::new(group, EncodedKey::new(encode(key)?.body())))
+	fn entry_key(group: GroupId, key: &K) -> Result<MapEntryKey, ValueError> {
+		Ok(MapEntryKey::new(group, EncodedKey::new(encode(key)?.body())))
 	}
 
 	fn open_session(
 		store: &mut dyn StateStore,
 		buckets: &TumblingBuckets<G, S, Vec<(K, V)>>,
 		slot_resolved: &SlotResolved<G, S>,
-	) -> Result<RetainedSession<G, S, K>, ValueError> {
+	) -> Result<EntryMapSession<G, S, K>, ValueError> {
 		let mut keys: Vec<GroupStateKey> = Vec::new();
 		let mut meta_slots: BTreeMap<G, usize> = BTreeMap::new();
 		for (group, _) in buckets.keys() {
@@ -513,7 +511,7 @@ where
 				),
 			);
 		}
-		Ok(RetainedSession {
+		Ok(EntryMapSession {
 			batch,
 			metas,
 			windows,
@@ -550,7 +548,7 @@ where
 	) -> Result<Option<V>, ValueError> {
 		match folded.get(key) {
 			Some(value) => Ok(value.clone()),
-			None => Ok(slot_value::<RetainedEntry<K, V>>(batch, Self::entry_slot(slots, key))?
+			None => Ok(slot_value::<MapEntry<K, V>>(batch, Self::entry_slot(slots, key))?
 				.map(|entry| entry.value)),
 		}
 	}
@@ -560,9 +558,9 @@ where
 		slots: &WindowSlots<K>,
 		events: AccumulatorEvents<Vec<(K, V)>>,
 		first_time: DateTime,
-	) -> Result<(u64, RetainedHeader<O>), ValueError> {
-		let mut header: RetainedHeader<O> =
-			slot_value(batch, slots.header)?.unwrap_or_else(|| RetainedHeader {
+	) -> Result<(u64, EntryMapHeader<O>), ValueError> {
+		let mut header: EntryMapHeader<O> =
+			slot_value(batch, slots.header)?.unwrap_or_else(|| EntryMapHeader {
 				count: 0,
 				row: None,
 				first_time,
@@ -594,7 +592,7 @@ where
 			match value {
 				Some(value) => batch.set(
 					slot,
-					RetainedEntry {
+					MapEntry {
 						key,
 						value,
 					}
@@ -612,7 +610,7 @@ where
 	fn apply_events(
 		&mut self,
 		store: &mut dyn StateStore,
-		session: &mut RetainedSession<G, S, K>,
+		session: &mut EntryMapSession<G, S, K>,
 		mut buckets: TumblingBuckets<G, S, Vec<(K, V)>>,
 		order: &[(G, WindowSpan<S>)],
 	) -> Result<Vec<PendingEmit<G, S, O>>, ValueError> {
@@ -705,7 +703,7 @@ mod tests {
 	};
 	use reifydb_value::{error::ValueError, util::hash::Hash128};
 
-	use super::{RetainedHeader, RetainedResult, RetainedTumblingEngine};
+	use super::{EntryMapHeader, EntryMapResult, EntryMapTumblingEngine};
 	use crate::{
 		factory::coord::event_coord_at_millis,
 		operator::{
@@ -718,7 +716,7 @@ mod tests {
 		},
 		window::{
 			accumulator::{
-				AccumulatorOp, invertible::retained_map::RetainedAccumulator,
+				AccumulatorOp, invertible::entry_map::EntryMapAccumulator,
 				testkit::events as accumulator_events,
 			},
 			coord::ByDateTime,
@@ -732,8 +730,8 @@ mod tests {
 	};
 
 	type Out = BTreeMap<u64, i64>;
-	type Engine = RetainedTumblingEngine<u32, ByDateTime, u64, i64, Out>;
-	type Blob = TumblingEngine<u32, ByDateTime, RetainedAccumulator<u64, i64>>;
+	type Engine = EntryMapTumblingEngine<u32, ByDateTime, u64, i64, Out>;
+	type Blob = TumblingEngine<u32, ByDateTime, EntryMapAccumulator<u64, i64>>;
 	type Event = (AccumulatorOp, (u64, i64));
 
 	fn test_config() -> WindowEngineConfig {
@@ -755,7 +753,7 @@ mod tests {
 		engine: &mut Engine,
 		store: &mut MockStore,
 		events: Vec<Event>,
-	) -> Vec<RetainedResult<u32, ByDateTime, Out>> {
+	) -> Vec<EntryMapResult<u32, ByDateTime, Out>> {
 		let buckets = bucket(events);
 		let order: Vec<_> = buckets.keys().cloned().collect();
 		engine.apply(store, buckets, &order, group_slot, |_, _, entries| Some(entries.clone())).expect("apply")
@@ -768,10 +766,10 @@ mod tests {
 	) -> Vec<WindowResult<u32, ByDateTime, BTreeMap<u64, i64>>> {
 		let buckets = bucket(events);
 		let order: Vec<_> = buckets.keys().cloned().collect();
-		engine.apply(store, buckets, &order, group_slot, RetainedAccumulator::default).expect("apply")
+		engine.apply(store, buckets, &order, group_slot, EntryMapAccumulator::default).expect("apply")
 	}
 
-	fn kinds(results: &[RetainedResult<u32, ByDateTime, Out>]) -> Vec<EmitKind> {
+	fn kinds(results: &[EntryMapResult<u32, ByDateTime, Out>]) -> Vec<EmitKind> {
 		results.iter().map(|r| r.kind).collect()
 	}
 
@@ -781,7 +779,7 @@ mod tests {
 		window: (GroupId, EncodedKey),
 	) -> Result<BTreeMap<u64, i64>, ValueError> {
 		let (id, slot) = window;
-		let header: Option<RetainedHeader<Out>> =
+		let header: Option<EntryMapHeader<Out>> =
 			get(store, from_ref(&WindowStateKey::new(KeyspaceFamily::Guest, id, slot)))?.remove(0);
 		let count = header.map_or(0, |header| header.count);
 		Ok(engine.load_entries(store, &[(id, count)])?.remove(&id).expect("a read window always answers"))
@@ -914,8 +912,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_retained_update_carries_the_output_published_before_it_as_prior() {
-		// The driver emits prior as the update's pre-image, so a lost or stale prior corrupts every retained
+	fn an_entry_map_update_carries_the_output_published_before_it_as_prior() {
+		// The driver emits prior as the update's pre-image, so a lost or stale prior corrupts every entry map
 		// sink row.
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
@@ -958,7 +956,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_reaped_retained_window_hands_its_row_to_its_mapping() {
+	fn a_reaped_entry_map_window_hands_its_row_to_its_mapping() {
 		// Phase 1 erases the header that holds the row; without the move a window woken before phase 2 inserts
 		// a duplicate.
 		let mut store = MockStore::default();
@@ -992,7 +990,7 @@ mod tests {
 
 	#[test]
 	fn entries_and_header_are_reaped_with_the_window() {
-		// Entries left behind after the reap leak one row per retained key per closed window.
+		// Entries left behind after the reap leak one row per entry map key per closed window.
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
 		let out = apply(
@@ -1030,7 +1028,7 @@ mod tests {
 			BTreeMap::new(),
 			"every entry is reaped"
 		);
-		let header: Option<RetainedHeader<Out>> =
+		let header: Option<EntryMapHeader<Out>> =
 			get(&mut store, from_ref(&WindowStateKey::new(KeyspaceFamily::Guest, group, slot)))
 				.unwrap()
 				.remove(0);

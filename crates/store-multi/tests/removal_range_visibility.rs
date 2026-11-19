@@ -48,8 +48,6 @@ fn memory_store() -> StandardMultiStore {
 		persistent: None,
 		point: None,
 		range: None,
-		retention: Default::default(),
-		merge_config: Default::default(),
 		event_bus: reifydb_core::event::EventBus::new(&spawner),
 		spawner,
 		clock: Clock::Real,

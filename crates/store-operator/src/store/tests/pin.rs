@@ -24,7 +24,7 @@ fn durable_and_buffered(store: &StandardOperatorStore, durable: u64, buffered: u
 
 #[test]
 fn the_floor_is_the_lowest_of_the_pins_the_buffered_and_the_durable_checkpoints() {
-	// A floor that skips any one of the three lets retention reap versions that one still needs.
+	// A floor that skips any one of the three lets gc reap versions that one still needs.
 	for (durable, buffered, pinned, want) in [(100, 80, 50, 50), (100, 50, 80, 50), (50, 100, 80, 50)] {
 		let (standard, _guard) = store_fixture();
 		durable_and_buffered(&standard, durable, buffered);
@@ -46,7 +46,7 @@ fn the_floor_is_the_lowest_of_the_pins_the_buffered_and_the_durable_checkpoints(
 
 #[test]
 fn a_pin_above_every_checkpoint_never_raises_the_floor() {
-	// A pin that replaced the checkpoint floor instead of joining it would let retention pass a lagging flow.
+	// A pin that replaced the checkpoint floor instead of joining it would let gc pass a lagging flow.
 	let (standard, _guard) = store_fixture();
 	durable_and_buffered(&standard, 100, 80);
 	let store = OperatorStore::Standard(standard);
@@ -143,7 +143,7 @@ fn a_pin_released_mid_merge_right_after_its_checkpoint_is_buffered_still_holds_t
 		floor(&store),
 		Some(CommitVersion(50)),
 		"the checkpoint at 50 lands in the buffer and the pin goes between the two tier reads; the merge must \
-		 still see one of them, or retention passes 50 and the flow loses its commit log from 51"
+		 still see one of them, or gc passes 50 and the flow loses its commit log from 51"
 	);
 	assert_eq!(
 		floor(&store),

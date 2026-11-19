@@ -168,8 +168,8 @@ impl CommitQueue {
 
 	fn free_below_floors(&self, inner: &mut QueueInner) -> FreedEntries {
 		let floor = inner.floors.values().min().copied().unwrap_or(inner.released).min(inner.released);
-		let retained = inner.entries.split_off(&next_version(floor));
-		let freed = replace(&mut inner.entries, retained);
+		let kept = inner.entries.split_off(&next_version(floor));
+		let freed = replace(&mut inner.entries, kept);
 		inner.cover_from = inner.cover_from.max(floor);
 		inner.floor_from = inner.floor_from.max(floor);
 		self.shared.evicted_floor.fetch_add(freed.len() as u64, Ordering::Relaxed);

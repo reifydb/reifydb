@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			id::{NamespaceId, QueueId},
-			queue::{Queue, QueueRetention, QueueRetry},
+			queue::{Queue, QueueDone, QueueRetry},
 		},
 		store::MultiVersionRow,
 	},
@@ -57,8 +57,8 @@ fn convert_queue<K>(multi: MultiVersionRow<K>) -> Result<Queue, ValueError> {
 		columns: vec![],
 		partition_by: decode_partition_by(&bytes),
 		dispatch: decode_dispatch(&bytes),
-		retention: QueueRetention {
-			done: queue::try_get_retention_done(&bytes),
+		done: QueueDone {
+			ttl: queue::try_get_done_ttl(&bytes),
 		},
 		retry: QueueRetry {
 			attempts: queue::get_retry_attempts(&bytes),

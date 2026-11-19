@@ -62,7 +62,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_inner_lookup_with_retention() {
+	fn test_inner_lookup_with_lateness() {
 		// The inner form must parse to its own node carrying JoinType::Inner, never to a join.
 		let bump = Bump::new();
 		let source = "inner lookup { from polaris::pool } as info using (pool, info.pool) and (pair, info.pair) with { retention: { left: 10s } }";
@@ -110,7 +110,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_left_lookup_with_retention() {
+	fn test_left_lookup_with_lateness() {
 		// The left form must keep JoinType::Left so a miss keeps the left row with none columns.
 		let bump = Bump::new();
 		let source = "left lookup { from polaris::price::usd } as base using (info_base_mint, base.mint) with { emit: false, retention: { left: 10s } }";

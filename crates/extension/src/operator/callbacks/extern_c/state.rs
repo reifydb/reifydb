@@ -1857,7 +1857,7 @@ mod join_row_expiry_guard_tests {
 		let groups = [ExternCGroupId {
 			bytes: *GroupId::hashed(Hash128(5)).as_bytes(),
 		}];
-		let mut mask = KeyspaceMask::of([KeyspaceId::GUEST_RETAINED_ENTRY]);
+		let mut mask = KeyspaceMask::of([KeyspaceId::GUEST_MAP_ENTRY]);
 		mask.insert(KeyspaceId::JOIN_LEFT);
 		let mut complete = 0u8;
 		let mut iterator: *mut ExternCStateIterator = ptr::null_mut();

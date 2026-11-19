@@ -21,7 +21,7 @@
 //! The candidate buffer is capped at `limit * 4` and prunes its oldest entries beyond that. A pruned
 //! row can never be promoted again, so once pruning fires the view is a function of the eviction
 //! history rather than of the live set, and "the newest `limit` live rows" stops being true. Since
-//! candidates hold exactly the live rows outside the retained set, pruning is unreachable while
+//! candidates hold exactly the live rows outside the kept set, pruning is unreachable while
 //! `live <= limit * 5`. The sweeps stay under that and `admit` asserts it, so widening a corpus past
 //! the point where this oracle is valid fails here saying so, rather than as a mystery divergence.
 
@@ -45,7 +45,7 @@ impl TakeOracle {
 		}
 	}
 
-	fn retained(&self) -> Vec<&TakeRow> {
+	fn kept(&self) -> Vec<&TakeRow> {
 		// The operator keys on (created_at, row), so a shared stamp must never be broken by map order.
 		let mut ordered: Vec<&TakeRow> = self.live.values().collect();
 		ordered.sort_by_key(|row| Reverse((row.tick, row.number)));
@@ -55,7 +55,7 @@ impl TakeOracle {
 
 	fn claim(&self) -> KeyedMultiset {
 		let mut rows: Vec<Vec<Value>> = self
-			.retained()
+			.kept()
 			.into_iter()
 			.map(|row| vec![Value::Int4(row.identity()), Value::Int8(row.value)])
 			.collect();

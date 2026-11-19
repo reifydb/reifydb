@@ -9,11 +9,11 @@ use std::{
 
 use reifydb_core::{
 	interface::catalog::config::ConfigKey,
-	lifecycle::{class::RetentionClass, metrics::RetentionMetrics, task::LifecycleTask},
+	lifecycle::{class::LifecycleClass, metrics::LifecycleMetrics, task::LifecycleTask},
 	retry::is_conflict,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_sub_lifecycle::{plane::RetentionPlane, retention::evictor::RetentionEvictTask};
+use reifydb_sub_lifecycle::{expire::evictor::ExpireTask, plane::LifecyclePlane};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{params::Params, value::Value};
 
@@ -34,11 +34,11 @@ fn a_writer_racing_the_evictor_never_stops_the_process() {
 	let test = TestEngine::new();
 	test.admin("create namespace test;");
 	test.admin("CREATE RINGBUFFER test::rb { v: int4 } WITH { time: processing, capacity: 64, row: { ttl: 1h } }");
-	test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(128));
+	test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(128));
 
 	let engine: &StandardEngine = test.inner();
-	let plane = RetentionPlane::for_engine(engine, RetentionMetrics::new());
-	let mut task = RetentionEvictTask::silent(engine.clone(), plane.clone());
+	let plane = LifecyclePlane::for_engine(engine, LifecycleMetrics::new());
+	let mut task = ExpireTask::silent(engine.clone(), plane.clone());
 	let clock = test.mock_clock();
 	let done = AtomicBool::new(false);
 
@@ -64,7 +64,7 @@ fn a_writer_racing_the_evictor_never_stops_the_process() {
 		loop {
 			clock.advance_secs(PAST_TTL_SECONDS);
 			task.run_slice();
-			if plane.snapshot(RetentionClass::RowTtl).stuck_slices > 0 {
+			if plane.snapshot(LifecycleClass::RowTtl).stuck_slices > 0 {
 				return true;
 			}
 			if started.elapsed() >= CONFLICT_SEARCH_LIMIT {

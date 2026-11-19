@@ -5,7 +5,7 @@ use reifydb_macro::catalog_shape;
 use reifydb_value::value::duration::Duration;
 
 catalog_shape! {
-	pub(crate) operator_retention {
+	pub(crate) operator_horizon {
 		duration: Duration,
 	}
 }

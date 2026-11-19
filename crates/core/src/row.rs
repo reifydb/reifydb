@@ -36,15 +36,15 @@ impl RowSettings {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OperatorRetention {
+pub struct OperatorHorizon {
 	pub duration: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct JoinRetention {
-	pub left: Option<OperatorRetention>,
+pub struct JoinLateness {
+	pub left: Option<Duration>,
 
-	pub right: Option<OperatorRetention>,
+	pub right: Option<Duration>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

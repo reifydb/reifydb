@@ -5,11 +5,10 @@ use reifydb_catalog::{
 	catalog::queue::QueueColumnToCreate,
 	error::{CatalogError, CatalogObjectKind},
 };
-use reifydb_core::interface::catalog::queue::{Queue, QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry};
+use reifydb_core::interface::catalog::queue::{Queue, QueueDeduplicate, QueueDispatch, QueueDone, QueueRetry};
 use reifydb_rql_frontend::{
 	ast::ast::{
-		AstColumnProperty, AstCreateQueue, AstQueueDeduplicate, AstQueueDispatch, AstQueueRetention,
-		AstQueueRetry,
+		AstColumnProperty, AstCreateQueue, AstQueueDeduplicate, AstQueueDispatch, AstQueueDone, AstQueueRetry,
 	},
 	token::{keyword::FOREVER, token::Token},
 };
@@ -159,7 +158,7 @@ impl<'bump> Compiler<'bump> {
 
 		let dispatch = compile_dispatch(&ast.dispatch, &columns, &queue_ns_segments)?;
 		let deduplicate = compile_deduplicate(ast.deduplicate.as_ref(), &columns, &queue_ns_segments)?;
-		let retention = compile_retention(ast.retention.as_ref())?;
+		let done = compile_done(ast.done.as_ref())?;
 		let retry = compile_retry(ast.retry.as_ref())?;
 
 		let time = resolve_declared_source_time(
@@ -175,7 +174,7 @@ impl<'bump> Compiler<'bump> {
 			partition_by,
 			dispatch,
 			deduplicate,
-			retention,
+			done,
 			retry,
 			time,
 		}))
@@ -262,18 +261,18 @@ fn compile_deduplicate(
 	}))
 }
 
-pub(crate) fn compile_retention(ast: Option<&AstQueueRetention<'_>>) -> Result<QueueRetention, ValueError> {
+pub(crate) fn compile_done(ast: Option<&AstQueueDone<'_>>) -> Result<QueueDone, ValueError> {
 	let Some(ast) = ast else {
-		return Ok(QueueRetention::default());
+		return Ok(QueueDone::default());
 	};
 
-	let done = match &ast.done {
+	let ttl = match &ast.ttl {
 		Some(token) => Some(compile_duration(token, DurationBound::Positive, "'done'")?),
 		None => None,
 	};
 
-	Ok(QueueRetention {
-		done,
+	Ok(QueueDone {
+		ttl,
 	})
 }
 

@@ -39,7 +39,7 @@ use crate::{
 			key::{OperatorByFlowKey, OperatorKey},
 			state::OperatorStateKey,
 		},
-		operator_retention::OperatorRetentionKey,
+		operator_horizon::OperatorHorizonKey,
 		output_watermark::OutputWatermarkKey,
 		partition::PartitionKey,
 		procedure::{ProcedureKey, ProcedureParamKey},
@@ -140,7 +140,7 @@ pub enum TaggedKey {
 	ProcedureParam(ProcedureParamKey),
 	Binding(BindingKey),
 	NamespaceBinding(NamespaceBindingKey),
-	OperatorRetention(OperatorRetentionKey),
+	OperatorHorizon(OperatorHorizonKey),
 	ColumnBlock(ColumnBlockKey),
 	SeriesColumnBlock(SeriesColumnBlockKey),
 	TableColumnBlock(TableColumnBlockKey),
@@ -239,7 +239,7 @@ impl TaggedKey {
 			Self::ProcedureParam(_) => KeyTag::ProcedureParam,
 			Self::Binding(_) => KeyTag::Binding,
 			Self::NamespaceBinding(_) => KeyTag::NamespaceBinding,
-			Self::OperatorRetention(_) => KeyTag::OperatorRetention,
+			Self::OperatorHorizon(_) => KeyTag::OperatorHorizon,
 			Self::ColumnBlock(_) => KeyTag::ColumnBlock,
 			Self::SeriesColumnBlock(_) => KeyTag::SeriesColumnBlock,
 			Self::TableColumnBlock(_) => KeyTag::TableColumnBlock,
@@ -353,7 +353,7 @@ impl TaggedKey {
 			Self::ProcedureParam(key) => key.encode(),
 			Self::Binding(key) => key.encode(),
 			Self::NamespaceBinding(key) => key.encode(),
-			Self::OperatorRetention(key) => key.encode(),
+			Self::OperatorHorizon(key) => key.encode(),
 			Self::ColumnBlock(key) => key.encode(),
 			Self::SeriesColumnBlock(key) => key.encode(),
 			Self::TableColumnBlock(key) => key.encode(),
@@ -464,7 +464,7 @@ impl TaggedKey {
 			KeyTag::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),
 			KeyTag::Binding => BindingKey::decode(key).map(Self::Binding),
 			KeyTag::NamespaceBinding => NamespaceBindingKey::decode(key).map(Self::NamespaceBinding),
-			KeyTag::OperatorRetention => OperatorRetentionKey::decode(key).map(Self::OperatorRetention),
+			KeyTag::OperatorHorizon => OperatorHorizonKey::decode(key).map(Self::OperatorHorizon),
 			KeyTag::ColumnBlock => ColumnBlockKey::decode(key).map(Self::ColumnBlock),
 			KeyTag::SeriesColumnBlock => SeriesColumnBlockKey::decode(key).map(Self::SeriesColumnBlock),
 			KeyTag::TableColumnBlock => TableColumnBlockKey::decode(key).map(Self::TableColumnBlock),
@@ -926,9 +926,9 @@ impl From<NamespaceBindingKey> for TaggedKey {
 	}
 }
 
-impl From<OperatorRetentionKey> for TaggedKey {
-	fn from(key: OperatorRetentionKey) -> Self {
-		Self::OperatorRetention(key)
+impl From<OperatorHorizonKey> for TaggedKey {
+	fn from(key: OperatorHorizonKey) -> Self {
+		Self::OperatorHorizon(key)
 	}
 }
 
@@ -1306,7 +1306,7 @@ impl KeyFields for TaggedKey {
 			Self::ProcedureParam(key) => key.fields(),
 			Self::Binding(key) => key.fields(),
 			Self::NamespaceBinding(key) => key.fields(),
-			Self::OperatorRetention(key) => key.fields(),
+			Self::OperatorHorizon(key) => key.fields(),
 			Self::ColumnBlock(key) => key.fields(),
 			Self::SeriesColumnBlock(key) => key.fields(),
 			Self::TableColumnBlock(key) => key.fields(),
@@ -1411,7 +1411,7 @@ impl Ord for TaggedKey {
 			(Self::ProcedureParam(left), Self::ProcedureParam(right)) => left.cmp_fields(right),
 			(Self::Binding(left), Self::Binding(right)) => left.cmp_fields(right),
 			(Self::NamespaceBinding(left), Self::NamespaceBinding(right)) => left.cmp_fields(right),
-			(Self::OperatorRetention(left), Self::OperatorRetention(right)) => left.cmp_fields(right),
+			(Self::OperatorHorizon(left), Self::OperatorHorizon(right)) => left.cmp_fields(right),
 			(Self::ColumnBlock(left), Self::ColumnBlock(right)) => left.cmp_fields(right),
 			(Self::SeriesColumnBlock(left), Self::SeriesColumnBlock(right)) => left.cmp_fields(right),
 			(Self::TableColumnBlock(left), Self::TableColumnBlock(right)) => left.cmp_fields(right),
@@ -1507,7 +1507,7 @@ mod tests {
 				key::{OperatorByFlowKey, OperatorKey},
 				state::{GroupId, KeyspaceId, OperatorStateKey},
 			},
-			operator_retention::OperatorRetentionKey,
+			operator_horizon::OperatorHorizonKey,
 			output_watermark::OutputWatermarkKey,
 			partition::PartitionKey,
 			procedure::{ProcedureKey, ProcedureParamKey},
@@ -2354,7 +2354,7 @@ mod tests {
 				namespace: NamespaceId(85),
 				binding: BindingId(86),
 			}),
-			probe(OperatorRetentionKey {
+			probe(OperatorHorizonKey {
 				operator: OperatorId(87),
 			}),
 			probe(ColumnBlockKey {

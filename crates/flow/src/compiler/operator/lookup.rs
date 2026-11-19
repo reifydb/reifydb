@@ -154,11 +154,7 @@ impl CompileOperator for LookupCompiler {
 			},
 		)?;
 
-		compiler.write_operator_retention(
-			txn,
-			node_id,
-			self.with.retention.as_ref().map(|retention| retention.duration),
-		)?;
+		compiler.write_operator_horizon(txn, node_id, self.with.lateness)?;
 
 		compiler.add_edge(txn, &left_node, &node_id)?;
 		if let Some(right_node) = right_node {

@@ -38,7 +38,7 @@ pub(crate) fn create_queue(
 			partition_by: plan.partition_by,
 			dispatch: plan.dispatch,
 			deduplicate: plan.deduplicate,
-			retention: plan.retention,
+			done: plan.done,
 			retry: plan.retry,
 			time: plan.time.clone(),
 		},

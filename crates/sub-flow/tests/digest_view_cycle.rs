@@ -294,7 +294,7 @@ fn groups(db: &TestDb, view: &str) -> Vec<String> {
 	keyed(&db.query(view), &["g"], &[]).into_iter().map(|(key, _)| key[0].clone()).collect()
 }
 
-fn lifecycle(latency: Latency) {
+fn cycle(latency: Latency) {
 	let db = memory();
 	declare(&db, latency);
 	let rows = corpus(latency);
@@ -354,19 +354,19 @@ fn restart(latency: Latency) {
 #[test]
 fn a_float8_digest_view_equals_a_batch_rebuild_through_inserts_deletes_and_updates() {
 	// Every retraction must leave the stored digest equal to a rebuild, otherwise percentiles drift.
-	lifecycle(Latency::Float8);
+	cycle(Latency::Float8);
 }
 
 #[test]
 fn an_int4_digest_view_equals_a_batch_rebuild_through_inserts_deletes_and_updates() {
 	// An int4 digest must keep its inner type through retractions, otherwise a batch merge with it fails.
-	lifecycle(Latency::Int4);
+	cycle(Latency::Int4);
 }
 
 #[test]
 fn a_duration_digest_view_equals_a_batch_rebuild_through_inserts_deletes_and_updates() {
 	// A duration digest must keep zero-length values and its inner type, otherwise reads lose their unit.
-	lifecycle(Latency::Duration);
+	cycle(Latency::Duration);
 }
 
 #[test]

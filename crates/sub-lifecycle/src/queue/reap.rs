@@ -21,7 +21,7 @@ use reifydb_core::{
 		store::SingleVersionRange,
 	},
 	key::queue::{QueueAttemptKey, QueueItemStateKey},
-	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
+	lifecycle::{class::LifecycleClass, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::{clock::Clock, transaction::TransactionContext};
@@ -39,7 +39,7 @@ use reifydb_value::{
 };
 use tracing::{Span, debug, field::Empty, instrument, warn};
 
-use crate::plane::RetentionPlane;
+use crate::plane::LifecyclePlane;
 
 fn releases_work(queue: &Queue, transition: &QueueAckTransition, now: DateTime) -> bool {
 	match transition {
@@ -64,14 +64,14 @@ struct Candidate {
 
 pub struct QueueLeaseReapTask {
 	engine: StandardEngine,
-	plane: RetentionPlane,
+	plane: LifecyclePlane,
 	clock: Clock,
 	config: Arc<dyn GetConfig>,
 	cursor: Option<ReapCursor>,
 }
 
 impl QueueLeaseReapTask {
-	pub fn new(engine: StandardEngine, plane: RetentionPlane, clock: Clock, config: Arc<dyn GetConfig>) -> Self {
+	pub fn new(engine: StandardEngine, plane: LifecyclePlane, clock: Clock, config: Arc<dyn GetConfig>) -> Self {
 		Self {
 			engine,
 			plane,
@@ -287,8 +287,8 @@ impl LifecycleTask for QueueLeaseReapTask {
 		self.config.get_config_duration(ConfigKey::QueueLeaseReapInterval)
 	}
 
-	fn classes(&self) -> &'static [RetentionClass] {
-		&[RetentionClass::QueueLeaseReap]
+	fn classes(&self) -> &'static [LifecycleClass] {
+		&[LifecycleClass::QueueLeaseReap]
 	}
 
 	#[instrument(name = "queue::reap::slice", level = "debug", skip_all, fields(scanned = Empty, reaped = Empty))]
@@ -300,7 +300,7 @@ impl LifecycleTask for QueueLeaseReapTask {
 			Ok(queues) => queues,
 			Err(e) => {
 				warn!(error = %e, "queue reaper failed to list queues");
-				self.plane.record_reclamation(RetentionClass::QueueLeaseReap, None, 0, 0);
+				self.plane.record_reclamation(LifecycleClass::QueueLeaseReap, None, 0, 0);
 				return Progress::Exhausted;
 			}
 		};
@@ -373,11 +373,11 @@ impl LifecycleTask for QueueLeaseReapTask {
 
 		let backlog = u64::from(parked.is_some());
 		self.cursor = parked;
-		self.plane.record_reclamation(RetentionClass::QueueLeaseReap, None, reaped, backlog);
+		self.plane.record_reclamation(LifecycleClass::QueueLeaseReap, None, reaped, backlog);
 
 		if self.cursor.is_some() {
 			debug!(scanned, reaped, "queue reaper yielded with a backlog");
-			self.plane.record_budget_exhausted(RetentionClass::QueueLeaseReap);
+			self.plane.record_budget_exhausted(LifecycleClass::QueueLeaseReap);
 			Progress::Yielded
 		} else {
 			Progress::Exhausted
