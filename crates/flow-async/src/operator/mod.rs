@@ -174,10 +174,12 @@ pub trait HostOperator: Send {
 #[cfg(feature = "runtime")]
 pub type BoxedHostOperator = Box<dyn HostOperator>;
 
-pub fn max_input_time(change: &Change) -> Result<Option<DateTime>, ValueError> {
+pub fn latest_row_time(changes: &[Change]) -> Result<Option<DateTime>, ValueError> {
 	let mut latest = None;
-	for columns in change.diffs.iter().filter_map(|diff| diff.post().or_else(|| diff.pre())) {
-		latest = latest.max(time_array(columns)?.and_then(max).map(DateTime::from_nanos));
+	for change in changes {
+		for columns in change.diffs.iter().filter_map(|diff| diff.post().or_else(|| diff.pre())) {
+			latest = latest.max(time_array(columns)?.and_then(max).map(DateTime::from_nanos));
+		}
 	}
 	Ok(latest)
 }
@@ -289,7 +291,7 @@ mod substrate_stamping_tests {
 		let mut diffs = Diffs::new();
 		diffs.push(Diff::insert(columns(&[at_millis(1_000), at_millis(9_000), at_millis(5_000)])));
 
-		assert_eq!(max_input_time(&change(diffs)).unwrap(), Some(at_millis(9_000)));
+		assert_eq!(latest_row_time(&[change(diffs)]).unwrap(), Some(at_millis(9_000)));
 	}
 
 	#[test]
@@ -301,6 +303,6 @@ mod substrate_stamping_tests {
 		diffs.push(Diff::insert(columns(&[at_millis(12_000)])));
 		diffs.push(Diff::insert(columns(&[at_millis(3_000)])));
 
-		assert_eq!(max_input_time(&change(diffs)).unwrap(), Some(at_millis(12_000)));
+		assert_eq!(latest_row_time(&[change(diffs)]).unwrap(), Some(at_millis(12_000)));
 	}
 }

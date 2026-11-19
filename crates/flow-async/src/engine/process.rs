@@ -24,7 +24,7 @@ use tracing::{Span, field, info, instrument};
 
 use crate::{
 	engine::{COMPLETENESS_OBJECT, FlowEngineInner},
-	operator::max_input_time,
+	operator::latest_row_time,
 	transaction::{
 		FlowTransaction,
 		output_watermark::{OutputWatermarks, PublishedWatermark},
@@ -39,14 +39,6 @@ pub(crate) struct SourceArrival {
 }
 
 pub(crate) type SourceArrivals = Vec<SourceArrival>;
-
-fn latest_input_time(changes: &[Change]) -> Result<Option<DateTime>, ValueError> {
-	let mut latest = None;
-	for change in changes {
-		latest = latest.max(max_input_time(change)?);
-	}
-	Ok(latest)
-}
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process_batch", level = "debug", skip(self, txn, changes), fields(
@@ -160,7 +152,7 @@ impl FlowEngineInner {
 		let mut arrivals: SourceArrivals = pending
 			.iter()
 			.map(|(operator_id, changes)| {
-				Ok(latest_input_time(changes)?.map(|at| SourceArrival {
+				Ok(latest_row_time(changes)?.map(|at| SourceArrival {
 					source: *operator_id,
 					at,
 				}))
@@ -212,7 +204,7 @@ impl FlowEngineInner {
 				None => continue,
 			};
 
-			let at = latest_input_time(&inbox)?;
+			let at = latest_row_time(&inbox)?;
 			txn.set_batch_time(at);
 
 			let combined_output = self.dispatch_node(txn, flow.id, &operator, inbox)?;

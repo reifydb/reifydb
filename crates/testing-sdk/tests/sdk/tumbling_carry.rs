@@ -422,7 +422,7 @@ fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
 	//
 	// The window coordinate and the seal horizon must be read on the same clock. Here the
 	// flow watermark advances exactly as the feed does - from the rows' own #time, which is what
-	// `max_input_time` feeds it in production - so a ladder that keeps receiving must keep
+	// `latest_row_time` feeds it in production - so a ladder that keeps receiving must keep
 	// publishing, however many windows it has crossed.
 	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<SealedCarry>>::new()
 		.with(sealed_with())
