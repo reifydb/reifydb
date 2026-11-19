@@ -19,40 +19,40 @@ pub trait Summary<K, V> {
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
-pub struct SealedAccumulator<K: Ord, V, S> {
+pub struct ImmutableAccumulator<K: Ord, V, S> {
 	open: BTreeMap<K, V>,
-	sealed: S,
+	immutable: S,
 }
 
-impl<K: Ord, V, S> SealedAccumulator<K, V, S> {
-	pub fn new(sealed: S) -> Self {
+impl<K: Ord, V, S> ImmutableAccumulator<K, V, S> {
+	pub fn new(immutable: S) -> Self {
 		Self {
 			open: BTreeMap::new(),
-			sealed,
+			immutable,
 		}
 	}
 }
 
-impl<K: Ord, V, S: Default> Default for SealedAccumulator<K, V, S> {
+impl<K: Ord, V, S: Default> Default for ImmutableAccumulator<K, V, S> {
 	fn default() -> Self {
 		Self::new(S::default())
 	}
 }
 
-impl<K: Ord, V, S: Summary<K, V>> SealedAccumulator<K, V, S> {
+impl<K: Ord, V, S: Summary<K, V>> ImmutableAccumulator<K, V, S> {
 	fn seal_open(&mut self) {
 		for (key, value) in mem::take(&mut self.open) {
-			self.sealed.push(&key, &value);
+			self.immutable.push(&key, &value);
 		}
 	}
 }
 
-impl<K, V, S> WindowAccumulator for SealedAccumulator<K, V, S>
+impl<K, V, S> WindowAccumulator for ImmutableAccumulator<K, V, S>
 where
 	K: Ord + Clone + Debug,
 	V: Clone + Debug + PartialEq,
 	S: Summary<K, V> + Clone + Debug + PartialEq + Default,
-	SealedAccumulator<K, V, S>: OperatorState + StateCodec + HeapSize,
+	ImmutableAccumulator<K, V, S>: OperatorState + StateCodec + HeapSize,
 {
 	type Contributions = Vec<(K, V)>;
 	type Output = S;
@@ -72,10 +72,10 @@ where
 	}
 
 	fn finalize(&self) -> Option<S> {
-		if self.open.is_empty() && self.sealed.is_empty() {
+		if self.open.is_empty() && self.immutable.is_empty() {
 			return None;
 		}
-		let mut summary = self.sealed.clone();
+		let mut summary = self.immutable.clone();
 		for (key, value) in &self.open {
 			summary.push(key, value);
 		}
@@ -83,18 +83,18 @@ where
 	}
 }
 
-impl<K, V, S> MergeAccumulator for SealedAccumulator<K, V, S>
+impl<K, V, S> MergeAccumulator for ImmutableAccumulator<K, V, S>
 where
 	K: Ord + Clone + Debug,
 	V: Clone + Debug + PartialEq,
 	S: Summary<K, V> + Clone + Debug + PartialEq + Default,
-	SealedAccumulator<K, V, S>: OperatorState + StateCodec + HeapSize,
+	ImmutableAccumulator<K, V, S>: OperatorState + StateCodec + HeapSize,
 {
 	fn merge(&mut self, other: &Self) {
 		self.seal_open();
-		self.sealed.append(&other.sealed);
+		self.immutable.append(&other.immutable);
 		for (key, value) in &other.open {
-			self.sealed.push(key, value);
+			self.immutable.push(key, value);
 		}
 	}
 
@@ -103,9 +103,9 @@ where
 	}
 }
 
-impl<K: Ord + HeapSize, V: HeapSize, S: HeapSize> HeapSize for SealedAccumulator<K, V, S> {
+impl<K: Ord + HeapSize, V: HeapSize, S: HeapSize> HeapSize for ImmutableAccumulator<K, V, S> {
 	fn heap_size(&self) -> usize {
-		self.open.heap_size() + self.sealed.heap_size()
+		self.open.heap_size() + self.immutable.heap_size()
 	}
 }
 
@@ -144,7 +144,7 @@ mod tests {
 		}
 	}
 
-	type Acc = SealedAccumulator<u64, i64, Trace>;
+	type Acc = ImmutableAccumulator<u64, i64, Trace>;
 
 	fn bars(n: u64) -> Vec<(u64, i64)> {
 		(0..n).map(|k| (k, k as i64 * 7 - 3)).collect()

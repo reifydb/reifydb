@@ -21,14 +21,14 @@ pub trait Fold<T> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FoldedAccumulator<A, S> {
 	open: A,
-	sealed: S,
+	immutable: S,
 }
 
 impl<A: Default, S> FoldedAccumulator<A, S> {
-	pub fn new(sealed: S) -> Self {
+	pub fn new(immutable: S) -> Self {
 		Self {
 			open: A::default(),
-			sealed,
+			immutable,
 		}
 	}
 }
@@ -42,7 +42,7 @@ impl<A: Default, S: Default> Default for FoldedAccumulator<A, S> {
 impl<A: WindowAccumulator, S: Fold<A::Output>> FoldedAccumulator<A, S> {
 	fn seal_open(&mut self) {
 		if let Some(value) = mem::take(&mut self.open).finalize() {
-			self.sealed.fold(&value);
+			self.immutable.fold(&value);
 		}
 	}
 }
@@ -66,10 +66,10 @@ where
 
 	fn finalize(&self) -> Option<S> {
 		let open = self.open.finalize();
-		if open.is_none() && self.sealed.is_empty() {
+		if open.is_none() && self.immutable.is_empty() {
 			return None;
 		}
-		let mut summary = self.sealed.clone();
+		let mut summary = self.immutable.clone();
 		if let Some(value) = open {
 			summary.fold(&value);
 		}
@@ -85,9 +85,9 @@ where
 {
 	fn merge(&mut self, other: &Self) {
 		self.seal_open();
-		self.sealed.append(&other.sealed);
+		self.immutable.append(&other.immutable);
 		if let Some(value) = other.open.finalize() {
-			self.sealed.fold(&value);
+			self.immutable.fold(&value);
 		}
 	}
 
@@ -98,7 +98,7 @@ where
 
 impl<A: HeapSize, S: HeapSize> HeapSize for FoldedAccumulator<A, S> {
 	fn heap_size(&self) -> usize {
-		self.open.heap_size() + self.sealed.heap_size()
+		self.open.heap_size() + self.immutable.heap_size()
 	}
 }
 

@@ -249,7 +249,7 @@ impl<G, K, O> RollingEmit<G, K, O> {
 pub struct PaneApplied<E> {
 	pub emits: Vec<E>,
 	pub sealed_drops: u64,
-	pub stale_retractions: u64,
+	pub immutable_drops: u64,
 	pub withdrawn: Vec<GroupId>,
 	pub fresh: Vec<(GroupId, usize)>,
 }
@@ -259,7 +259,7 @@ impl<E> Default for PaneApplied<E> {
 		Self {
 			emits: Vec::new(),
 			sealed_drops: 0,
-			stale_retractions: 0,
+			immutable_drops: 0,
 			withdrawn: Vec::new(),
 			fresh: Vec::new(),
 		}
@@ -889,7 +889,7 @@ where
 				(PaneOp::Remove, None) => {
 					let pane = pane.to_order();
 					if !PaneLines::admits(lines.as_ref(), admission, pane, true) {
-						applied.stale_retractions += 1;
+						applied.immutable_drops += 1;
 					} else if let Some(record) = held.remove(&row_number) {
 						held_changed = true;
 						if let Some((at, value)) = record.held.filter(|(at, _)| {
@@ -904,7 +904,7 @@ where
 				(PaneOp::UpdatePost, Some(pre)) => {
 					let (pre_pane, post_pane) = (pre.0.to_order(), pane.to_order());
 					if !PaneLines::admits(lines.as_ref(), admission, pre_pane, true) {
-						applied.stale_retractions += 1;
+						applied.immutable_drops += 1;
 						held.entry(row_number)
 							.or_insert_with(|| RollingHeld {
 								held: Some((pre_pane, pre.1)),
@@ -1406,7 +1406,7 @@ mod tests {
 				)
 				.unwrap();
 			assert_eq!(
-				applied.sealed_drops + applied.stale_retractions,
+				applied.sealed_drops + applied.immutable_drops,
 				round_dropped,
 				"seed {seed} round {round}: the engine dropped a different count than the lines allow"
 			);

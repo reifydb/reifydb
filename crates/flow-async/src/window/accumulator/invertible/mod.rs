@@ -4,10 +4,10 @@
 pub mod decayed;
 pub mod ends;
 pub mod folded;
+pub mod immutable;
 pub mod keyed;
 pub mod moments;
 pub mod multiset;
 pub mod ordf64;
 pub mod retained_map;
-pub mod sealed;
 pub mod welford;

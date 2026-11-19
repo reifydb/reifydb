@@ -21,7 +21,7 @@ use reifydb_value::{
 	value::{column_view::ColumnView, identity::IdentityId, value_type::ValueType},
 };
 
-use super::{Context, Routine, error::RoutineError, registry::Routines, sealed};
+use super::{Context, Routine, error::RoutineError, internal, registry::Routines};
 
 pub struct FunctionContext<'a> {
 	pub fragment: Fragment,
@@ -30,7 +30,7 @@ pub struct FunctionContext<'a> {
 	pub runtime_context: &'a RuntimeContext,
 }
 
-impl sealed::Internal for FunctionContext<'_> {}
+impl internal::Internal for FunctionContext<'_> {}
 impl Context for FunctionContext<'_> {
 	type Output = (FieldRef, ArrayRef);
 
@@ -116,7 +116,7 @@ pub struct ProcedureContext<'a, 'tx> {
 	pub ioc: &'a IocContainer,
 }
 
-impl sealed::Internal for ProcedureContext<'_, '_> {}
+impl internal::Internal for ProcedureContext<'_, '_> {}
 impl Context for ProcedureContext<'_, '_> {
 	type Output = RecordBatch;
 

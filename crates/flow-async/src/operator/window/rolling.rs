@@ -713,7 +713,7 @@ mod tests {
 				.unwrap();
 			dropped += round_dropped;
 			assert_eq!(
-				applied.sealed_drops + applied.stale_retractions,
+				applied.sealed_drops + applied.immutable_drops,
 				round_dropped,
 				"the engine dropped a different number of late rows than the seal and retract lines allow at round {round}"
 			);

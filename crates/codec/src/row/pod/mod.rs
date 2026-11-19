@@ -5,7 +5,7 @@ use std::ops::Deref;
 
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 
-use crate::row::bytes::{EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Internal};
+use crate::row::bytes::{EncodedBytes, EncodedRowBuilder, RowBuilder, internal::Internal, read_defined_at};
 
 pub const POD_HEADER_SIZE: usize = 0;
 

@@ -319,7 +319,7 @@ fn late_event_accepted_while_lateness_is_open() {
 struct SealedCarry;
 
 impl OperatorMetadata for SealedCarry {
-	const NAME: &'static str = "sealed_carry";
+	const NAME: &'static str = "immutable_carry";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];

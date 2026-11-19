@@ -11,7 +11,9 @@ use reifydb_value::{
 use thiserror::Error;
 
 use crate::row::{
-	bytes::{CATALOG_HEADER_SIZE, EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Internal},
+	bytes::{
+		CATALOG_HEADER_SIZE, EncodedBytes, EncodedRowBuilder, RowBuilder, internal::Internal, read_defined_at,
+	},
 	shape::fingerprint::RowShapeFingerprint,
 };
 

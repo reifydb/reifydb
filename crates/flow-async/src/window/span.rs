@@ -13,15 +13,15 @@ use crate::{
 	window::coord::{ByDateTime, ByU8},
 };
 
-mod sealed {
+mod internal {
 	pub trait Internal {}
 }
 
-impl sealed::Internal for ByDateTime {}
+impl internal::Internal for ByDateTime {}
 
-impl sealed::Internal for ByU8 {}
+impl internal::Internal for ByU8 {}
 
-pub trait WindowAnchor: sealed::Internal + Slot<Coord = Self> + Coord {
+pub trait WindowAnchor: internal::Internal + Slot<Coord = Self> + Coord {
 	fn as_time(self) -> Option<DateTime>;
 }
 

@@ -20,11 +20,11 @@ use reifydb_core::value::column::view::group_by::{GroupId, GroupRows};
 use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 use serde::{Deserialize, Serialize};
 
-mod sealed {
+mod internal {
 	pub trait Internal {}
 }
 
-pub trait Context: Send + Sync + sealed::Internal {
+pub trait Context: Send + Sync + internal::Internal {
 	type Output;
 
 	fn call<R: Routine<Self> + ?Sized>(

@@ -7,9 +7,10 @@ use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::row::{
 	bytes::{
-		EncodedBytes, EncodedRowBuilder, RowBuilder, read_created_at, read_deduplication_row_number,
-		read_expires_at, read_fingerprint, read_updated_at, sealed::Internal, write_deduplication_row_number,
-		write_expires_at, write_fingerprint, write_storage_time, write_timestamps,
+		EncodedBytes, EncodedRowBuilder, RowBuilder, internal::Internal, read_created_at,
+		read_deduplication_row_number, read_expires_at, read_fingerprint, read_updated_at,
+		write_deduplication_row_number, write_expires_at, write_fingerprint, write_storage_time,
+		write_timestamps,
 	},
 	shape::fingerprint::RowShapeFingerprint,
 };

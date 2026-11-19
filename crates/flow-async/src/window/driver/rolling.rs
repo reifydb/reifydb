@@ -244,7 +244,7 @@ pub struct RollingRunner<C: Coord> {
 	lag: C::Span,
 	pane: Option<C::Span>,
 	sealed_drops: DropCounter,
-	stale_retractions: DropCounter,
+	immutable_drops: DropCounter,
 }
 
 type HookGroup<H, A> = RollingGroup<CountedAccumulator<A>, <H as RollingHooks>::Published, Contribution<A>>;
@@ -256,7 +256,7 @@ impl<C: SealDomain> RollingRunner<C> {
 			lag,
 			pane,
 			sealed_drops: DropCounter::new(operator, "mutations targeting sealed windows"),
-			stale_retractions: DropCounter::new(operator, "updates/removes past immutable"),
+			immutable_drops: DropCounter::new(operator, "updates/removes past immutable"),
 		}
 	}
 
@@ -312,7 +312,7 @@ impl<C: SealDomain> RollingRunner<C> {
 			applied
 		};
 		self.sealed_drops.note(applied.sealed_drops);
-		self.stale_retractions.note(applied.stale_retractions);
+		self.immutable_drops.note(applied.immutable_drops);
 		let after = engine.earliest_expiry(store)?;
 		C::rearm_decay(store, self.size, Some(self.lag), before, after)?;
 		hooks.emit(applied.emits)

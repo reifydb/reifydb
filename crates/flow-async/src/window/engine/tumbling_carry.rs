@@ -64,8 +64,8 @@ impl<S: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for WindowEntry<S,
 pub struct CarryMeta<S, Carry, Output> {
 	group: Option<Vec<u8>>,
 	high_water: Option<S>,
-	sealed_up_to: Option<S>,
-	sealed_carry: Option<Carry>,
+	immutable_up_to: Option<S>,
+	immutable_carry: Option<Carry>,
 	windows: BTreeMap<S, WindowEntry<S, Carry, Output>>,
 }
 
@@ -73,8 +73,8 @@ impl<S: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for CarryMeta<S, C
 	fn heap_size(&self) -> usize {
 		self.group.heap_size()
 			+ self.high_water.heap_size()
-			+ self.sealed_up_to.heap_size()
-			+ self.sealed_carry.heap_size()
+			+ self.immutable_up_to.heap_size()
+			+ self.immutable_carry.heap_size()
 			+ self.windows.heap_size()
 	}
 }
@@ -84,8 +84,8 @@ impl<S, Carry, Output> Default for CarryMeta<S, Carry, Output> {
 		Self {
 			group: None,
 			high_water: None,
-			sealed_up_to: None,
-			sealed_carry: None,
+			immutable_up_to: None,
+			immutable_carry: None,
 			windows: BTreeMap::new(),
 		}
 	}
@@ -204,8 +204,8 @@ where
 	fn fold_windows(meta: &mut CarryMeta<S, Carry, Output>, sealed: &[S]) {
 		for first in sealed {
 			let carry_out = meta.windows.remove(first).expect("sealed window entry present").carry_out;
-			meta.sealed_up_to = Some(*first);
-			meta.sealed_carry = carry_out;
+			meta.immutable_up_to = Some(*first);
+			meta.immutable_carry = carry_out;
 		}
 	}
 
@@ -253,7 +253,7 @@ where
 			if entry.group.is_none() {
 				entry.group = Some(encode(&group)?.body().to_vec());
 			}
-			if matches!(entry.sealed_up_to, Some(s) if span.start <= s) {
+			if matches!(entry.immutable_up_to, Some(s) if span.start <= s) {
 				continue;
 			}
 			if slot_pre.is_none() {
@@ -294,7 +294,7 @@ where
 
 			let mut prev_carry: Option<Carry> = match meta.windows.range(..start).next_back() {
 				Some((_, w)) => w.carry_out.clone(),
-				None => meta.sealed_carry.clone(),
+				None => meta.immutable_carry.clone(),
 			};
 
 			let starts: Vec<S> = meta.windows.range(start..).map(|(c, _)| *c).collect();
@@ -511,8 +511,8 @@ where
 		let mut slot_survives: Vec<bool> = Vec::with_capacity(buckets.len());
 		for (group, span) in buckets.keys() {
 			let meta = meta_loaded.get(group);
-			let sealed = matches!(meta.and_then(|m| m.sealed_up_to), Some(s) if span.start <= s);
-			let survives = !sealed;
+			let past_immutable = matches!(meta.and_then(|m| m.immutable_up_to), Some(s) if span.start <= s);
+			let survives = !past_immutable;
 			slot_survives.push(survives);
 			if survives {
 				survivor_keys.push(row_key(group, span.start));

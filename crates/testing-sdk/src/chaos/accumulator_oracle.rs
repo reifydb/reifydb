@@ -463,8 +463,8 @@ type CarryBuckets<A> = BTreeMap<CarryWindowKey<A>, (WindowSpan<CarryCoord<A>>, V
 
 struct CarryGroupState<C, Carry> {
 	high_water: Option<C>,
-	sealed_up_to: Option<C>,
-	sealed_carry: Option<Carry>,
+	immutable_up_to: Option<C>,
+	immutable_carry: Option<Carry>,
 	windows: BTreeMap<C, Option<Carry>>,
 }
 
@@ -472,8 +472,8 @@ impl<C, Carry> Default for CarryGroupState<C, Carry> {
 	fn default() -> Self {
 		Self {
 			high_water: None,
-			sealed_up_to: None,
-			sealed_carry: None,
+			immutable_up_to: None,
+			immutable_carry: None,
 			windows: BTreeMap::new(),
 		}
 	}
@@ -544,7 +544,7 @@ where
 		let mut earliest_affected: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
 		for ((group, start), (span, legs)) in buckets {
 			let meta = metas.entry(group.clone()).or_default();
-			if matches!(meta.sealed_up_to, Some(s) if start <= s) {
+			if matches!(meta.immutable_up_to, Some(s) if start <= s) {
 				continue;
 			}
 			let snap_hw = snapshot.get(&group).copied();
@@ -595,7 +595,7 @@ where
 			let meta = metas.get_mut(&group).expect("affected group has meta");
 			let mut prev_carry: Option<A::Carry> = match meta.windows.range(..start).next_back() {
 				Some((_, c)) => c.clone(),
-				None => meta.sealed_carry.clone(),
+				None => meta.immutable_carry.clone(),
 			};
 			let coords: Vec<CarryCoord<A>> = meta.windows.range(start..).map(|(c, _)| *c).collect();
 			let mut emptied: Vec<CarryCoord<A>> = Vec::new();
@@ -634,8 +634,8 @@ where
 					}
 					let carry_out = carry_out.clone();
 					meta.windows.remove(&first);
-					meta.sealed_up_to = Some(first);
-					meta.sealed_carry = carry_out;
+					meta.immutable_up_to = Some(first);
+					meta.immutable_carry = carry_out;
 					accumulators.remove(&(group.clone(), first));
 					spans.remove(&(group.clone(), first));
 				}

@@ -84,7 +84,7 @@ use crate::{
 	},
 };
 
-pub trait ValidationMode: sealed::Internal + 'static {
+pub trait ValidationMode: internal::Internal + 'static {
 	const VALIDATED: bool;
 
 	fn run<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R, ValueError>
@@ -128,7 +128,7 @@ where
 	Ok(r)
 }
 
-pub mod sealed {
+pub mod internal {
 
 	use super::{Unchecked, Validated};
 	pub trait Internal {}
