@@ -223,7 +223,7 @@ impl WatermarkState {
 			assert!(
 				self.head - self.tail < self.ring.len() as u64,
 				"the watermark ring window {}..={} exceeds its {} slots; two distinct versions \
-				 would alias onto one slot and merge their refcounts, letting the frontier pass \
+				 would alias onto one slot and merge their refcounts, letting the done-until mark pass \
 				 a version that still has a live holder",
 				self.tail,
 				self.head,
@@ -283,7 +283,7 @@ impl WatermarkState {
 					0,
 					"version {version} is being consumed by the watermark with a negative refcount, \
 					 meaning mark_finished ran more often than register_in_flight for it; the \
-					 frontier may have advanced past a version that a later register believed \
+					 done-until mark may have advanced past a version that a later register believed \
 					 was still protected"
 				);
 			}
@@ -307,7 +307,7 @@ impl WatermarkState {
 				assert!(
 					done_until.load(Ordering::SeqCst) >= old_done_until,
 					"done_until moved backwards across try_advance; the GC cutoff regressing \
-					 re-exposes evicted history to readers that already observed the higher frontier"
+					 re-exposes evicted history to readers that already observed the higher done-until mark"
 				);
 			}
 
@@ -401,7 +401,7 @@ mod tests {
 	#[test]
 	fn duplicate_begin_refcounts_one_slot_instead_of_admitting_twice() {
 		// Two register_in_flight calls for the same version (two snapshots sharing it) must
-		// refcount a single slot. Losing the second holder's count would let the frontier pass
+		// refcount a single slot. Losing the second holder's count would let the done-until mark pass
 		// the version while that holder is still reading at it, exposing its snapshot to
 		// eviction; widening the window would leave a slot that nothing ever clears.
 		let mut state = WatermarkState::new();
@@ -418,15 +418,15 @@ mod tests {
 		assert_eq!(done_until.load(Ordering::SeqCst), 0, "one of two holders finishing must not advance");
 
 		state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
-		assert_eq!(done_until.load(Ordering::SeqCst), 1, "the last holder finishing advances the frontier");
+		assert_eq!(done_until.load(Ordering::SeqCst), 1, "the last holder finishing advances the done-until mark");
 		assert_eq!(state.live_range(), None, "the consumed version must leave the window");
 	}
 
 	#[test]
-	fn a_version_never_registered_here_does_not_wedge_the_frontier() {
-		// Each watermark sees its own subset of the version space, so the frontier must jump
+	fn a_version_never_registered_here_does_not_wedge_the_done_until() {
+		// Each watermark sees its own subset of the version space, so the done-until mark must jump
 		// over version numbers that were allocated but never registered on it. Treating such a
-		// gap as a not-yet-begun version would freeze done_until below the true frontier
+		// gap as a not-yet-begun version would freeze done_until below the true done-until mark
 		// forever, stalling every waiter above it and pinning GC at a version nobody reads.
 		let mut state = WatermarkState::new();
 		let done_until = AtomicU64::new(0);
@@ -438,21 +438,21 @@ mod tests {
 
 		state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
 		state.process_done(2, &done_until, &mut out, AdvanceBudget::Unlimited);
-		assert_eq!(done_until.load(Ordering::SeqCst), 2, "the frontier stops below the live version 4");
+		assert_eq!(done_until.load(Ordering::SeqCst), 2, "the done-until mark stops below the live version 4");
 
 		state.process_done(4, &done_until, &mut out, AdvanceBudget::Unlimited);
 		assert_eq!(
 			done_until.load(Ordering::SeqCst),
 			4,
-			"the gap at version 3 must be skipped, not block the frontier"
+			"the gap at version 3 must be skipped, not block the done-until mark"
 		);
 	}
 
 	#[test]
-	fn a_snapshot_at_the_frontier_pins_it_until_the_reader_finishes() {
+	fn a_snapshot_at_the_done_until_pins_it_until_the_reader_finishes() {
 		// A read transaction registers the version it is reading at, which is routinely the
 		// version done_until already sits on. That registration is what stops GC evicting the
-		// snapshot out from under it, so the frontier must refuse to move past it even though
+		// snapshot out from under it, so the done-until mark must refuse to move past it even though
 		// the version is not above done_until.
 		let mut state = WatermarkState::new();
 		let done_until = AtomicU64::new(0);
@@ -473,7 +473,7 @@ mod tests {
 		);
 
 		state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
-		assert_eq!(done_until.load(Ordering::SeqCst), 2, "releasing the reader lets the frontier catch up");
+		assert_eq!(done_until.load(Ordering::SeqCst), 2, "releasing the reader lets the done-until mark catch up");
 	}
 
 	#[test]
@@ -481,7 +481,7 @@ mod tests {
 		// The ring maps versions onto slots by masking, so two versions more than a full
 		// capacity apart land on the same slot. Holding a low version open while the head runs
 		// past tail + capacity must grow the ring; without growth the newer version would
-		// silently inherit the older one's refcount and the frontier would skip a live holder.
+		// silently inherit the older one's refcount and the done-until mark would skip a live holder.
 		let mut state = WatermarkState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
@@ -507,7 +507,7 @@ mod tests {
 		// mark_finished can reach the watermark for a version that register_in_flight has not
 		// recorded yet. The done must be remembered and cancel the matching begin, otherwise
 		// that begin would wait forever for a completion that already happened and pin the
-		// frontier below it permanently.
+		// done-until mark below it permanently.
 		let mut state = WatermarkState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
@@ -528,7 +528,7 @@ mod tests {
 	fn capped_advance_stops_at_budget_and_reports_more_work() {
 		// The hot path advances at most its pop budget per operation; the surplus must be
 		// reported as MoreWork so the caller kicks the advancer. Losing that signal would
-		// leave done_until stuck below the true frontier until an unrelated later operation
+		// leave done_until stuck below the true done-until mark until an unrelated later operation
 		// happens to advance it, stalling every waiter in between.
 		let mut state = WatermarkState::new();
 		let done_until = AtomicU64::new(0);
@@ -539,7 +539,7 @@ mod tests {
 		}
 		for version in 2..=10 {
 			let outcome = state.process_done(version, &done_until, &mut out, AdvanceBudget::Unlimited);
-			assert_eq!(outcome, AdvanceOutcome::Complete, "a blocked frontier pops nothing");
+			assert_eq!(outcome, AdvanceOutcome::Complete, "a blocked done-until mark pops nothing");
 		}
 
 		let outcome = state.process_done(1, &done_until, &mut out, AdvanceBudget::Capped(4));
@@ -551,7 +551,7 @@ mod tests {
 		assert_eq!(done_until.load(Ordering::SeqCst), 8);
 
 		state.drain_remaining(&done_until, &mut out);
-		assert_eq!(done_until.load(Ordering::SeqCst), 10, "drain_remaining must reach the true frontier");
+		assert_eq!(done_until.load(Ordering::SeqCst), 10, "drain_remaining must reach the true done-until mark");
 
 		let outcome = state.advance_chunk(&done_until, &mut out, 4);
 		assert_eq!(outcome, AdvanceOutcome::Complete, "a caught-up chunk must not request another kick");
@@ -561,7 +561,7 @@ mod tests {
 	fn capped_advance_reports_more_work_when_waiter_cleanup_threshold_exceeded() {
 		// In Capped mode the hot path never runs the O(n) cleanup retains; when a map
 		// exceeds its threshold it must report MoreWork even with zero pops available, so
-		// the advancer performs the cleanup. Without this trigger a stuck frontier (pops
+		// the advancer performs the cleanup. Without this trigger a stuck done-until mark (pops
 		// never reach the budget) would let the maps grow without bound.
 		let mut state = WatermarkState::new();
 		let done_until = AtomicU64::new(0);
@@ -615,10 +615,10 @@ mod tests {
 	}
 
 	#[test]
-	fn frontier_moved_by_another_path_still_releases_a_passed_over_waiter() {
+	fn done_until_moved_by_another_path_still_releases_a_passed_over_waiter() {
 		// done_until can be raised by a path that notifies nobody, leaving a waiter enqueued for
-		// a version the frontier has already passed. The no-progress sweep in try_advance is the
-		// only thing that releases it. That sweep is skipped when the frontier has not moved
+		// a version the done-until mark has already passed. The no-progress sweep in try_advance is the
+		// only thing that releases it. That sweep is skipped when the done-until mark has not moved
 		// since the previous sweep, so this pins the case where it HAS moved: skipping it here
 		// would park that caller forever.
 		let mut state = WatermarkState::new();
@@ -626,19 +626,19 @@ mod tests {
 		let mut out = Vec::new();
 
 		state.register_waiter(5, Arc::new(WaiterHandle::new()), &done_until, &mut out);
-		assert!(out.is_empty(), "a waiter ahead of the frontier must be enqueued, not released");
+		assert!(out.is_empty(), "a waiter ahead of the done-until mark must be enqueued, not released");
 
 		done_until.store(10, Ordering::SeqCst);
 		state.advance_chunk(&done_until, &mut out, 4);
 
-		assert_eq!(out.len(), 1, "a waiter the frontier passed must be released by the sweep");
+		assert_eq!(out.len(), 1, "a waiter the done-until mark passed must be released by the sweep");
 		assert!(state.waiters.is_empty(), "the released waiter must leave the map");
 	}
 
 	#[test]
-	fn repeated_sweeps_at_an_unchanged_frontier_do_not_drop_a_live_waiter() {
-		// The sweep is guarded on the frontier having moved, so it runs at most once per
-		// frontier value. A waiter registered ahead of an unchanged frontier must survive every
+	fn repeated_sweeps_at_an_unchanged_done_until_do_not_drop_a_live_waiter() {
+		// The sweep is guarded on the done-until mark having moved, so it runs at most once per
+		// done-until mark value. A waiter registered ahead of an unchanged done-until mark must survive every
 		// subsequent no-progress call rather than being released early, which would wake a
 		// reader before its snapshot version was actually durable.
 		let mut state = WatermarkState::new();
@@ -650,7 +650,7 @@ mod tests {
 			state.advance_chunk(&done_until, &mut out, 4);
 		}
 
-		assert!(out.is_empty(), "a waiter above the frontier must not be released");
+		assert!(out.is_empty(), "a waiter above the done-until mark must not be released");
 		assert_eq!(state.waiters.len(), 1, "it must still be enqueued");
 
 		done_until.store(9, Ordering::SeqCst);

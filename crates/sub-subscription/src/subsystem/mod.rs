@@ -360,7 +360,7 @@ mod tests {
 
 	#[test]
 	fn the_reader_starts_at_the_last_appended_lsn_not_below_the_commits_it_skips() {
-		// A start lsn below the boot frontier makes a first reload ask for records gc may drop, ending every
+		// A start lsn below the released lsn at boot makes a first reload ask for records gc may drop, ending every
 		// subscription.
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE app");
@@ -375,7 +375,7 @@ mod tests {
 		assert_eq!(
 			Some(start),
 			appended,
-			"the reader starts at the frontier, so its lsn must be the last appended one"
+			"the reader starts at released through, so its lsn must be the last appended one"
 		);
 	}
 }

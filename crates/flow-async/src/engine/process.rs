@@ -311,7 +311,7 @@ fn warn_unpublished(flow_id: FlowId, silent: &[ObjectId]) {
 		info!(
 			flow_id = ?flow_id,
 			object = ?object,
-			"a source object has never published an output frontier; every window below it \
+			"a source object has never published an output watermark; every window below it \
 			 stays open until its producing flow publishes"
 		);
 	}
@@ -511,7 +511,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_visible_frontier_arrives_only_for_the_operators_of_the_reading_flow() {
+	fn a_visible_output_watermark_arrives_only_for_the_operators_of_the_reading_flow() {
 		// A sibling flow's reader must never be advanced by rows it never saw.
 		let object = ObjectId::View(ViewId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3)), (FlowId(2), OperatorId(4))])]);
@@ -536,7 +536,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_frontier_stamped_at_the_readers_own_version_yields_no_arrival() {
+	fn a_output_watermark_stamped_at_the_readers_own_version_yields_no_arrival() {
 		// At an equal version nothing orders producer before consumer, so folding seals a window whose own rows
 		// are still in flight.
 		let object = ObjectId::View(ViewId(5));
@@ -566,7 +566,7 @@ mod tests {
 				source: OperatorId(3),
 				at: at_millis(9_000)
 			}],
-			"one version past the stamp the same frontier must fold, or nothing is ever folded at all"
+			"one version past the stamp the same output watermark must fold, or nothing is ever folded at all"
 		);
 	}
 
@@ -676,13 +676,13 @@ mod tests {
 			&[OperatorId(3), OperatorId(4)],
 		);
 
-		assert!(arrivals.is_empty(), "a frontier stamped at the reader's own version must not fold");
+		assert!(arrivals.is_empty(), "an output watermark stamped at the reader's own version must not fold");
 		assert!(silent.is_empty());
 	}
 
 	#[test]
 	fn an_unpublished_table_is_never_reported_even_beside_a_visible_source() {
-		// Only a view has a producing flow that owes a frontier; naming a table would report a fault nothing
+		// Only a view has a producing flow that owes an output watermark; naming a table would report a fault nothing
 		// can fix.
 		let table = ObjectId::Table(TableId(5));
 		let live = ObjectId::View(ViewId(6));
@@ -705,8 +705,8 @@ mod tests {
 	}
 
 	#[test]
-	fn process_version_folds_a_published_frontier_into_the_source_watermark() {
-		// A producer that emits no rows this version pins its reader at the epoch unless the published frontier
+	fn process_version_folds_a_published_output_watermark_into_the_source_watermark() {
+		// A producer that emits no rows this version pins its reader at the epoch unless the published watermark
 		// reaches the watermark here.
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
@@ -743,7 +743,7 @@ mod tests {
 		assert_eq!(
 			SourceWatermarks::source_watermark(SOURCE, &mut txn).unwrap(),
 			at_millis(30_000),
-			"the published frontier must reach the watermark through process_version, not only the \
+			"the published watermark must reach the watermark through process_version, not only the \
 			 helper"
 		);
 	}
@@ -791,8 +791,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_lookup_on_a_deferred_view_holds_the_flow_watermark_at_the_views_frontier() {
-		// Without the view's frontier hold the left side alone moves the watermark and a same-instant surface
+	fn a_lookup_on_a_deferred_view_holds_the_flow_watermark_at_the_views_output_watermark() {
+		// Without the view's output watermark hold the left side alone moves the watermark and a same-instant surface
 		// drops as late.
 		let engine = TestEngine::new();
 		let mut inner = lookup_engine(&engine);
@@ -813,7 +813,7 @@ mod tests {
 		assert_eq!(
 			SourceWatermarks::source_watermark(OperatorId(2), &mut txn).unwrap(),
 			at_millis(30_000),
-			"the view's published frontier must reach the lookup's own watermark"
+			"the view's published watermark must reach the lookup's own watermark"
 		);
 		assert_eq!(
 			SourceWatermarks::flow_watermark(&inner.watermark_sources(&flow), &mut txn).unwrap(),
@@ -824,7 +824,7 @@ mod tests {
 
 	#[test]
 	fn a_lookup_on_a_table_never_holds_the_flow_watermark() {
-		// No flow publishes a frontier for a table, so counting it would pin the watermark at the epoch
+		// No flow publishes an output watermark for a table, so counting it would pin the watermark at the epoch
 		// forever.
 		let engine = TestEngine::new();
 		let inner = lookup_engine(&engine);
@@ -850,7 +850,7 @@ mod tests {
 	}
 
 	#[test]
-	fn process_version_folds_an_assertion_into_the_frontier() {
+	fn process_version_folds_an_assertion_into_the_output_watermark() {
 		// Without the fold reaching freeze_flow_watermark the assertion is decoded and discarded.
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
@@ -892,13 +892,13 @@ mod tests {
 		assert_eq!(
 			SourceWatermarks::source_watermark(SOURCE, &mut txn).unwrap(),
 			at_millis(30_000),
-			"the assertion must reach the frontier through process_version, not only the helper"
+			"the assertion must reach the output watermark through process_version, not only the helper"
 		);
 	}
 
 	#[test]
 	fn an_assertion_advances_a_source_that_produced_no_rows_in_the_commit() {
-		// A silent source pins the min-merged frontier at the epoch forever without an assertion.
+		// A silent source pins the min-merged flow watermark at the epoch forever without an assertion.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let sources = BTreeMap::from([(ObjectId::Series(SeriesId(9)), vec![(FlowId(1), SOURCE)])]);
@@ -915,8 +915,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_versions_own_rows_do_not_move_the_frontier_the_operators_gate_against() {
-		// The admit frontier is snapshotted BEFORE the version's own rows advance the source
+	fn a_versions_own_rows_do_not_move_the_flow_watermark_the_operators_gate_against() {
+		// The admit flow watermark is snapshotted BEFORE the version's own rows advance the source
 		// watermarks, so no row is judged late against a sibling committed alongside it. Reversed,
 		// one transaction carrying an hour of history into a 1s window keeps only its last bucket.
 		let engine = TestEngine::new();
@@ -944,13 +944,13 @@ mod tests {
 		assert_eq!(
 			txn.flow_watermark(),
 			Some(at_millis(5_000)),
-			"the frontier must be the one that existed before this version's rows, not after them"
+			"the flow watermark must be the one that existed before this version's rows, not after them"
 		);
 
 		assert_eq!(
 			SourceWatermarks::source_watermark(SOURCE, &mut txn).unwrap(),
 			at_millis(20_000),
-			"the version's rows must still have advanced the source, or the frontier is only stale \
+			"the version's rows must still have advanced the source, or the flow watermark is only stale \
 			 because nothing was folded in at all"
 		);
 	}

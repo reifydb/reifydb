@@ -1486,7 +1486,7 @@ mod tests {
 		assert!(
 			unswept == 0,
 			"{unswept} of the {KINDS} kinds still hold a write at version {FIRST_VERSION} after {ROUNDS} \
-			 slices, so they were never swept once; that kind pins the durable frontier at the first \
+			 slices, so they were never swept once; that kind pins durable through at the first \
 			 write, which clamps the tombstone reap cutoff to zero and leaves every tombstone in the \
 			 persistent tier undeletable"
 		);
@@ -1604,7 +1604,7 @@ mod tests {
 				!pending.contains(&kinds[oldest as usize]),
 				"a budget covering exactly one entry must buy the kind holding the oldest pending \
 				 write, but the kind at version {OLD_VERSION} was left pending while a younger kind \
-				 took the slice; the durable frontier is the minimum over kinds, so serving anything \
+				 took the slice; durable through is the minimum over kinds, so serving anything \
 				 but the oldest cannot advance it"
 			);
 			for (index, kind) in kinds.iter().enumerate() {

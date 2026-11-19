@@ -45,9 +45,9 @@ impl OutputWatermarks {
 		reifydb_assertions! {
 			assert!(
 				at > CommitVersion(0),
-				"an output frontier was published at version zero; every consumer past version \
+				"an output watermark was published at version zero; every consumer past version \
 				 zero would resolve it as visible, including transactions that ran before the \
-				 frontier was established"
+				 output watermark was established"
 			);
 		}
 		let watermark_ms = watermark.to_millis();

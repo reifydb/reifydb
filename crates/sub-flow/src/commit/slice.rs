@@ -1054,8 +1054,8 @@ mod integration {
 	}
 
 	#[test]
-	fn a_quiet_flow_still_holds_a_frontier_from_state_restored_before_any_change_arrives() {
-		// A producer with no incoming rows must still claim its frontier at startup, or its consumer stays
+	fn a_quiet_flow_still_holds_a_output_watermark_from_state_restored_before_any_change_arrives() {
+		// A producer with no incoming rows must still claim its output watermark at startup, or its consumer stays
 		// pinned at the epoch forever.
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
@@ -1855,7 +1855,7 @@ mod integration {
 
 	#[test]
 	fn a_step_that_writes_view_rows_commits_and_advances_the_materialized_through() {
-		// Readers of the view wait on the output frontier; a commit of view rows that does not move it leaves
+		// Readers of the view wait on the output watermark; a commit of view rows that does not move it leaves
 		// them waiting for rows that are already stored.
 		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build();
 		te.admin("CREATE NAMESPACE app");
@@ -1994,7 +1994,7 @@ mod integration {
 	const PRODUCER: ObjectId = ObjectId::View(ViewId(9));
 
 	fn producer_fed_flow(engine: &StandardEngine) -> (FlowId, FlowEngineInner) {
-		// One source fed by a producer view's published frontier, so an empty pull still has a hold to check.
+		// One source fed by a producer view's published watermark, so an empty pull still has a hold to check.
 		let mut flow_engine = build_flow_engine(engine);
 		let flow = FlowId(1);
 		let mut builder = FlowDag::builder(flow);
@@ -2049,7 +2049,7 @@ mod integration {
 	}
 
 	#[test]
-	fn a_frontier_that_turns_visible_only_because_the_pull_passed_it_still_reaches_the_fold() {
+	fn a_output_watermark_that_turns_visible_only_because_the_pull_passed_it_still_reaches_the_fold() {
 		// A watermark that only moves in memory must still reach storage with the next checkpoint, never on its
 		// own commit.
 		let te = TestEngine::builder().with_commit_queue().build();
@@ -2071,7 +2071,7 @@ mod integration {
 			&config,
 			&mut hold_cache,
 		);
-		assert!(matches!(first, SliceStep::Skip { .. }), "precondition: a withheld frontier folds nothing");
+		assert!(matches!(first, SliceStep::Skip { .. }), "precondition: a withheld output watermark folds nothing");
 		assert!(hold_cache.is_some(), "precondition: the skipped hold check must be cached");
 
 		let second = empty_pull(
@@ -2104,7 +2104,7 @@ mod integration {
 				..
 			} => assert!(
 				slice.combined.iter_sorted().next().is_some(),
-				"the watermark the producer frontier advanced must ride with the next checkpoint"
+				"the watermark the producer watermark advanced must ride with the next checkpoint"
 			),
 			SliceStep::Skip {
 				..
@@ -2156,7 +2156,7 @@ mod integration {
 	}
 
 	#[test]
-	fn an_empty_pull_with_unchanged_frontiers_reuses_the_cached_holds() {
+	fn an_empty_pull_with_unchanged_output_watermarks_reuses_the_cached_holds() {
 		// A sentinel hold proves the cached result was returned instead of rebuilding the hold check.
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
@@ -2186,10 +2186,10 @@ mod integration {
 			SliceStep::Skip {
 				holds,
 				..
-			} => assert_eq!(holds, vec![sentinel], "unchanged frontiers must reuse the cached holds"),
+			} => assert_eq!(holds, vec![sentinel], "unchanged output watermarks must reuse the cached holds"),
 			SliceStep::Commit {
 				..
-			} => panic!("an empty pull with unchanged frontiers and no checkpoint due must not commit"),
+			} => panic!("an empty pull with unchanged output watermarks and no checkpoint due must not commit"),
 		}
 	}
 }

@@ -419,7 +419,7 @@ impl FlowSupervisor {
 				}
 				self.substrate.output_watermarks.hydrate(entries);
 			}
-			Err(e) => panic!("flow supervisor cannot hydrate output frontiers: {e}"),
+			Err(e) => panic!("flow supervisor cannot hydrate output watermarks: {e}"),
 		}
 	}
 

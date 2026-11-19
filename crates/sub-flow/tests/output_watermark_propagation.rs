@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// A view that carries no rows must still lift its readers' watermark through the frontier it publishes.
+// A view that carries no rows must still lift its readers' watermark through the output watermark it publishes.
 
 use reifydb::{
 	SqliteConfig, WithSubsystem, embedded,
@@ -15,7 +15,7 @@ fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
 }
 
-/// One commit plus a barrier on the flow consumer watermark. A frontier crosses exactly one hop per
+/// One commit plus a barrier on the flow consumer watermark. An output watermark crosses exactly one hop per
 /// round, because a flow only runs a slice when a new version arrives and `resolve` withholds an
 /// entry stamped at the reader's own version, so a chain needs one of these per view hop before its
 /// consumer can seal against anything.
@@ -30,7 +30,7 @@ fn settle_round(db: &TestDb, table: &str, id: i32, g: i32) {
 
 /// A busy table and a table nobody writes to, each behind its own view, appended into one tumbling
 /// window, so the window's watermark is a min over two view sources and the silent side can only
-/// move through the frontier its producing view publishes.
+/// move through the output watermark its producing view publishes.
 fn window_behind_two_view_hops(db: &TestDb) {
 	db.admin("CREATE NAMESPACE sil");
 	db.admin("CREATE TABLE sil::busy { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
@@ -98,7 +98,7 @@ fn a_complete_silent_table_lifts_the_window_reading_it_directly() {
 
 #[test]
 fn a_silent_view_source_lifts_its_reader_across_the_hop() {
-	// A rowless view reports only through its published frontier, so without that hop its reader pins at the epoch
+	// A rowless view reports only through its published watermark, so without that hop its reader pins at the epoch
 	// forever while the underlying table is complete; admission of a late row is the observable, since an open
 	// bucket folds it in and a sealed one refuses it.
 	let db = setup();
@@ -120,7 +120,7 @@ fn a_silent_view_source_lifts_its_reader_across_the_hop() {
 		db.query("FROM sil::w")
 	);
 
-	// The silent table emits no row when it goes complete, so only a frontier can carry that through
+	// The silent table emits no row when it goes complete, so only an output watermark can carry that through
 	// sil::mid_quiet.
 	db.admin("call storage::advance(sil::quiet, cast('2026-01-01T00:00:10Z', datetime))");
 	// One view hop between the silent table and the window, so one round before the late row.
@@ -131,13 +131,13 @@ fn a_silent_view_source_lifts_its_reader_across_the_hop() {
 	assert_eq!(
 		db.await_exact_row_count("FROM sil::w FILTER { total == 105 }", 1, TIMEOUT),
 		1,
-		"sil::quiet is complete through 10s, so sil::mid_quiet's frontier must cross the hop and seal \
+		"sil::quiet is complete through 10s, so sil::mid_quiet's output watermark must cross the hop and seal \
 		 bucket 0 against the 1000; view now: {:?}",
 		db.query("FROM sil::w")
 	);
 }
 
-/// A silent table two views deep, so the frontier has to be republished by each hop in turn rather
+/// A silent table two views deep, so the output watermark has to be republished by each hop in turn rather
 /// than read once off the table by the window at the bottom.
 fn window_behind_a_two_view_chain(db: &TestDb) {
 	db.admin("CREATE NAMESPACE deep");
@@ -157,9 +157,9 @@ fn window_behind_a_two_view_chain(db: &TestDb) {
 }
 
 #[test]
-fn a_frontier_converges_down_a_two_hop_chain() {
+fn a_output_watermark_converges_down_a_two_hop_chain() {
 	// Each hop must republish what it resolved rather than pass the table's own progress straight through, so a
-	// chain converges only if every intermediate view folds its producer's frontier into its own hold.
+	// chain converges only if every intermediate view folds its producer's output watermark into its own hold.
 	let db = setup();
 	window_behind_a_two_view_chain(&db);
 
@@ -187,7 +187,7 @@ fn a_frontier_converges_down_a_two_hop_chain() {
 	assert_eq!(
 		db.await_exact_row_count("FROM deep::w FILTER { total == 105 }", 1, TIMEOUT),
 		1,
-		"deep::quiet is complete through 10s, so the frontier must converge down both hops and seal \
+		"deep::quiet is complete through 10s, so the output watermark must converge down both hops and seal \
 		 bucket 0 against the 1000; view now: {:?}",
 		db.query("FROM deep::w")
 	);
@@ -214,9 +214,9 @@ fn fused_two_view_chain(path: &TempDbPath) -> TestDb {
 }
 
 #[test]
-fn a_frontier_converges_down_a_fused_two_hop_chain() {
-	// A fused tail must publish the frontier its own step resolved, or the window behind it never seals.
-	let path = TempDbPath::new("frontier_fused_two_hop");
+fn a_output_watermark_converges_down_a_fused_two_hop_chain() {
+	// A fused tail must publish the output watermark its own step resolved, or the window behind it never seals.
+	let path = TempDbPath::new("output_watermark_fused_two_hop");
 	let mut db = fused_two_view_chain(&path);
 
 	db.command(r#"INSERT deep::busy [{ id: 1, g: 1, v: 5, ts: "2026-01-01T00:00:00Z" }]"#);
@@ -243,7 +243,7 @@ fn a_frontier_converges_down_a_fused_two_hop_chain() {
 	assert_eq!(
 		db.await_exact_row_count("FROM deep::w FILTER { total == 105 }", 1, TIMEOUT),
 		1,
-		"deep::quiet is complete through 10s, so the frontier must converge down both hops and seal \
+		"deep::quiet is complete through 10s, so the output watermark must converge down both hops and seal \
 		 bucket 0 against the 1000; view now: {:?}",
 		db.query("FROM deep::w")
 	);

@@ -260,7 +260,7 @@ mod tests {
 	}
 
 	#[test]
-	fn the_wall_clock_frontier_merges_the_ledger_and_the_watermark_upward() {
+	fn the_wall_clock_operator_watermark_merges_the_ledger_and_the_watermark_upward() {
 		// without the max a newly attached source drags the watermark down and re-admits sealed rows
 		let mut lagging_watermark = MockStore::default().with_flow_watermark(at_millis(3_000));
 		SealLedger::advance(&mut lagging_watermark, FiredAt::of(&timer(9_000))).unwrap();
@@ -273,7 +273,7 @@ mod tests {
 	}
 
 	#[test]
-	fn an_untouched_wall_clock_operator_has_its_frontier_at_datetime_min() {
+	fn an_untouched_wall_clock_operator_has_its_operator_watermark_at_datetime_min() {
 		// neither input may default to "now", or a operator that never fired a timer drops every row
 		let mut store = MockStore::default();
 
@@ -282,7 +282,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_wall_clock_horizon_is_the_frontier_less_the_lateness_and_the_gate_step_and_may_go_pre_epoch() {
+	fn a_wall_clock_horizon_is_the_operator_watermark_less_the_lateness_and_the_gate_step_and_may_go_pre_epoch() {
 		// wrapping high instead of going negative would report every window sealed
 		let step_past =
 			|millis| ByDateTime(at_millis(millis).saturating_add(Duration::from_nanoseconds_const(1)));
@@ -292,7 +292,7 @@ mod tests {
 
 	#[test]
 	fn the_wall_clock_domain_seals_on_the_wheel() {
-		// the flow frontier reads this domain's span in wall-clock time, so it must arm off the timer wheel
+		// the flow watermark reads this domain's span in wall-clock time, so it must arm off the timer wheel
 		assert!(ByDateTime::arms_timer());
 	}
 

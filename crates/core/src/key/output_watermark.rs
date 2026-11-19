@@ -69,7 +69,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn a_key_of_another_kind_never_decodes_as_a_frontier() {
+	fn a_key_of_another_kind_never_decodes_as_an_output_watermark() {
 		// 0x1D previously held FlowNodeInternalState, so a stale row must be rejected, never misread.
 		let mut foreign = OutputWatermarkKey::encoded(ObjectId::View(ViewId(1))).as_slice().to_vec();
 		foreign[0] = !(KeyTag::FlowEdgeByFlow as u8);
@@ -78,7 +78,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn every_object_kind_round_trips_under_the_one_frontier_tag() {
+	fn every_object_kind_round_trips_under_the_one_output_watermark_tag() {
 		// A kind landing on another tag escapes the hydration scan, so its consumer pins at the epoch forever.
 		for object in [
 			ObjectId::table(1),

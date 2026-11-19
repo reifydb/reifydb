@@ -595,9 +595,9 @@ fn late_event_within_seal_is_accepted() {
 
 #[test]
 fn a_gated_driver_admits_a_late_event_while_the_watermark_has_not_moved() {
-	// The frontier comes from the seal ledger and the flow watermark, not from arrivals, so a
+	// The operator watermark comes from the seal ledger and the flow watermark, not from arrivals, so a
 	// flow that has reported no progress has nothing to measure lateness against. If this ever
-	// starts dropping, the frontier is being derived from the batch again.
+	// starts dropping, the operator watermark is being derived from the batch again.
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
 		.with(sealed_with())
 		.build()

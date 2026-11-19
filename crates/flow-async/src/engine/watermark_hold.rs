@@ -549,7 +549,7 @@ mod tests {
 
 	#[test]
 	fn a_flow_whose_every_source_is_untimed_claims_nothing() {
-		// With no timed input there is nothing to justify a frontier, so claiming one would seal windows on
+		// With no timed input there is nothing to justify an output watermark, so claiming one would seal windows on
 		// rows never seen.
 		let held = Harness::new()
 			.node(untimed_source(1))
@@ -564,7 +564,7 @@ mod tests {
 	}
 
 	#[test]
-	fn two_branches_of_one_flow_keep_their_own_frontiers() {
+	fn two_branches_of_one_flow_keep_their_own_output_watermarks() {
 		// The branches share no operator, so a flow-wide min would drag the fast sink down for nothing.
 		let held = Harness::new()
 			.node(source(1))
@@ -582,7 +582,7 @@ mod tests {
 
 	#[test]
 	fn a_flow_whose_source_never_advanced_claims_nothing() {
-		// An unpublished frontier already reads as the epoch, so claiming it must never pass for a real one.
+		// An unpublished watermark already reads as the epoch, so claiming it must never pass for a real one.
 		let held = Harness::new()
 			.node(source(1))
 			.node(sink(2))
@@ -611,7 +611,7 @@ mod tests {
 
 	#[test]
 	fn a_sink_belonging_to_another_flow_is_never_claimed() {
-		// The sink registry is shared across flows; claiming a neighbour's sink stamps a frontier no operator
+		// The sink registry is shared across flows; claiming a neighbour's sink stamps an output watermark no operator
 		// here computed.
 		let held = Harness::new()
 			.node(source(1))

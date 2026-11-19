@@ -1165,7 +1165,7 @@ impl FlowActor {
 			Err(e) => warn!(
 				flow_id = self.flow_id.0,
 				error = %e,
-				"failed to republish restored output frontiers; consumers stay at the epoch until this flow commits a slice"
+				"failed to republish restored output watermarks; consumers stay at the epoch until this flow commits a slice"
 			),
 		}
 	}
@@ -2507,7 +2507,7 @@ mod pull_protocol {
 	}
 
 	#[test]
-	fn the_control_frontier_bounds_how_far_a_flow_may_pull() {
+	fn the_pull_limit_bounds_how_far_a_flow_may_pull() {
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		h.control.store(v0);
@@ -2523,16 +2523,16 @@ mod pull_protocol {
 		assert_eq!(
 			h.tracker.all().get(&h.flow_id).copied(),
 			Some(v0),
-			"a flow must hold at the control frontier even though the safe watermark is beyond it"
+			"a flow must hold at the pull limit even though the safe watermark is beyond it"
 		);
-		assert_eq!(h.view_rows(), 0, "no row above the control frontier may materialize");
+		assert_eq!(h.view_rows(), 0, "no row above the pull limit may materialize");
 
 		h.control.store(target);
 		h.wake(&actor);
 		assert_eq!(
 			h.await_view_rows(2, seconds(10)),
 			2,
-			"raising the frontier and waking must release exactly the held-back versions"
+			"raising the pull limit and waking must release exactly the held-back versions"
 		);
 		assert_eq!(h.await_position(target, seconds(5)), Some(target));
 		drop(actor);

@@ -179,14 +179,14 @@ mod tests {
 	fn the_output_watermark_trails_the_ledger_by_the_whole_seal_span() {
 		// The ledger holds the instant a seal timer fired, a whole seal span ahead of the
 		// newest window that timer actually sealed. Treating the ledger itself as the immutable
-		// frontier erases the accumulator of a window that is still open and still taking rows.
+		// operator watermark erases the accumulator of a window that is still open and still taking rows.
 		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 		let ledger = at_millis(358_262);
 
 		let horizon = rule.horizon_at(ByDateTime(ledger)).expect("the ledger is past one seal_span span");
 
 		assert_eq!(horizon.0, at_millis(283_261), "ledger - (size + lateness) - 1");
-		assert!(horizon.0 < ledger, "a frontier at or past the ledger reclaims windows that have not sealed");
+		assert!(horizon.0 < ledger, "an operator watermark at or past the ledger reclaims windows that have not sealed");
 		assert_eq!(
 			rule.seal_instant(horizon.0).at(),
 			ledger,

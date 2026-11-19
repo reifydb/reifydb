@@ -89,14 +89,14 @@ fn hold(db: &TestDb, gate_name: &str) {
 	);
 }
 
-fn await_drain_frontiers(db: &TestDb) {
+fn await_drain_pull_limits(db: &TestDb) {
 	// The gate must open only after every drain bound passed the backlog, otherwise the fold is cut short.
 	let to = db.engine().current_version().expect("the current version after the backlog");
 	let control = db
 		.engine()
 		.ioc()
 		.resolve::<PullLimit>()
-		.expect("the flow subsystem registers its control frontier");
+		.expect("the flow subsystem registers its pull limit");
 	assert!(
 		poll_until(
 			|| {
@@ -107,7 +107,7 @@ fn await_drain_frontiers(db: &TestDb) {
 			SETTLE
 		)
 		.is_some(),
-		"the drain frontiers never passed the backlog"
+		"the drain pull limits never passed the backlog"
 	);
 }
 
@@ -115,7 +115,7 @@ fn backlog(db: &TestDb, gate_name: &str, rounds: usize) -> Vec<CommitVersion> {
 	hold(db, gate_name);
 	let written: Vec<CommitVersion> =
 		(0..rounds).map(|round| write_src(db, "a", round as i64, round == 0)).collect();
-	await_drain_frontiers(db);
+	await_drain_pull_limits(db);
 	set_gate(gate_name, true);
 	settle(db);
 	written
@@ -229,7 +229,7 @@ fn a_producer_stays_exact_after_an_exact_reader_is_created() {
 	insert_level(&db, 1, "a");
 	let second = write_src(&db, "a", 20, false);
 	insert_level(&db, 2, "a");
-	await_drain_frontiers(&db);
+	await_drain_pull_limits(&db);
 	set_gate("backlog_commit_e5", true);
 	settle(&db);
 
@@ -296,7 +296,7 @@ fn an_aggregate_behind_a_backlog_is_read_at_each_source() {
 	insert_level(&db, 1, "a");
 	let second = write_src(&db, "a", 5, true);
 	insert_level(&db, 2, "a");
-	await_drain_frontiers(&db);
+	await_drain_pull_limits(&db);
 	set_gate("backlog_commit_b1_3", true);
 	settle(&db);
 
@@ -399,7 +399,7 @@ fn paced_left_script(db: &TestDb, gate_name: &str, read: &str, chained: bool) ->
 			db.engine().current_version().expect("the current version after a left write")
 		})
 		.collect();
-	await_drain_frontiers(db);
+	await_drain_pull_limits(db);
 	set_gate(gate_name, true);
 	settle(db);
 	written
@@ -676,10 +676,10 @@ fn a_latest_emit_off_join_matches_every_left_row_when_its_right_view_folds_a_bac
 		write_table(&db, "app::src", &k, round * 10, true);
 		write_table(&db, "app::t1", &k, round, true);
 	}
-	// The gate must open only after the drain frontiers passed the last round, otherwise the fold is cut short.
+	// The gate must open only after the drain pull limits passed the last round, otherwise the fold is cut short.
 	assert!(
 		poll_until(|| (db.row_count("FROM app::a") == ROUNDS).then_some(()), SETTLE).is_some(),
-		"view a never saw every round, so the drain frontiers never passed the backlog"
+		"view a never saw every round, so the drain pull limits never passed the backlog"
 	);
 	set_gate(gate_name, true);
 	settle(&db);
@@ -709,7 +709,7 @@ fn an_emit_off_lookup_reads_each_source_inside_its_folded_right_view() {
 	insert_level(&db, 3, "a");
 	db.command("DELETE app::src FILTER { k == 'a' }");
 	insert_level(&db, 4, "a");
-	await_drain_frontiers(&db);
+	await_drain_pull_limits(&db);
 	set_gate(gate_name, true);
 	settle(&db);
 
@@ -745,7 +745,7 @@ fn an_emit_off_lookup_reads_each_source_inside_its_folded_right_view_without_a_c
 	insert_level(&db, 3, "a");
 	db.command("DELETE app::src FILTER { k == 'a' }");
 	insert_level(&db, 4, "a");
-	await_drain_frontiers(&db);
+	await_drain_pull_limits(&db);
 	set_gate(gate_name, true);
 	settle(&db);
 

@@ -108,8 +108,8 @@ mod tests {
 	const OUTPUT: ObjectId = ObjectId::View(ViewId(42));
 
 	#[test]
-	fn a_frontier_round_trips_through_the_value_encoding() {
-		// A truncated stamp silently rewinds a frontier, which re-opens a horizon that already sealed.
+	fn a_output_watermark_round_trips_through_the_value_encoding() {
+		// A truncated stamp silently rewinds an output watermark, which re-opens a horizon that already sealed.
 		let entry = OutputWatermarkEntry {
 			output: OUTPUT,
 			watermark: at_millis(1_700_000_000_123),
@@ -121,13 +121,13 @@ mod tests {
 
 	#[test]
 	fn a_value_of_the_wrong_width_is_rejected_rather_than_misread() {
-		// 0x1D once held FlowNodeInternalState, so a stale row must never decode as a plausible frontier.
+		// 0x1D once held FlowNodeInternalState, so a stale row must never decode as a plausible output watermark.
 		assert!(decode(OUTPUT, &EncodedPodRow::new(&[0u8; 8])).is_none());
 		assert!(decode(OUTPUT, &EncodedPodRow::new(&[0u8; 24])).is_none());
 	}
 
 	#[test]
-	fn a_persisted_frontier_scans_back_out_of_a_real_store() {
+	fn a_persisted_output_watermark_scans_back_out_of_a_real_store() {
 		// Encoding and decoding agreeing in memory proves nothing if the key never lands inside the scan range.
 		let single = SingleTransaction::testing();
 		let written = vec![
@@ -151,7 +151,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_rewritten_frontier_replaces_its_predecessor_rather_than_accumulating() {
+	fn a_rewritten_output_watermark_replaces_its_predecessor_rather_than_accumulating() {
 		// One key per object is the whole point; a second row would make hydration order-dependent.
 		let single = SingleTransaction::testing();
 
@@ -178,7 +178,7 @@ mod tests {
 
 		let read = hydrate(&system_ctx(), &single.read_store()).unwrap();
 
-		assert_eq!(read.len(), 1, "the object must hold exactly one frontier row");
+		assert_eq!(read.len(), 1, "the object must hold exactly one output watermark row");
 		assert_eq!(read[0].watermark, at_millis(9_000));
 		assert_eq!(read[0].at, CommitVersion(20));
 	}
@@ -202,7 +202,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_sweep_persists_every_published_frontier() {
+	fn a_sweep_persists_every_published_output_watermark() {
 		// A sweep that skips a live entry loses it on restart, since nothing else writes the row.
 		let single = SingleTransaction::testing();
 		let output_watermarks = OutputWatermarks::default();
@@ -244,7 +244,7 @@ mod tests {
 
 	#[test]
 	fn a_sweep_that_failed_to_persist_is_retried_rather_than_marked_done() {
-		// Marking before the commit lands would strand the frontier until its producer happens to publish
+		// Marking before the commit lands would strand the output watermark until its producer happens to publish
 		// again.
 		let output_watermarks = OutputWatermarks::default();
 		output_watermarks.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
@@ -277,7 +277,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_hydrated_frontier_is_never_swept_back_to_the_store_it_came_from() {
+	fn a_hydrated_output_watermark_is_never_swept_back_to_the_store_it_came_from() {
 		// A restart must not rewrite what it just read, or every restart pays a commit for nothing.
 		let single = SingleTransaction::testing();
 		let output_watermarks = OutputWatermarks::default();
@@ -294,7 +294,7 @@ mod tests {
 
 	#[test]
 	fn a_sweep_persists_a_republish_that_lands_after_the_previous_one() {
-		// A later publish must overwrite the row, otherwise a restart resumes at a stale frontier.
+		// A later publish must overwrite the row, otherwise a restart resumes at a stale output watermark.
 		let single = SingleTransaction::testing();
 		let output_watermarks = OutputWatermarks::default();
 		output_watermarks.publish(OUTPUT, at_millis(4_000), CommitVersion(10));

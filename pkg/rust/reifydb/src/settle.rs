@@ -270,7 +270,7 @@ impl Database {
 	/// materialized and staged for its subscribers. Staging is as far as this goes; delivery
 	/// belongs to whoever owns the transport.
 	///
-	/// The target is snapshotted on entry so a concurrent writer cannot push the frontier away
+	/// The target is snapshotted on entry so a concurrent writer cannot push the done-until mark away
 	/// from a caller trying to reach it. A subscription that overran its queue is refused, because
 	/// the overflow threw the work away.
 	pub fn caught_up(&self) -> Result<CaughtUp, ValueError> {

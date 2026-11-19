@@ -158,7 +158,7 @@ impl WaterMark {
 			if let Some(live) = self.state.lock().min_live_in_flight() {
 				assert!(
 					version.0 < live,
-					"advancing the frontier to {} by fiat would leap over the live in-flight \
+					"advancing the done-until mark to {} by fiat would leap over the live in-flight \
 					 version {}; consumers would treat that commit as applied before its writes \
 					 exist, tearing snapshots and permanently skipping its commit log events",
 					version.0, live
@@ -240,7 +240,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn register_in_flight_with_holds_frontier_below_the_acquired_version() {
+	fn register_in_flight_with_holds_done_until_below_the_acquired_version() {
 		let watermark = WaterMark::new("watermark".into());
 		watermark.register_in_flight(CommitVersion(1));
 		watermark.register_in_flight(CommitVersion(2));
@@ -254,11 +254,11 @@ pub mod tests {
 		assert_eq!(acquired.0, 4, "the version computed inside the lock is returned");
 		assert!(
 			watermark.done_until().0 < 4,
-			"a freshly acquired read snapshot must hold the frontier below it so its history cannot be evicted"
+			"a freshly acquired read snapshot must hold the done-until mark below it so its history cannot be evicted"
 		);
 
 		watermark.mark_finished(CommitVersion(4));
-		assert_eq!(watermark.done_until().0, 4, "the frontier advances once the snapshot finishes");
+		assert_eq!(watermark.done_until().0, 4, "the done-until mark advances once the snapshot finishes");
 	}
 
 	#[test]
@@ -507,10 +507,10 @@ pub mod tests {
 
 	#[cfg(not(reifydb_single_threaded))]
 	#[test]
-	fn with_advancer_reaches_frontier_after_coalesced_kicks() {
+	fn with_advancer_reaches_done_until_after_coalesced_kicks() {
 		// Out-of-order bursts far beyond MAX_INLINE_ADVANCE force deferrals whose kicks
 		// coalesce in the capacity-1 mailbox. If Full-as-coalesced could drop the LAST
-		// kick, the frontier would stop short of the top and this wait would time out.
+		// kick, the done-until mark would stop short of the top and this wait would time out.
 		let (_system, watermark) = watermark_with_live_advancer("coalesced");
 		let watermark = Arc::new(watermark);
 		let threads = 8u64;
@@ -535,7 +535,7 @@ pub mod tests {
 
 		assert!(
 			watermark.wait_for_mark_timeout(CommitVersion(total), Duration::from_seconds(10).unwrap()),
-			"advancer never reached the frontier: done_until={:?} expected {total}",
+			"advancer never reached the done-until mark: done_until={:?} expected {total}",
 			watermark.done_until()
 		);
 	}
@@ -554,7 +554,7 @@ pub mod tests {
 		for version in 2..=300 {
 			watermark.mark_finished(CommitVersion(version));
 		}
-		assert_eq!(watermark.done_until().0, 0, "the frontier is blocked on version 1");
+		assert_eq!(watermark.done_until().0, 0, "the done-until mark is blocked on version 1");
 
 		watermark.mark_finished(CommitVersion(1));
 
@@ -628,7 +628,7 @@ pub mod tests {
 
 		assert!(
 			watermark.wait_for_mark_timeout(CommitVersion(301), Duration::from_seconds(5).unwrap()),
-			"the re-entrant callback must complete and its version must advance the frontier"
+			"the re-entrant callback must complete and its version must advance the done-until mark"
 		);
 		assert_eq!(reentered.load(Ordering::SeqCst), 1, "callback ran exactly once");
 	}
@@ -665,7 +665,7 @@ pub mod tests {
 		assert_eq!(
 			watermark.done_until().0,
 			10_000,
-			"the inline path must reach the frontier synchronously, before mark_finished returns"
+			"the inline path must reach the done-until mark synchronously, before mark_finished returns"
 		);
 	}
 
@@ -696,9 +696,9 @@ pub mod tests {
 
 	#[cfg(not(reifydb_single_threaded))]
 	#[test]
-	fn drain_restores_frontier_regardless_of_advancer_progress() {
+	fn drain_restores_done_until_regardless_of_advancer_progress() {
 		// Oracle::stop calls drain() after the runtime is gone; whatever the advancer did
-		// or did not get to, one drain must restore the frontier and release every waiter
+		// or did not get to, one drain must restore the done-until mark and release every waiter
 		// left in the map, or shutdown strands threads until their timeouts.
 		let (_system, watermark) = watermark_with_live_advancer("stop-drain");
 
@@ -715,7 +715,7 @@ pub mod tests {
 		watermark.mark_finished(CommitVersion(1));
 		watermark.drain();
 
-		assert_eq!(watermark.done_until().0, 1_000, "drain must reach the true frontier before returning");
+		assert_eq!(watermark.done_until().0, 1_000, "drain must reach the true done-until mark before returning");
 		assert!(
 			waiter.wait_timeout(Duration::from_seconds(5).unwrap()),
 			"a waiter pending at drain time must be released"
@@ -725,7 +725,7 @@ pub mod tests {
 	#[cfg(not(reifydb_single_threaded))]
 	#[test]
 	fn done_until_monotonic_under_concurrent_inline_and_advancer() {
-		// The frontier is advanced from two places at once (bounded inline pops and the
+		// The done-until mark is advanced from two places at once (bounded inline pops and the
 		// advancer's chunks); a sampler must never observe it move backwards, because
 		// consumers treat done_until as a GC cutoff that only grows.
 		let (_system, watermark) = watermark_with_live_advancer("monotonic");
@@ -770,7 +770,7 @@ pub mod tests {
 		}
 		assert!(
 			watermark.wait_for_mark_timeout(CommitVersion(total), Duration::from_seconds(10).unwrap()),
-			"the frontier must reach the last version"
+			"the done-until mark must reach the last version"
 		);
 		stop.store(true, Ordering::Relaxed);
 		sampler.join().unwrap();

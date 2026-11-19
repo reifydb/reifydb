@@ -102,7 +102,7 @@ pub struct ReaderWatermarks<'a> {
 
 impl ReaderWatermarks<'_> {
 	/// Highest commit version the commit queue has released in order. Advances even for commits
-	/// whose deltas are all excluded by `is_commit_excluded`, so it is the frontier every reader
+	/// whose deltas are all excluded by `is_commit_excluded`, so it is the done-until mark every reader
 	/// is measured against.
 	pub fn released(&self) -> CommitVersion {
 		self.db.engine().commit_released()

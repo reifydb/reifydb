@@ -574,7 +574,7 @@ mod tests {
 
 	#[test]
 	fn a_backfill_over_existing_rows_commits_them_and_advances_the_materialized_through() {
-		// A new view's readers wait on the output frontier; a backfill that stores rows without moving it
+		// A new view's readers wait on the output watermark; a backfill that stores rows without moving it
 		// leaves them waiting for rows that are already there.
 		let te = TestEngine::builder().with_commit_queue().build();
 		te.admin("CREATE NAMESPACE app");

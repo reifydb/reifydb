@@ -125,7 +125,7 @@ pub mod tests {
 	fn a_reserved_version_stays_invisible_until_published() {
 		// The oracle registers a reserved version on both watermarks before publishing it;
 		// if reserve bumped the public counter, a concurrent begin could snapshot at a
-		// version no watermark knows about, and the commit frontier could pass it before
+		// version no watermark knows about, and the done-until mark could pass it before
 		// registration - the torn-snapshot / lost commit log window this API exists to close.
 		let provider = StandardVersionProvider::new(CommitVersion(0));
 

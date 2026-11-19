@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! A frontier published inside the sweep interval reaches disk because graceful shutdown sweeps once
+//! An output watermark published inside the sweep interval reaches disk because graceful shutdown sweeps once
 //! in the quiet window between the commit log drain and the single-store flush. The registry itself has no
 //! running-flow observable - a hydrated entry resolves as withheld until its producer republishes - so
 //! this suite reads the persisted keys directly rather than through the query surface.
@@ -41,8 +41,8 @@ fn declare(db: &TestDb) {
 	db.admin("CREATE DEFERRED VIEW fsd::out { id: int4, v: int4, ts: datetime } AS { FROM fsd::src }");
 }
 
-/// The stamp is the trailing eight big-endian bytes of the frontier value; only the version is read
-/// here because the frontier instant says nothing about which sweep wrote it.
+/// The stamp is the trailing eight big-endian bytes of the output watermark value; only the version is read
+/// here because the output watermark instant says nothing about which sweep wrote it.
 fn persisted_stamps(db: &TestDb) -> Vec<CommitVersion> {
 	let store = db.engine().single().read_store();
 	let batch = SingleVersionRange::range_batch(
@@ -51,7 +51,7 @@ fn persisted_stamps(db: &TestDb) -> Vec<CommitVersion> {
 		OutputWatermarkKey::full_scan().encode(),
 		SCAN_BATCH,
 	)
-	.expect("scan the output frontier keyspace");
+	.expect("scan the output watermark keyspace");
 	batch.items
 		.iter()
 		.filter_map(|row| {
@@ -62,10 +62,10 @@ fn persisted_stamps(db: &TestDb) -> Vec<CommitVersion> {
 }
 
 #[test]
-fn a_frontier_published_after_the_last_sweep_survives_a_graceful_shutdown() {
+fn a_output_watermark_published_after_the_last_sweep_survives_a_graceful_shutdown() {
 	// Every earlier sweep stamped at or below `before`, so a stamp above it can only have been written on the way
 	// out.
-	let path = TempDbPath::new("frontier_shutdown");
+	let path = TempDbPath::new("output_watermark_shutdown");
 
 	let before;
 	{
@@ -88,7 +88,7 @@ fn a_frontier_published_after_the_last_sweep_survives_a_graceful_shutdown() {
 
 	assert!(
 		stamps.iter().any(|at| *at > before),
-		"a frontier stamped above {:?} must be on disk after a graceful shutdown; found {:?}",
+		"an output watermark stamped above {:?} must be on disk after a graceful shutdown; found {:?}",
 		before,
 		stamps
 	);

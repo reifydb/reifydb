@@ -39,10 +39,10 @@ mod flow_materialization;
 mod flow_routing;
 #[path = "flow_watermark.rs"]
 mod flow_watermark;
-#[path = "frontier_propagation.rs"]
-mod frontier_propagation;
-#[path = "frontier_shutdown.rs"]
-mod frontier_shutdown;
+#[path = "output_watermark_propagation.rs"]
+mod output_watermark_propagation;
+#[path = "output_watermark_shutdown.rs"]
+mod output_watermark_shutdown;
 #[path = "fused_chain.rs"]
 mod fused_chain;
 #[path = "common/gate.rs"]

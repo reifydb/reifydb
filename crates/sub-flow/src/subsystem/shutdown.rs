@@ -28,7 +28,7 @@ impl FlowShutdownState {
 			self.engine.single(),
 			&self.substrate.output_watermarks,
 		) {
-			panic!("flow shutdown could not persist its output frontiers: {e}");
+			panic!("flow shutdown could not persist its output watermarks: {e}");
 		}
 	}
 }

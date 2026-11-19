@@ -212,8 +212,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_version_above_the_frontier_is_never_served() {
-		// the tracker has not seen every commit above its frontier, so a write may be missing there.
+	fn a_version_above_the_released_through_is_never_served() {
+		// the tracker has not seen every commit above its released point, so a write may be missing there.
 		let queue = queue();
 		let lease = queue.write_tracker().register(VAULT);
 		let mut cache = LookupCache::new(16);
@@ -287,7 +287,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_layered_read_whose_commit_is_above_the_frontier_goes_to_storage() {
+	fn a_layered_read_whose_commit_is_above_the_released_through_goes_to_storage() {
 		// a commit the tracker has not received may hold a write to the partition, so it must never be served.
 		let queue = queue();
 		let lease = queue.write_tracker().register(VAULT);

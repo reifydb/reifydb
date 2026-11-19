@@ -227,8 +227,8 @@ impl Workload for JoinWorkload {
 	}
 
 	fn lanes(&self, row: &JoinRow) -> Lanes {
-		// The coord lane is what the driver folds into its arrival frontier and the sweep watermark
-		// is clamped to that frontier, so carrying anything else here pins the corpus to the epoch.
+		// The coord lane is what the driver folds into its flow watermark and the sweep watermark
+		// is clamped to that flow watermark, so carrying anything else here pins the corpus to the epoch.
 		// The side stays in the fingerprint: it is drawn once per row alongside the number.
 		Lanes {
 			number: row.number.0,

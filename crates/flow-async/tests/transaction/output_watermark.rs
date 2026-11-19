@@ -19,7 +19,7 @@ fn entry(watermark: i64, at: u64) -> OutputWatermarkEntry {
 }
 
 #[test]
-fn a_lower_publish_never_regresses_the_frontier_or_its_stamp() {
+fn a_lower_publish_never_regresses_the_output_watermark_or_its_stamp() {
 	// A regression re-opens a sealed horizon, and a rejected publish must never raise the stamp.
 	let output_watermarks = OutputWatermarks::default();
 
@@ -35,7 +35,7 @@ fn a_lower_publish_never_regresses_the_frontier_or_its_stamp() {
 }
 
 #[test]
-fn a_frontier_published_at_the_readers_own_version_is_withheld() {
+fn a_output_watermark_published_at_the_readers_own_version_is_withheld() {
 	// At an equal version nothing orders producer before consumer, so folding it seals early.
 	let output_watermarks = OutputWatermarks::default();
 
@@ -46,7 +46,7 @@ fn a_frontier_published_at_the_readers_own_version_is_withheld() {
 }
 
 #[test]
-fn a_withheld_frontier_never_reads_as_one_that_was_never_published() {
+fn a_withheld_output_watermark_never_reads_as_one_that_was_never_published() {
 	// A tie is routine, so conflating the two makes the unpublished-source warning pure noise.
 	let output_watermarks = OutputWatermarks::default();
 
@@ -71,7 +71,7 @@ fn an_object_that_never_published_stays_distinguishable_from_one_that_published_
 
 #[test]
 fn a_published_entry_is_reported_for_persistence_at_the_stamp_it_was_published_with() {
-	// A sweep writes whatever entries() reports, so a wrong stamp resurrects a stale frontier on restart.
+	// A sweep writes whatever entries() reports, so a wrong stamp resurrects a stale output watermark on restart.
 	let output_watermarks = OutputWatermarks::default();
 
 	assert!(output_watermarks.entries().is_empty());
@@ -96,7 +96,7 @@ fn a_hydrated_entry_is_readable_but_never_needs_persisting() {
 }
 
 #[test]
-fn a_second_publish_at_the_same_frontier_still_needs_persisting() {
+fn a_second_publish_at_the_same_output_watermark_still_needs_persisting() {
 	// The generation counts publishes, not values; a no-op publish must not mask a real one behind it.
 	let output_watermarks = OutputWatermarks::default();
 
@@ -113,8 +113,8 @@ fn a_second_publish_at_the_same_frontier_still_needs_persisting() {
 }
 
 #[test]
-fn a_hydrated_frontier_is_never_foldable_before_its_producer_publishes() {
-	// The rows justifying a persisted frontier can be lost with the commit buffer, so folding it
+fn a_hydrated_output_watermark_is_never_foldable_before_its_producer_publishes() {
+	// The rows justifying a persisted output watermark can be lost with the commit buffer, so folding it
 	// unpublished seals a window early.
 	let output_watermarks = OutputWatermarks::default();
 
@@ -125,7 +125,7 @@ fn a_hydrated_frontier_is_never_foldable_before_its_producer_publishes() {
 
 #[test]
 fn max_wins_resumes_once_a_hydrated_entry_has_been_superseded() {
-	// Superseding must apply exactly once, otherwise every later publish overwrites a higher live frontier.
+	// Superseding must apply exactly once, otherwise every later publish overwrites a higher live output watermark.
 	let output_watermarks = OutputWatermarks::default();
 
 	output_watermarks.hydrate(vec![entry(9_000, 10)]);
@@ -138,7 +138,7 @@ fn max_wins_resumes_once_a_hydrated_entry_has_been_superseded() {
 #[test]
 fn a_live_publish_supersedes_an_unclamped_hydrated_value_rather_than_maxing_against_it() {
 	// A live publish is justified and the hydrated value is not, so max-wins here would keep an unjustified
-	// frontier forever.
+	// output watermark forever.
 	let output_watermarks = OutputWatermarks::default();
 
 	output_watermarks.hydrate(vec![entry(9_000, 10)]);
@@ -152,7 +152,7 @@ fn a_live_publish_supersedes_an_unclamped_hydrated_value_rather_than_maxing_agai
 }
 
 #[test]
-fn a_hydrated_frontier_stays_withheld_until_the_reader_passes_its_stamp() {
+fn a_hydrated_output_watermark_stays_withheld_until_the_reader_passes_its_stamp() {
 	// A hydrated stamp must stay withheld until the flow replays past it, or the restart seals early.
 	let output_watermarks = OutputWatermarks::default();
 

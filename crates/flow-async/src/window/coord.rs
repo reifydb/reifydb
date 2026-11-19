@@ -347,7 +347,7 @@ mod tests {
 	}
 
 	#[test]
-	fn an_ordinal_frontier_moves_inline_from_the_batch_and_only_forward() {
+	fn an_ordinal_operator_watermark_moves_inline_from_the_batch_and_only_forward() {
 		// nothing arms a timer here, so the batch itself must advance the ledger or the horizon never moves
 		let mut store = MockStore::default();
 
@@ -499,8 +499,8 @@ mod tests {
 	}
 
 	#[test]
-	fn the_horizon_trails_the_frontier_by_the_lag() {
-		// A horizon too close to the frontier seals windows that may still take late rows.
+	fn the_horizon_trails_the_operator_watermark_by_the_lag() {
+		// A horizon too close to the operator watermark seals windows that may still take late rows.
 		assert_eq!(<ByU8 as SealDomain>::horizon(ByU8(100), RowSpan::of(32)), ByU8(68));
 		assert_eq!(<ByU8 as SealDomain>::horizon(ByU8(100), RowSpan::ZERO), ByU8(100));
 	}
@@ -513,7 +513,7 @@ mod tests {
 
 	#[test]
 	fn an_empty_ledger_reads_as_genesis() {
-		// A frontier above zero on a new operator would seal early slots before any row arrived.
+		// An operator watermark above zero on a new operator would seal early slots before any row arrived.
 		let mut store = MockStore::default();
 
 		assert_eq!(<ByU8 as SealDomain>::watermark(&mut store).unwrap(), ByU8(0));
