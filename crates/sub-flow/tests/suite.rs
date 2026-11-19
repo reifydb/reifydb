@@ -31,18 +31,14 @@ mod digest_view_sink_write;
 mod digest_view_sort_key;
 #[path = "enum_name_in_view.rs"]
 mod enum_name_in_view;
+#[path = "flow_caught_up.rs"]
+mod flow_caught_up;
 #[path = "flow_isolation.rs"]
 mod flow_isolation;
 #[path = "flow_materialization.rs"]
 mod flow_materialization;
 #[path = "flow_routing.rs"]
 mod flow_routing;
-#[path = "flow_caught_up.rs"]
-mod flow_caught_up;
-#[path = "output_watermark_propagation.rs"]
-mod output_watermark_propagation;
-#[path = "output_watermark_shutdown.rs"]
-mod output_watermark_shutdown;
 #[path = "fused_chain.rs"]
 mod fused_chain;
 #[path = "common/gate.rs"]
@@ -59,6 +55,10 @@ mod lower_join_key;
 mod managed_reclaim;
 #[path = "operator_with_requirements.rs"]
 mod operator_with_requirements;
+#[path = "output_watermark_propagation.rs"]
+mod output_watermark_propagation;
+#[path = "output_watermark_shutdown.rs"]
+mod output_watermark_shutdown;
 #[path = "partitioned_view.rs"]
 mod partitioned_view;
 #[path = "percentile_rolling_view.rs"]

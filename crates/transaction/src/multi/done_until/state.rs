@@ -418,7 +418,11 @@ mod tests {
 		assert_eq!(done_until.load(Ordering::SeqCst), 0, "one of two holders finishing must not advance");
 
 		state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
-		assert_eq!(done_until.load(Ordering::SeqCst), 1, "the last holder finishing advances the done-until mark");
+		assert_eq!(
+			done_until.load(Ordering::SeqCst),
+			1,
+			"the last holder finishing advances the done-until mark"
+		);
 		assert_eq!(state.live_range(), None, "the consumed version must leave the window");
 	}
 
@@ -473,7 +477,11 @@ mod tests {
 		);
 
 		state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
-		assert_eq!(done_until.load(Ordering::SeqCst), 2, "releasing the reader lets the done-until mark catch up");
+		assert_eq!(
+			done_until.load(Ordering::SeqCst),
+			2,
+			"releasing the reader lets the done-until mark catch up"
+		);
 	}
 
 	#[test]
@@ -551,7 +559,11 @@ mod tests {
 		assert_eq!(done_until.load(Ordering::SeqCst), 8);
 
 		state.drain_remaining(&done_until, &mut out);
-		assert_eq!(done_until.load(Ordering::SeqCst), 10, "drain_remaining must reach the true done-until mark");
+		assert_eq!(
+			done_until.load(Ordering::SeqCst),
+			10,
+			"drain_remaining must reach the true done-until mark"
+		);
 
 		let outcome = state.advance_chunk(&done_until, &mut out, 4);
 		assert_eq!(outcome, AdvanceOutcome::Complete, "a caught-up chunk must not request another kick");

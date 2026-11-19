@@ -281,8 +281,8 @@ mod tests {
 		transaction::{
 			FlowTransaction,
 			mock::FlowTxn,
-			substrate::{FlowSubstrate, persist},
 			source_watermark::SourceWatermarks,
+			substrate::{FlowSubstrate, persist},
 		},
 	};
 

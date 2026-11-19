@@ -167,7 +167,10 @@ mod tests {
 				"timer seal diverges from the gate at operator watermark {wm}"
 			);
 		}
-		assert!(!sealed(last + cutoff_ms), "operator watermark exactly cutoff past the last event is still mutable");
+		assert!(
+			!sealed(last + cutoff_ms),
+			"operator watermark exactly cutoff past the last event is still mutable"
+		);
 		assert!(sealed(last + cutoff_ms + 1), "one past the cutoff is sealed");
 	}
 
@@ -248,8 +251,8 @@ mod reap_tests {
 	fn txn_at(engine: &TestEngine, step: u64) -> DeferredTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(step)).deferred();
 		txn.set_batch_time(Some(DateTime::from_nanos(
-				i64::try_from(step).expect("test step fits in i64 nanoseconds"),
-			)));
+			i64::try_from(step).expect("test step fits in i64 nanoseconds"),
+		)));
 		txn
 	}
 
@@ -381,8 +384,8 @@ mod seal_arm_tests {
 	fn txn_at(engine: &TestEngine, step: u64) -> DeferredTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(step)).deferred();
 		txn.set_batch_time(Some(DateTime::from_nanos(
-				i64::try_from(step).expect("test step fits in i64 nanoseconds"),
-			)));
+			i64::try_from(step).expect("test step fits in i64 nanoseconds"),
+		)));
 		txn
 	}
 

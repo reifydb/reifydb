@@ -4,10 +4,10 @@
 pub mod consumer;
 pub mod delivery;
 pub mod poller;
+pub mod position;
 pub mod reader;
 pub mod store;
 pub mod subsystem;
 pub mod tracker;
 pub mod transaction;
-pub mod position;
 pub mod worker;

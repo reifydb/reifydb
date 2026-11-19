@@ -1498,8 +1498,8 @@ mod seal_tests {
 	fn txn_at(engine: &TestEngine, step: u64) -> DeferredTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(step)).deferred();
 		txn.set_batch_time(Some(DateTime::from_nanos(
-				i64::try_from(step).expect("test step fits in i64 nanoseconds"),
-			)));
+			i64::try_from(step).expect("test step fits in i64 nanoseconds"),
+		)));
 		txn
 	}
 

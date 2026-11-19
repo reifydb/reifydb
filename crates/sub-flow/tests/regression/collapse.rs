@@ -397,8 +397,8 @@ fn a_live_created_emit_off_reader_keeps_its_producer_one_layer_per_source() {
 
 #[test]
 fn a_collapsed_backlog_holding_a_completeness_assertion_still_ends_exact() {
-	// A completeness change inside a collapsed step must not crash, stall or split the step; its flow watermark effect
-	// is unobservable here.
+	// A completeness change inside a collapsed step must not crash, stall or split the step; its flow watermark
+	// effect is unobservable here.
 	let view = reader(
 		"id: int4, pv: int8",
 		"FROM app::level INNER JOIN { FROM app::price } AS p USING (k, p.k) WITH { latest: true } MAP { id, pv: p_v }",

@@ -520,7 +520,10 @@ mod tests {
 		.unwrap();
 
 		let due = index.due::<Entry>(&mut store, 100, 16).unwrap();
-		assert!(due.is_empty(), "a threshold below the raised cached earliest must skip the range scan entirely");
+		assert!(
+			due.is_empty(),
+			"a threshold below the raised cached earliest must skip the range scan entirely"
+		);
 	}
 
 	#[test]

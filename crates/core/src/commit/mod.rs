@@ -2,6 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod loader;
+pub mod position;
 pub mod queue;
 pub mod tracker;
-pub mod position;

@@ -402,7 +402,7 @@ mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		actors::pending::PendingWrite,
-		commit::{tracker::WriteTracker, position::ReaderPosition},
+		commit::{position::ReaderPosition, tracker::WriteTracker},
 		common::{JoinType, TimeDomain},
 		flow::operator::LookupObject,
 		interface::catalog::{flow::FlowEdge, id::TableId},

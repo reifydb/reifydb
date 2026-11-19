@@ -46,7 +46,10 @@ impl VersionLeases {
 		}))
 	}
 
-	pub fn try_acquire_at_cutoff(self: &Arc<Self>, done_until: &DoneUntil) -> Result<VersionLeaseGuard, ValueError> {
+	pub fn try_acquire_at_cutoff(
+		self: &Arc<Self>,
+		done_until: &DoneUntil,
+	) -> Result<VersionLeaseGuard, ValueError> {
 		let mut leases = self.inner.lock();
 		let qdu = done_until.done_until();
 		let cutoff = leases.keys().next().copied().unwrap_or(CommitVersion(u64::MAX)).min(qdu);

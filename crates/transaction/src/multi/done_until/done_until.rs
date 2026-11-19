@@ -715,7 +715,11 @@ pub mod tests {
 		done_until.mark_finished(CommitVersion(1));
 		done_until.drain();
 
-		assert_eq!(done_until.done_until().0, 1_000, "drain must reach the true done-until mark before returning");
+		assert_eq!(
+			done_until.done_until().0,
+			1_000,
+			"drain must reach the true done-until mark before returning"
+		);
 		assert!(
 			waiter.wait_timeout(Duration::from_seconds(5).unwrap()),
 			"a waiter pending at drain time must be released"

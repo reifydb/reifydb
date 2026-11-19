@@ -287,8 +287,8 @@ mod tests {
 
 	#[test]
 	fn the_coordinate_one_span_behind_the_operator_watermark_is_due_to_evict_at_that_operator_watermark() {
-		// A rolling window holds (operator watermark - span, operator watermark] and evicts inclusively at the low
-		// end, so the coordinate exactly one span behind must arm at coord + span. Tumbling's
+		// A rolling window holds (operator watermark - span, operator watermark] and evicts inclusively at the
+		// low end, so the coordinate exactly one span behind must arm at coord + span. Tumbling's
 		// strict +1 gate arms one tick late and the boundary entry then never expires.
 		let span = Duration::from_seconds(5).expect("representable span");
 		let operator_watermark = order(10_000);

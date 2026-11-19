@@ -506,7 +506,15 @@ impl FlowActor {
 				lsn: state.cursor_lsn,
 			},
 		));
-		self.dispatch_commit(state, ctx, slice, advance_to, state.cursor_lsn, false, OutputWatermarkHolds::new());
+		self.dispatch_commit(
+			state,
+			ctx,
+			slice,
+			advance_to,
+			state.cursor_lsn,
+			false,
+			OutputWatermarkHolds::new(),
+		);
 	}
 
 	fn on_drain(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
@@ -876,7 +884,11 @@ impl FlowActor {
 				state.cursor = advance_to;
 				state.cursor_lsn = lsn;
 				for hold in holds {
-					self.substrate.output_watermarks.publish(hold.object, hold.output_watermark, advance_to);
+					self.substrate.output_watermarks.publish(
+						hold.object,
+						hold.output_watermark,
+						advance_to,
+					);
 				}
 				self.move_lookup_lease(state);
 				self.publish_position(advance_to);
@@ -1634,9 +1646,9 @@ mod pull_protocol {
 		actors::{flow::FlowActorHandle, pending::Pending},
 		commit::{
 			loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
+			position::ReaderPosition,
 			queue::{CommitQueueFloor, FlowQueueFloor},
 			tracker::WriteTracker,
-			position::ReaderPosition,
 		},
 		default::flow::LOOKUP_TRACKER_ENTRIES_TESTING,
 		delta::{Delta, RemoveAnnounce, SetPre},
@@ -1660,7 +1672,8 @@ mod pull_protocol {
 	use reifydb_flow_async::{
 		operator::provider::EmptyOperatorProvider,
 		transaction::{
-			DeferredParams, FlowTransaction, deferred::DeferredTransaction, source_watermark::SourceWatermarks,
+			DeferredParams, FlowTransaction, deferred::DeferredTransaction,
+			source_watermark::SourceWatermarks,
 		},
 	};
 	use reifydb_runtime::{
@@ -3240,7 +3253,8 @@ mod tick_failures {
 		operator::{BoxedHostOperator, HostOperator, TimedOutput, host::HostContext},
 		timer::{Timer, wheel::TimerWheel},
 		transaction::{
-			DeferredParams, FlowTransaction, deferred::DeferredTransaction, source_watermark::SourceWatermarks,
+			DeferredParams, FlowTransaction, deferred::DeferredTransaction,
+			source_watermark::SourceWatermarks,
 		},
 	};
 	use reifydb_runtime::{
@@ -3929,7 +3943,8 @@ mod tick_failures {
 			substrate: substrate.clone(),
 			lookup: None,
 		});
-		SourceWatermarks::advance(SOURCE, &mut txn, at_millis(FLOW_WATERMARK_MS)).expect("advance source watermark");
+		SourceWatermarks::advance(SOURCE, &mut txn, at_millis(FLOW_WATERMARK_MS))
+			.expect("advance source watermark");
 		TimerWheel::arm(
 			TIMED,
 			&mut txn,

@@ -11,6 +11,7 @@ mod context;
 mod database;
 pub mod event;
 mod health;
+pub mod progress;
 mod session;
 #[cfg(feature = "sub_flow")]
 mod settle;
@@ -19,7 +20,6 @@ mod subscribe;
 pub mod subsystem;
 pub mod system;
 pub mod vendor;
-pub mod progress;
 
 pub use api::{
 	migration::{Migration, MigrationSource, MigrationStatement},

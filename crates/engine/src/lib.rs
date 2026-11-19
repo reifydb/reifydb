@@ -18,6 +18,7 @@ pub mod flow_sync;
 pub mod lift;
 pub mod partition;
 pub mod policy;
+pub mod query_floor;
 pub mod queue;
 #[cfg(not(reifydb_single_threaded))]
 pub mod remote;
@@ -26,7 +27,6 @@ pub mod session;
 pub mod subscription;
 pub mod transaction;
 pub mod vm;
-pub mod query_floor;
 
 pub struct EngineVersion;
 

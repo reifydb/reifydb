@@ -381,7 +381,8 @@ impl<O: HostOperator> Harness<O> {
 
 	pub fn settle_timers(&mut self, flow_watermark_ms: i64) -> Result<Vec<Change>, ValueError> {
 		const MAX_ROUNDS: u32 = 4_096;
-		let flow_watermark = DateTime::from_epoch_millis(flow_watermark_ms).expect("a settle flow watermark is representable");
+		let flow_watermark = DateTime::from_epoch_millis(flow_watermark_ms)
+			.expect("a settle flow watermark is representable");
 		let operator = self.operator.id();
 		let mut emitted = Vec::new();
 		let mut rounds = 0u32;

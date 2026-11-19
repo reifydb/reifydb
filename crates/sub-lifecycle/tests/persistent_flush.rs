@@ -23,7 +23,7 @@ use reifydb_core::{
 		store::{MultiVersionCommit, WalCheckpoint},
 	},
 	key::queue::QueueDeduplicationKey,
-	lifecycle::{progress::Progress, task::LifecycleTask, floor::FlushFloor},
+	lifecycle::{floor::FlushFloor, progress::Progress, task::LifecycleTask},
 };
 use reifydb_runtime::{context::clock::Clock, version_epoch::VersionEpoch};
 use reifydb_store_multi::{

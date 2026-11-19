@@ -7,7 +7,7 @@ use reifydb_core::{
 	default,
 	interface::catalog::id::ViewId,
 	internal_error,
-	lifecycle::{metrics::RetentionMetrics, floor::ConsumerPositions},
+	lifecycle::{floor::ConsumerPositions, metrics::RetentionMetrics},
 	marker::{LatencyReader, MarkerSweep, ViewLatency},
 	metrics::sample::{MetricKind, MetricsSample, Reading},
 };
@@ -44,7 +44,7 @@ use crate::{
 			cgroup_cpu_rows, cgroup_io_rows, cgroup_memory_rows, cgroup_pressure_rows, process_io_rows,
 			process_memory_rows, process_sched_rows,
 		},
-		runtime::collect::{Collectors, collect_memory, collect_operators, collect_mvcc},
+		runtime::collect::{Collectors, collect_memory, collect_mvcc, collect_operators},
 	},
 	framework::{
 		accumulator::{Measure, MetricsAccumulator, MetricsRow, PublishedSurface},

@@ -25,7 +25,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	actors::flow::FlowWriterRegistry,
-	commit::{queue::CommitQueue, tracker::WriteTracker, position::ReaderPosition},
+	commit::{position::ReaderPosition, queue::CommitQueue, tracker::WriteTracker},
 	common::CommitVersion,
 	error::diagnostic::engine::read_only_rejection,
 	event::{Event, EventBus},

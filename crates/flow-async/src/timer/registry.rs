@@ -199,7 +199,8 @@ mod tests {
 
 	#[test]
 	fn an_entry_exactly_at_the_flow_watermark_is_due() {
-		// the comparison must be inclusive, otherwise a timer the flow watermark has stopped exactly at never fires
+		// the comparison must be inclusive, otherwise a timer the flow watermark has stopped exactly at never
+		// fires
 		let mut registry = TimerRegistry::default();
 
 		assert_eq!(due_before(&mut registry, vec![armed(1, 5_000)], flow(1), 5_000), vec![armed(1, 5_000)]);
@@ -219,8 +220,8 @@ mod tests {
 
 	#[test]
 	fn one_flow_never_surfaces_another_flows_operators() {
-		// candidates must be keyed by flow, otherwise an operator is scanned against a flow watermark that is not
-		// its own
+		// candidates must be keyed by flow, otherwise an operator is scanned against a flow watermark that is
+		// not its own
 		let mut registry = TimerRegistry::default();
 
 		due_before(&mut registry, vec![armed(1, 5_000)], flow(1), 0);

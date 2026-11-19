@@ -41,7 +41,9 @@ fn mvcc_metrics_live_in_the_mvcc_domain_not_memory() {
 	);
 
 	assert_eq!(
-		db.row_count("from system::metric::runtime::memory::current filter { metric == \"query_done_until_lag\" }"),
+		db.row_count(
+			"from system::metric::runtime::memory::current filter { metric == \"query_done_until_lag\" }"
+		),
 		0,
 		"query_done_until_lag must not appear in the memory domain",
 	);

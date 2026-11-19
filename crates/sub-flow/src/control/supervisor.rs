@@ -18,8 +18,8 @@ use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage},
 	commit::{
 		loader::CommitLoaderMessage,
-		queue::{CommitPull, CommitQueue, CommitQueueFloor, lsn_through},
 		position::ReaderPosition,
+		queue::{CommitPull, CommitQueue, CommitQueueFloor, lsn_through},
 	},
 	common::{CommitVersion, SourceVersion},
 	flow::{dag::FlowDag, operator::OperatorDef},
@@ -84,8 +84,8 @@ use crate::{
 	},
 	marker::MarkerMap,
 	progress::{
-		pull_limit::PullLimit,
 		output_watermark,
+		pull_limit::PullLimit,
 		tracker::{FlowPositionTracker, FlowWaker, FoldShape, ObjectVersionTracker},
 	},
 };

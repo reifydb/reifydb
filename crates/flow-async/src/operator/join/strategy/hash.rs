@@ -119,8 +119,9 @@ impl JoinRows {
 		let times = row_times(&taken)?;
 		let times: Vec<Option<DateTime>> =
 			(0..indices.len()).map(|row| times.get(row).copied().flatten()).collect();
-		let instants: ArrayRef =
-			Arc::new(datetime_array(times.iter().map(|time| time.unwrap_or(self.batch_time)).collect::<Vec<_>>()));
+		let instants: ArrayRef = Arc::new(datetime_array(
+			times.iter().map(|time| time.unwrap_or(self.batch_time)).collect::<Vec<_>>(),
+		));
 		let numbers: ArrayRef = Arc::new(UInt64Array::from_iter_values(
 			require_row_numbers(&taken)?.iter().map(|number| number.value()),
 		));

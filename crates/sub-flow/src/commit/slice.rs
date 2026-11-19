@@ -207,7 +207,8 @@ impl SliceComputer {
 			cursor.completeness_objects,
 		)?;
 		if changes.is_empty() {
-			let published_watermarks = self.unit_published_watermarks(flow_engine, cursor.flow_id, advance_to);
+			let published_watermarks =
+				self.unit_published_watermarks(flow_engine, cursor.flow_id, advance_to);
 			if !checkpoint_due(advance_to, cursor.durable_cursor, config)
 				&& let Some(cache) = hold_cache.as_ref()
 				&& cache.published_watermarks == published_watermarks
@@ -866,9 +867,9 @@ mod integration {
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		commit::{
+			position::ReaderPosition,
 			queue::{CommitPull, CommitQueue},
 			tracker::WriteTracker,
-			position::ReaderPosition,
 		},
 		common::TimeDomain,
 		flow::{
@@ -891,8 +892,8 @@ mod integration {
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{
 			read::{ReadFrom, read_from},
-			substrate::FlowSubstrate,
 			source_watermark::SourceWatermarks,
+			substrate::FlowSubstrate,
 		},
 	};
 	use reifydb_runtime::context::{RuntimeContext, spawner::Spawner, transaction::TransactionContext};
@@ -1055,8 +1056,8 @@ mod integration {
 
 	#[test]
 	fn a_quiet_flow_still_holds_a_output_watermark_from_state_restored_before_any_change_arrives() {
-		// A producer with no incoming rows must still claim its output watermark at startup, or its consumer stays
-		// pinned at the epoch forever.
+		// A producer with no incoming rows must still claim its output watermark at startup, or its consumer
+		// stays pinned at the epoch forever.
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let mut flow_engine = build_flow_engine(&engine);
@@ -1083,8 +1084,8 @@ mod integration {
 
 		let mut seed = seeding_txn(&engine, &flow_engine, version);
 		SourceWatermarks::advance(OperatorId(1), &mut seed, at_millis(30_000)).unwrap();
-		// "Restored state" means the output watermark row is in the store; an uncommitted advance is not restored
-		// state.
+		// "Restored state" means the output watermark row is in the store; an uncommitted advance is not
+		// restored state.
 		let seeded = seed.take_pending();
 		persist(&engine.operator_state(), &seeded);
 
@@ -2050,8 +2051,8 @@ mod integration {
 
 	#[test]
 	fn a_output_watermark_that_turns_visible_only_because_the_pull_passed_it_still_reaches_the_fold() {
-		// An output watermark that only moves in memory must still reach storage with the next checkpoint, never on its
-		// own commit.
+		// An output watermark that only moves in memory must still reach storage with the next checkpoint,
+		// never on its own commit.
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let (flow, mut flow_engine) = producer_fed_flow(&engine);
@@ -2071,7 +2072,10 @@ mod integration {
 			&config,
 			&mut hold_cache,
 		);
-		assert!(matches!(first, SliceStep::Skip { .. }), "precondition: a withheld output watermark folds nothing");
+		assert!(
+			matches!(first, SliceStep::Skip { .. }),
+			"precondition: a withheld output watermark folds nothing"
+		);
 		assert!(hold_cache.is_some(), "precondition: the skipped hold check must be cached");
 
 		let second = empty_pull(
@@ -2186,10 +2190,16 @@ mod integration {
 			SliceStep::Skip {
 				holds,
 				..
-			} => assert_eq!(holds, vec![sentinel], "unchanged output watermarks must reuse the cached holds"),
+			} => assert_eq!(
+				holds,
+				vec![sentinel],
+				"unchanged output watermarks must reuse the cached holds"
+			),
 			SliceStep::Commit {
 				..
-			} => panic!("an empty pull with unchanged output watermarks and no checkpoint due must not commit"),
+			} => panic!(
+				"an empty pull with unchanged output watermarks and no checkpoint due must not commit"
+			),
 		}
 	}
 }

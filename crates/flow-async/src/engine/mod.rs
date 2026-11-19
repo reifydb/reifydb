@@ -3,12 +3,12 @@
 
 mod dispatch;
 mod lifecycle;
+pub mod output_watermark_hold;
 mod process;
 pub mod register;
+mod source_watermarks;
 mod tick;
 mod timers;
-pub mod output_watermark_hold;
-mod source_watermarks;
 
 use std::{
 	collections::{BTreeMap, BTreeSet, HashMap},

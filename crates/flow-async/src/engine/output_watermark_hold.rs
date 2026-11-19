@@ -28,7 +28,11 @@ pub struct OutputWatermarkHold {
 pub type OutputWatermarkHolds = Vec<OutputWatermarkHold>;
 
 impl FlowEngineInner {
-	pub fn holds<T: FlowTransaction>(&self, txn: &mut T, flow_id: FlowId) -> Result<OutputWatermarkHolds, ValueError> {
+	pub fn holds<T: FlowTransaction>(
+		&self,
+		txn: &mut T,
+		flow_id: FlowId,
+	) -> Result<OutputWatermarkHolds, ValueError> {
 		let Some(flow) = self.flows.get(&flow_id) else {
 			return Ok(Vec::new());
 		};
@@ -90,7 +94,8 @@ fn output_watermarks<T: FlowTransaction>(
 				let Some(output_watermark) = computed.get(source).copied() else {
 					continue;
 				};
-				merged = Some(merged.map_or(output_watermark, |current: DateTime| current.min(output_watermark)));
+				merged = Some(merged
+					.map_or(output_watermark, |current: DateTime| current.min(output_watermark)));
 			}
 			if lookups.contains(operator_id) {
 				let right = SourceWatermarks::source_watermark(*operator_id, txn)?;
@@ -549,8 +554,8 @@ mod tests {
 
 	#[test]
 	fn a_flow_whose_every_source_is_untimed_claims_nothing() {
-		// With no timed input there is nothing to justify an output watermark, so claiming one would seal windows on
-		// rows never seen.
+		// With no timed input there is nothing to justify an output watermark, so claiming one would seal
+		// windows on rows never seen.
 		let held = Harness::new()
 			.node(untimed_source(1))
 			.node(stage(3))
@@ -611,8 +616,8 @@ mod tests {
 
 	#[test]
 	fn a_sink_belonging_to_another_flow_is_never_claimed() {
-		// The sink registry is shared across flows; claiming a neighbour's sink stamps an output watermark no operator
-		// here computed.
+		// The sink registry is shared across flows; claiming a neighbour's sink stamps an output watermark no
+		// operator here computed.
 		let held = Harness::new()
 			.node(source(1))
 			.node(sink(2))

@@ -268,7 +268,10 @@ mod tests {
 		let mut lagging_ledger = MockStore::default().with_flow_watermark(at_millis(9_000));
 		SealLedger::advance(&mut lagging_ledger, FiredAt::of(&timer(3_000))).unwrap();
 
-		assert_eq!(ByDateTime::operator_watermark(&mut lagging_flow_watermark).unwrap(), ByDateTime(at_millis(9_000)));
+		assert_eq!(
+			ByDateTime::operator_watermark(&mut lagging_flow_watermark).unwrap(),
+			ByDateTime(at_millis(9_000))
+		);
 		assert_eq!(ByDateTime::operator_watermark(&mut lagging_ledger).unwrap(), ByDateTime(at_millis(9_000)));
 	}
 

@@ -17,10 +17,7 @@ use reifydb_core::{
 };
 use reifydb_flow_async::{
 	operator::{BoxedHostOperator, apply::engine_retention, host::TxnHostContext},
-	transaction::{
-		DeferredParams, FlowTransaction, deferred::DeferredTransaction,
-		substrate::FlowSubstrate,
-	},
+	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate},
 };
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
@@ -81,8 +78,8 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 			lookup: None,
 		});
 		txn.set_batch_time(Some(DateTime::from_millis(
-				i64::try_from(self.version).expect("test batch time fits in i64 millis"),
-			)));
+			i64::try_from(self.version).expect("test batch time fits in i64 millis"),
+		)));
 		txn
 	}
 

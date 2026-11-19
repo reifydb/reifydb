@@ -7,8 +7,7 @@ use std::sync::Arc;
 
 use reifydb_codec::row::bytes::{EncodedBytes, SHAPE_HEADER_SIZE};
 use reifydb_core::{
-	common::CommitVersion, event::EventBus, interface::store::WalCheckpoint,
-	lifecycle::floor::FlushFloor,
+	common::CommitVersion, event::EventBus, interface::store::WalCheckpoint, lifecycle::floor::FlushFloor,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,

@@ -3,7 +3,7 @@
 
 pub mod collect;
 
-use collect::{Collectors, collect_memory, collect_operators, collect_mvcc};
+use collect::{Collectors, collect_memory, collect_mvcc, collect_operators};
 use reifydb_core::{interface::catalog::id::NamespaceId, metrics::sample::MetricsSample};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

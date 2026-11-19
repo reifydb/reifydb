@@ -11,8 +11,8 @@ use reifydb_core::{
 	common::CommitVersion,
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},
-		metrics::{ClassSnapshot, RetentionMetrics, StuckOnset},
 		floor::FlushFloor,
+		metrics::{ClassSnapshot, RetentionMetrics, StuckOnset},
 	},
 };
 use reifydb_engine::engine::StandardEngine;

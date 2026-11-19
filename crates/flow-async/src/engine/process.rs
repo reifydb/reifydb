@@ -109,10 +109,20 @@ impl FlowEngineInner {
 
 		let sources = self.flow_watermark_sources(&flow);
 
-		let (arrivals, mut silent) =
-			published_arrivals(&self.sources, &self.substrate.output_watermarks, flow_id, version, &sources);
-		let (lookup_arrivals, lookup_silent) =
-			published_arrivals(&self.lookup_sources, &self.substrate.output_watermarks, flow_id, version, &sources);
+		let (arrivals, mut silent) = published_arrivals(
+			&self.sources,
+			&self.substrate.output_watermarks,
+			flow_id,
+			version,
+			&sources,
+		);
+		let (lookup_arrivals, lookup_silent) = published_arrivals(
+			&self.lookup_sources,
+			&self.substrate.output_watermarks,
+			flow_id,
+			version,
+			&sources,
+		);
 		silent.extend(lookup_silent);
 		warn_unpublished(flow_id, &silent);
 		advance_source_watermarks(txn, &lookup_arrivals)?;
@@ -562,8 +572,8 @@ mod tests {
 
 	#[test]
 	fn a_table_source_no_flow_publishes_for_yields_no_arrival() {
-		// An unpublished object must fold nothing; folding it as the epoch drags the reader's source watermark to
-		// zero.
+		// An unpublished object must fold nothing; folding it as the epoch drags the reader's source watermark
+		// to zero.
 		let object = ObjectId::Table(TableId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
 		let output_watermarks = OutputWatermarks::default();
@@ -615,8 +625,13 @@ mod tests {
 		let output_watermarks = OutputWatermarks::default();
 		output_watermarks.publish(live, at_millis(9_000), CommitVersion(10));
 
-		let (_, silent) =
-			published_arrivals(&sources, &output_watermarks, FlowId(1), CommitVersion(20), &[OperatorId(4)]);
+		let (_, silent) = published_arrivals(
+			&sources,
+			&output_watermarks,
+			FlowId(1),
+			CommitVersion(20),
+			&[OperatorId(4)],
+		);
 
 		assert!(silent.is_empty(), "an uncounted reader's view must not be named; found {silent:?}");
 	}
@@ -672,8 +687,8 @@ mod tests {
 
 	#[test]
 	fn an_unpublished_table_is_never_reported_even_beside_a_visible_source() {
-		// Only a view has a producing flow that owes an output watermark; naming a table would report a fault nothing
-		// can fix.
+		// Only a view has a producing flow that owes an output watermark; naming a table would report a fault
+		// nothing can fix.
 		let table = ObjectId::Table(TableId(5));
 		let live = ObjectId::View(ViewId(6));
 		let sources = BTreeMap::from([
@@ -696,8 +711,8 @@ mod tests {
 
 	#[test]
 	fn process_version_folds_a_published_output_watermark_into_the_source_watermark() {
-		// A producer that emits no rows this version pins its reader at the epoch unless the published watermark
-		// reaches the source watermark here.
+		// A producer that emits no rows this version pins its reader at the epoch unless the published
+		// watermark reaches the source watermark here.
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
@@ -782,8 +797,8 @@ mod tests {
 
 	#[test]
 	fn a_lookup_on_a_deferred_view_holds_the_flow_watermark_at_the_views_output_watermark() {
-		// Without the view's output watermark hold the left side alone moves the flow watermark and a same-instant surface
-		// drops as late.
+		// Without the view's output watermark hold the left side alone moves the flow watermark and a
+		// same-instant surface drops as late.
 		let engine = TestEngine::new();
 		let mut inner = lookup_engine(&engine);
 		let view = ObjectId::View(ViewId(9));
@@ -814,8 +829,8 @@ mod tests {
 
 	#[test]
 	fn a_lookup_on_a_table_never_holds_the_flow_watermark() {
-		// No flow publishes an output watermark for a table, so counting it would pin the flow watermark at the epoch
-		// forever.
+		// No flow publishes an output watermark for a table, so counting it would pin the flow watermark at the
+		// epoch forever.
 		let engine = TestEngine::new();
 		let inner = lookup_engine(&engine);
 		let flow = lookup_flow(LookupObject::Table(TableId(4)));

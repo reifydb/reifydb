@@ -188,7 +188,11 @@ fn an_armed_timer_fires_only_once_the_flow_watermark_passes_it() {
 	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:00:00.500Z" }]"#);
 	assert!(db.await_all_flows(TIMEOUT), "the flow must drain before the view can be judged empty");
 
-	assert_eq!(db.row_count("FROM app::v"), 0, "no timer is due at flow watermark 500; the view must still be empty");
+	assert_eq!(
+		db.row_count("FROM app::v"),
+		0,
+		"no timer is due at flow watermark 500; the view must still be empty"
+	);
 
 	// Crosses both armed instants (1000 and 1500) at once.
 	db.command(r#"INSERT app::t [{ id: 3, g: 3, ts: "1970-01-01T00:01:00Z" }]"#);

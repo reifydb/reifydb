@@ -92,11 +92,7 @@ fn hold(db: &TestDb, gate_name: &str) {
 fn await_drain_pull_limits(db: &TestDb) {
 	// The gate must open only after every drain bound passed the backlog, otherwise the fold is cut short.
 	let to = db.engine().current_version().expect("the current version after the backlog");
-	let control = db
-		.engine()
-		.ioc()
-		.resolve::<PullLimit>()
-		.expect("the flow subsystem registers its pull limit");
+	let control = db.engine().ioc().resolve::<PullLimit>().expect("the flow subsystem registers its pull limit");
 	assert!(
 		poll_until(
 			|| {

@@ -135,7 +135,8 @@ fn a_session_a_row_has_left_is_not_resurrected_by_a_later_update() {
 	// Four steps, and the last one is the claim:
 	//
 	//   1. row 1 at 17890 opens session 0
-	//   2. row 2 at 18381 is more than the gap ahead, so it opens session 1; the flow watermark then closes session 0
+	//   2. row 2 at 18381 is more than the gap ahead, so it opens session 1; the flow watermark then closes session
+	//      0
 	//   3. row 1 is withdrawn from the closed session, which stays final, and re-arrives at 17890 - refused,
 	//      because it lands within the gap of the closed session
 	//   4. row 1 is updated

@@ -207,10 +207,7 @@ mod tests {
 		},
 		state::timer::{StateStore, TimerKind},
 	};
-	use reifydb_flow_async::{
-		operator::host::TxnHostContext,
-		transaction::FlowTransaction,
-	};
+	use reifydb_flow_async::{operator::host::TxnHostContext, transaction::FlowTransaction};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_testing_sdk::in_process::transaction::TestFlowTransaction;
 	use reifydb_value::value::datetime::DateTime;

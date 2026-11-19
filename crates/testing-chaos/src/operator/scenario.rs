@@ -341,7 +341,8 @@ mod tests {
 	#[test]
 	fn a_mixed_scenario_has_no_clock_dimension_to_advance() {
 		// The mixed corpus drives operators that never see a tick, so any non-zero clock share would
-		// spend steps sealing an operator watermark nothing reads and starve the diff mix it exists to generate.
+		// spend steps sealing an operator watermark nothing reads and starve the diff mix it exists to
+		// generate.
 		let scenario = Scenario::mixed(200);
 		assert_eq!(scenario.tick_pct, 0);
 		assert_eq!(scenario.coord_span_ms, 0);

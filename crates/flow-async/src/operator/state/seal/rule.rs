@@ -186,7 +186,10 @@ mod tests {
 		let horizon = rule.horizon_at(ByDateTime(ledger)).expect("the ledger is past one seal_span span");
 
 		assert_eq!(horizon.0, at_millis(283_261), "ledger - (size + lateness) - 1");
-		assert!(horizon.0 < ledger, "an operator watermark at or past the ledger reclaims windows that have not sealed");
+		assert!(
+			horizon.0 < ledger,
+			"an operator watermark at or past the ledger reclaims windows that have not sealed"
+		);
 		assert_eq!(
 			rule.seal_instant(horizon.0).at(),
 			ledger,

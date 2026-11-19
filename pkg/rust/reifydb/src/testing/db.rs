@@ -170,8 +170,7 @@ impl TestDb {
 	pub fn await_all_flows(&self, timeout: impl Into<ValueDuration>) -> bool {
 		let progress = self.db.progress();
 		let target = progress.tx().current().expect("current commit version");
-		progress
-			.reader()
+		progress.reader()
 			.wait_for_flow_caught_up(target, timeout.into())
 			.unwrap_or_else(|e| panic!("awaiting deferred flows failed: {e}"))
 	}

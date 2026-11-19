@@ -15,9 +15,7 @@ use reifydb_core::{
 	key::{queue::QueueDeduplicationKey, row::RowKey},
 };
 use reifydb_flow::txn::FlowGet;
-use reifydb_flow_async::transaction::{
-	FlowTransaction, state::StateExtension, substrate::FlowSubstrate,
-};
+use reifydb_flow_async::transaction::{FlowTransaction, state::StateExtension, substrate::FlowSubstrate};
 use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_sub_subscription::transaction::EphemeralTransaction;
 use reifydb_test_harness::{

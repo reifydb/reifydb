@@ -434,8 +434,8 @@ fn a_take_reports_nothing_armed_once_the_wheel_is_drained() {
 
 #[test]
 fn a_take_reports_an_instant_no_flow_watermark_has_reached() {
-	// the scan must run past the flow watermark, otherwise a far-future timer reads as nothing armed and is dropped for
-	// good
+	// the scan must run past the flow watermark, otherwise a far-future timer reads as nothing armed and is dropped
+	// for good
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 

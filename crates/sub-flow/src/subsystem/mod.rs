@@ -28,14 +28,14 @@ use extern_rust::load_extern_rust_operators;
 use reifydb_core::{
 	commit::{
 		loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
-		queue::{CommitQueue, FlowQueueFloor},
 		position::{FlowCaughtUpPosition, ReaderPosition},
+		queue::{CommitQueue, FlowQueueFloor},
 	},
 	event::operator::OperatorLoadedEvent,
 	interface::{
 		WithEventBus,
 		catalog::config::{ConfigKey, GetConfig},
-		flow::{FlowTickSampler, FlowUnitRow, FlowUnitSampler, FlowPositionSampler},
+		flow::{FlowPositionSampler, FlowTickSampler, FlowUnitRow, FlowUnitSampler},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	lifecycle::floor::ConsumerPositions,
@@ -71,9 +71,9 @@ use crate::{
 	},
 	marker::MarkerPlane,
 	progress::{
+		position::compute_flow_positions,
 		pull_limit::PullLimit,
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
-		position::compute_flow_positions,
 	},
 	subsystem::shutdown::FlowShutdownState,
 };

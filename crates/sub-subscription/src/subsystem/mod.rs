@@ -19,8 +19,8 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	commit::{
 		loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
-		queue::{CommitQueue, SubscriptionQueueFloor},
 		position::ReaderPosition,
+		queue::{CommitQueue, SubscriptionQueueFloor},
 	},
 	interface::{
 		catalog::{
@@ -63,10 +63,10 @@ use self::{
 use crate::{
 	consumer::SubscriptionCommitLogConsumer,
 	delivery::DeliveryBuffer,
+	position::compute_subscription_positions,
 	reader::{SubscriptionReader, SubscriptionReaderMessage},
 	store::SubscriptionStore,
 	tracker::{SubscribedObjects, SubscriptionPositionTracker, SubscriptionSourceTracker},
-	position::compute_subscription_positions,
 	worker::{SubscriptionWorkerActor, SubscriptionWorkerMessage, worker_name},
 };
 
@@ -360,8 +360,8 @@ mod tests {
 
 	#[test]
 	fn the_reader_starts_at_the_last_appended_lsn_not_below_the_commits_it_skips() {
-		// A start lsn below the released lsn at boot makes a first reload ask for records gc may drop, ending every
-		// subscription.
+		// A start lsn below the released lsn at boot makes a first reload ask for records gc may drop, ending
+		// every subscription.
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE app");
 		t.admin("CREATE TABLE app::a { id: int4 }");

@@ -563,12 +563,7 @@ impl SeriesMaterializationActor {
 		Ok(())
 	}
 
-	fn merge_windows(
-		&self,
-		series: &Series,
-		scope: PartitionScope<'_>,
-		now: DateTime,
-	) -> Result<(), ValueError> {
+	fn merge_windows(&self, series: &Series, scope: PartitionScope<'_>, now: DateTime) -> Result<(), ValueError> {
 		if self.merge_buckets == 0 {
 			return Ok(());
 		}

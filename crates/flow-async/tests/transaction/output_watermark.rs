@@ -161,5 +161,8 @@ fn a_hydrated_output_watermark_stays_withheld_until_the_reader_passes_its_stamp(
 
 	assert_eq!(output_watermarks.resolve(OUTPUT, CommitVersion(499)), PublishedWatermark::Withheld);
 	assert_eq!(output_watermarks.resolve(OUTPUT, CommitVersion(500)), PublishedWatermark::Withheld);
-	assert_eq!(output_watermarks.resolve(OUTPUT, CommitVersion(501)), PublishedWatermark::Visible(at_millis(5_000)));
+	assert_eq!(
+		output_watermarks.resolve(OUTPUT, CommitVersion(501)),
+		PublishedWatermark::Visible(at_millis(5_000))
+	);
 }

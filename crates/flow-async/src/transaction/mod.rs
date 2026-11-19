@@ -49,9 +49,9 @@ pub mod read;
 pub mod reclaim;
 pub mod row_number;
 pub mod scope;
+pub mod source_watermark;
 pub mod state;
 pub mod substrate;
-pub mod source_watermark;
 
 use reifydb_value::error::ValueError;
 

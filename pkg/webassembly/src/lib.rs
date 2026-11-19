@@ -28,8 +28,8 @@ use reifydb_catalog::{
 use reifydb_core::{
 	CoreVersion,
 	commit::{
-		queue::{CommitQueue, FlowQueueFloor},
 		position::FlowCaughtUpPosition,
+		queue::{CommitQueue, FlowQueueFloor},
 	},
 	common::CommitVersion,
 	event::{EventBus, transaction::PostCommitEvent},

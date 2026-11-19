@@ -12,8 +12,8 @@ use std::{
 use reifydb_core::{
 	commit::{
 		loader::CommitLoaderMessage,
-		queue::{CommitPull, CommitQueue, CommitQueueFloor, lsn_through},
 		position::ReaderPosition,
+		queue::{CommitPull, CommitQueue, CommitQueueFloor, lsn_through},
 	},
 	common::CommitVersion,
 	interface::{

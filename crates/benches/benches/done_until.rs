@@ -48,7 +48,8 @@ fn pipeline(report: &mut BenchReport, threads: usize) {
 	let elapsed = start.elapsed();
 
 	assert!(
-		done_until.wait_for_mark_timeout(CommitVersion(*PIPELINE_OPS), ValueDuration::from_seconds(30).unwrap()),
+		done_until
+			.wait_for_mark_timeout(CommitVersion(*PIPELINE_OPS), ValueDuration::from_seconds(30).unwrap()),
 		"pipeline benchmark lost a mark: done_until={:?} expected {}",
 		done_until.done_until(),
 		*PIPELINE_OPS
@@ -95,7 +96,8 @@ fn pipeline_with_advancer(report: &mut BenchReport, threads: usize) {
 	let elapsed = start.elapsed();
 
 	assert!(
-		done_until.wait_for_mark_timeout(CommitVersion(*PIPELINE_OPS), ValueDuration::from_seconds(30).unwrap()),
+		done_until
+			.wait_for_mark_timeout(CommitVersion(*PIPELINE_OPS), ValueDuration::from_seconds(30).unwrap()),
 		"pipeline_advancer benchmark lost a mark: done_until={:?} expected {}",
 		done_until.done_until(),
 		*PIPELINE_OPS

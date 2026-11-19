@@ -11,7 +11,7 @@ use reifydb_core::{
 	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_flow_async::transaction::{
-	DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate, source_watermark::*,
+	DeferredParams, FlowTransaction, deferred::DeferredTransaction, source_watermark::*, substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::{
 	RuntimeContext,

@@ -8,7 +8,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::flow::FlowId,
-		flow::{FlowTickSampler, FlowPositionRow, FlowPositionSampler},
+		flow::{FlowPositionRow, FlowPositionSampler, FlowTickSampler},
 		subscription::{SubscriptionPositionRow, SubscriptionPositionSampler},
 	},
 };

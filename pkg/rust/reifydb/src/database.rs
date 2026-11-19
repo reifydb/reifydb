@@ -64,9 +64,9 @@ use crate::settle::SettleBudget;
 use crate::subscribe::Subscription;
 use crate::{
 	health::{ComponentHealth, HealthMonitor},
+	progress::Progress,
 	session::Session,
 	subsystem::Subsystems,
-	progress::Progress,
 };
 
 #[cfg(feature = "sub_flow")]

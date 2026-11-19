@@ -47,9 +47,9 @@ use crate::{
 	error::TransactionError,
 	multi::{
 		conflict::{ConflictManager, PartitionMember},
+		done_until::done_until::DoneUntil,
 		lease::VersionLeases,
 		transaction::version::VersionProvider,
-		done_until::done_until::DoneUntil,
 	},
 	wal::{CommitWal, check_record_size},
 };

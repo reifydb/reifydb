@@ -121,7 +121,8 @@ mod tests {
 
 	#[test]
 	fn a_value_of_the_wrong_width_is_rejected_rather_than_misread() {
-		// 0x1D once held FlowNodeInternalState, so a stale row must never decode as a plausible output watermark.
+		// 0x1D once held FlowNodeInternalState, so a stale row must never decode as a plausible output
+		// watermark.
 		assert!(decode(OUTPUT, &EncodedPodRow::new(&[0u8; 8])).is_none());
 		assert!(decode(OUTPUT, &EncodedPodRow::new(&[0u8; 24])).is_none());
 	}
@@ -244,15 +245,19 @@ mod tests {
 
 	#[test]
 	fn a_sweep_that_failed_to_persist_is_retried_rather_than_marked_done() {
-		// Marking before the commit lands would strand the output watermark until its producer happens to publish
-		// again.
+		// Marking before the commit lands would strand the output watermark until its producer happens to
+		// publish again.
 		let output_watermarks = OutputWatermarks::default();
 		output_watermarks.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
 
-		let (generation, entries) = output_watermarks.unpersisted().expect("a fresh publish must be unpersisted");
+		let (generation, entries) =
+			output_watermarks.unpersisted().expect("a fresh publish must be unpersisted");
 		assert_eq!(entries.len(), 1);
 
-		assert!(output_watermarks.unpersisted().is_some(), "reading the entries must not count as persisting them");
+		assert!(
+			output_watermarks.unpersisted().is_some(),
+			"reading the entries must not count as persisting them"
+		);
 
 		output_watermarks.mark_persisted(generation);
 		assert!(output_watermarks.unpersisted().is_none());

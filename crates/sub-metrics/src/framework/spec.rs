@@ -336,9 +336,7 @@ impl MetricsDomain {
 			MetricsDomain::RuntimeMemory => {
 				long_spec(self, NamespaceId::SYSTEM_METRIC_RUNTIME_MEMORY, false)
 			}
-			MetricsDomain::RuntimeMvcc => {
-				long_spec(self, NamespaceId::SYSTEM_METRIC_RUNTIME_MVCC, false)
-			}
+			MetricsDomain::RuntimeMvcc => long_spec(self, NamespaceId::SYSTEM_METRIC_RUNTIME_MVCC, false),
 			MetricsDomain::RuntimeOperators => {
 				long_spec(self, NamespaceId::SYSTEM_METRIC_RUNTIME_OPERATOR, true)
 			}
