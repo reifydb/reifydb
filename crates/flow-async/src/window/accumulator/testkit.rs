@@ -52,14 +52,14 @@ pub(crate) fn drive<A: WindowAccumulator>(accumulator: &mut A, ops: &[Op<Contrib
 }
 
 pub(crate) fn assert_arms_agree<A: WindowAccumulator>(
-	mut sealed: A,
-	mut unsealed: A,
+	mut immutable: A,
+	mut plain: A,
 	ops: &[Op<Contribution<A>>],
 	why: &str,
 ) {
-	drive(&mut sealed, ops);
-	drive(&mut unsealed, ops);
-	assert_eq!(sealed.finalize(), unsealed.finalize(), "{why}");
+	drive(&mut immutable, ops);
+	drive(&mut plain, ops);
+	assert_eq!(immutable.finalize(), plain.finalize(), "{why}");
 }
 
 pub(crate) fn events<X: Contributions>(

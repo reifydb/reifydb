@@ -2077,7 +2077,7 @@ mod seal_tests {
 
 	#[test]
 	fn an_expired_row_frees_its_state_its_join_expiry_and_its_output_mapping_without_emitting() {
-		// An expired row is frozen downstream, so it must emit nothing while its mapping is forgotten.
+		// An expired row is immutable downstream, so it must emit nothing while its mapping is forgotten.
 		let engine = TestEngine::new();
 		let mut op = join(8, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -2321,19 +2321,19 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn an_update_to_an_expired_snapshot_latest_left_row_never_lands_on_its_frozen_id() {
-		// Expiry is silent, so the frozen row keeps its id and a post published there overwrites history.
+	fn an_update_to_an_expired_snapshot_latest_left_row_never_lands_on_its_immutable_id() {
+		// Expiry is silent, so the immutable row keeps its id and a post published there overwrites history.
 		let engine = TestEngine::new();
 		let mut op = join_with(18, Emit::Off, Some(JoinPick::latest()), Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 		let published = insert(&mut op, &mut txn, JoinSide::Left, &rows(&[7], &[42], at_millis(5_000)));
-		let frozen: Vec<RowNumber> = published
+		let immutable: Vec<RowNumber> = published
 			.iter()
 			.filter_map(|diff| diff.post())
 			.flat_map(|post| require_row_numbers(post).unwrap().to_vec())
 			.collect();
-		assert_eq!(frozen.len(), 1, "precondition: the left row published once, got {published:?}");
+		assert_eq!(immutable.len(), 1, "precondition: the left row published once, got {published:?}");
 
 		fire(&mut op, &mut txn, at_millis(15_001));
 		let out = update(
@@ -2350,7 +2350,7 @@ mod seal_tests {
 			.flat_map(|post| require_row_numbers(post).unwrap().to_vec())
 			.collect();
 		assert_eq!(landed.len(), 1, "the post of the expired row is published once, got {out:?}");
-		assert_ne!(landed, frozen, "the post must take a fresh id beside the frozen row, never its id");
+		assert_ne!(landed, immutable, "the post must take a fresh id beside the immutable row, never its id");
 	}
 
 	#[test]

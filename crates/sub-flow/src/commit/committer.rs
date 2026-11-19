@@ -1180,7 +1180,7 @@ mod commit_integration {
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let (handle, committer) = build_committer_actor(&engine);
-		engine.multi().freeze_commits().expect("the freeze must take");
+		engine.multi().stop_commits().expect("the commit stop must take");
 		let store = committer.operators.clone();
 
 		let operator = OperatorId(9);

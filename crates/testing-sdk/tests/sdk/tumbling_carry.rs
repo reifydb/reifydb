@@ -386,7 +386,7 @@ impl CarryEmit for SealedCarry {
 #[test]
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// Carry windows prune relative to the newest window a group has seen, so a group that
-	// stops reporting freezes; only the flow watermark can drive its reclamation.
+	// stops reporting stalls; only the flow watermark can drive its reclamation.
 	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<SealedCarry>>::new()
 		.with(ApplyWith {
 			retention: Some(millis(60)),
@@ -415,7 +415,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 
 #[test]
 fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
-	// Production freeze this pins: solana::market::{twap,vwap,volume,ohlcv}::* published rows for
+	// Production stall this pins: solana::market::{twap,vwap,volume,ohlcv}::* published rows for
 	// the very first block of a replayed corpus and then never again. The corpus carries event
 	// timestamps but the flow watermark advanced on arrival, so from the second batch on the seal
 	// horizon sat weeks ahead of every window and `seal` discarded each bucket before it emitted.
@@ -448,7 +448,7 @@ fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
 
 #[test]
 fn a_flow_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
-	// The mirror of the freeze above, and the reason that one cannot simply be "never seal".
+	// The mirror of the stall above, and the reason that one cannot simply be "never seal".
 	// Sealing is what bounds operator state: once the flow watermark is truly past window + lateness,
 	// late mutations for that window have to be refused, or a stalled group's buckets accumulate
 	// without limit. SealedCarry seals 120ms after a 60ms window, so a flow watermark at 10_000ms is

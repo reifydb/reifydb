@@ -673,8 +673,8 @@ pub mod tests {
 	#[test]
 	fn kick_after_system_shutdown_falls_back_inline() {
 		// After the actor system dies, kicks return Closed and mark_finished must degrade
-		// to the full inline drain; anything less leaves done_until frozen below versions
-		// that are fully finished, which freezes the GC cutoff for the process lifetime.
+		// to the full inline drain; anything less leaves done_until stuck below versions
+		// that are fully finished, which stalls the GC cutoff for the process lifetime.
 		let (system, done_until) = done_until_with_live_advancer("post-shutdown");
 		system.shutdown();
 		let _ = system.join();

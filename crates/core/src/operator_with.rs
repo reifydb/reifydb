@@ -913,7 +913,7 @@ mod tests {
 
 	#[test]
 	fn check_session_window_refuses_a_positive_immutable_span_only_on_a_session() {
-		// A frozen row cannot follow its session through a split or merge, so it would count twice.
+		// An immutable row cannot follow its session through a split or merge, so it would count twice.
 		let with = |window: WindowKind, immutable: Option<WithSpan>| ApplyWith {
 			window: Some(window),
 			lateness: None,

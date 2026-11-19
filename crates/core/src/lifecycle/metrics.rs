@@ -416,7 +416,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_slice_that_reclaims_nothing_on_a_frozen_floor_counts_as_stuck() {
+	fn a_slice_that_reclaims_nothing_on_a_stalled_floor_counts_as_stuck() {
 		// A class that keeps ticking and reports success while its floor never moves reclaims nothing;
 		// it has to be counted, or it reads as idle.
 		let metrics = LifecycleMetrics::new();
@@ -528,8 +528,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_frozen_floor_with_no_eligible_work_is_stuck_but_not_an_alarm() {
-		// An idle database freezes its floor and reclaims nothing every tick. That is counted, because a
+	fn a_stalled_floor_with_no_eligible_work_is_stuck_but_not_an_alarm() {
+		// An idle database stalls its floor and reclaims nothing every tick. That is counted, because a
 		// human reading the report should see it, but it must not be an alarm or the alarm becomes noise on
 		// every quiet system.
 		let metrics = LifecycleMetrics::new();
@@ -538,12 +538,12 @@ mod tests {
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
 
-		assert_eq!(metrics.snapshot(class).stuck_slices, 1, "an idle frozen floor is still counted as stuck");
+		assert_eq!(metrics.snapshot(class).stuck_slices, 1, "an idle stalled floor is still counted as stuck");
 		assert_eq!(metrics.snapshot(class).backlog_hint, 0, "and reports nothing eligible");
 	}
 
 	#[test]
-	fn a_frozen_floor_with_work_waiting_reports_the_backlog() {
+	fn a_stalled_floor_with_work_waiting_reports_the_backlog() {
 		// The alarm condition: rows are eligible, the floor will not move, nothing is being reclaimed. Only
 		// the backlog distinguishes this from the idle case above.
 		let metrics = LifecycleMetrics::new();

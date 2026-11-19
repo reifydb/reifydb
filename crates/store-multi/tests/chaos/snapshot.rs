@@ -95,7 +95,7 @@ fn drain_with_interleave(
 	p: &Params,
 ) {
 	let name = configs[drain_idx].0;
-	let frozen = oracle.scan(
+	let expected = oracle.scan(
 		Scope::AsOf {
 			read: pinned,
 		},
@@ -144,13 +144,13 @@ fn drain_with_interleave(
 
 	assert_eq!(
 		drained.len(),
-		frozen.len(),
-		"SNAPSHOT len mismatch: config={name} reverse={reverse} batch={batch} pinned={pinned} drained={} frozen={}",
+		expected.len(),
+		"SNAPSHOT len mismatch: config={name} reverse={reverse} batch={batch} pinned={pinned} drained={} expected={}",
 		drained.len(),
-		frozen.len()
+		expected.len()
 	);
 	assert_eq!(
-		drained, frozen,
+		drained, expected,
 		"SNAPSHOT content mismatch: config={name} reverse={reverse} batch={batch} pinned={pinned} - a mid-scan commit/flush corrupted the as-of-{pinned} view"
 	);
 }

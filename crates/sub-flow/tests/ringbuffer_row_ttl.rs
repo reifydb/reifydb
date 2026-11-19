@@ -58,7 +58,7 @@ fn a_row_expires_during_replay_once_the_operator_watermark_passes_its_ttl() {
 }
 
 #[test]
-fn a_frozen_operator_watermark_keeps_a_row_far_past_its_ttl_in_wall_time() {
+fn a_stopped_operator_watermark_keeps_a_row_far_past_its_ttl_in_wall_time() {
 	// The mirror of the test above, and the one that catches a clock read: wall time blows past a
 	// 1s ttl while the operator watermark stays put, and a stopped feed must hold rather than empty
 	// itself. The sleep is not a race - the assertion is absence, so a longer one is only stricter.

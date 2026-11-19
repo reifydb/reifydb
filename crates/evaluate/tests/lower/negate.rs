@@ -8,7 +8,7 @@ use reifydb_core::{
 use reifydb_value::value::value_type::{ValueType, field::from_field};
 
 use crate::{
-	common::{Env, Frozen, batch, column, frag, none, prefix, rows, strings},
+	common::{Env, Recorded, batch, column, frag, none, prefix, rows, strings},
 	compare::{nullable_column, samples},
 };
 
@@ -19,7 +19,7 @@ fn minus(inner: Expression) -> Expression {
 #[test]
 fn every_signed_and_float_type_negates_like_the_old_path() {
 	// Any type whose field, values or error differ is a query that changes under the new path.
-	let mut frozen = Frozen::load("every_signed_and_float_type_negates_like_the_old_path");
+	let mut recorded = Recorded::load("every_signed_and_float_type_negates_like_the_old_path");
 	let env = Env::new();
 	let signed = |value_type: ValueType| {
 		matches!(
@@ -35,7 +35,7 @@ fn every_signed_and_float_type_negates_like_the_old_path() {
 	for sample in samples().into_iter().filter(|(value, _)| signed(value.get_type())) {
 		let input = batch(vec![nullable_column("a", sample.clone())]);
 		let lowered = env.lowered(&minus(column("a")), input.clone());
-		let old = frozen.old(&env, &minus(column("a")), input);
+		let old = recorded.old(&env, &minus(column("a")), input);
 		assert!(old.is_ok(), "{:?}: {old:?}", sample.0.get_type());
 		assert_eq!(lowered, old, "{:?}", sample.0.get_type());
 	}
@@ -44,7 +44,7 @@ fn every_signed_and_float_type_negates_like_the_old_path() {
 #[test]
 fn an_unsigned_column_negates_into_the_signed_type_of_its_width() {
 	// The old path answers -uint1 as int1, so a lowered field that keeps the unsigned type changes every consumer.
-	let mut frozen = Frozen::load("an_unsigned_column_negates_into_the_signed_type_of_its_width");
+	let mut recorded = Recorded::load("an_unsigned_column_negates_into_the_signed_type_of_its_width");
 	let env = Env::new();
 	let widths = [
 		(ValueType::Uint1, ValueType::Int1),
@@ -58,7 +58,7 @@ fn an_unsigned_column_negates_into_the_signed_type_of_its_width() {
 		let sample = samples().into_iter().find(|(value, _)| value.get_type() == unsigned).unwrap();
 		let input = batch(vec![nullable_column("a", sample)]);
 		let lowered = env.lowered(&minus(column("a")), input.clone()).unwrap();
-		let old = frozen.old(&env, &minus(column("a")), input).unwrap();
+		let old = recorded.old(&env, &minus(column("a")), input).unwrap();
 		assert_eq!(lowered, old, "{unsigned:?}");
 		let declared =
 			from_field(&lowered.0).unwrap().value_type.map(|value_type| value_type.inner_type().clone());
@@ -69,12 +69,12 @@ fn an_unsigned_column_negates_into_the_signed_type_of_its_width() {
 #[test]
 fn negating_the_smallest_signed_value_errors_with_the_prefix_fragment() {
 	// Negation must never wrap, otherwise -int1::MIN silently stays negative.
-	let mut frozen = Frozen::inline(&["NUMBER_002 \"-a\" number out of range [\"valid range: -128 to 127\"]"]);
+	let mut recorded = Recorded::inline(&["NUMBER_002 \"-a\" number out of range [\"valid range: -128 to 127\"]"]);
 	let env = Env::new();
 	let input = batch(vec![factory::int1("a", [i8::MIN])]);
 
 	let lowered = env.lowered(&minus(column("a")), input.clone());
-	let old = frozen.old(&env, &minus(column("a")), input);
+	let old = recorded.old(&env, &minus(column("a")), input);
 
 	assert!(old.is_err(), "{old:?}");
 	assert_eq!(lowered, old);
@@ -83,12 +83,12 @@ fn negating_the_smallest_signed_value_errors_with_the_prefix_fragment() {
 #[test]
 fn an_unsigned_value_beyond_the_signed_range_errors_like_the_old_path() {
 	// A uint1 of 200 has no int1 negation, so it must error rather than wrap into the signed range.
-	let mut frozen = Frozen::inline(&["NUMBER_002 \"-a\" number out of range [\"valid range: -128 to 127\"]"]);
+	let mut recorded = Recorded::inline(&["NUMBER_002 \"-a\" number out of range [\"valid range: -128 to 127\"]"]);
 	let env = Env::new();
 	let input = batch(vec![factory::uint1("a", [200u8])]);
 
 	let lowered = env.lowered(&minus(column("a")), input.clone());
-	let old = frozen.old(&env, &minus(column("a")), input);
+	let old = recorded.old(&env, &minus(column("a")), input);
 
 	assert!(old.is_err(), "{old:?}");
 	assert_eq!(lowered, old);
@@ -97,7 +97,7 @@ fn an_unsigned_value_beyond_the_signed_range_errors_like_the_old_path() {
 #[test]
 fn none_rows_stay_none_and_an_untyped_none_passes_through() {
 	// A none must stay none per row, and a bare none must not turn into a typed zero.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"Field { name: \"-a\", data_type: Int32, nullable: true } [\"-1\", \"none\", \"3\"]",
 		"Field { name: \"-none\", data_type: Null, nullable: true } [\"none\", \"none\"]",
 	]);
@@ -105,26 +105,26 @@ fn none_rows_stay_none_and_an_untyped_none_passes_through() {
 	let input = batch(vec![factory::int4_optional("a", [Some(1), None, Some(-3)])]);
 
 	let lowered = env.lowered(&minus(column("a")), input.clone()).unwrap();
-	let old = frozen.old(&env, &minus(column("a")), input).unwrap();
+	let old = recorded.old(&env, &minus(column("a")), input).unwrap();
 	assert_eq!(lowered, old);
 	assert_eq!(strings(&lowered), vec!["-1", "none", "3"]);
 
 	let lowered = env.lowered(&minus(none()), rows(2));
-	let old = frozen.old(&env, &minus(none()), rows(2));
+	let old = recorded.old(&env, &minus(none()), rows(2));
 	assert_eq!(lowered, old);
 }
 
 #[test]
 fn a_text_operand_errors_like_the_old_path() {
 	// Text has no negation, so the error must match the old path instead of a DataFusion type error.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"ENG_001 \"\" Frame processing error: Cannot apply arithmetic prefix operator to text []",
 	]);
 	let env = Env::new();
 	let input = batch(vec![factory::utf8("a", ["x"])]);
 
 	let lowered = env.lowered(&minus(column("a")), input.clone());
-	let old = frozen.old(&env, &minus(column("a")), input);
+	let old = recorded.old(&env, &minus(column("a")), input);
 
 	assert!(old.is_err(), "{old:?}");
 	assert_eq!(lowered, old);

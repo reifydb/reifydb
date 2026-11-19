@@ -438,14 +438,14 @@ pub fn describe(result: &Result<(FieldRef, ArrayRef), ValueError>) -> String {
 	.replace('\n', "\\n")
 }
 
-pub struct Frozen {
+pub struct Recorded {
 	answers: Vec<String>,
 	next: usize,
 }
 
-impl Frozen {
+impl Recorded {
 	pub fn load(test: &str) -> Self {
-		let path = format!("{}/tests/lower/frozen/{test}.txt", env!("CARGO_MANIFEST_DIR"));
+		let path = format!("{}/tests/lower/recorded/{test}.txt", env!("CARGO_MANIFEST_DIR"));
 		let answers = fs::read_to_string(&path).unwrap().lines().map(str::to_string).collect();
 		Self {
 			answers,
@@ -458,10 +458,6 @@ impl Frozen {
 			answers: answers.iter().map(|answer| answer.to_string()).collect(),
 			next: 0,
 		}
-	}
-
-	pub fn recorded(&mut self) -> String {
-		self.next()
 	}
 
 	pub fn old(
@@ -478,7 +474,7 @@ impl Frozen {
 		result: Result<(FieldRef, ArrayRef), ValueError>,
 	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let expected = self.next();
-		assert_eq!(describe(&result), expected, "frozen old answer {}", self.next);
+		assert_eq!(describe(&result), expected, "recorded old answer {}", self.next);
 		result
 	}
 
@@ -492,12 +488,12 @@ impl Frozen {
 	}
 }
 
-impl Drop for Frozen {
+impl Drop for Recorded {
 	fn drop(&mut self) {
 		if !thread::panicking() {
 			assert!(
 				self.exhausted(),
-				"only {} of {} frozen old answers were checked",
+				"only {} of {} recorded old answers were checked",
 				self.next,
 				self.answers.len()
 			);

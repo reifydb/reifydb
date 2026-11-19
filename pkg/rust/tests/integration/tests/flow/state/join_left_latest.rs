@@ -268,5 +268,5 @@ fn a_sealed_left_row_frees_its_own_state_and_spares_the_unsealed_slot() {
 		"so the key's group must outlive the left side that armed it; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
-	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "and the row it published freezes in the view");
+	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "and its published row is immutable in the view");
 }

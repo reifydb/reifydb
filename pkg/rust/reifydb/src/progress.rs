@@ -127,7 +127,7 @@ impl ReaderProgress<'_> {
 	/// Waits for the subscription reader to reach `version`, returning whether it got there.
 	///
 	/// `timeout` is wall-clock, deliberately not the database clock: a caller that builds with
-	/// `RuntimeConfig::seeded(..)` gets a frozen `MockClock`, and a deadline derived from it can
+	/// `RuntimeConfig::seeded(..)` gets a stopped `MockClock`, and a deadline derived from it can
 	/// never be reached, turning a position that never arrives into a permanent hang instead of
 	/// a bounded `false`.
 	pub fn wait_for_subscription(&self, version: CommitVersion, timeout: Duration) -> bool {

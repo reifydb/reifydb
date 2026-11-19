@@ -430,7 +430,7 @@ mod tests {
 	fn a_version_never_registered_here_does_not_wedge_the_done_until() {
 		// Each done-until mark sees its own subset of the version space, so the done-until mark must jump
 		// over version numbers that were allocated but never registered on it. Treating such a
-		// gap as a not-yet-begun version would freeze done_until below the true done-until mark
+		// gap as a not-yet-begun version would stick done_until below the true done-until mark
 		// forever, stalling every waiter above it and pinning GC at a version nobody reads.
 		let mut state = DoneUntilState::new();
 		let done_until = AtomicU64::new(0);

@@ -457,7 +457,7 @@ impl Actor for StoppingActor {
 
 #[test]
 fn self_stopped_actor_refuses_sends_with_closed() {
-	// A stopped actor that still accepts sends swallows them silently, freezing any caller that falls back on
+	// A stopped actor that still accepts sends swallows them silently, blocking any caller that falls back on
 	// Closed.
 	let rt = runtime(1, 1, 1);
 	let handle = rt.spawner().spawn_coordination("stopping", StoppingActor);

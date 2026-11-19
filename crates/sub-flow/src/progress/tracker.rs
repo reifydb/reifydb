@@ -753,7 +753,7 @@ mod tests {
 		assert_eq!(
 			progress.complete_through(PRODUCER, cv(25)),
 			Some(cv(9)),
-			"a reader must get the newest position it has fully read, or an active producer freezes it \
+			"a reader must get the newest position it has fully read, or an active producer stalls it \
 			 forever at its cursor"
 		);
 		assert_eq!(progress.complete_through(PRODUCER, cv(20)), Some(cv(9)), "an exact commit must resolve");
@@ -777,7 +777,7 @@ mod tests {
 		assert_eq!(
 			progress.complete_through(PRODUCER, cv(25)),
 			Some(cv(20)),
-			"the entry answering the slowest reader must survive, or pruning recreates the freeze it \
+			"the entry answering the slowest reader must survive, or pruning recreates the stall it \
 			 exists to prevent"
 		);
 		let oldest = progress.completions.get(&PRODUCER).and_then(|h| h.front()).map(|e| e.commit.0);

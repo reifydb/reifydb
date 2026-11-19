@@ -223,7 +223,7 @@ fn withdrawing_a_left_row_retracts_the_slot_version_it_published_against() {
 	assert_eq!(
 		db.row_count("FROM app::j FILTER { rv == 7 }"),
 		1,
-		"precondition: the published row is still frozen"
+		"precondition: the published row is still pinned"
 	);
 
 	db.command("DELETE app::lhs FILTER { id == 1 }");
@@ -272,5 +272,5 @@ fn a_sealed_left_row_takes_its_ledger_entry_and_spares_the_unsealed_slot() {
 		"so the key's group must outlive the left side that armed it; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
-	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "and the row it published freezes in the view");
+	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "and its published row is immutable in the view");
 }

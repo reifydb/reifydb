@@ -183,7 +183,7 @@ pub struct Params {
 	pub left_ttl: Option<Duration>,
 	pub right_ttl: Option<Duration>,
 
-	/// Size of the frozen right side loaded before the run, for `drive_static_right` only. The other
+	/// Size of the static right side loaded before the run, for `drive_static_right` only. The other
 	/// entry points draw their right rows from the corpus and ignore this.
 	pub static_right: u32,
 }
@@ -211,7 +211,7 @@ pub fn matched_params(variant: Variant) -> Params {
 }
 
 /// The configuration every matrix cell runs. Left-side traffic only, against the right side
-/// `drive_static_right` loads and freezes, so all eight cells execute one shared corpus.
+/// `drive_static_right` loads once, so all eight cells execute one shared corpus.
 pub fn static_right_params(variant: Variant) -> Params {
 	Params {
 		variant,
@@ -348,7 +348,7 @@ fn load_and_drive<M: Model<JoinRow>>(
 	driver::drive(seed, scenario(&params), harness, workload, &mut model)
 }
 
-/// The frozen right side. Drawn from its own stream so it does not shift when the driver's draws
+/// The static right side. Drawn from its own stream so it does not shift when the driver's draws
 /// change, and numbered far above the driver's counter so the two can never collide.
 fn right_side(seed: u64, params: &Params) -> Vec<JoinRow> {
 	let mut rng = StdRng::seed_from_u64(seed ^ 0x5EED_57A7_1C21_6047);

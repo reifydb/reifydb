@@ -178,7 +178,7 @@ pub(crate) struct OracleState {
 
 	pub evicted_up_through: CommitVersion,
 
-	frozen: bool,
+	commits_stopped: bool,
 
 	pub last_unchecked: CommitVersion,
 
@@ -273,7 +273,7 @@ where
 			inner: OracleLock::new(OracleState {
 				time_windows: BTreeMap::new(),
 				evicted_up_through: CommitVersion(0),
-				frozen: false,
+				commits_stopped: false,
 				last_unchecked: CommitVersion(0),
 				lsns,
 			}),
@@ -381,9 +381,9 @@ where
 		self.versions.current()
 	}
 
-	pub(crate) fn freeze_commits(&self) -> Result<CommitVersion, ValueError> {
+	pub(crate) fn stop_commits(&self) -> Result<CommitVersion, ValueError> {
 		let mut state = self.inner.write();
-		state.frozen = true;
+		state.commits_stopped = true;
 		self.versions.current()
 	}
 
@@ -611,7 +611,7 @@ where
 		source: Option<SourceVersion>,
 		fresh: bool,
 	) -> Result<(CommitVersion, Lsn, DateTime), ValueError> {
-		if state.frozen {
+		if state.commits_stopped {
 			return Err(TransactionError::ShuttingDown.into());
 		}
 		let clock_start = timing.mark(&self.clock);
@@ -1489,7 +1489,7 @@ mod tests {
 		let mut state = OracleState {
 			time_windows: BTreeMap::new(),
 			evicted_up_through: CommitVersion(0),
-			frozen: false,
+			commits_stopped: false,
 			last_unchecked: CommitVersion(0),
 			lsns: VecDeque::new(),
 		};
@@ -1519,7 +1519,7 @@ mod tests {
 		let mut state = OracleState {
 			time_windows: BTreeMap::new(),
 			evicted_up_through: CommitVersion(0),
-			frozen: false,
+			commits_stopped: false,
 			last_unchecked: CommitVersion(0),
 			lsns: VecDeque::new(),
 		};

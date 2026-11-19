@@ -4,7 +4,7 @@
 // #time is stamped once, at the source, and every downstream view inherits it verbatim. Nothing
 // between the source and the sink may re-stamp it.
 //
-// This is the invariant the production freeze violated: a flow re-stamped #time to arrival on
+// This is the invariant the production stall violated: a flow re-stamped #time to arrival on
 // entry, so rows carrying July event timestamps reached the windowed operators claiming to be from
 // August. The window coordinate and the seal horizon then disagreed about which clock they were on
 // and every bucket was discarded. A declaration check could not see that; only reading the value

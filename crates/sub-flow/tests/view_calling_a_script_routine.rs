@@ -121,7 +121,7 @@ fn unknown_function_fails_loud(view: &str) {
 	let refused = db.try_query("FROM app::v").expect_err("a read of a poisoned view must fail");
 	assert_eq!(
 		refused.0.code, "FLOW_094",
-		"a poisoned view must refuse the read instead of serving its frozen rows: {refused:?}"
+		"a poisoned view must refuse the read instead of serving its stale rows: {refused:?}"
 	);
 }
 

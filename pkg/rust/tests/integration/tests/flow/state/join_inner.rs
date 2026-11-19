@@ -145,7 +145,7 @@ fn a_left_only_lateness_forgets_the_left_row_and_leaves_the_right_one_addressabl
 		"and the unsealed right row must stay addressable; surface now: {:?}",
 		db.query(SURFACE)
 	);
-	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "while the published row freezes in the view");
+	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "while the published row is immutable");
 }
 
 #[test]
@@ -170,7 +170,7 @@ fn a_right_only_lateness_forgets_the_right_row_and_leaves_the_left_one_addressab
 		"and the unsealed left row must stay addressable; surface now: {:?}",
 		db.query(SURFACE)
 	);
-	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "while the published row freezes in the view");
+	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "while the published row is immutable");
 }
 
 #[test]
@@ -269,7 +269,7 @@ fn a_right_side_match_never_extends_the_left_rows_anchor() {
 		db.query(SURFACE)
 	);
 	assert_eq!(state_keys(&db, RIGHT_ROWS), 1, "while the later right row keeps the anchor its own write gave it");
-	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "and the joined row it published stays frozen");
+	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "and the joined row it published is immutable");
 }
 
 #[test]
@@ -312,7 +312,7 @@ fn a_delete_after_the_seal_cannot_withdraw_the_published_row() {
 
 #[test]
 fn a_pair_inserted_after_the_seal_arms_its_own_state_and_publishes_its_own_row() {
-	// A fresh source row must never land on a sealed row's output row, which is frozen and unreachable.
+	// A fresh source row must never land on a sealed row's output row, which is immutable and unreachable.
 	let db = setup();
 	inner_join(&db, BOTH_SIDES);
 	fill_one_pair(&db);
@@ -327,12 +327,12 @@ fn a_pair_inserted_after_the_seal_arms_its_own_state_and_publishes_its_own_row()
 	assert_eq!(await_state_keys(&db, LEFT_ROWS, 1, TIMEOUT), 1, "holding the fresh left row");
 	assert_eq!(await_state_keys(&db, RIGHT_ROWS, 1, TIMEOUT), 1, "and the fresh right row");
 	assert_eq!(db.row_count("FROM app::j FILTER { lv == 11 }"), 1, "and publishes its own row");
-	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "without disturbing what the seal froze");
+	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "without disturbing the immutable row");
 }
 
 #[test]
 fn an_inner_join_without_a_seal_keeps_every_row_addressable_forever() {
-	// Arming unconditionally would forget joins that never asked to seal, silently freezing their rows.
+	// Arming unconditionally would forget joins that never asked to seal, silently making their rows immutable.
 	let db = setup();
 	inner_join(&db, "");
 	fill_one_pair(&db);

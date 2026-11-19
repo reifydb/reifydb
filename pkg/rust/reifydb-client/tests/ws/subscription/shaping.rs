@@ -88,7 +88,7 @@ delivery_case!(deliver_hydration_off_both, hydration = false, throttle = Some(15
 
 #[test]
 fn hydration_enabled_replays_existing_rows() {
-	// Hydration is not time-shaped, so this runs on the default frozen clock without advancing.
+	// Hydration is not time-shaped, so this runs on the default stopped clock without advancing.
 	SubscriptionTestHarness::run(|mut ctx| async move {
 		let table = ctx.create_table("hydrate", "id: int4, name: utf8").await?;
 		ctx.insert(&table, "{ id: 7, name: 'seed' }").await?;

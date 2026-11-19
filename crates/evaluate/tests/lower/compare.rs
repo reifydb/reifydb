@@ -21,7 +21,7 @@ use reifydb_value::value::{
 };
 
 use crate::common::{
-	COMPARE_OPS, Env, Frozen, batch, between, code_of, column, compare, none, number, strings, text, values_of,
+	COMPARE_OPS, Env, Recorded, batch, between, code_of, column, compare, none, number, strings, text, values_of,
 };
 
 pub fn samples() -> Vec<(Value, Value)> {
@@ -75,7 +75,7 @@ pub fn nullable_column(name: &str, (first, second): (Value, Value)) -> (FieldRef
 #[test]
 fn every_type_pair_compares_like_the_old_path() {
 	// A missing or wrong cast on either side changes the answer or the error for that pair.
-	let mut frozen = Frozen::load("every_type_pair_compares_like_the_old_path");
+	let mut recorded = Recorded::load("every_type_pair_compares_like_the_old_path");
 	let env = Env::new();
 
 	for left in samples() {
@@ -85,7 +85,7 @@ fn every_type_pair_compares_like_the_old_path() {
 			for op in COMPARE_OPS {
 				let expression = compare(op, column("l"), column("r"));
 				let lowered = env.lowered(&expression, input.clone());
-				let old = frozen.old(&env, &expression, input.clone());
+				let old = recorded.old(&env, &expression, input.clone());
 				assert_eq!(lowered, old, "{:?} {op} {:?}", left.0.get_type(), right.0.get_type());
 			}
 		}
@@ -95,7 +95,7 @@ fn every_type_pair_compares_like_the_old_path() {
 #[test]
 fn an_untyped_none_side_gives_none_on_every_row() {
 	// A bare none compared with anything is unknown, never false, or a negated filter would keep the row.
-	let mut frozen = Frozen::load("an_untyped_none_side_gives_none_on_every_row");
+	let mut recorded = Recorded::load("an_untyped_none_side_gives_none_on_every_row");
 	let env = Env::new();
 	let input = batch(vec![factory::int4("l", [1, 2])]);
 
@@ -103,7 +103,10 @@ fn an_untyped_none_side_gives_none_on_every_row() {
 		for expression in [compare(op, none(), column("l")), compare(op, column("l"), none())] {
 			let lowered = env.lowered(&expression, input.clone()).unwrap();
 			assert_eq!(strings(&lowered), vec!["none", "none"], "{expression:?}");
-			assert_eq!(strings(&lowered), strings(&frozen.old(&env, &expression, input.clone()).unwrap()));
+			assert_eq!(
+				strings(&lowered),
+				strings(&recorded.old(&env, &expression, input.clone()).unwrap())
+			);
 		}
 	}
 }
@@ -111,14 +114,14 @@ fn an_untyped_none_side_gives_none_on_every_row() {
 #[test]
 fn a_type_mismatch_errors_even_when_the_batch_is_all_none() {
 	// The type check reads the field, so an all none int column against text still reports the mismatch.
-	let mut frozen = Frozen::load("a_type_mismatch_errors_even_when_the_batch_is_all_none");
+	let mut recorded = Recorded::load("a_type_mismatch_errors_even_when_the_batch_is_all_none");
 	let env = Env::new();
 	let input = batch(vec![factory::none_typed("l", ValueType::Int4, 2)]);
 
 	for op in COMPARE_OPS {
 		let expression = compare(op, column("l"), text("x"));
 		let lowered = env.lowered(&expression, input.clone()).unwrap_err();
-		let old = frozen.old(&env, &expression, input.clone()).unwrap_err();
+		let old = recorded.old(&env, &expression, input.clone()).unwrap_err();
 		assert_eq!(lowered, old, "{op}");
 		assert!(lowered.code.starts_with("OPERATOR_02"), "{op}: {}", lowered.code);
 	}
@@ -127,7 +130,7 @@ fn a_type_mismatch_errors_even_when_the_batch_is_all_none() {
 #[test]
 fn between_matches_the_old_path_on_columns_without_none() {
 	// Without none rows the Kleene and of the two bounds must give exactly today's answer.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"Field { name: \"between\", data_type: Boolean } [\"false\", \"true\", \"true\", \"false\"]",
 		"Field { name: \"between\", data_type: Boolean } [\"false\", \"true\", \"true\", \"false\"]",
 		"Field { name: \"between\", data_type: Boolean } [\"false\", \"false\", \"false\", \"false\"]",
@@ -141,14 +144,14 @@ fn between_matches_the_old_path_on_columns_without_none() {
 		between(column("v"), number("10"), number("5")),
 	] {
 		let lowered = env.lowered(&expression, input.clone()).unwrap();
-		assert_eq!(strings(&lowered), values_of(&frozen.recorded()), "{expression:?}");
+		assert_eq!(strings(&lowered), values_of(&recorded.next()), "{expression:?}");
 	}
 }
 
 #[test]
 fn between_with_a_none_bound_follows_kleene_where_today_it_errors() {
 	// A none bound leaves its side unknown, so the other bound alone can still make the row false.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"OPERATOR_028 \"between\" Cannot apply 'BETWEEN' operator to Int4 with range of Option(Any) [\"Value is of type: Int4\", \"Range bounds are of type: Option(Any)\", \"BETWEEN comparison is only supported between compatible types\"]",
 	]);
 	let env = Env::new();
@@ -158,13 +161,13 @@ fn between_with_a_none_bound_follows_kleene_where_today_it_errors() {
 	let lowered = env.lowered(&expression, input).unwrap();
 
 	assert_eq!(strings(&lowered), vec!["none", "false"]);
-	assert_eq!(code_of(&frozen.recorded()), "OPERATOR_028");
+	assert_eq!(code_of(&recorded.next()), "OPERATOR_028");
 }
 
 #[test]
 fn between_over_a_nullable_column_keeps_its_defined_rows() {
 	// Today a nullable value errors outright; the lowered between answers per row and leaves none rows unknown.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"OPERATOR_028 \"between\" Cannot apply 'BETWEEN' operator to Option(Int4) with range of Int1 [\"Value is of type: Option(Int4)\", \"Range bounds are of type: Int1\", \"BETWEEN comparison is only supported between compatible types\"]",
 	]);
 	let env = Env::new();
@@ -174,13 +177,13 @@ fn between_over_a_nullable_column_keeps_its_defined_rows() {
 	let lowered = env.lowered(&expression, input).unwrap();
 
 	assert_eq!(strings(&lowered), vec!["false", "true", "none"]);
-	assert_eq!(code_of(&frozen.recorded()), "OPERATOR_028");
+	assert_eq!(code_of(&recorded.next()), "OPERATOR_028");
 }
 
 #[test]
 fn between_with_a_bound_of_another_type_errors_like_the_old_path() {
 	// The mismatch must name between and its own fragment, the same as today.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"OPERATOR_028 \"between\" Cannot apply 'BETWEEN' operator to Int4 with range of Utf8 [\"Value is of type: Int4\", \"Range bounds are of type: Utf8\", \"BETWEEN comparison is only supported between compatible types\"]",
 		"OPERATOR_028 \"between\" Cannot apply 'BETWEEN' operator to Int4 with range of Utf8 [\"Value is of type: Int4\", \"Range bounds are of type: Utf8\", \"BETWEEN comparison is only supported between compatible types\"]",
 	]);
@@ -189,7 +192,7 @@ fn between_with_a_bound_of_another_type_errors_like_the_old_path() {
 
 	for expression in [between(column("v"), text("a"), number("3")), between(column("v"), number("1"), text("z"))] {
 		let lowered = env.lowered(&expression, input.clone()).unwrap_err();
-		let old = frozen.old(&env, &expression, input.clone()).unwrap_err();
+		let old = recorded.old(&env, &expression, input.clone()).unwrap_err();
 		assert_eq!(lowered, old, "{expression:?}");
 		assert_eq!(lowered.code, "OPERATOR_028");
 	}

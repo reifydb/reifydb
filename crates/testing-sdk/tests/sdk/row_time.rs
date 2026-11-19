@@ -82,7 +82,7 @@ fn a_row_stamped_at_the_epoch_is_present_not_absent() {
 fn distinct_stamps_survive_independently_across_rows_in_one_batch() {
 	// #time is a per-row sidecar, not a per-batch scalar. A window that buckets a batch has to
 	// see each row's own time or every multi-window batch collapses into one bucket - which is
-	// indistinguishable from the freeze this whole change is fixing.
+	// indistinguishable from the stall this whole change is fixing.
 	let first = DateTime::from_millis(1_753_020_833_000);
 	let second = DateTime::from_millis(1_753_020_953_000);
 

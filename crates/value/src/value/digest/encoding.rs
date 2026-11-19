@@ -243,7 +243,7 @@ mod tests {
 	}
 
 	#[test]
-	fn inner_type_tags_are_the_frozen_type_numbers() {
+	fn inner_type_tags_are_the_stable_type_numbers() {
 		let pinned = [
 			(ValueType::Float4, 2),
 			(ValueType::Float8, 3),

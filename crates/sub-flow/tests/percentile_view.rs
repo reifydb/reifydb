@@ -36,7 +36,7 @@ const ROWS: usize = 1200;
 const CHUNK: usize = 400;
 const SEED: u64 = 0x5443_0000_D16E_0059;
 
-const FROZEN_CALLS: [(&str, &str); 10] = [
+const FIXED_CALLS: [(&str, &str); 10] = [
 	("p50", "stats::approx_percentile(latency, 0.5, 0.01)"),
 	("s", "math::sum(latency)"),
 	("p90w", "stats::approx_percentile(latency, 0.9, 0.05)"),
@@ -236,7 +236,7 @@ fn an_expression_input_and_another_accuracy_get_their_own_digest_slots_in_every_
 }
 
 #[test]
-fn the_frozen_sharing_rule_maps_a_fixed_call_set_to_a_pinned_slot_layout_in_every_flow_operator() {
+fn the_stable_sharing_rule_maps_a_fixed_call_set_to_a_pinned_slot_layout_in_every_flow_operator() {
 	// Flow slot values are stored by position, so any change to this layout reads old state against new slots.
 	let slots = [
 		single(10_000, 10.0),
@@ -248,7 +248,7 @@ fn the_frozen_sharing_rule_maps_a_fixed_call_set_to_a_pinned_slot_layout_in_ever
 		single(10_000, 6_000_000.0),
 		single(10_000, 70_000_000.0),
 	];
-	for (operator, mut core) in cores(&FROZEN_CALLS) {
+	for (operator, mut core) in cores(&FIXED_CALLS) {
 		let mut want = vec![
 			digest_slot(Some(10_000), "latency"),
 			(SlotKind::Sum, "latency".to_string()),
@@ -654,13 +654,13 @@ fn a_duration_percentile_view_equals_batch_through_inserts_deletes_and_updates()
 	percentile_cycle(Latency::Duration);
 }
 
-fn declare_frozen_view(db: &TestDb) {
+fn declare_fixed_view(db: &TestDb) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, latency: Option(float8), queue: Option(float8) }");
 	db.admin(
 		"CREATE DEFERRED VIEW app::src { id: int4, g: int4, latency: Option(float8), queue: Option(float8), lat: Option(digest(float8, 0.01)) } AS { FROM app::t | aggregate { latency: math::max(latency), queue: math::max(queue), lat: stats::digest(latency, 0.01) } by { id, g } }",
 	);
-	let columns = FROZEN_CALLS
+	let columns = FIXED_CALLS
 		.iter()
 		.map(|(name, _)| match *name {
 			"d" => "d: Option(digest(float8, 0.01))".to_string(),
@@ -669,8 +669,8 @@ fn declare_frozen_view(db: &TestDb) {
 		.collect::<Vec<_>>()
 		.join(", ");
 	db.admin(&format!(
-		"CREATE DEFERRED VIEW app::frozen {{ g: int4, {columns} }} AS {{ FROM app::src | aggregate {{ {} }} by {{ g }} }}",
-		map_of(&FROZEN_CALLS)
+		"CREATE DEFERRED VIEW app::fixed {{ g: int4, {columns} }} AS {{ FROM app::src | aggregate {{ {} }} by {{ g }} }}",
+		map_of(&FIXED_CALLS)
 	));
 }
 
@@ -682,7 +682,7 @@ fn quarter(rng: &mut StdRng) -> String {
 	}
 }
 
-fn frozen_rows(from: usize, to: usize) -> Vec<String> {
+fn fixed_rows(from: usize, to: usize) -> Vec<String> {
 	let mut rng = StdRng::seed_from_u64(SEED ^ 0x1D);
 	let mut out: Vec<String> = (0..ROWS)
 		.map(|id| {
@@ -715,71 +715,71 @@ fn poisoned_before_flows_catch_up(db: &TestDb) -> Option<String> {
 	}
 }
 
-fn frozen_answers(db: &TestDb, rql: &str) -> Vec<(Vec<String>, Vec<Value>)> {
-	keyed(&db.query(rql), &["g"], &names_of(&FROZEN_CALLS))
+fn fixed_answers(db: &TestDb, rql: &str) -> Vec<(Vec<String>, Vec<Value>)> {
+	keyed(&db.query(rql), &["g"], &names_of(&FIXED_CALLS))
 }
 
-fn assert_frozen_view_matches_batch(db: &TestDb, step: &str) -> Vec<(Vec<String>, Vec<Value>)> {
-	let batch = format!("FROM app::src | aggregate {{ {} }} by {{ g }}", map_of(&FROZEN_CALLS));
+fn assert_fixed_view_matches_batch(db: &TestDb, step: &str) -> Vec<(Vec<String>, Vec<Value>)> {
+	let batch = format!("FROM app::src | aggregate {{ {} }} by {{ g }}", map_of(&FIXED_CALLS));
 	let source_caught_up =
 		await_value(true, TIMEOUT, || db.row_count("FROM app::src") == db.row_count("FROM app::t"));
 	assert!(source_caught_up, "{step}: the source view must hold one row per source row");
-	let expected = frozen_answers(db, &batch);
+	let expected = fixed_answers(db, &batch);
 	assert!(!expected.is_empty(), "{step}: the batch query must not be empty");
-	let got = await_value(expected.clone(), TIMEOUT, || frozen_answers(db, "FROM app::frozen"));
-	assert_eq!(got, expected, "{step}: the frozen view must equal the batch query over the same rows");
+	let got = await_value(expected.clone(), TIMEOUT, || fixed_answers(db, "FROM app::fixed"));
+	assert_eq!(got, expected, "{step}: the fixed view must equal the batch query over the same rows");
 	got
 }
 
 #[test]
 fn a_fixed_call_set_keeps_its_slot_layout_and_answers_across_a_restart() {
 	// Slot state is stored by position, so a layout rebuilt differently on reopen reads old state as other slots.
-	let path = TempDbPath::new("percentile_view_frozen_restart");
+	let path = TempDbPath::new("percentile_view_fixed_restart");
 	let before = {
 		let mut db = sqlite(&path);
-		declare_frozen_view(&db);
-		db.command(&format!("INSERT app::t [{}]", frozen_rows(0, ROWS / 2).join(", ")));
+		declare_fixed_view(&db);
+		db.command(&format!("INSERT app::t [{}]", fixed_rows(0, ROWS / 2).join(", ")));
 		assert!(db.await_all_flows(TIMEOUT), "precondition: the flows catch up before the restart");
-		let before = assert_frozen_view_matches_batch(&db, "before the restart");
+		let before = assert_fixed_view_matches_batch(&db, "before the restart");
 		db.stop();
 		before
 	};
 
 	let mut db = sqlite(&path);
-	let reopened = await_value(before.clone(), TIMEOUT, || frozen_answers(&db, "FROM app::frozen"));
+	let reopened = await_value(before.clone(), TIMEOUT, || fixed_answers(&db, "FROM app::fixed"));
 	assert_eq!(reopened, before, "the reopened view must read back the answers stored before the restart");
-	db.command(&format!("INSERT app::t [{}]", frozen_rows(ROWS / 2, ROWS).join(", ")));
+	db.command(&format!("INSERT app::t [{}]", fixed_rows(ROWS / 2, ROWS).join(", ")));
 	db.command("DELETE app::t FILTER { id >= 100 and id < 400 }");
 	db.command("UPDATE app::t { latency: 99.5, queue: none } FILTER { id >= 400 and id < 450 }");
 	assert!(db.await_all_flows(TIMEOUT), "the flows must process the changes after the restart");
-	assert_frozen_view_matches_batch(&db, "retracting rows stored before the restart");
+	assert_fixed_view_matches_batch(&db, "retracting rows stored before the restart");
 	db.stop();
 }
 
 #[test]
 fn a_reopened_fixed_call_set_given_only_inserts_equals_batch_as_soon_as_its_flows_catch_up() {
 	// Inserts merge into slots stored by position, so a layout reordered on reopen must show as wrong answers.
-	let path = TempDbPath::new("percentile_view_frozen_reopen_inserts");
+	let path = TempDbPath::new("percentile_view_fixed_reopen_inserts");
 	{
 		let mut db = sqlite(&path);
-		declare_frozen_view(&db);
-		db.command(&format!("INSERT app::t [{}]", frozen_rows(0, ROWS / 2).join(", ")));
+		declare_fixed_view(&db);
+		db.command(&format!("INSERT app::t [{}]", fixed_rows(0, ROWS / 2).join(", ")));
 		assert!(db.await_all_flows(TIMEOUT), "precondition: the flows catch up before the restart");
-		assert_frozen_view_matches_batch(&db, "before the restart");
+		assert_fixed_view_matches_batch(&db, "before the restart");
 		db.stop();
 	}
 
 	let mut db = sqlite(&path);
-	db.command(&format!("INSERT app::t [{}]", frozen_rows(ROWS / 2, ROWS).join(", ")));
+	db.command(&format!("INSERT app::t [{}]", fixed_rows(ROWS / 2, ROWS).join(", ")));
 	if let Some(poisoned) = poisoned_before_flows_catch_up(&db) {
-		panic!("inserts after the restart: the frozen view flow failed instead of answering: {poisoned}");
+		panic!("inserts after the restart: the fixed view flow failed instead of answering: {poisoned}");
 	}
-	let batch = format!("FROM app::src | aggregate {{ {} }} by {{ g }}", map_of(&FROZEN_CALLS));
+	let batch = format!("FROM app::src | aggregate {{ {} }} by {{ g }}", map_of(&FIXED_CALLS));
 	assert_eq!(db.row_count("FROM app::src"), ROWS, "the source view must hold one row per source row");
 	assert_eq!(
-		frozen_answers(&db, "FROM app::frozen"),
-		frozen_answers(&db, &batch),
-		"inserts after the restart: the frozen view must equal the batch query over the same rows"
+		fixed_answers(&db, "FROM app::fixed"),
+		fixed_answers(&db, &batch),
+		"inserts after the restart: the fixed view must equal the batch query over the same rows"
 	);
 	db.stop();
 }

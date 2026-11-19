@@ -126,7 +126,7 @@ impl FlowEngineInner {
 		silent.extend(lookup_silent);
 		warn_unpublished(flow_id, &silent);
 		advance_source_watermarks(txn, &lookup_arrivals)?;
-		freeze_flow_watermark(txn, &sources, &arrivals)
+		capture_flow_watermark(txn, &sources, &arrivals)
 	}
 
 	pub fn published_watermarks(&self, flow_id: FlowId, version: CommitVersion) -> Vec<PublishedWatermark> {
@@ -188,7 +188,7 @@ impl FlowEngineInner {
 		warn_unpublished(flow_id, &silent);
 		arrivals.extend(published);
 		advance_source_watermarks(txn, &lookup_published)?;
-		freeze_flow_watermark(txn, &sources, &arrivals)?;
+		capture_flow_watermark(txn, &sources, &arrivals)?;
 
 		let mut nodes_processed = self.run_topology(txn, flow, pending, topo)?;
 		nodes_processed += self.dispatch_due_timers(txn, flow, version, topo)?;
@@ -356,7 +356,7 @@ fn advance_source_watermarks<T: FlowTransaction>(txn: &mut T, arrivals: &[Source
 	Ok(())
 }
 
-fn freeze_flow_watermark<T: FlowTransaction>(
+fn capture_flow_watermark<T: FlowTransaction>(
 	txn: &mut T,
 	sources: &[OperatorId],
 	arrivals: &[SourceArrival],
@@ -856,7 +856,7 @@ mod tests {
 
 	#[test]
 	fn process_version_folds_an_assertion_into_the_output_watermark() {
-		// Without the fold reaching freeze_flow_watermark the assertion is decoded and discarded.
+		// Without the fold reaching capture_flow_watermark the assertion is decoded and discarded.
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
@@ -910,7 +910,7 @@ mod tests {
 		let asserted = BTreeMap::from([(9u64, at_millis(30_000))]);
 
 		let arrivals = completeness_arrivals(&sources, FlowId(1), &asserted);
-		freeze_flow_watermark(&mut txn, &[SOURCE], &arrivals).unwrap();
+		capture_flow_watermark(&mut txn, &[SOURCE], &arrivals).unwrap();
 
 		assert_eq!(
 			SourceWatermarks::source_watermark(SOURCE, &mut txn).unwrap(),
@@ -927,7 +927,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 
-		freeze_flow_watermark(
+		capture_flow_watermark(
 			&mut txn,
 			&[SOURCE],
 			&[SourceArrival {
@@ -936,7 +936,7 @@ mod tests {
 			}],
 		)
 		.unwrap();
-		freeze_flow_watermark(
+		capture_flow_watermark(
 			&mut txn,
 			&[SOURCE],
 			&[SourceArrival {

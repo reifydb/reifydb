@@ -261,7 +261,7 @@ pub struct CaughtUp {
 	pub passes: u32,
 }
 
-/// Wall clock, not the database clock: a seeded build's frozen clock never expires a deadline.
+/// Wall clock, not the database clock: a seeded build's stopped clock never expires a deadline.
 #[cfg(not(reifydb_dst))]
 const DEFAULT_WAIT: Duration = Duration::from_milliseconds_const(10_000);
 

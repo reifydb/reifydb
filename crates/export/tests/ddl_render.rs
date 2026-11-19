@@ -495,7 +495,7 @@ fn queue_with_all_options() {
 #[test]
 fn queue_with_only_defaults_still_renders_the_dispatch_block() {
 	// The dispatch block is mandatory for the export to re-parse, but emitting the inner defaults
-	// would freeze today's values into every exported schema.
+	// would hard-code today's values into every exported schema.
 	let q = queue(QueueDone::default(), QueueRetry::default(), &[], None);
 
 	assert_eq!(

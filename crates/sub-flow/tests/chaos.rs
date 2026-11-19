@@ -1649,7 +1649,7 @@ fn the_four_strategy_sweeps_drive_one_shared_corpus() {
 
 chaos_test!(join_matrix_static_right_12_chaos, |seed| {
 	// The eight-cell matrix: {inner, left} x {hash, latest} x {snapshot off, on}, every cell driven
-	// against a frozen right side - the only shape that makes the snapshot cells answerable, and it
+	// against a static right side - the only shape that makes the snapshot cells answerable, and it
 	// costs the other cells nothing, so all eight stay comparable.
 	let diverged: Vec<String> = operators::join::MATRIX
 		.into_iter()

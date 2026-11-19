@@ -375,17 +375,17 @@ where
 			}
 
 			if let (Some(immutable), Some(hw)) = (immutable, meta.high_water) {
-				let to_seal: Vec<S> = meta
+				let to_fold: Vec<S> = meta
 					.windows
 					.keys()
 					.copied()
 					.take_while(|first| hw.span_since(*first) > immutable)
 					.collect();
-				Self::fold_windows(meta, &to_seal);
-				for first in to_seal {
+				Self::fold_windows(meta, &to_fold);
+				for first in to_fold {
 					let slot = *slot_of
 						.get(&(group.clone(), first))
-						.expect("a window the fold seals is in the session");
+						.expect("a window the fold takes is in the session");
 					windows.remove(slot);
 				}
 			}
@@ -843,8 +843,8 @@ mod tests {
 	}
 
 	#[test]
-	fn immutable_seals_old_windows_and_forgets_accumulator_rows() {
-		// With a 2-window immutable horizon, older windows must seal to the O(1) carry scalar and
+	fn immutable_folds_old_windows_and_forgets_accumulator_rows() {
+		// With a 2-window immutable horizon, older windows must fold into the O(1) carry scalar and
 		// drop their accumulator row, so the live row count stays bounded by the horizon rather
 		// than growing with the number of windows seen.
 		let mut store = CountingStore::default();
@@ -854,15 +854,15 @@ mod tests {
 		}
 		assert!(
 			store.accumulator_count() <= 4,
-			"sealed windows must forget their accumulator rows; found {} live rows after 60 windows",
+			"folded windows must forget their accumulator rows; found {} live rows after 60 windows",
 			store.accumulator_count()
 		);
 	}
 
 	#[test]
-	fn immutable_seals_old_windows_and_forgets_row_number_mappings() {
+	fn immutable_folds_old_windows_and_forgets_row_number_mappings() {
 		// The per-(group, window) mapping is keyed by row_key, not row_number, so accumulator
-		// eviction does not forget it. Sealing past the immutable limit must drop it alongside the
+		// eviction does not forget it. Folding past the immutable limit must drop it alongside the
 		// accumulator or the mapping keyspace grows per window forever.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(Some(millis(2 * WINDOW))));
@@ -871,7 +871,7 @@ mod tests {
 		}
 		assert!(
 			store.row_mapping_count() <= 4,
-			"sealed windows must forget their row-number mappings; found {} live mappings after 60 windows",
+			"folded windows must forget their row-number mappings; found {} live mappings after 60 windows",
 			store.row_mapping_count()
 		);
 	}
@@ -934,7 +934,7 @@ mod tests {
 			emitted_windows,
 			vec![0, WINDOW, 2 * WINDOW, 3 * WINDOW, 4 * WINDOW],
 			"each window that received an event must publish; a ladder that stops after the first \
-			 window is the production freeze"
+			 window is the production stall"
 		);
 	}
 
@@ -1226,7 +1226,7 @@ mod tests {
 
 	#[test]
 	fn without_immutable_every_window_accumulator_is_kept() {
-		// The contrast that proves the bound above comes from sealing and not some other cap: with
+		// The contrast that proves the bound above comes from folding and not some other cap: with
 		// no immutable configured the engine keeps every window's accumulator forever.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));

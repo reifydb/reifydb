@@ -187,7 +187,7 @@ fn a_left_row_joins_only_the_newest_right_row_and_keeps_it_through_the_seal() {
 
 #[test]
 fn a_right_row_arriving_after_the_left_row_never_reaches_it() {
-	// A snapshot join freezes the left row's view of the slot, so a later arrival must not revise it.
+	// A snapshot join pins the left row's view of the slot, so a later arrival must not revise it.
 	let db = setup();
 	snapshot_latest_left_join(&db, "");
 	insert_left(&db);
@@ -202,7 +202,7 @@ fn a_right_row_arriving_after_the_left_row_never_reaches_it() {
 	insert_right_b(&db);
 	db.await_all_flows(TIMEOUT);
 
-	assert_eq!(db.row_count("FROM app::j"), 1, "filling the slot later must not add a row to a frozen left row");
+	assert_eq!(db.row_count("FROM app::j"), 1, "filling the slot later must not add a row to a pinned left row");
 	assert!(
 		matches!(view_rv(&db).as_slice(), [Value::None { .. }]),
 		"and must not fill in the none it was published with, found {:?}",
@@ -226,7 +226,7 @@ fn withdrawing_a_left_row_retracts_the_slot_version_it_published_against() {
 	assert_eq!(
 		db.row_count("FROM app::j FILTER { rv == 7 }"),
 		1,
-		"precondition: the published row is still frozen"
+		"precondition: the published row is still pinned"
 	);
 
 	db.command("DELETE app::lhs FILTER { id == 1 }");
@@ -275,5 +275,5 @@ fn a_sealed_left_row_takes_its_ledger_entry_and_spares_the_unsealed_slot() {
 		"so the key's group must outlive the left side that armed it; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
-	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "and the row it published freezes in the view");
+	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "and its published row is immutable in the view");
 }

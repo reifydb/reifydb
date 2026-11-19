@@ -249,7 +249,7 @@ impl Database {
 
 	fn flush_stores(&self, errors: &mut ShutdownErrors) {
 		self.settle_stopped_actors();
-		errors.step("commits", self.engine.multi().freeze_commits().map(|_| ()));
+		errors.step("commits", self.engine.multi().stop_commits().map(|_| ()));
 
 		if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
 			match self.engine.saved_lookup_floor() {

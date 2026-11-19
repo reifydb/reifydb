@@ -552,7 +552,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn frozen_bucket_formula() {
+	fn stable_bucket_formula() {
 		// Any change to gamma, the ceil index or the representative changes answers read from stored digests.
 		let pins: [(u32, f64, i32, u64); 24] = [
 			(1_000, 1.0, 0, 0x3feff7ced916872b),

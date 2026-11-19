@@ -184,7 +184,7 @@ fn due_timers_return_in_at_then_kind_then_id_order() {
 fn arming_the_same_timer_twice_fires_once() {
 	// Arming the same (at, kind, key) twice is an idempotent overwrite, so per-bucket coalescing
 	// does not double-fire. The clock advances between the arms because the realistic bug is a
-	// wall-time uniquifier leaking into the wheel key, which a frozen clock would hide.
+	// wall-time uniquifier leaking into the wheel key, which a stopped clock would hide.
 	let engine = TestEngine::new();
 	let clock = MockClock::from_millis(0);
 	let mut txn = deferred_with_clock(&engine, clock.clone());

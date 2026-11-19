@@ -122,7 +122,7 @@ fn a_left_row_publishes_against_every_right_row_that_was_already_there() {
 
 #[test]
 fn a_right_row_arriving_after_the_left_row_never_reaches_it() {
-	// A snapshot join freezes the left row's view of the right side, so a later arrival must not revise it.
+	// A snapshot join pins the left row's view of the right side, so a later arrival must not revise it.
 	let db = setup();
 	snapshot_left_join(&db, "");
 	insert_left(&db);
@@ -137,7 +137,7 @@ fn a_right_row_arriving_after_the_left_row_never_reaches_it() {
 	insert_right_b(&db);
 	db.await_all_flows(TIMEOUT);
 
-	assert_eq!(db.row_count("FROM app::j"), 1, "a later right row must not add a row to a frozen left row");
+	assert_eq!(db.row_count("FROM app::j"), 1, "a later right row must not add a row to a pinned left row");
 	assert!(
 		matches!(view_rv(&db).as_slice(), [Value::None { .. }]),
 		"and must not fill in the none it was published with, found {:?}",
@@ -250,5 +250,5 @@ fn a_sealed_left_row_takes_its_ledger_entry_and_spares_the_unsealed_right_side()
 		"so the key's group must outlive the left side that armed it; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
-	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "and the row it published freezes in the view");
+	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "and its published row is immutable in the view");
 }

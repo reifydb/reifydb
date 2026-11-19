@@ -150,16 +150,16 @@ mod tests {
 	};
 
 	#[test]
-	fn immutable_endpoint_freezes_open_and_tracks_live_close() {
+	fn immutable_endpoint_folds_open_and_tracks_live_close() {
 		let mut accumulator: ImmutableEndpoint<ByDateTime, i64> = ImmutableEndpoint::immutable(millis(10));
 		accumulator.add(&[(event_coord_at_millis(0), 100)]);
 		accumulator.add(&[(event_coord_at_millis(5), 200)]);
 		accumulator.add(&[(event_coord_at_millis(12), 300)]);
-		assert_eq!(accumulator.open(), Some(&100), "open frozen to the earliest observation");
+		assert_eq!(accumulator.open(), Some(&100), "open folded at the earliest observation");
 		assert_eq!(accumulator.close(), Some(&300), "close is the latest live observation");
 
 		accumulator.remove(&[(event_coord_at_millis(0), 100)]);
-		assert_eq!(accumulator.open(), Some(&100), "aged open removal is a dropped no-op (frozen)");
+		assert_eq!(accumulator.open(), Some(&100), "aged open removal is a dropped no-op (immutable)");
 
 		accumulator.remove(&[(event_coord_at_millis(12), 300)]);
 		assert_eq!(accumulator.close(), Some(&200), "removing the latest reveals the prior latest in the tail");
@@ -179,7 +179,7 @@ mod tests {
 
 	#[test]
 	fn immutable_endpoint_default_open_moves_when_the_earliest_row_is_retracted() {
-		// Without an immutable span the open is never frozen, so retracting the earliest row must promote the
+		// Without an immutable span the open is never folded, so retracting the earliest row must promote the
 		// next.
 		let mut accumulator: CountedAccumulator<ImmutableEndpoint<ByDateTime, i64>> =
 			CountedAccumulator::new(ImmutableEndpoint::default());
@@ -213,8 +213,8 @@ mod tests {
 	}
 
 	#[test]
-	fn immutable_endpoint_matches_the_unsealed_arm_for_in_order_adds() {
-		// Freezing the open and replaying the tail must reproduce exactly what keeping everything gives.
+	fn immutable_endpoint_matches_the_plain_arm_for_in_order_adds() {
+		// Folding the open and replaying the tail must reproduce exactly what keeping everything gives.
 		assert_arms_agree(
 			ImmutableEndpoint::<ByDateTime, i64>::immutable(millis(5)),
 			ImmutableEndpoint::<ByDateTime, i64>::default(),
@@ -228,7 +228,7 @@ mod tests {
 	}
 
 	#[test]
-	fn immutable_endpoint_merge_keeps_a_branch_open_that_predates_the_seal_line() {
+	fn immutable_endpoint_merge_keeps_a_branch_open_that_predates_the_immutable_line() {
 		// merge combines two parallel histories, never late arrivals, so the receiver's immutable line must not
 		// swallow the other branch.
 		let mut left: ImmutableEndpoint<ByDateTime, i64> = ImmutableEndpoint::immutable(millis(10));

@@ -145,7 +145,7 @@ mod tests {
 
 	#[test]
 	fn immutable_min_default_never_folds_and_is_fully_invertible() {
-		// Without an immutable span the minimum is never frozen, so retracting it must reveal the next one.
+		// Without an immutable span the minimum is never folded, so retracting it must reveal the next one.
 		assert_add_remove_is_inverse::<ImmutableMin<ByDateTime, i64>>(
 			&[(event_coord_at_millis(1), 10i64), (event_coord_at_millis(2), 20)],
 			(event_coord_at_millis(3), 30i64),

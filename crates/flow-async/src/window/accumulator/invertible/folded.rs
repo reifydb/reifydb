@@ -40,7 +40,7 @@ impl<A: Default, S: Default> Default for FoldedAccumulator<A, S> {
 }
 
 impl<A: WindowAccumulator, S: Fold<A::Output>> FoldedAccumulator<A, S> {
-	fn seal_open(&mut self) {
+	fn fold_open(&mut self) {
 		if let Some(value) = mem::take(&mut self.open).finalize() {
 			self.immutable.fold(&value);
 		}
@@ -84,7 +84,7 @@ where
 	FoldedAccumulator<A, S>: OperatorState + StateCodec + HeapSize,
 {
 	fn merge(&mut self, other: &Self) {
-		self.seal_open();
+		self.fold_open();
 		self.immutable.append(&other.immutable);
 		if let Some(value) = other.open.finalize() {
 			self.immutable.fold(&value);
@@ -92,7 +92,7 @@ where
 	}
 
 	fn compact(&mut self) {
-		self.seal_open();
+		self.fold_open();
 	}
 }
 

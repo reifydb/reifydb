@@ -28,7 +28,7 @@ pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 		.unwrap()
 }
 
-/// Throttle and linger gates compare against `clock.now()`; the default seeded clock is frozen
+/// Throttle and linger gates compare against `clock.now()`; the default seeded clock is stopped
 /// at 0, so a window never elapses on its own. Handing in a clock the test also holds lets it
 /// step time forward on demand.
 #[allow(dead_code)]

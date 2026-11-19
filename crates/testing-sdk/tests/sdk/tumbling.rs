@@ -526,7 +526,7 @@ fn an_update_carries_the_published_row_as_its_pre() {
 
 #[test]
 fn a_second_update_carries_the_row_of_the_first_update_as_its_pre() {
-	// A pre frozen at the insert row would retract a value downstream no longer holds.
+	// A pre stuck at the insert row would retract a value downstream no longer holds.
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(window_with())
 		.build()

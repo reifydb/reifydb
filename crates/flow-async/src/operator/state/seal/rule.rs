@@ -183,7 +183,7 @@ mod tests {
 		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 		let ledger = at_millis(358_262);
 
-		let horizon = rule.horizon_at(ByDateTime(ledger)).expect("the ledger is past one seal_span span");
+		let horizon = rule.horizon_at(ByDateTime(ledger)).expect("the ledger is past one seal span");
 
 		assert_eq!(horizon.0, at_millis(283_261), "ledger - (size + lateness) - 1");
 		assert!(

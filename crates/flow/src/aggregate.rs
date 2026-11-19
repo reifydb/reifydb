@@ -768,7 +768,7 @@ mod tests {
 	}
 
 	#[test]
-	fn the_frozen_sharing_rule_maps_a_fixed_call_set_to_a_pinned_slot_layout() {
+	fn the_stable_sharing_rule_maps_a_fixed_call_set_to_a_pinned_slot_layout() {
 		// Flow slot values are stored by position, so any change to this layout reads old state against new
 		// slots.
 		let (outputs, slots) = rewrite_outputs(vec![

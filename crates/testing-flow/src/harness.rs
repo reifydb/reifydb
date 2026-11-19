@@ -494,7 +494,7 @@ mod tests {
 	#[test]
 	fn the_batch_time_is_the_latest_row_time() {
 		// A batch is one arrival, so its position is the latest event time it carries - matching what
-		// the batch path freezes as the flow watermark. Taking the first row's time instead would make
+		// the batch path captures as the flow watermark. Taking the first row's time instead would make
 		// a group's due-ness depend on how the driver happened to order rows inside a change.
 		let early = DateTime::from_epoch_millis(1_000).unwrap();
 		let late = DateTime::from_epoch_millis(9_000).unwrap();

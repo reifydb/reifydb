@@ -260,7 +260,7 @@ fn an_updated_left_row_pushes_its_seal_out_and_outlives_the_tick_that_sealed_its
 
 #[test]
 fn a_mutation_after_the_seal_leaves_the_published_row_where_the_seal_found_it() {
-	// A sealed row's mapping is gone, so the post must land as a fresh row and never overwrite the frozen one.
+	// A sealed row's mapping is gone, so the post must land as a fresh row and never overwrite the immutable one.
 	let db = setup();
 	aggregate_fed_left_join(&db);
 	fill_one_aggregate_pair(&db);
@@ -276,7 +276,7 @@ fn a_mutation_after_the_seal_leaves_the_published_row_where_the_seal_found_it() 
 		1,
 		"and the sealed row keeps the value it was sealed on"
 	);
-	assert_eq!(db.row_count("FROM app::j"), 2, "the frozen row and the fresh post, nothing more");
+	assert_eq!(db.row_count("FROM app::j"), 2, "the immutable row and the fresh post, nothing more");
 }
 
 #[test]
@@ -325,7 +325,7 @@ fn a_delete_after_the_seal_frees_no_further_state() {
 
 #[test]
 fn a_row_inserted_after_the_seal_arms_its_own_state_and_publishes_its_own_row() {
-	// A fresh source row must never land on a sealed row's output row, which is frozen and unreachable.
+	// A fresh source row must never land on a sealed row's output row, which is immutable and unreachable.
 	let db = setup();
 	sealing_left_join(&db);
 	fill_one_pair(&db);
@@ -337,7 +337,7 @@ fn a_row_inserted_after_the_seal_arms_its_own_state_and_publishes_its_own_row() 
 
 	assert_eq!(await_state_keys(&db, ANCHORED_KEYS, 1, TIMEOUT), 1, "the new row arms a seal of its own");
 	assert_eq!(db.row_count("FROM app::j FILTER { lv == 11 }"), 1, "and publishes its own row");
-	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "without disturbing what the seal froze");
+	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "without disturbing the immutable row");
 }
 
 #[test]
@@ -390,7 +390,7 @@ fn a_right_side_match_never_extends_the_left_rows_anchor() {
 		"and the right row, armed ten seconds in, must be untouched; surface now: {:?}",
 		db.query(SURFACE)
 	);
-	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "and the joined row it published stays frozen");
+	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "and the joined row it published is immutable");
 }
 
 #[test]
@@ -441,7 +441,7 @@ fn a_right_row_arriving_after_the_left_seal_cannot_fill_in_the_published_none() 
 
 	assert!(
 		matches!(view_rv(&db, "lv == 5").as_slice(), [Value::None { .. }]),
-		"the sealed row froze with none on the right and a late match must not fill it in, found {:?}",
+		"the sealed row is immutable with none on the right and a late match must not fill it in, found {:?}",
 		view_rv(&db, "lv == 5")
 	);
 	assert_eq!(db.row_count("FROM app::j"), 1, "and a late right row alone must publish nothing of its own");
@@ -449,7 +449,7 @@ fn a_right_row_arriving_after_the_left_seal_cannot_fill_in_the_published_none() 
 
 #[test]
 fn a_left_join_without_a_seal_keeps_every_row_addressable_forever() {
-	// Arming unconditionally would forget joins that never asked to seal, silently freezing their rows.
+	// Arming unconditionally would forget joins that never asked to seal, silently making their rows immutable.
 	let db = setup();
 	unsealed_left_join(&db);
 	db.command(r#"INSERT keep::lhs [{ id: 1, k: 1, lv: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);

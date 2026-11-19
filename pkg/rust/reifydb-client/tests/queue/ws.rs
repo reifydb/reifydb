@@ -45,7 +45,7 @@ where
 #[test]
 fn a_parked_ws_claim_does_not_wedge_the_socket() {
 	// This is the invariant that forced the spawned-task design: WS handles one message at a time
-	// inline, so a claim parked in the connection loop would freeze every other request on that
+	// inline, so a claim parked in the connection loop would block every other request on that
 	// socket. Issuing a Query while a 3s claim is parked, and requiring the Query to answer
 	// quickly, is the only thing that catches a regression back to inline handling.
 	run(|client, port| async move {

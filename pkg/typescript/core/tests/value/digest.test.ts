@@ -87,7 +87,7 @@ describe('DigestValue', () => {
         expect(digest.toString()).toBe('digest(n: 0)');
     });
 
-    it('maps every frozen inner type tag to its type name', () => {
+    it('maps every stable inner type tag to its type name', () => {
         // Tags are stored type numbers, otherwise a Duration digest reads back as another type.
         const pinned: Array<[string, bigint]> = [
             ['Float4', 2n], ['Float8', 3n], ['Int1', 4n], ['Int2', 5n], ['Int4', 6n], ['Int8', 7n], ['Int16', 8n],

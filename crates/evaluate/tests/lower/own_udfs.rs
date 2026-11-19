@@ -5,20 +5,20 @@ use reifydb_core::value::column::factory;
 use reifydb_value::value::Value;
 
 use crate::common::{
-	Env, Frozen, and, batch, between, boolean, column, contains, is_variant, none, number, strings, xor,
+	Env, Recorded, and, batch, between, boolean, column, contains, is_variant, none, number, strings, xor,
 };
 
 #[test]
 fn xor_follows_the_old_truth_table_with_none() {
 	// Xor has no DataFusion twin, so ours must answer every pair, none included, exactly as today.
-	let mut frozen = Frozen::load("xor_follows_the_old_truth_table_with_none");
+	let mut recorded = Recorded::load("xor_follows_the_old_truth_table_with_none");
 	let env = Env::new();
 	let values = [boolean("true"), boolean("false"), none()];
 	for left in &values {
 		for right in &values {
 			let expression = xor(left.clone(), right.clone());
 			let lowered = env.lowered(&expression, batch(vec![factory::int4("r", [1])])).unwrap();
-			let old = frozen.old(&env, &expression, batch(vec![factory::int4("r", [1])])).unwrap();
+			let old = recorded.old(&env, &expression, batch(vec![factory::int4("r", [1])])).unwrap();
 			assert_eq!(lowered.0, old.0, "field of {expression:?}");
 			assert_eq!(strings(&lowered), strings(&old), "values of {expression:?}");
 		}
@@ -28,7 +28,7 @@ fn xor_follows_the_old_truth_table_with_none() {
 #[test]
 fn xor_over_columns_matches_the_old_path() {
 	// Columns run through the same kernel, so the per-row answers and the field must equal today's.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"Field { name: \"l xor r\", data_type: Boolean } [\"false\", \"true\", \"true\", \"false\"]",
 	]);
 	let env = Env::new();
@@ -40,14 +40,14 @@ fn xor_over_columns_matches_the_old_path() {
 
 	let lowered = env.lowered(&expression, input.clone()).unwrap();
 
-	assert_eq!(lowered, frozen.old(&env, &expression, input).unwrap());
+	assert_eq!(lowered, recorded.old(&env, &expression, input).unwrap());
 	assert_eq!(strings(&lowered), vec!["false", "true", "true", "false"]);
 }
 
 #[test]
 fn xor_over_a_non_boolean_errors_like_the_old_path() {
 	// The type check runs at lowering, so the code must still be today's.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"OPERATOR_013 \"vxortrue\" Cannot apply XOR operator to number [\"XOR is a logical operator that performs exclusive or on boolean values\", \"To convert numbers to boolean, use comparison operators like: value != 0\", \"For bitwise operations on integers, use the bitwise XOR (^) operator instead\"]",
 	]);
 	let env = Env::new();
@@ -56,13 +56,13 @@ fn xor_over_a_non_boolean_errors_like_the_old_path() {
 
 	let lowered = env.lowered(&expression, input.clone()).unwrap_err();
 
-	assert_eq!(lowered.code, frozen.old(&env, &expression, input).unwrap_err().code);
+	assert_eq!(lowered.code, recorded.old(&env, &expression, input).unwrap_err().code);
 }
 
 #[test]
 fn contains_matches_the_old_path_on_list_rows() {
 	// A row's list must hold every item, so the and over items and the false for non-lists must stay as today.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"Field { name: \"contains\", data_type: Boolean } [\"true\", \"false\", \"false\"]",
 		"Field { name: \"contains\", data_type: Boolean } [\"true\", \"false\", \"false\"]",
 		"Field { name: \"contains\", data_type: Boolean } [\"true\", \"true\", \"true\"]",
@@ -78,7 +78,7 @@ fn contains_matches_the_old_path_on_list_rows() {
 		contains(column("l"), vec![]),
 	] {
 		let lowered = env.lowered(&expression, input.clone()).unwrap();
-		let old = frozen.old(&env, &expression, input.clone()).unwrap();
+		let old = recorded.old(&env, &expression, input.clone()).unwrap();
 		assert_eq!(lowered.0, old.0, "field of {expression:?}");
 		assert_eq!(strings(&lowered), strings(&old), "values of {expression:?}");
 	}
@@ -87,7 +87,7 @@ fn contains_matches_the_old_path_on_list_rows() {
 #[test]
 fn is_variant_reads_the_tag_column_like_the_old_path() {
 	// A variant test reads the hidden tag column; a missing or nullable tag must answer none as today.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"Field { name: \"is circle\", data_type: Boolean } [\"true\", \"false\", \"true\"]",
 		"Field { name: \"is circle\", data_type: Boolean, nullable: true } [\"none\", \"none\", \"none\"]",
 	]);
@@ -97,7 +97,7 @@ fn is_variant_reads_the_tag_column_like_the_old_path() {
 	let expression = is_variant("shape", 0);
 	for input in [tagged, untagged] {
 		let lowered = env.lowered(&expression, input.clone()).unwrap();
-		let old = frozen.old(&env, &expression, input).unwrap();
+		let old = recorded.old(&env, &expression, input).unwrap();
 		assert_eq!(lowered.0, old.0);
 		assert_eq!(strings(&lowered), strings(&old));
 	}

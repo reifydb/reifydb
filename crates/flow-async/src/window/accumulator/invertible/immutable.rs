@@ -40,7 +40,7 @@ impl<K: Ord, V, S: Default> Default for ImmutableAccumulator<K, V, S> {
 }
 
 impl<K: Ord, V, S: Summary<K, V>> ImmutableAccumulator<K, V, S> {
-	fn seal_open(&mut self) {
+	fn fold_open(&mut self) {
 		for (key, value) in mem::take(&mut self.open) {
 			self.immutable.push(&key, &value);
 		}
@@ -91,7 +91,7 @@ where
 	ImmutableAccumulator<K, V, S>: OperatorState + StateCodec + HeapSize,
 {
 	fn merge(&mut self, other: &Self) {
-		self.seal_open();
+		self.fold_open();
 		self.immutable.append(&other.immutable);
 		for (key, value) in &other.open {
 			self.immutable.push(key, value);
@@ -99,7 +99,7 @@ where
 	}
 
 	fn compact(&mut self) {
-		self.seal_open();
+		self.fold_open();
 	}
 }
 

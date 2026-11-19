@@ -431,7 +431,7 @@ mod tests {
 
 	#[test]
 	fn a_row_far_after_the_newest_closed_session_opens_normally() {
-		// Refusing every row after a close would freeze the group once its first session sealed.
+		// Refusing every row after a close would block the group once its first session sealed.
 		let mut open = seeded(&[(10_000, 1)]);
 		open.close(event_coord_at_millis(10_500));
 

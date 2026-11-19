@@ -221,7 +221,7 @@ mod tests {
 	#[test]
 	fn row_expiry_classes_are_not_hostage_to_readers_of_other_data() {
 		// Row expiry is protected by MVCC-transactional discovery, not by these readers. Sharing one
-		// done until with them lets a wedged reader or a leaked query lease freeze it.
+		// done until with them lets a wedged reader or a leaked query lease stall it.
 		{
 			let class = LifecycleClass::RowTtl;
 			assert!(

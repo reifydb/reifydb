@@ -203,10 +203,10 @@ mod tests {
 		assert_eq!(
 			health.stalled(),
 			vec![FlowId(1)],
-			"a cursor pinned below the safe bound past the timeout must reach the registry, or the freeze \
+			"a cursor pinned below the safe bound past the timeout must reach the registry, or the stall \
 			 stays invisible"
 		);
-		assert_eq!(health.stalls(), 1, "the stall must count once so a recovered freeze is still evidence");
+		assert_eq!(health.stalls(), 1, "the stall must count once so a recovered stall is still evidence");
 	}
 
 	#[test]

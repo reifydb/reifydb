@@ -349,8 +349,8 @@ impl MultiTransaction {
 		self.0.tm.config()
 	}
 
-	pub fn freeze_commits(&self) -> Result<CommitVersion, ValueError> {
-		self.0.tm.oracle().freeze_commits()
+	pub fn stop_commits(&self) -> Result<CommitVersion, ValueError> {
+		self.0.tm.oracle().stop_commits()
 	}
 
 	pub fn bootstrapping_completed(&self) {

@@ -12,13 +12,13 @@ use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_value::value::value_type::ValueType;
 
 use crate::common::{
-	Env, Frozen, and, arith, batch, between, boolean, cast, column, compare, field_access, number, rows, strings,
+	Env, Recorded, and, arith, batch, between, boolean, cast, column, compare, field_access, number, rows, strings,
 };
 
 #[test]
 fn a_field_on_a_non_variable_object_keeps_the_old_error() {
 	// A field on any other object must still run the object first and raise the old error.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"RUNTIME_009 \"\" Field 'f' not found on variable '<expression>' []",
 		"QUERY_001 \"missing\" column not found []",
 	]);
@@ -28,7 +28,7 @@ fn a_field_on_a_non_variable_object_keeps_the_old_error() {
 	for (object, code) in [("a", "RUNTIME_009"), ("missing", "QUERY_001")] {
 		let expression = field_access(column(object), "f");
 		let lowered = env.lowered(&expression, input.clone()).unwrap_err();
-		let old = frozen.old(&env, &expression, input.clone()).unwrap_err();
+		let old = recorded.old(&env, &expression, input.clone()).unwrap_err();
 		assert_eq!(lowered, old, "error of {object}.f");
 		assert_eq!(lowered.code, code, "code of {object}.f");
 	}
@@ -78,7 +78,7 @@ fn the_same_schema_reuses_the_lowering_for_later_batches() {
 #[test]
 fn a_lowering_error_is_returned_on_every_evaluate() {
 	// Returning Ok after the first error would let a broken filter pass rows on the second batch.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"OPERATOR_005 \"1andtrue\" Cannot apply AND operator to number [\"AND is a logical operator that combines boolean values\", \"To convert numbers to boolean, use comparison operators like: value != 0\", \"For bitwise operations on integers, use the bitwise AND (&) operator instead\"]",
 	]);
 	let env = Env::new();
@@ -89,20 +89,20 @@ fn a_lowering_error_is_returned_on_every_evaluate() {
 
 	assert_eq!(first.code, second.code);
 	assert_eq!(first.fragment.text(), second.fragment.text());
-	assert_eq!(first.code, frozen.old(&env, &and(number("1"), boolean("true")), rows(2)).unwrap_err().code);
+	assert_eq!(first.code, recorded.old(&env, &and(number("1"), boolean("true")), rows(2)).unwrap_err().code);
 }
 
 #[test]
 fn an_expression_on_a_batch_with_no_columns_answers_row_count_rows() {
 	// A map with no input runs on an empty batch, so its row count must come from the context, never the batch.
-	let mut frozen = Frozen::inline(&["Field { name: \"1 + 2\", data_type: Int16 } [\"3\"]"]);
+	let mut recorded = Recorded::inline(&["Field { name: \"1 + 2\", data_type: Int16 } [\"3\"]"]);
 	let env = Env::new();
 	let expression = arith("+", number("1"), number("2"));
 	let mut ctx = env.ctx(empty_batch());
 	ctx.row_count = 1;
 
 	let lowered = LoweredExpr::new(expression.clone(), "test").evaluate(&ctx).unwrap();
-	let old = frozen.answer(LoweredExpr::new(expression.clone(), "test").evaluate(&ctx)).unwrap();
+	let old = recorded.answer(LoweredExpr::new(expression.clone(), "test").evaluate(&ctx)).unwrap();
 
 	assert_eq!(lowered, old);
 	assert_eq!(strings(&lowered), vec!["3"]);
@@ -111,7 +111,7 @@ fn an_expression_on_a_batch_with_no_columns_answers_row_count_rows() {
 #[test]
 fn a_field_that_holds_a_none_is_widened_to_an_option() {
 	// A map builds a batch from the field, and a non-nullable field holding a none is refused there.
-	let mut frozen = Frozen::inline(&[
+	let mut recorded = Recorded::inline(&[
 		"Field { name: \"cast(a, type)\", data_type: Int8, nullable: true } [\"1\", \"none\"]",
 	]);
 	let env = Env::new();
@@ -125,7 +125,7 @@ fn a_field_that_holds_a_none_is_widened_to_an_option() {
 	});
 
 	let lowered = LoweredExpr::new(expression.clone(), "test").evaluate(&ctx).unwrap();
-	let old = frozen.answer(LoweredExpr::new(expression.clone(), "test").evaluate(&ctx)).unwrap();
+	let old = recorded.answer(LoweredExpr::new(expression.clone(), "test").evaluate(&ctx)).unwrap();
 
 	assert!(lowered.0.is_nullable());
 	assert_eq!(lowered, old);
