@@ -14,7 +14,7 @@ use reifydb_flow_async::{
 			WindowAccumulator,
 			invertible::{keyed::KeyedInvertibleAccumulator, moments::Moments, ordf64::OrdF64},
 		},
-		coord::DateTimeCoord,
+		coord::ByDateTime,
 	},
 };
 use reifydb_testing_sdk::last_value::LastValue;
@@ -40,31 +40,27 @@ fn last_value_roundtrip() {
 fn immutable_min_default_is_fully_invertible() {
 	// With no lateness bound nothing folds, so add/remove stays a pure inverse even when the
 	// probe is a new minimum.
-	assert_add_remove_is_inverse::<ImmutableMin<DateTimeCoord, i64>>(
-		&[
-			(DateTimeCoord(at_millis(1)), 10i64),
-			(DateTimeCoord(at_millis(2)), 20),
-			(DateTimeCoord(at_millis(3)), 30),
-		],
-		(DateTimeCoord(at_millis(4)), -5i64),
+	assert_add_remove_is_inverse::<ImmutableMin<ByDateTime, i64>>(
+		&[(ByDateTime(at_millis(1)), 10i64), (ByDateTime(at_millis(2)), 20), (ByDateTime(at_millis(3)), 30)],
+		(ByDateTime(at_millis(4)), -5i64),
 	);
 
-	let mut accumulator: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
-	accumulator.add(from_ref(&(DateTimeCoord(at_millis(0)), 5)));
-	accumulator.add(from_ref(&(DateTimeCoord(at_millis(100)), 1)));
-	accumulator.remove(from_ref(&(DateTimeCoord(at_millis(100)), 1)));
+	let mut accumulator: ImmutableMin<ByDateTime, i64> = ImmutableMin::default();
+	accumulator.add(from_ref(&(ByDateTime(at_millis(0)), 5)));
+	accumulator.add(from_ref(&(ByDateTime(at_millis(100)), 1)));
+	accumulator.remove(from_ref(&(ByDateTime(at_millis(100)), 1)));
 	assert_eq!(accumulator.finalize(), Some(5), "removing the min reveals the prior min when nothing has folded");
 }
 
 #[test]
 fn immutable_endpoint_late_middle_arrival_keeps_open() {
 	// A late arrival later than the immutable open must not move it.
-	let mut accumulator: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
-	accumulator.add(from_ref(&(DateTimeCoord(at_millis(2)), 999)));
-	accumulator.add(from_ref(&(DateTimeCoord(at_millis(20)), 200))); // hw=20; coord 2 ages -> immutable_open=(2,999)
+	let mut accumulator: ImmutableEndpoint<ByDateTime, i64> = ImmutableEndpoint::immutable(millis(10));
+	accumulator.add(from_ref(&(ByDateTime(at_millis(2)), 999)));
+	accumulator.add(from_ref(&(ByDateTime(at_millis(20)), 200))); // hw=20; coord 2 ages -> immutable_open=(2,999)
 	assert_eq!(accumulator.open(), Some(&999));
 
-	accumulator.add(from_ref(&(DateTimeCoord(at_millis(5)), 50))); // coord 5 ages (15>10) but 5 > 2, so open stays (2,999)
+	accumulator.add(from_ref(&(ByDateTime(at_millis(5)), 50))); // coord 5 ages (15>10) but 5 > 2, so open stays (2,999)
 	assert_eq!(accumulator.open(), Some(&999), "a later late arrival does not displace the earlier open");
 }
 

@@ -1177,7 +1177,7 @@ mod tests {
 		operator::state::mock::MockStore,
 		window::{
 			accumulator::{CountedAccumulator, MergeAccumulator, UnmergeAccumulator, WindowAccumulator},
-			coord::DateTimeCoord,
+			coord::ByDateTime,
 			engine::{config::WindowEngineConfig, daba::Merge, publish::RowPublisher},
 			meta::NoKey,
 		},
@@ -1230,7 +1230,7 @@ mod tests {
 		}
 	}
 
-	type Engine = PaneEngine<u32, DateTimeCoord, Bag>;
+	type Engine = PaneEngine<u32, ByDateTime, Bag>;
 
 	struct Lcg(u64);
 
@@ -1241,8 +1241,8 @@ mod tests {
 		}
 	}
 
-	fn ms(millis: u64) -> DateTimeCoord {
-		DateTimeCoord(DateTime::from_millis(i64::try_from(millis).unwrap()))
+	fn ms(millis: u64) -> ByDateTime {
+		ByDateTime(DateTime::from_millis(i64::try_from(millis).unwrap()))
 	}
 
 	fn span(millis: u64) -> Duration {
@@ -1338,7 +1338,7 @@ mod tests {
 		let (mut base, mut row, mut cutoff) = (1_000u64, 0u64, None::<u64>);
 		let (mut emitted, mut dropped, mut expired) = (0usize, 0u64, 0usize);
 		for round in 0..400u64 {
-			let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
+			let mut groups: PaneGroups<u32, ByDateTime, (u64, i64)> = BTreeMap::new();
 			let mut admitted: Vec<(u32, u64, u64, i64, bool)> = Vec::new();
 			let mut round_dropped = 0u64;
 			let mut push = |model: &Model, group: u32, pane: u64, row: u64, value: i64, add: bool| {
@@ -1399,7 +1399,7 @@ mod tests {
 					&Bag::default,
 					&RowPublisher {
 						key: Some(&|_: &u32| Ok(NoKey)),
-						finalize: &|_: &u32, _: DateTimeCoord, bag: &Bag| bag.finalize(),
+						finalize: &|_: &u32, _: ByDateTime, bag: &Bag| bag.finalize(),
 						on_empty: OnEmpty::Remove,
 						empty: &|_| Ok(None),
 					},
@@ -1425,9 +1425,7 @@ mod tests {
 						ms(cutoff.unwrap()),
 						&RowPublisher::<_, NoKey, _, _, _> {
 							key: None,
-							finalize: &|_: &u32, _: DateTimeCoord, bag: &Bag| {
-								bag.finalize()
-							},
+							finalize: &|_: &u32, _: ByDateTime, bag: &Bag| bag.finalize(),
 							on_empty: OnEmpty::Remove,
 							empty: &|_| Ok(None),
 						},
@@ -1511,7 +1509,7 @@ mod tests {
 			let group = GroupId::hashed(Hash128(1));
 			let mut visited = Vec::new();
 			for pane in 1_000..3_000u64 {
-				let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
+				let mut groups: PaneGroups<u32, ByDateTime, (u64, i64)> = BTreeMap::new();
 				let mut events = PaneEvents::default();
 				events.insert(ms(pane), pane, (pane, 1));
 				groups.insert(1, (group, events));
@@ -1525,7 +1523,7 @@ mod tests {
 					&Bag::default,
 					&RowPublisher {
 						key: Some(&|_: &u32| Ok(NoKey)),
-						finalize: &|_: &u32, _: DateTimeCoord, bag: &Bag| bag.finalize(),
+						finalize: &|_: &u32, _: ByDateTime, bag: &Bag| bag.finalize(),
 						on_empty: OnEmpty::Remove,
 						empty: &|_| Ok(None),
 					},
@@ -1601,7 +1599,7 @@ mod tests {
 			lateness: span(4),
 			retract: span(4),
 		};
-		let mut engine: PaneEngine<u32, DateTimeCoord, Tally> =
+		let mut engine: PaneEngine<u32, ByDateTime, Tally> =
 			PaneEngine::queue(WindowEngineConfig::builder().build(), spans, Merge::of());
 		let mut store = MockStore::default();
 		let group = GroupId::hashed(Hash128(7));
@@ -1612,7 +1610,7 @@ mod tests {
 			for row in 0..=rng.below(3) {
 				events.insert(ms(pane), pane * 10 + row, (pane * 10 + row, rng.below(50) as i64));
 			}
-			let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
+			let mut groups: PaneGroups<u32, ByDateTime, (u64, i64)> = BTreeMap::new();
 			groups.insert(1, (group, events));
 			let order: Vec<_> = groups.keys().cloned().collect();
 			engine.apply(
@@ -1623,7 +1621,7 @@ mod tests {
 				&Tally::default,
 				&RowPublisher {
 					key: Some(&|_: &u32| Ok(NoKey)),
-					finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
+					finalize: &|_: &u32, _: ByDateTime, t: &Tally| t.finalize(),
 					on_empty: OnEmpty::Remove,
 					empty: &|_| Ok(None),
 				},
@@ -1655,7 +1653,7 @@ mod tests {
 
 	type Emits = Vec<RollingEmit<u32, NoKey, i64>>;
 
-	fn tally_engine() -> PaneEngine<u32, DateTimeCoord, Tally> {
+	fn tally_engine() -> PaneEngine<u32, ByDateTime, Tally> {
 		let spans = PaneSpans {
 			size: span(60),
 			lag: span(0),
@@ -1670,14 +1668,14 @@ mod tests {
 	}
 
 	fn tally_insert(
-		engine: &mut PaneEngine<u32, DateTimeCoord, Tally>,
+		engine: &mut PaneEngine<u32, ByDateTime, Tally>,
 		store: &mut MockStore,
 		pane: u64,
 		value: i64,
 		cutoff: Option<u64>,
 		zero: Option<&dyn Fn(&i64) -> Result<Option<i64>, ValueError>>,
 	) -> Emits {
-		let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
+		let mut groups: PaneGroups<u32, ByDateTime, (u64, i64)> = BTreeMap::new();
 		let mut events = PaneEvents::default();
 		events.insert(ms(pane), pane, (pane, value));
 		groups.insert(1, (GroupId::hashed(Hash128(1)), events));
@@ -1690,7 +1688,7 @@ mod tests {
 			&Tally::default,
 			&RowPublisher {
 				key: Some(&|_: &u32| Ok(NoKey)),
-				finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
+				finalize: &|_: &u32, _: ByDateTime, t: &Tally| t.finalize(),
 				on_empty: zero.map_or(OnEmpty::Remove, |_| OnEmpty::Zero),
 				empty: zero.unwrap_or(&no_empty),
 			},
@@ -1700,7 +1698,7 @@ mod tests {
 	}
 
 	fn tally_expire(
-		engine: &mut PaneEngine<u32, DateTimeCoord, Tally>,
+		engine: &mut PaneEngine<u32, ByDateTime, Tally>,
 		store: &mut MockStore,
 		cutoff: u64,
 		zero: Option<&dyn Fn(&i64) -> Result<Option<i64>, ValueError>>,
@@ -1710,7 +1708,7 @@ mod tests {
 			ms(cutoff),
 			&RowPublisher {
 				key: None,
-				finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
+				finalize: &|_: &u32, _: ByDateTime, t: &Tally| t.finalize(),
 				on_empty: zero.map_or(OnEmpty::Remove, |_| OnEmpty::Zero),
 				empty: zero.unwrap_or(&no_empty),
 			},
@@ -1764,7 +1762,7 @@ mod tests {
 		let mut store = MockStore::default();
 		let [inserted] = tally_insert(&mut engine, &mut store, 1_000, 5, None, zero).try_into().ok().unwrap();
 		let row = inserted.post.as_ref().expect("the first trade inserts").row_number;
-		let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
+		let mut groups: PaneGroups<u32, ByDateTime, (u64, i64)> = BTreeMap::new();
 		let mut events = PaneEvents::default();
 		events.remove(ms(1_000), 1_000, (1_000, 5));
 		groups.insert(1, (GroupId::hashed(Hash128(1)), events));
@@ -1778,7 +1776,7 @@ mod tests {
 				&Tally::default,
 				&RowPublisher {
 					key: Some(&|_: &u32| Ok(NoKey)),
-					finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
+					finalize: &|_: &u32, _: ByDateTime, t: &Tally| t.finalize(),
 					on_empty: zero.map_or(OnEmpty::Remove, |_| OnEmpty::Zero),
 					empty: zero.unwrap_or(&no_empty),
 				},
@@ -1816,7 +1814,7 @@ mod tests {
 		// different row numbers on each side.
 		let mut engine = tally_engine();
 		let mut store = MockStore::default();
-		let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
+		let mut groups: PaneGroups<u32, ByDateTime, (u64, i64)> = BTreeMap::new();
 		let (mut first, mut second) = (PaneEvents::default(), PaneEvents::default());
 		first.insert(ms(1_000), 1, (1_000, 5));
 		second.insert(ms(1_000), 2, (1_000, 7));
@@ -1831,7 +1829,7 @@ mod tests {
 				&Tally::default,
 				&RowPublisher {
 					key: Some(&|_: &u32| Ok(NoKey)),
-					finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
+					finalize: &|_: &u32, _: ByDateTime, t: &Tally| t.finalize(),
 					on_empty: OnEmpty::Remove,
 					empty: &|_| Ok(None),
 				},
@@ -1864,7 +1862,7 @@ mod tests {
 			for op in ops {
 				events.push(*op, ms(1_000), 1, (1_000, 5));
 			}
-			let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
+			let mut groups: PaneGroups<u32, ByDateTime, (u64, i64)> = BTreeMap::new();
 			groups.insert(1, (GroupId::hashed(Hash128(1)), events));
 			let applied = engine.apply(
 				&mut store,
@@ -1874,7 +1872,7 @@ mod tests {
 				&Tally::default,
 				&RowPublisher {
 					key: Some(&|_: &u32| Ok(NoKey)),
-					finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
+					finalize: &|_: &u32, _: ByDateTime, t: &Tally| t.finalize(),
 					on_empty: OnEmpty::Remove,
 					empty: &|_| Ok(None),
 				},

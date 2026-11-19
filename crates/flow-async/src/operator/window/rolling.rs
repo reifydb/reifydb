@@ -27,7 +27,7 @@ use crate::{
 	},
 	window::{
 		accumulator::WindowAccumulator,
-		coord::DateTimeCoord,
+		coord::ByDateTime,
 		driver::rolling::{RollingRunner, RowHooks, route_rolling},
 		engine::{
 			daba::Merge,
@@ -36,12 +36,12 @@ use crate::{
 	},
 };
 
-pub(crate) type NativePaneEngine = PaneEngine<Hash128, DateTimeCoord, RowAccumulator>;
+pub(crate) type NativePaneEngine = PaneEngine<Hash128, ByDateTime, RowAccumulator>;
 
 type NativeEmit = RollingEmit<Hash128, Vec<Value>, Vec<Value>>;
 
 pub(crate) struct BuiltinRolling {
-	runner: RollingRunner<DateTimeCoord>,
+	runner: RollingRunner<ByDateTime>,
 	engine: NativePaneEngine,
 }
 
@@ -83,7 +83,7 @@ fn rolling_parts<'o>(operator: &'o mut WindowOperator, kinds: &[SlotKind]) -> &'
 	})
 }
 
-fn finalize_rolling(_group: &Hash128, _newest: DateTimeCoord, accumulator: &RowAccumulator) -> Option<Vec<Value>> {
+fn finalize_rolling(_group: &Hash128, _newest: ByDateTime, accumulator: &RowAccumulator) -> Option<Vec<Value>> {
 	accumulator.finalize()
 }
 
@@ -299,7 +299,7 @@ mod tests {
 			"a coordinate exactly one span behind the watermark must already be due"
 		);
 		assert_eq!(
-			DateTimeCoord(armed).saturating_sub_span(span).to_order(),
+			ByDateTime(armed).saturating_sub_span(span).to_order(),
 			order(5_000),
 			"and the cutoff that firing derives must land on that coordinate, not past it"
 		);
@@ -596,8 +596,8 @@ mod tests {
 		}
 	}
 
-	fn millis(ms: u64) -> DateTimeCoord {
-		DateTimeCoord(DateTime::from_millis(i64::try_from(ms).expect("test millis fit in i64")))
+	fn millis(ms: u64) -> ByDateTime {
+		ByDateTime(DateTime::from_millis(i64::try_from(ms).expect("test millis fit in i64")))
 	}
 
 	fn drive_time_frame(kinds: &[SlotKind], immutable_ms: Option<u64>, seed: u64) {
@@ -660,7 +660,7 @@ mod tests {
 				plan.push((group, key, rng.latency(), true));
 			}
 
-			let mut groups: PaneGroups<Hash128, DateTimeCoord, Contribution> = TestBTreeMap::new();
+			let mut groups: PaneGroups<Hash128, ByDateTime, Contribution> = TestBTreeMap::new();
 			let mut admitted: Vec<(Hash128, TimeKey, Option<f64>, bool)> = Vec::new();
 			let mut round_dropped = 0u64;
 			for (group, (ms, seq), value, is_add) in &plan {

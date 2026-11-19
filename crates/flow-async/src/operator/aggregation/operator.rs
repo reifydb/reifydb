@@ -44,7 +44,7 @@ use crate::{
 		state::{seal::coord::Coord, store},
 	},
 	window::{
-		coord::DateTimeCoord,
+		coord::ByDateTime,
 		engine::{EmitKind, config::WindowEngineConfig, tumbling::TumblingEngine},
 		span::WindowSpan,
 	},
@@ -166,13 +166,13 @@ fn finish_aggregate_engine(
 	host: &mut dyn HostContext,
 	buckets: EngineBuckets,
 	group_values: &HashMap<Hash128, Vec<Value>>,
-	arrival: Vec<(Hash128, WindowSpan<DateTimeCoord>)>,
+	arrival: Vec<(Hash128, WindowSpan<ByDateTime>)>,
 	groups: &WindowGroups,
 	kinds: &[SlotKind],
 	changed_at: DateTime,
 ) -> Result<Vec<Diff>, ValueError> {
 	let mut engine = core.tumbling_engine_slot().take().unwrap_or_else(|| {
-		Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(
+		Box::new(TumblingEngine::<Hash128, ByDateTime, RowAccumulator>::new(
 			WindowEngineConfig::builder().build(),
 		))
 	});
@@ -222,13 +222,12 @@ fn route_grouped(
 	routing: &mut Routing,
 ) -> Result<(), ValueError> {
 	let times = row_times(batch)?;
-	let degenerate =
-		WindowSpan::new(<DateTimeCoord as Coord>::from_order(0), <DateTimeCoord as Coord>::from_order(1));
+	let degenerate = WindowSpan::new(<ByDateTime as Coord>::from_order(0), <ByDateTime as Coord>::from_order(1));
 	route_into_buckets(
 		core,
 		batch,
 		is_add,
-		|row_idx| (degenerate, DateTimeCoord(times.get(row_idx).copied().flatten().unwrap_or_default())),
+		|row_idx| (degenerate, ByDateTime(times.get(row_idx).copied().flatten().unwrap_or_default())),
 		routing,
 	)
 }

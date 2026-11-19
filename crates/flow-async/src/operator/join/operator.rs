@@ -82,7 +82,7 @@ use crate::{
 	},
 	timer::Timer,
 	transaction::join_expiry::{DueStart, JoinDueEntry, join_expiry_range},
-	window::coord::DateTimeCoord,
+	window::coord::ByDateTime,
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -421,7 +421,7 @@ impl JoinOperator {
 		let (Some(retention), Some(frontier)) = (self.retention_of(side), host.flow_watermark()?) else {
 			return Ok((pre, post));
 		};
-		let horizon = <DateTimeCoord as SealDomain>::horizon(DateTimeCoord(frontier), retention).0;
+		let horizon = <ByDateTime as SealDomain>::horizon(ByDateTime(frontier), retention).0;
 		let kept = time_at_or_after(&post, horizon)?;
 		if kept.false_count() == 0 {
 			return Ok((pre, post));

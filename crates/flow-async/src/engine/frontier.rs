@@ -16,7 +16,7 @@ use crate::{
 	engine::FlowEngineInner,
 	operator::{BoxedHostOperator, state::seal::rule::output_watermark},
 	transaction::{FlowTransaction, watermark::SourceWatermarks},
-	window::coord::DateTimeCoord,
+	window::coord::ByDateTime,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,7 +106,7 @@ fn output_frontiers<T: FlowTransaction>(
 		let frontier = operators
 			.get(&(flow.id, *operator_id))
 			.and_then(|operator| operator.seal_span())
-			.map_or(input, |span| output_watermark(DateTimeCoord(input), span).0);
+			.map_or(input, |span| output_watermark(ByDateTime(input), span).0);
 
 		computed.insert(*operator_id, frontier);
 	}

@@ -21,7 +21,7 @@ use crate::{
 		state::store,
 	},
 	window::{
-		coord::DateTimeCoord,
+		coord::ByDateTime,
 		driver::hooks::{WindowEmits, WindowHooks},
 		span::WindowSpan,
 	},
@@ -29,7 +29,7 @@ use crate::{
 
 pub struct BuiltinRow {
 	group: Hash128,
-	span: WindowSpan<DateTimeCoord>,
+	span: WindowSpan<ByDateTime>,
 	values: Vec<Value>,
 }
 
@@ -74,7 +74,7 @@ impl<'a> BuiltinHooks<'a> {
 
 impl WindowHooks for BuiltinHooks<'_> {
 	type Group = Hash128;
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type Accumulator = RowAccumulator;
 	type Row = BuiltinRow;
 	type Out = Vec<Diff>;
@@ -87,7 +87,7 @@ impl WindowHooks for BuiltinHooks<'_> {
 		(*group, store::empty_key())
 	}
 
-	fn build(&self, group: &Hash128, span: WindowSpan<DateTimeCoord>, value: &Vec<Value>) -> Option<BuiltinRow> {
+	fn build(&self, group: &Hash128, span: WindowSpan<ByDateTime>, value: &Vec<Value>) -> Option<BuiltinRow> {
 		Some(BuiltinRow {
 			group: *group,
 			span,

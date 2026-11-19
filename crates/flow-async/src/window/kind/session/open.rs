@@ -223,11 +223,10 @@ mod tests {
 
 	use super::{Insertion, Member, OpenSession, OpenSessions, Removal};
 	use crate::{
-		factory::coord::event_coord_at_millis, operator::state::seal::coord::Coord,
-		window::coord::DateTimeCoord,
+		factory::coord::event_coord_at_millis, operator::state::seal::coord::Coord, window::coord::ByDateTime,
 	};
 
-	fn sessions() -> OpenSessions<DateTimeCoord> {
+	fn sessions() -> OpenSessions<ByDateTime> {
 		OpenSessions::new(Duration::from_milliseconds_const(1_000))
 	}
 
@@ -235,18 +234,18 @@ mod tests {
 		event_coord_at_millis(millis).to_order()
 	}
 
-	fn member(millis: i64, row: u64) -> Member<DateTimeCoord> {
+	fn member(millis: i64, row: u64) -> Member<ByDateTime> {
 		Member {
 			at: event_coord_at_millis(millis),
 			row: RowNumber(row),
 		}
 	}
 
-	fn far_past() -> DateTimeCoord {
+	fn far_past() -> ByDateTime {
 		event_coord_at_millis(0)
 	}
 
-	fn seeded(points: &[(i64, u64)]) -> OpenSessions<DateTimeCoord> {
+	fn seeded(points: &[(i64, u64)]) -> OpenSessions<ByDateTime> {
 		let mut open = sessions();
 		for &(millis, row) in points {
 			open.insert(event_coord_at_millis(millis), RowNumber(row), far_past());
@@ -254,7 +253,7 @@ mod tests {
 		open
 	}
 
-	fn bounds(open: &OpenSessions<DateTimeCoord>) -> Vec<(u64, DateTimeCoord, DateTimeCoord, usize)> {
+	fn bounds(open: &OpenSessions<ByDateTime>) -> Vec<(u64, ByDateTime, ByDateTime, usize)> {
 		open.sessions().iter().map(|s| (s.id, s.start, s.last, s.members.len())).collect()
 	}
 
@@ -528,12 +527,12 @@ mod tests {
 		);
 		assert_eq!(
 			open.insert(
-				DateTimeCoord(at_millis(5_000).saturating_add(Duration::from_nanoseconds_const(1))),
+				ByDateTime(at_millis(5_000).saturating_add(Duration::from_nanoseconds_const(1))),
 				RowNumber(3),
 				far_past()
 			),
 			Insertion::Opened(
-				DateTimeCoord(at_millis(5_000).saturating_add(Duration::from_nanoseconds_const(1)))
+				ByDateTime(at_millis(5_000).saturating_add(Duration::from_nanoseconds_const(1)))
 					.to_order()
 			)
 		);

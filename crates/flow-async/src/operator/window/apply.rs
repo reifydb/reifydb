@@ -16,7 +16,7 @@ use crate::{
 	},
 	timer::Timer,
 	window::{
-		coord::DateTimeCoord,
+		coord::ByDateTime,
 		driver::{seal::reap, session::route_session},
 		engine::tumbling::TumblingEngine,
 	},
@@ -35,9 +35,10 @@ pub fn apply_tumbling_engine(
 	let group_values = rows.into_group_values();
 	let engine_config = operator.engine_config();
 	let immutable = operator.immutable();
-	let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-		Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(engine_config))
-	});
+	let mut engine =
+		operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+			Box::new(TumblingEngine::<Hash128, ByDateTime, RowAccumulator>::new(engine_config))
+		});
 	let mut hooks = BuiltinHooks::new(&mut operator.core, &kinds, immutable, group_values, change.changed_at);
 	let diffs = routed.and_then(|routed| runner.apply(&mut engine, host, routed, &mut hooks));
 	*operator.core.tumbling_engine_slot() = Some(engine);
@@ -58,9 +59,10 @@ pub fn apply_session_engine(
 	let group_values = rows.into_group_values();
 	let engine_config = operator.engine_config();
 	let immutable = operator.immutable();
-	let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-		Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(engine_config))
-	});
+	let mut engine =
+		operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+			Box::new(TumblingEngine::<Hash128, ByDateTime, RowAccumulator>::new(engine_config))
+		});
 	let mut hooks = BuiltinHooks::new(&mut operator.core, &kinds, immutable, group_values, change.changed_at);
 	let diffs = routed.and_then(|rows| runner.apply_session(&mut engine, host, rows, &mut hooks));
 	*operator.core.tumbling_engine_slot() = Some(engine);
@@ -70,12 +72,12 @@ pub fn apply_session_engine(
 
 fn with_engine<T>(
 	operator: &mut WindowOperator,
-	run: impl FnOnce(&mut TumblingEngine<Hash128, DateTimeCoord, RowAccumulator>) -> Result<T, ValueError>,
+	run: impl FnOnce(&mut TumblingEngine<Hash128, ByDateTime, RowAccumulator>) -> Result<T, ValueError>,
 ) -> Result<T, ValueError> {
 	let config = operator.engine_config();
 	let mut engine =
 		operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(config))
+			Box::new(TumblingEngine::<Hash128, ByDateTime, RowAccumulator>::new(config))
 		});
 	let out = run(&mut engine);
 	*operator.core.tumbling_engine_slot() = Some(engine);
@@ -140,7 +142,7 @@ mod tests {
 	use super::SealRule;
 	use crate::{
 		operator::state::seal::rule::{is_sealed, output_watermark},
-		window::coord::DateTimeCoord,
+		window::coord::ByDateTime,
 	};
 
 	#[test]
@@ -175,22 +177,16 @@ mod tests {
 		let lateness = Duration::from_milliseconds_const(10);
 
 		assert_eq!(
-			output_watermark(DateTimeCoord(at_millis(3)), lateness),
-			DateTimeCoord(at_millis(-7)),
+			output_watermark(ByDateTime(at_millis(3)), lateness),
+			ByDateTime(at_millis(-7)),
 			"young watermark minus lateness is a real pre-epoch instant"
 		);
 		assert!(
-			!is_sealed(
-				DateTimeCoord(at_millis(0)),
-				output_watermark(DateTimeCoord(at_millis(3)), lateness)
-			),
+			!is_sealed(ByDateTime(at_millis(0)), output_watermark(ByDateTime(at_millis(3)), lateness)),
 			"the epoch is still after a pre-epoch horizon"
 		);
 		assert!(
-			is_sealed(
-				DateTimeCoord(at_millis(4)),
-				output_watermark(DateTimeCoord(at_millis(20)), lateness)
-			),
+			is_sealed(ByDateTime(at_millis(4)), output_watermark(ByDateTime(at_millis(20)), lateness)),
 			"anchor below watermark - lateness is sealed"
 		);
 	}
@@ -416,20 +412,20 @@ mod seal_arm_tests {
 	fn index_windows(operator: &mut WindowOperator, host: &mut dyn HostContext, starts: &[u64]) {
 		let config = operator.engine_config();
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(config))
+			Box::new(TumblingEngine::<Hash128, ByDateTime, RowAccumulator>::new(config))
 		});
 		let slot_key = EncodedKey::new(Vec::new());
-		let windows: Vec<(Hash128, DateTimeCoord)> = starts
+		let windows: Vec<(Hash128, ByDateTime)> = starts
 			.iter()
 			.enumerate()
 			.map(|(n, start_ms)| {
-				let start = DateTimeCoord(at_millis(
+				let start = ByDateTime(at_millis(
 					i64::try_from(*start_ms).expect("test window start fits in i64 milliseconds"),
 				));
 				(Hash128::from(n as u128), start)
 			})
 			.collect();
-		let entries: Vec<WindowReindex<'_, Hash128, DateTimeCoord>> = windows
+		let entries: Vec<WindowReindex<'_, Hash128, ByDateTime>> = windows
 			.iter()
 			.map(|(group, start)| WindowReindex {
 				group,
@@ -595,10 +591,10 @@ mod seal_arm_tests {
 		let mut operator = window();
 		let id = operator.core.operator;
 		let hash = Hash128(7);
-		let start = DateTimeCoord(at_millis(0));
+		let start = ByDateTime(at_millis(0));
 		let span = WindowSpan {
 			start,
-			end: DateTimeCoord(at_millis(SIZE_MS as i64)),
+			end: ByDateTime(at_millis(SIZE_MS as i64)),
 		};
 		let group = GroupId::window(hash, start.to_order());
 		let mut txn = txn_at(&engine, 100);
@@ -616,7 +612,7 @@ mod seal_arm_tests {
 			};
 			let config = operator.engine_config();
 			let mut tumbling = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-				Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(config))
+				Box::new(TumblingEngine::<Hash128, ByDateTime, RowAccumulator>::new(config))
 			});
 			let mut hooks = BuiltinHooks::new(
 				&mut operator.core,

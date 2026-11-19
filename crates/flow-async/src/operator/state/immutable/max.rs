@@ -129,13 +129,13 @@ mod tests {
 				CountedAccumulator,
 				testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree},
 			},
-			coord::DateTimeCoord,
+			coord::ByDateTime,
 		},
 	};
 
 	#[test]
 	fn immutable_max_folds_aged_and_keeps_recent_tail_removal_safe() {
-		let mut accumulator: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::immutable(millis(10));
+		let mut accumulator: ImmutableMax<ByDateTime, i64> = ImmutableMax::immutable(millis(10));
 		accumulator.add(&[(event_coord_at_millis(0), 5)]);
 		accumulator.add(&[(event_coord_at_millis(5), 8)]);
 		accumulator.add(&[(event_coord_at_millis(12), 3)]);
@@ -150,11 +150,11 @@ mod tests {
 
 	#[test]
 	fn immutable_max_default_never_folds_and_is_fully_invertible() {
-		assert_add_remove_is_inverse::<ImmutableMax<DateTimeCoord, i64>>(
+		assert_add_remove_is_inverse::<ImmutableMax<ByDateTime, i64>>(
 			&[(event_coord_at_millis(1), 10i64), (event_coord_at_millis(2), 20)],
 			(event_coord_at_millis(3), 30i64),
 		);
-		let mut accumulator: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::default();
+		let mut accumulator: ImmutableMax<ByDateTime, i64> = ImmutableMax::default();
 		accumulator.add(&[(event_coord_at_millis(0), 5)]);
 		accumulator.add(&[(event_coord_at_millis(100), 8)]);
 		accumulator.remove(&[(event_coord_at_millis(100), 8)]);
@@ -164,9 +164,9 @@ mod tests {
 	#[test]
 	fn immutable_max_merge_keeps_the_larger_value_at_a_shared_coordinate() {
 		// Two branches holding the same slot must never let the incoming value replace a larger one.
-		let mut accumulator: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::default();
+		let mut accumulator: ImmutableMax<ByDateTime, i64> = ImmutableMax::default();
 		accumulator.add(&[(event_coord_at_millis(0), 9)]);
-		let mut other: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::default();
+		let mut other: ImmutableMax<ByDateTime, i64> = ImmutableMax::default();
 		other.add(&[(event_coord_at_millis(0), 1)]);
 
 		accumulator.merge(&other);
@@ -181,10 +181,10 @@ mod tests {
 	fn immutable_max_default_merge_leaves_nothing_folded() {
 		// merge is the only path that can fold without an immutable span, and an immutable maximum never
 		// retracts.
-		let mut left: CountedAccumulator<ImmutableMax<DateTimeCoord, i64>> =
+		let mut left: CountedAccumulator<ImmutableMax<ByDateTime, i64>> =
 			CountedAccumulator::new(ImmutableMax::default());
 		left.add(&[(event_coord_at_millis(0), 9)]);
-		let mut right: CountedAccumulator<ImmutableMax<DateTimeCoord, i64>> =
+		let mut right: CountedAccumulator<ImmutableMax<ByDateTime, i64>> =
 			CountedAccumulator::new(ImmutableMax::default());
 		right.add(&[(event_coord_at_millis(1_000_000), 3)]);
 
@@ -200,8 +200,8 @@ mod tests {
 	#[test]
 	fn immutable_max_with_an_immutable_span_beyond_the_data_matches_the_plain_arm() {
 		// Nothing ages in either arm, so any divergence is an aging rule that fired when it must not.
-		let mut immutable: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::immutable(millis(1_000));
-		let mut plain: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::default();
+		let mut immutable: ImmutableMax<ByDateTime, i64> = ImmutableMax::immutable(millis(1_000));
+		let mut plain: ImmutableMax<ByDateTime, i64> = ImmutableMax::default();
 		for (slot, value) in [(0, 5i64), (10, 9), (20, 7)] {
 			immutable.add(&[(event_coord_at_millis(slot), value)]);
 			plain.add(&[(event_coord_at_millis(slot), value)]);
@@ -217,8 +217,8 @@ mod tests {
 	fn immutable_max_matches_the_plain_arm_for_in_order_adds() {
 		// Folding is a memory optimisation over adds; without a retraction it must not move the answer.
 		assert_arms_agree(
-			ImmutableMax::<DateTimeCoord, i64>::immutable(millis(5)),
-			ImmutableMax::<DateTimeCoord, i64>::default(),
+			ImmutableMax::<ByDateTime, i64>::immutable(millis(5)),
+			ImmutableMax::<ByDateTime, i64>::default(),
 			&[
 				Op::Add((event_coord_at_millis(0), 9)),
 				Op::Add((event_coord_at_millis(10), 2)),
@@ -233,10 +233,10 @@ mod tests {
 	fn immutable_max_merge_keeps_a_branch_maximum_that_predates_the_immutable_line() {
 		// merge combines two parallel histories, never late arrivals, so the receiver's immutable line must not
 		// swallow the other branch.
-		let mut left: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::immutable(millis(10));
+		let mut left: ImmutableMax<ByDateTime, i64> = ImmutableMax::immutable(millis(10));
 		left.add(&[(event_coord_at_millis(0), 9)]);
 
-		let mut right: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::immutable(millis(10));
+		let mut right: ImmutableMax<ByDateTime, i64> = ImmutableMax::immutable(millis(10));
 		right.add(&[(event_coord_at_millis(50), 1)]);
 		right.add(&[(event_coord_at_millis(70), 3)]);
 
@@ -251,19 +251,19 @@ mod tests {
 
 	#[test]
 	fn immutable_max_roundtrip() {
-		let mut mx: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::immutable(millis(10));
+		let mut mx: ImmutableMax<ByDateTime, i64> = ImmutableMax::immutable(millis(10));
 		mx.add(&[(event_coord_at_millis(0), 5)]);
 		mx.add(&[(event_coord_at_millis(12), 8)]);
 		let bytes = mx.encode_state().expect("encode");
-		let restored: ImmutableMax<DateTimeCoord, i64> = decode(&bytes).expect("decode");
+		let restored: ImmutableMax<ByDateTime, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, mx);
 	}
 
 	#[test]
 	fn immutable_max_compacts_only_with_an_immutable_span() {
 		// without an immutable span nothing folds, so the tail must count as growing with every sample
-		assert!(!ImmutableMax::<DateTimeCoord, i64>::default().compacts());
-		assert!(!ImmutableMax::<DateTimeCoord, i64>::maybe_immutable(None).compacts());
-		assert!(ImmutableMax::<DateTimeCoord, i64>::immutable(millis(10)).compacts());
+		assert!(!ImmutableMax::<ByDateTime, i64>::default().compacts());
+		assert!(!ImmutableMax::<ByDateTime, i64>::maybe_immutable(None).compacts());
+		assert!(ImmutableMax::<ByDateTime, i64>::immutable(millis(10)).compacts());
 	}
 }

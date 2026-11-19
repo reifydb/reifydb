@@ -11,7 +11,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_flow_async::window::{
-	accumulator::invertible::moments::Moments, coord::DateTimeCoord, settings::WindowSettings, span::WindowSpan,
+	accumulator::invertible::moments::Moments, coord::ByDateTime, settings::WindowSettings, span::WindowSpan,
 };
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_sdk::{
@@ -82,7 +82,7 @@ row!(FoldWindow {
 struct FoldWindowProbe;
 
 impl WindowedOperator for FoldWindowProbe {
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type GroupKey = String;
 	type Accumulator = Moments;
 	type Output = FoldWindow;
@@ -91,13 +91,13 @@ impl WindowedOperator for FoldWindowProbe {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
-						Ok(row.row_time().map(DateTimeCoord))
+					.map(|row| -> Result<Option<ByDateTime>, SdkError> {
+						Ok(row.row_time().map(ByDateTime))
 					})
 					.transpose()
 					.map(Option::flatten)
@@ -127,7 +127,7 @@ impl WindowedOperator for FoldWindowProbe {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> Moments {
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> Moments {
 		Moments::default()
 	}
 }
@@ -135,7 +135,7 @@ impl WindowedOperator for FoldWindowProbe {
 impl Emit for FoldWindowProbe {
 	type Kinds = AllKinds;
 
-	fn build_output(&self, group: &String, span: WindowSpan<DateTimeCoord>, value: &Moments) -> Option<FoldWindow> {
+	fn build_output(&self, group: &String, span: WindowSpan<ByDateTime>, value: &Moments) -> Option<FoldWindow> {
 		Some(FoldWindow {
 			k: group.clone(),
 			start: span.start.0,

@@ -10,7 +10,7 @@ use reifydb_core::{
 	operator_with::{ApplyWith, WithSpan},
 };
 use reifydb_flow_async::window::{
-	accumulator::invertible::retained_map::RetainedAccumulator, coord::DateTimeCoord, settings::WindowSettings,
+	accumulator::invertible::retained_map::RetainedAccumulator, coord::ByDateTime, settings::WindowSettings,
 	span::WindowSpan,
 };
 use reifydb_sdk::{
@@ -45,13 +45,13 @@ row!(Latest {
 	price: f64
 });
 
-fn coords(cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+fn coords(cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 	rows.iter()
 		.map(|&i| {
 			cols.row(i)
 				.as_ref()
-				.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
-					Ok(row.row_time().map(DateTimeCoord))
+				.map(|row| -> Result<Option<ByDateTime>, SdkError> {
+					Ok(row.row_time().map(ByDateTime))
 				})
 				.transpose()
 				.map(Option::flatten)
@@ -90,7 +90,7 @@ impl OperatorMetadata for RetainedPlain {
 }
 
 impl WindowedOperator for RetainedPlain {
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type GroupKey = String;
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = Latest;
@@ -99,7 +99,7 @@ impl WindowedOperator for RetainedPlain {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 		coords(cols, rows)
 	}
 
@@ -112,7 +112,7 @@ impl WindowedOperator for RetainedPlain {
 		extracts(cols, rows)
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> RetainedAccumulator<u64, f64> {
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> RetainedAccumulator<u64, f64> {
 		RetainedAccumulator::default()
 	}
 }
@@ -123,7 +123,7 @@ impl Emit for RetainedPlain {
 	fn build_output(
 		&self,
 		group: &String,
-		_span: WindowSpan<DateTimeCoord>,
+		_span: WindowSpan<ByDateTime>,
 		value: &BTreeMap<u64, f64>,
 	) -> Option<Latest> {
 		value.last_key_value().map(|(&key, &price)| Latest {
@@ -146,7 +146,7 @@ impl OperatorMetadata for RetainedTopK {
 }
 
 impl WindowedOperator for RetainedTopK {
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type GroupKey = String;
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = BTreeMap<u64, Latest>;
@@ -155,7 +155,7 @@ impl WindowedOperator for RetainedTopK {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 		coords(cols, rows)
 	}
 
@@ -168,7 +168,7 @@ impl WindowedOperator for RetainedTopK {
 		extracts(cols, rows)
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> RetainedAccumulator<u64, f64> {
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> RetainedAccumulator<u64, f64> {
 		RetainedAccumulator::default()
 	}
 }
@@ -179,7 +179,7 @@ impl Emit for RetainedTopK {
 	fn build_output(
 		&self,
 		group: &String,
-		_span: WindowSpan<DateTimeCoord>,
+		_span: WindowSpan<ByDateTime>,
 		value: &BTreeMap<u64, f64>,
 	) -> Option<BTreeMap<u64, Latest>> {
 		Some(value

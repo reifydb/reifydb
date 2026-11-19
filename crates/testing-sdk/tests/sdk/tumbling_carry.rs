@@ -13,7 +13,7 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::{
-		accumulator::invertible::retained_map::RetainedAccumulator, coord::DateTimeCoord,
+		accumulator::invertible::retained_map::RetainedAccumulator, coord::ByDateTime,
 		settings::WindowSettings, span::WindowSpan,
 	},
 };
@@ -78,7 +78,7 @@ impl OperatorMetadata for TestCarry {
 }
 
 impl WindowedOperator for TestCarry {
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type GroupKey = String;
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
@@ -87,13 +87,13 @@ impl WindowedOperator for TestCarry {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
-						Ok(row.row_time().map(DateTimeCoord))
+					.map(|row| -> Result<Option<ByDateTime>, SdkError> {
+						Ok(row.row_time().map(ByDateTime))
 					})
 					.transpose()
 					.map(Option::flatten)
@@ -125,7 +125,7 @@ impl WindowedOperator for TestCarry {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> RetainedAccumulator<u64, f64> {
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> RetainedAccumulator<u64, f64> {
 		RetainedAccumulator::default()
 	}
 }
@@ -136,7 +136,7 @@ impl CarryEmit for TestCarry {
 	fn build_output(
 		&self,
 		group: &String,
-		span: WindowSpan<DateTimeCoord>,
+		span: WindowSpan<ByDateTime>,
 		value: &BTreeMap<u64, f64>,
 		prev_carry: Option<&f64>,
 	) -> Option<CarryOut> {
@@ -328,7 +328,7 @@ impl OperatorMetadata for SealedCarry {
 }
 
 impl WindowedOperator for SealedCarry {
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type GroupKey = String;
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
@@ -337,13 +337,13 @@ impl WindowedOperator for SealedCarry {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
-						Ok(row.row_time().map(DateTimeCoord))
+					.map(|row| -> Result<Option<ByDateTime>, SdkError> {
+						Ok(row.row_time().map(ByDateTime))
 					})
 					.transpose()
 					.map(Option::flatten)
@@ -360,7 +360,7 @@ impl WindowedOperator for SealedCarry {
 		TestCarry.extract(ctx, cols, rows)
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> RetainedAccumulator<u64, f64> {
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> RetainedAccumulator<u64, f64> {
 		RetainedAccumulator::default()
 	}
 }
@@ -371,7 +371,7 @@ impl CarryEmit for SealedCarry {
 	fn build_output(
 		&self,
 		group: &String,
-		span: WindowSpan<DateTimeCoord>,
+		span: WindowSpan<ByDateTime>,
 		value: &BTreeMap<u64, f64>,
 		prev_carry: Option<&f64>,
 	) -> Option<CarryOut> {

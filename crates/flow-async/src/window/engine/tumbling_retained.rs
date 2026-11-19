@@ -721,7 +721,7 @@ mod tests {
 				AccumulatorOp, invertible::retained_map::RetainedAccumulator,
 				testkit::events as accumulator_events,
 			},
-			coord::DateTimeCoord,
+			coord::ByDateTime,
 			engine::{
 				EmitKind, KeyspaceFamily, WindowReindex, WindowResult, WindowStateKey,
 				config::WindowEngineConfig,
@@ -732,19 +732,19 @@ mod tests {
 	};
 
 	type Out = BTreeMap<u64, i64>;
-	type Engine = RetainedTumblingEngine<u32, DateTimeCoord, u64, i64, Out>;
-	type Blob = TumblingEngine<u32, DateTimeCoord, RetainedAccumulator<u64, i64>>;
+	type Engine = RetainedTumblingEngine<u32, ByDateTime, u64, i64, Out>;
+	type Blob = TumblingEngine<u32, ByDateTime, RetainedAccumulator<u64, i64>>;
 	type Event = (AccumulatorOp, (u64, i64));
 
 	fn test_config() -> WindowEngineConfig {
 		WindowEngineConfig::builder().family(KeyspaceFamily::Guest).build()
 	}
 
-	fn group_slot(group: &u32, window_start: DateTimeCoord) -> (GroupId, EncodedKey) {
+	fn group_slot(group: &u32, window_start: ByDateTime) -> (GroupId, EncodedKey) {
 		(GroupId::window(Hash128(u128::from(*group)), window_start.to_order()), EncodedKey::new(Vec::new()))
 	}
 
-	fn bucket(events: Vec<Event>) -> TumblingBuckets<u32, DateTimeCoord, Vec<(u64, i64)>> {
+	fn bucket(events: Vec<Event>) -> TumblingBuckets<u32, ByDateTime, Vec<(u64, i64)>> {
 		BTreeMap::from([(
 			(1u32, WindowSpan::new(event_coord_at_millis(0), event_coord_at_millis(10))),
 			accumulator_events(events),
@@ -755,7 +755,7 @@ mod tests {
 		engine: &mut Engine,
 		store: &mut MockStore,
 		events: Vec<Event>,
-	) -> Vec<RetainedResult<u32, DateTimeCoord, Out>> {
+	) -> Vec<RetainedResult<u32, ByDateTime, Out>> {
 		let buckets = bucket(events);
 		let order: Vec<_> = buckets.keys().cloned().collect();
 		engine.apply(store, buckets, &order, group_slot, |_, _, entries| Some(entries.clone())).expect("apply")
@@ -765,13 +765,13 @@ mod tests {
 		engine: &mut Blob,
 		store: &mut MockStore,
 		events: Vec<Event>,
-	) -> Vec<WindowResult<u32, DateTimeCoord, BTreeMap<u64, i64>>> {
+	) -> Vec<WindowResult<u32, ByDateTime, BTreeMap<u64, i64>>> {
 		let buckets = bucket(events);
 		let order: Vec<_> = buckets.keys().cloned().collect();
 		engine.apply(store, buckets, &order, group_slot, RetainedAccumulator::default).expect("apply")
 	}
 
-	fn kinds(results: &[RetainedResult<u32, DateTimeCoord, Out>]) -> Vec<EmitKind> {
+	fn kinds(results: &[RetainedResult<u32, ByDateTime, Out>]) -> Vec<EmitKind> {
 		results.iter().map(|r| r.kind).collect()
 	}
 

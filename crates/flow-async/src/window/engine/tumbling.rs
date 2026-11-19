@@ -533,7 +533,7 @@ mod tests {
 		},
 		window::{
 			accumulator::{AccumulatorOp, mock::SumAccumulator, testkit::events},
-			coord::{DateTimeCoord, U8Coord},
+			coord::{ByDateTime, ByU8},
 			engine::{
 				EmitKind, WindowResult,
 				config::WindowEngineConfig,
@@ -547,25 +547,25 @@ mod tests {
 		WindowEngineConfig::builder().build()
 	}
 
-	fn row_key(group: &u32, window_start: DateTimeCoord) -> EncodedKey {
+	fn row_key(group: &u32, window_start: ByDateTime) -> EncodedKey {
 		EncodedKey::builder().u32(*group).u64(window_start.to_order()).build()
 	}
 
-	fn slot_key(group: &u32, window_start: DateTimeCoord) -> (GroupId, EncodedKey) {
+	fn slot_key(group: &u32, window_start: ByDateTime) -> (GroupId, EncodedKey) {
 		(GroupId::of(&row_key(group, window_start)), EncodedKey::new(Vec::new()))
 	}
 
 	fn order_of<Contribution>(
-		buckets: &TumblingBuckets<u32, DateTimeCoord, Contribution>,
-	) -> Vec<(u32, WindowSpan<DateTimeCoord>)> {
+		buckets: &TumblingBuckets<u32, ByDateTime, Contribution>,
+	) -> Vec<(u32, WindowSpan<ByDateTime>)> {
 		buckets.keys().cloned().collect()
 	}
 
 	fn apply_sums(
-		engine: &mut TumblingEngine<u32, DateTimeCoord, SumAccumulator>,
+		engine: &mut TumblingEngine<u32, ByDateTime, SumAccumulator>,
 		store: &mut MockStore,
-		buckets: TumblingBuckets<u32, DateTimeCoord, Vec<i64>>,
-	) -> Result<Vec<WindowResult<u32, DateTimeCoord, i64>>, ValueError> {
+		buckets: TumblingBuckets<u32, ByDateTime, Vec<i64>>,
+	) -> Result<Vec<WindowResult<u32, ByDateTime, i64>>, ValueError> {
 		let order = order_of(&buckets);
 		engine.apply(store, buckets, &order, slot_key, SumAccumulator::default)
 	}
@@ -574,9 +574,9 @@ mod tests {
 		store: &mut MockStore,
 		window_start: i64,
 		contribution: i64,
-	) -> WindowResult<u32, DateTimeCoord, i64> {
-		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
-		let mut buckets: TumblingBuckets<u32, DateTimeCoord, Vec<i64>> = BTreeMap::new();
+	) -> WindowResult<u32, ByDateTime, i64> {
+		let mut engine = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
+		let mut buckets: TumblingBuckets<u32, ByDateTime, Vec<i64>> = BTreeMap::new();
 		buckets.insert(
 			(
 				1u32,
@@ -591,27 +591,23 @@ mod tests {
 		results.pop().expect("one window")
 	}
 
-	fn group_slot(group: &u32, window_start: DateTimeCoord) -> (GroupId, EncodedKey) {
+	fn group_slot(group: &u32, window_start: ByDateTime) -> (GroupId, EncodedKey) {
 		// The shape a sub-flow window driver installs: every window interns as its own
 		// (partition, slot) group sharing one empty row key, so the group alone separates them.
 		(GroupId::window(Hash128(u128::from(*group)), window_start.to_order()), EncodedKey::new(Vec::new()))
 	}
 
 	fn apply_group_scoped(
-		engine: &mut TumblingEngine<u32, DateTimeCoord, SumAccumulator>,
+		engine: &mut TumblingEngine<u32, ByDateTime, SumAccumulator>,
 		store: &mut MockStore,
-		buckets: TumblingBuckets<u32, DateTimeCoord, Vec<i64>>,
-	) -> Vec<WindowResult<u32, DateTimeCoord, i64>> {
+		buckets: TumblingBuckets<u32, ByDateTime, Vec<i64>>,
+	) -> Vec<WindowResult<u32, ByDateTime, i64>> {
 		let order = order_of(&buckets);
 		engine.apply(store, buckets, &order, group_slot, SumAccumulator::default).expect("apply")
 	}
 
-	fn one_bucket(
-		group: u32,
-		window_start: i64,
-		contribution: i64,
-	) -> TumblingBuckets<u32, DateTimeCoord, Vec<i64>> {
-		let mut buckets: TumblingBuckets<u32, DateTimeCoord, Vec<i64>> = BTreeMap::new();
+	fn one_bucket(group: u32, window_start: i64, contribution: i64) -> TumblingBuckets<u32, ByDateTime, Vec<i64>> {
+		let mut buckets: TumblingBuckets<u32, ByDateTime, Vec<i64>> = BTreeMap::new();
 		buckets.insert(
 			(
 				group,
@@ -631,9 +627,9 @@ mod tests {
 		// group to separate them. If the group fell out of the accumulator key or the row-number
 		// lookup, every window of the operator would fold into one accumulator under one row.
 		let mut store = MockStore::default();
-		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let mut engine = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
 
-		let mut buckets: TumblingBuckets<u32, DateTimeCoord, Vec<i64>> = BTreeMap::new();
+		let mut buckets: TumblingBuckets<u32, ByDateTime, Vec<i64>> = BTreeMap::new();
 		buckets.insert(
 			(1u32, WindowSpan::new(event_coord_at_millis(0), event_coord_at_millis(1))),
 			events([(AccumulatorOp::Add, 5)]),
@@ -658,7 +654,7 @@ mod tests {
 		assert_eq!(values, vec![5, 7, 9], "no window may see another's contributions");
 
 		// A restart reloads one window's accumulator; it must be that window's alone.
-		let mut restarted = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let mut restarted = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
 		let out = apply_group_scoped(&mut restarted, &mut store, one_bucket(1, 0, 1));
 		assert_eq!(out[0].value, 6, "the reloaded accumulator carries only window (1, 0)");
 	}
@@ -673,15 +669,13 @@ mod tests {
 		let group = GroupId::of(&row_key(&1, event_coord_at_millis(0)));
 		let swept = store.group_sweep(&[group], usize::MAX, KeyspaceMask::data()).unwrap().rows;
 		assert!(!swept.is_empty(), "precondition: reclaim erased the accumulator");
-		TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config())
-			.reap(&mut store, &swept)
-			.unwrap();
+		TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config()).reap(&mut store, &swept).unwrap();
 		assert!(
 			store.contains_row_mapping(group),
 			"precondition: the identity half must survive the data phase"
 		);
 
-		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let mut engine = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
 		let results = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 3)).expect("apply");
 
 		assert_eq!(results.len(), 1);
@@ -697,7 +691,7 @@ mod tests {
 	fn a_window_updated_twice_keeps_its_first_row_and_first_time_without_a_mapping() {
 		// A live window must address one row for its whole life, read from its own record and never re-minted.
 		let mut store = MockStore::default();
-		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let mut engine = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
 		let first = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 5)).expect("apply");
 		let second = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 3)).expect("apply");
 		let third = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 2)).expect("apply");
@@ -726,13 +720,13 @@ mod tests {
 		store: &mut MockStore,
 		at_millis: i64,
 		event: (AccumulatorOp, i64),
-	) -> WindowResult<u32, U8Coord, i64> {
+	) -> WindowResult<u32, ByU8, i64> {
 		store.set_batch_time(DateTime::from_millis(at_millis));
-		let mut engine = TumblingEngine::<u32, U8Coord, SumAccumulator>::new(test_config());
-		let mut buckets: TumblingBuckets<u32, U8Coord, Vec<i64>> = BTreeMap::new();
-		buckets.insert((1u32, WindowSpan::new(U8Coord(0), U8Coord(1))), events([event]));
-		let order: Vec<(u32, WindowSpan<U8Coord>)> = buckets.keys().cloned().collect();
-		let row_slot = |group: &u32, start: U8Coord| {
+		let mut engine = TumblingEngine::<u32, ByU8, SumAccumulator>::new(test_config());
+		let mut buckets: TumblingBuckets<u32, ByU8, Vec<i64>> = BTreeMap::new();
+		buckets.insert((1u32, WindowSpan::new(ByU8(0), ByU8(1))), events([event]));
+		let order: Vec<(u32, WindowSpan<ByU8>)> = buckets.keys().cloned().collect();
+		let row_slot = |group: &u32, start: ByU8| {
 			let key = EncodedKey::builder().u32(*group).u64(start.0).build();
 			(GroupId::of(&key), EncodedKey::new(Vec::new()))
 		};
@@ -769,7 +763,7 @@ mod tests {
 	fn an_update_carries_the_value_published_before_it_as_prior() {
 		// The driver rebuilds the pre-image from prior, so prior must be exactly the last published value.
 		let mut store = MockStore::default();
-		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let mut engine = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
 		let first = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 5)).expect("apply");
 		let second = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 3)).expect("apply");
 		let third = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 2)).expect("apply");
@@ -788,7 +782,7 @@ mod tests {
 		let group = GroupId::of(&row_key(&1, event_coord_at_millis(0)));
 		enqueue(&mut store, &[group]).unwrap();
 
-		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let mut engine = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
 		let drained = drain_group(&mut store, group, &mut engine, usize::MAX).unwrap();
 
 		assert!(!drained.still_queued, "an unbounded drain finishes the group in one pass");
@@ -801,7 +795,7 @@ mod tests {
 			"the row moved out by the reap must be reclaimed with the group"
 		);
 
-		let mut woken = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let mut woken = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
 		let out = apply_sums(&mut woken, &mut store, one_bucket(1, 0, 4)).expect("apply");
 		assert_eq!(out[0].kind, EmitKind::Insert, "a fully reclaimed window starts over as a new row");
 	}
@@ -812,9 +806,9 @@ mod tests {
 		// view never held. The window then looks published, so its next value goes out as an update
 		// whose pre-image is absent.
 		let mut store = MockStore::default();
-		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let mut engine = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
 
-		let mut buckets: TumblingBuckets<u32, DateTimeCoord, Vec<i64>> = BTreeMap::new();
+		let mut buckets: TumblingBuckets<u32, ByDateTime, Vec<i64>> = BTreeMap::new();
 		buckets.insert(
 			(1u32, WindowSpan::new(event_coord_at_millis(0), event_coord_at_millis(1))),
 			events([(AccumulatorOp::Remove, 5)]),
@@ -827,7 +821,7 @@ mod tests {
 			"and must leave no identity behind for a row it never published"
 		);
 
-		let mut woken = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let mut woken = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
 		let out = apply_sums(&mut woken, &mut store, one_bucket(1, 0, 4)).expect("apply");
 
 		assert_eq!(out[0].kind, EmitKind::Insert, "the first row this window publishes is an insert");
@@ -840,26 +834,26 @@ mod tests {
 		// retraction forces that read rather than serving it from the in-memory cache.
 		let mut store = MockStore::default();
 
-		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
-		let mut buckets: TumblingBuckets<u32, DateTimeCoord, Vec<i64>> = BTreeMap::new();
+		let mut engine = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
+		let mut buckets: TumblingBuckets<u32, ByDateTime, Vec<i64>> = BTreeMap::new();
 		buckets.insert(
 			(1u32, WindowSpan::new(event_coord_at_millis(0), event_coord_at_millis(1))),
 			events([(AccumulatorOp::Add, 5)]),
 		);
-		let published: Vec<WindowResult<u32, DateTimeCoord, i64>> =
+		let published: Vec<WindowResult<u32, ByDateTime, i64>> =
 			apply_sums(&mut engine, &mut store, buckets).unwrap();
 		assert_eq!(published.len(), 1);
 		assert!(matches!(published[0].kind, EmitKind::Insert));
 		assert_eq!(published[0].value, 5);
 
 		// A brand new engine with empty caches, forced to read the persisted accumulator back.
-		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
-		let mut buckets: TumblingBuckets<u32, DateTimeCoord, Vec<i64>> = BTreeMap::new();
+		let mut engine = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
+		let mut buckets: TumblingBuckets<u32, ByDateTime, Vec<i64>> = BTreeMap::new();
 		buckets.insert(
 			(1u32, WindowSpan::new(event_coord_at_millis(0), event_coord_at_millis(1))),
 			events([(AccumulatorOp::Remove, 5)]),
 		);
-		let withdrawn: Vec<WindowResult<u32, DateTimeCoord, i64>> =
+		let withdrawn: Vec<WindowResult<u32, ByDateTime, i64>> =
 			apply_sums(&mut engine, &mut store, buckets).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the window emits exactly one terminal diff");
@@ -879,16 +873,16 @@ mod tests {
 		// The other way a read reaches the store is LRU eviction, with no restart: the accumulator
 		// cache holds 8 windows, so more than that evicts the oldest and the next access re-reads it.
 		let mut store = MockStore::default();
-		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let mut engine = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
 
-		let mut published_group_1: Vec<WindowResult<u32, DateTimeCoord, i64>> = Vec::new();
+		let mut published_group_1: Vec<WindowResult<u32, ByDateTime, i64>> = Vec::new();
 		for group in 1u32..=11u32 {
-			let mut buckets: TumblingBuckets<u32, DateTimeCoord, Vec<i64>> = BTreeMap::new();
+			let mut buckets: TumblingBuckets<u32, ByDateTime, Vec<i64>> = BTreeMap::new();
 			buckets.insert(
 				(group, WindowSpan::new(event_coord_at_millis(0), event_coord_at_millis(1))),
 				events([(AccumulatorOp::Add, i64::from(group))]),
 			);
-			let out: Vec<WindowResult<u32, DateTimeCoord, i64>> =
+			let out: Vec<WindowResult<u32, ByDateTime, i64>> =
 				apply_sums(&mut engine, &mut store, buckets).unwrap();
 			if group == 1 {
 				published_group_1 = out;
@@ -900,12 +894,12 @@ mod tests {
 
 		// Group 1's window was pushed out of the 8-slot cache by the later groups, so the same
 		// engine must re-read its accumulator from the store to apply this retraction.
-		let mut buckets: TumblingBuckets<u32, DateTimeCoord, Vec<i64>> = BTreeMap::new();
+		let mut buckets: TumblingBuckets<u32, ByDateTime, Vec<i64>> = BTreeMap::new();
 		buckets.insert(
 			(1u32, WindowSpan::new(event_coord_at_millis(0), event_coord_at_millis(1))),
 			events([(AccumulatorOp::Remove, 1)]),
 		);
-		let withdrawn: Vec<WindowResult<u32, DateTimeCoord, i64>> =
+		let withdrawn: Vec<WindowResult<u32, ByDateTime, i64>> =
 			apply_sums(&mut engine, &mut store, buckets).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted window emits exactly one terminal diff");

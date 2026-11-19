@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use reifydb_codec::key::encoded::EncodedKeyBuilder;
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
-use crate::window::coord::DateTimeCoord;
+use crate::window::coord::ByDateTime;
 
 pub trait Coord: Copy + Ord + Debug {
 	type Span: Copy + Ord + Debug + IsZero + Default + Send + Sync;
@@ -32,7 +32,7 @@ pub trait Coord: Copy + Ord + Debug {
 	fn extend_key(self, builder: EncodedKeyBuilder) -> EncodedKeyBuilder;
 }
 
-impl Coord for DateTimeCoord {
+impl Coord for ByDateTime {
 	type Span = Duration;
 
 	const MAX: Self = Self(DateTime::MAX);
@@ -91,15 +91,15 @@ mod tests {
 	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::Coord;
-	use crate::window::coord::DateTimeCoord;
+	use crate::window::coord::ByDateTime;
 
 	#[test]
 	fn floor_to_rounds_a_pre_epoch_instant_down_not_toward_zero() {
 		// A truncating remainder would floor -1ns to 0 instead of the second below it.
 		let span = Duration::from_seconds(1).unwrap();
 		assert_eq!(
-			DateTimeCoord(DateTime::from_nanos(-1)).floor_to(span),
-			DateTimeCoord(DateTime::from_nanos(-1_000_000_000))
+			ByDateTime(DateTime::from_nanos(-1)).floor_to(span),
+			ByDateTime(DateTime::from_nanos(-1_000_000_000))
 		);
 	}
 
@@ -109,10 +109,10 @@ mod tests {
 		// is orphaned.
 		let dt = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap();
 
-		let bare = DateTimeCoord(dt).extend_key(EncodedKey::builder()).build();
+		let bare = ByDateTime(dt).extend_key(EncodedKey::builder()).build();
 		assert_eq!(bare, EncodedKey::builder().datetime(&dt).build());
 
-		let prefixed = DateTimeCoord(dt).extend_key(EncodedKey::builder().u32(7u32)).build();
+		let prefixed = ByDateTime(dt).extend_key(EncodedKey::builder().u32(7u32)).build();
 		assert_eq!(prefixed, EncodedKey::builder().u32(7u32).datetime(&dt).build());
 		assert_eq!(prefixed.len(), bare.len() + 4, "the prefix must not be re-encoded or dropped");
 	}

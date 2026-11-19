@@ -27,7 +27,7 @@ use crate::{
 			ContributionSlice, Contributions, MergeAccumulator, UnmergeAccumulator, WindowAccumulator,
 			invertible::multiset::Multiset,
 		},
-		coord::DateTimeCoord,
+		coord::ByDateTime,
 		span::Slot,
 	},
 };
@@ -35,7 +35,7 @@ use crate::{
 #[operator_state]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WindowSlotKey {
-	pub coord: DateTimeCoord,
+	pub coord: ByDateTime,
 	pub seq: u64,
 }
 
@@ -46,7 +46,7 @@ impl HeapSize for WindowSlotKey {
 }
 
 impl WindowSlotKey {
-	pub fn new(coord: DateTimeCoord, seq: u64) -> Self {
+	pub fn new(coord: ByDateTime, seq: u64) -> Self {
 		Self {
 			coord,
 			seq,
@@ -55,9 +55,9 @@ impl WindowSlotKey {
 }
 
 impl Slot for WindowSlotKey {
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 
-	fn order_key(&self) -> DateTimeCoord {
+	fn order_key(&self) -> ByDateTime {
 		self.coord
 	}
 }
@@ -911,7 +911,7 @@ mod tests {
 		}
 		let at = DateTime::from_nanos(1_700_000_000_123_456_789);
 
-		let current = encode(&WindowSlotKey::new(DateTimeCoord(at), 7)).expect("encode");
+		let current = encode(&WindowSlotKey::new(ByDateTime(at), 7)).expect("encode");
 		let raw = encode(&RawDateTimeSlotKey {
 			timestamp: at,
 			seq: 7,
@@ -925,7 +925,7 @@ mod tests {
 	fn window_slot_key_order_key_survives_storage_and_ignores_seq() {
 		// A stored key that orders differently from the writer makes the sweep reclaim live groups.
 		let key = WindowSlotKey {
-			coord: DateTimeCoord(DateTime::from_nanos(1_700_000_000_123_456_789)),
+			coord: ByDateTime(DateTime::from_nanos(1_700_000_000_123_456_789)),
 			seq: 7,
 		};
 		let bytes = key.encode_state().unwrap();
@@ -959,9 +959,9 @@ mod tests {
 		let base = 1_700_000_040_000i64;
 
 		let early =
-			WindowSlotKey::new(DateTimeCoord(DateTime::from_epoch_millis(base).expect("representable")), 0);
+			WindowSlotKey::new(ByDateTime(DateTime::from_epoch_millis(base).expect("representable")), 0);
 		let late = WindowSlotKey::new(
-			DateTimeCoord(DateTime::from_epoch_millis(base + 59_999).expect("representable")),
+			ByDateTime(DateTime::from_epoch_millis(base + 59_999).expect("representable")),
 			u64::MAX,
 		);
 
@@ -977,9 +977,7 @@ mod tests {
 		assert!(
 			!early_span.contains(
 				WindowSlotKey::new(
-					DateTimeCoord(
-						DateTime::from_epoch_millis(base + 60_000).expect("representable")
-					),
+					ByDateTime(DateTime::from_epoch_millis(base + 60_000).expect("representable")),
 					0,
 				)
 				.order_key()
@@ -1027,7 +1025,7 @@ mod tests {
 	}
 
 	fn at_time(secs: u64, seq: u64) -> WindowSlotKey {
-		WindowSlotKey::new(DateTimeCoord(DateTime::from_epoch_secs(secs as i64).unwrap()), seq)
+		WindowSlotKey::new(ByDateTime(DateTime::from_epoch_secs(secs as i64).unwrap()), seq)
 	}
 
 	fn dt(secs: u64) -> Value {
@@ -1165,11 +1163,11 @@ mod tests {
 	}
 
 	fn at(seq: u64) -> WindowSlotKey {
-		WindowSlotKey::new(DateTimeCoord(DateTime::default()), seq)
+		WindowSlotKey::new(ByDateTime(DateTime::default()), seq)
 	}
 
 	fn coord(secs: u64) -> WindowSlotKey {
-		WindowSlotKey::new(DateTimeCoord(DateTime::from_epoch_secs(secs as i64).unwrap()), secs)
+		WindowSlotKey::new(ByDateTime(DateTime::from_epoch_secs(secs as i64).unwrap()), secs)
 	}
 
 	fn add(

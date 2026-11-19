@@ -22,7 +22,7 @@ use reifydb::{
 	},
 	testing::db::TestDb,
 	window::{
-		accumulator::invertible::moments::Moments, coord::DateTimeCoord, settings::WindowSettings,
+		accumulator::invertible::moments::Moments, coord::ByDateTime, settings::WindowSettings,
 		span::WindowSpan,
 	},
 };
@@ -50,7 +50,7 @@ row!(GuestCarryWindow {
 struct GuestCarry;
 
 impl WindowedOperator for GuestCarry {
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type GroupKey = i32;
 	type Accumulator = Moments;
 	type Output = GuestCarryWindow;
@@ -59,13 +59,13 @@ impl WindowedOperator for GuestCarry {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
-						Ok(row.row_time().map(DateTimeCoord))
+					.map(|row| -> Result<Option<ByDateTime>, SdkError> {
+						Ok(row.row_time().map(ByDateTime))
 					})
 					.transpose()
 					.map(Option::flatten)
@@ -95,7 +95,7 @@ impl WindowedOperator for GuestCarry {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> Moments {
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> Moments {
 		Moments::default()
 	}
 }
@@ -106,7 +106,7 @@ impl CarryEmit for GuestCarry {
 	fn build_output(
 		&self,
 		group: &i32,
-		_span: WindowSpan<DateTimeCoord>,
+		_span: WindowSpan<ByDateTime>,
 		value: &Moments,
 		prev: Option<&f64>,
 	) -> Option<GuestCarryWindow> {

@@ -559,7 +559,7 @@ mod tests {
 		operator::state::{seal::coord::Coord, test_utils::test::inner_bytes},
 		window::{
 			accumulator::{AccumulatorOp, invertible::retained_map::RetainedAccumulator, testkit::events},
-			coord::DateTimeCoord,
+			coord::ByDateTime,
 			engine::config::WindowEngineConfig,
 		},
 	};
@@ -788,11 +788,11 @@ mod tests {
 		}
 	}
 
-	type Engine = TumblingCarryEngine<String, DateTimeCoord, RetainedAccumulator<u64, f64>, f64, f64>;
+	type Engine = TumblingCarryEngine<String, ByDateTime, RetainedAccumulator<u64, f64>, f64, f64>;
 
 	const WINDOW: u64 = 60;
 
-	fn window_at(millis: u64) -> DateTimeCoord {
+	fn window_at(millis: u64) -> ByDateTime {
 		event_coord_at_millis(i64::try_from(millis).expect("test window offset fits in i64 milliseconds"))
 	}
 
@@ -800,17 +800,17 @@ mod tests {
 		window_at(millis).to_order()
 	}
 
-	fn carry_config(retention: Option<Duration>) -> TumblingCarryConfig<DateTimeCoord> {
+	fn carry_config(retention: Option<Duration>) -> TumblingCarryConfig<ByDateTime> {
 		TumblingCarryConfig::builder(WindowEngineConfig::builder().build()).retention(retention).build()
 	}
 
-	fn idle_config(idle_retention: Duration) -> TumblingCarryConfig<DateTimeCoord> {
+	fn idle_config(idle_retention: Duration) -> TumblingCarryConfig<ByDateTime> {
 		TumblingCarryConfig::builder(WindowEngineConfig::builder().build())
 			.idle_retention(Some(idle_retention))
 			.build()
 	}
 
-	fn feed(engine: &mut Engine, store: &mut CountingStore, ws: DateTimeCoord, price: f64) {
+	fn feed(engine: &mut Engine, store: &mut CountingStore, ws: ByDateTime, price: f64) {
 		// One event per batch, so the high-water mark advances one window per call.
 		let _ = feed_group(engine, store, "BTC", ws, price);
 	}
@@ -821,20 +821,20 @@ mod tests {
 		engine: &mut Engine,
 		store: &mut CountingStore,
 		group: &str,
-		ws: DateTimeCoord,
+		ws: ByDateTime,
 		price: f64,
-	) -> Vec<WindowResult<String, DateTimeCoord, f64>> {
-		let mut buckets: TumblingBuckets<String, DateTimeCoord, Vec<(u64, f64)>> = BTreeMap::new();
+	) -> Vec<WindowResult<String, ByDateTime, f64>> {
+		let mut buckets: TumblingBuckets<String, ByDateTime, Vec<(u64, f64)>> = BTreeMap::new();
 		let span = WindowSpan::for_coord(ws, millis(WINDOW));
 		buckets.insert((group.to_string(), span), events([(AccumulatorOp::Add, (ws.to_order(), price))]));
-		let order: Vec<(String, WindowSpan<DateTimeCoord>)> = buckets.keys().cloned().collect();
+		let order: Vec<(String, WindowSpan<ByDateTime>)> = buckets.keys().cloned().collect();
 		engine.apply(
 			store,
 			buckets,
 			&order,
-			|g: &String, w: DateTimeCoord| EncodedKey::builder().str(g).u64(w.to_order()).build(),
+			|g: &String, w: ByDateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
 			RetainedAccumulator::<u64, f64>::default,
-			|_g: &String, _s: WindowSpan<DateTimeCoord>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
+			|_g: &String, _s: WindowSpan<ByDateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
 				(!v.is_empty()).then(|| v.values().sum::<f64>())
 			},
 			|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
@@ -938,28 +938,28 @@ mod tests {
 		);
 	}
 
-	fn seal_key(group: &String, window: DateTimeCoord) -> EncodedKey {
+	fn seal_key(group: &String, window: ByDateTime) -> EncodedKey {
 		EncodedKey::builder().str(group).u64(window.to_order()).build()
 	}
 
 	fn feed_carrying(
 		engine: &mut Engine,
 		store: &mut CountingStore,
-		window_start: DateTimeCoord,
+		window_start: ByDateTime,
 		ts: u64,
 		price: f64,
-	) -> Vec<WindowResult<String, DateTimeCoord, f64>> {
-		let mut buckets: TumblingBuckets<String, DateTimeCoord, Vec<(u64, f64)>> = BTreeMap::new();
+	) -> Vec<WindowResult<String, ByDateTime, f64>> {
+		let mut buckets: TumblingBuckets<String, ByDateTime, Vec<(u64, f64)>> = BTreeMap::new();
 		let span = WindowSpan::for_coord(window_start, millis(WINDOW));
 		buckets.insert(("BTC".to_string(), span), events([(AccumulatorOp::Add, (ts, price))]));
-		let order: Vec<(String, WindowSpan<DateTimeCoord>)> = buckets.keys().cloned().collect();
+		let order: Vec<(String, WindowSpan<ByDateTime>)> = buckets.keys().cloned().collect();
 		engine.apply(
 			store,
 			buckets,
 			&order,
 			seal_key,
 			RetainedAccumulator::<u64, f64>::default,
-			|_g: &String, _s: WindowSpan<DateTimeCoord>, v: &BTreeMap<u64, f64>, p: Option<&f64>| {
+			|_g: &String, _s: WindowSpan<ByDateTime>, v: &BTreeMap<u64, f64>, p: Option<&f64>| {
 				Some(v.values().sum::<f64>() + p.copied().unwrap_or(1000.0))
 			},
 			|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
@@ -1251,23 +1251,22 @@ mod tests {
 
 		let mut engine = Engine::new(carry_config(None));
 		let span = WindowSpan::for_coord(event_coord_at_millis(0), millis(WINDOW));
-		let mut buckets: TumblingBuckets<String, DateTimeCoord, Vec<(u64, f64)>> = BTreeMap::new();
+		let mut buckets: TumblingBuckets<String, ByDateTime, Vec<(u64, f64)>> = BTreeMap::new();
 		buckets.insert(
 			("BTC".to_string(), span),
 			events([(AccumulatorOp::Remove, (event_coord_at_millis(0).to_order(), 5.0))]),
 		);
-		let order: Vec<(String, WindowSpan<DateTimeCoord>)> = buckets.keys().cloned().collect();
-		let withdrawn: Vec<WindowResult<String, DateTimeCoord, f64>> = engine
+		let order: Vec<(String, WindowSpan<ByDateTime>)> = buckets.keys().cloned().collect();
+		let withdrawn: Vec<WindowResult<String, ByDateTime, f64>> = engine
 			.apply(
 				&mut store,
 				buckets,
 				&order,
-				|g: &String, w: DateTimeCoord| EncodedKey::builder().str(g).u64(w.to_order()).build(),
+				|g: &String, w: ByDateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
 				RetainedAccumulator::<u64, f64>::default,
-				|_g: &String,
-				 _s: WindowSpan<DateTimeCoord>,
-				 v: &BTreeMap<u64, f64>,
-				 _p: Option<&f64>| { (!v.is_empty()).then(|| v.values().sum::<f64>()) },
+				|_g: &String, _s: WindowSpan<ByDateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
+					(!v.is_empty()).then(|| v.values().sum::<f64>())
+				},
 				|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
 			)
 			.expect("apply");
@@ -1292,7 +1291,7 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 
-		let mut published_g00: Vec<WindowResult<String, DateTimeCoord, f64>> = Vec::new();
+		let mut published_g00: Vec<WindowResult<String, ByDateTime, f64>> = Vec::new();
 		for i in 0..11u64 {
 			let group = format!("G{i:02}");
 			let out = feed_group(&mut engine, &mut store, &group, event_coord_at_millis(0), (i + 1) as f64);
@@ -1307,23 +1306,22 @@ mod tests {
 		// G00's window was pushed out of the 8-slot accumulator cache by the later groups, so the
 		// engine must re-read its accumulator from the store to apply this retraction.
 		let span = WindowSpan::for_coord(event_coord_at_millis(0), millis(WINDOW));
-		let mut buckets: TumblingBuckets<String, DateTimeCoord, Vec<(u64, f64)>> = BTreeMap::new();
+		let mut buckets: TumblingBuckets<String, ByDateTime, Vec<(u64, f64)>> = BTreeMap::new();
 		buckets.insert(
 			("G00".to_string(), span),
 			events([(AccumulatorOp::Remove, (event_coord_at_millis(0).to_order(), 1.0))]),
 		);
-		let order: Vec<(String, WindowSpan<DateTimeCoord>)> = buckets.keys().cloned().collect();
-		let withdrawn: Vec<WindowResult<String, DateTimeCoord, f64>> = engine
+		let order: Vec<(String, WindowSpan<ByDateTime>)> = buckets.keys().cloned().collect();
+		let withdrawn: Vec<WindowResult<String, ByDateTime, f64>> = engine
 			.apply(
 				&mut store,
 				buckets,
 				&order,
-				|g: &String, w: DateTimeCoord| EncodedKey::builder().str(g).u64(w.to_order()).build(),
+				|g: &String, w: ByDateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
 				RetainedAccumulator::<u64, f64>::default,
-				|_g: &String,
-				 _s: WindowSpan<DateTimeCoord>,
-				 v: &BTreeMap<u64, f64>,
-				 _p: Option<&f64>| { (!v.is_empty()).then(|| v.values().sum::<f64>()) },
+				|_g: &String, _s: WindowSpan<ByDateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
+					(!v.is_empty()).then(|| v.values().sum::<f64>())
+				},
 				|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
 			)
 			.expect("apply");
@@ -1351,30 +1349,29 @@ mod tests {
 		let mut engine = Engine::new(carry_config(None));
 		let w0 = WindowSpan::for_coord(event_coord_at_millis(0), millis(WINDOW));
 		let w1 = WindowSpan::for_coord(event_coord_at_millis(WINDOW as i64), millis(WINDOW));
-		let mut buckets: TumblingBuckets<String, DateTimeCoord, Vec<(u64, f64)>> = BTreeMap::new();
+		let mut buckets: TumblingBuckets<String, ByDateTime, Vec<(u64, f64)>> = BTreeMap::new();
 		for (group, span, price) in [("A", w0, 1.0), ("B", w0, 2.0), ("A", w1, 3.0), ("B", w1, 4.0)] {
 			buckets.insert(
 				(group.to_string(), span),
 				events([(AccumulatorOp::Add, (span.start.to_order(), price))]),
 			);
 		}
-		let order: Vec<(String, WindowSpan<DateTimeCoord>)> = vec![
+		let order: Vec<(String, WindowSpan<ByDateTime>)> = vec![
 			("A".to_string(), w0),
 			("B".to_string(), w0),
 			("A".to_string(), w1),
 			("B".to_string(), w1),
 		];
-		let results: Vec<WindowResult<String, DateTimeCoord, f64>> = engine
+		let results: Vec<WindowResult<String, ByDateTime, f64>> = engine
 			.apply(
 				&mut store,
 				buckets,
 				&order,
-				|g: &String, w: DateTimeCoord| EncodedKey::builder().str(g).u64(w.to_order()).build(),
+				|g: &String, w: ByDateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
 				RetainedAccumulator::<u64, f64>::default,
-				|_g: &String,
-				 _s: WindowSpan<DateTimeCoord>,
-				 v: &BTreeMap<u64, f64>,
-				 _p: Option<&f64>| { (!v.is_empty()).then(|| v.values().sum::<f64>()) },
+				|_g: &String, _s: WindowSpan<ByDateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
+					(!v.is_empty()).then(|| v.values().sum::<f64>())
+				},
 				|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
 			)
 			.expect("apply");
@@ -1384,10 +1381,10 @@ mod tests {
 			results.iter().all(|r| r.kind == EmitKind::Insert),
 			"every window is new, so every emit is an insert"
 		);
-		let mut by_row: Vec<(u64, String, DateTimeCoord)> =
+		let mut by_row: Vec<(u64, String, ByDateTime)> =
 			results.iter().map(|r| (r.row_number.0, r.group.clone(), r.span.start)).collect();
 		by_row.sort();
-		let numbered: Vec<(String, DateTimeCoord)> = by_row.into_iter().map(|(_, g, s)| (g, s)).collect();
+		let numbered: Vec<(String, ByDateTime)> = by_row.into_iter().map(|(_, g, s)| (g, s)).collect();
 		assert_eq!(
 			numbered,
 			vec![
@@ -1403,10 +1400,10 @@ mod tests {
 	#[test]
 	fn carry_meta_projects_its_high_water_independently_of_its_window_map() {
 		// The meta sweep reclaims on this projection alone, so window entries must never skew it.
-		let mut meta: CarryMeta<DateTimeCoord, i64, i64> = CarryMeta::default();
+		let mut meta: CarryMeta<ByDateTime, i64, i64> = CarryMeta::default();
 		let empty_bytes = meta.encode_state().unwrap();
 		assert_eq!(
-			decode::<CarryMeta<DateTimeCoord, i64, i64>>(&empty_bytes).unwrap().high_water_order(),
+			decode::<CarryMeta<ByDateTime, i64, i64>>(&empty_bytes).unwrap().high_water_order(),
 			None,
 			"a default CarryMeta has no high water"
 		);
@@ -1423,7 +1420,7 @@ mod tests {
 			},
 		);
 		let bytes = meta.encode_state().unwrap();
-		let projected = decode::<CarryMeta<DateTimeCoord, i64, i64>>(&bytes).unwrap().high_water_order();
+		let projected = decode::<CarryMeta<ByDateTime, i64, i64>>(&bytes).unwrap().high_water_order();
 		assert_eq!(projected, Some(order(99)), "the populated window map must not disturb the high water");
 	}
 }

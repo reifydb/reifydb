@@ -418,7 +418,7 @@ mod archived_projection_tests {
 	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
-	use crate::window::coord::DateTimeCoord;
+	use crate::window::coord::ByDateTime;
 
 	/// Projects the high water the way `sweep_stale_meta` does: encode, decode, then read it.
 	fn via_storage<M: MetaHighWater>(meta: &M) -> Option<u64> {
@@ -429,7 +429,7 @@ mod archived_projection_tests {
 	#[test]
 	fn stored_high_water_yields_the_slot_order_key() {
 		// A wrong order key silently drops a live group's meta or keeps dead meta forever.
-		let instant = DateTimeCoord(DateTime::from_epoch_millis(1_700_000_000_123).unwrap());
+		let instant = ByDateTime(DateTime::from_epoch_millis(1_700_000_000_123).unwrap());
 		let datetime_meta = GroupMeta {
 			high_water: Some(instant),
 		};
@@ -442,7 +442,7 @@ mod archived_projection_tests {
 		// Adjacent representable instants must keep distinct order keys, or a live group is swept with a dead
 		// one.
 		let next_instant = GroupMeta {
-			high_water: Some(<DateTimeCoord as Coord>::from_order(instant.to_order() + 1)),
+			high_water: Some(<ByDateTime as Coord>::from_order(instant.to_order() + 1)),
 		};
 		assert!(via_storage(&next_instant) > via_storage(&datetime_meta));
 	}
@@ -450,7 +450,7 @@ mod archived_projection_tests {
 	#[test]
 	fn a_group_that_never_advanced_projects_to_none_through_storage() {
 		// An accidental Some(0) compares below every threshold and reclaims meta for live groups.
-		let empty: GroupMeta<DateTimeCoord> = GroupMeta {
+		let empty: GroupMeta<ByDateTime> = GroupMeta {
 			high_water: None,
 		};
 		assert_eq!(via_storage(&empty), None);
@@ -463,7 +463,7 @@ mod meta_sweep_tests {
 	use crate::{
 		factory::coord::event_coord_at_millis,
 		operator::{state::mock::MockStore, state_access::set},
-		window::coord::DateTimeCoord,
+		window::coord::ByDateTime,
 	};
 
 	fn meta_key(index: u32) -> MetaKey {
@@ -472,7 +472,7 @@ mod meta_sweep_tests {
 		meta_key_for(Hash128::from(index as u128))
 	}
 
-	fn seed(store: &mut MockStore, count: u32, high_water: impl Fn(u32) -> DateTimeCoord) {
+	fn seed(store: &mut MockStore, count: u32, high_water: impl Fn(u32) -> ByDateTime) {
 		for index in 0..count {
 			set(
 				store,
@@ -499,10 +499,10 @@ mod meta_sweep_tests {
 		let mut sweep = MetaSweep::default();
 		let threshold = event_coord_at_millis(50).to_order();
 
-		assert_eq!(sweep.sweep::<GroupMeta<DateTimeCoord>>(&mut store, threshold).unwrap(), 0);
+		assert_eq!(sweep.sweep::<GroupMeta<ByDateTime>>(&mut store, threshold).unwrap(), 0);
 		assert_eq!(store.rows_visited(), META_SWEEP_PAGE, "one call must visit at most one page");
 
-		assert_eq!(sweep.sweep::<GroupMeta<DateTimeCoord>>(&mut store, threshold).unwrap(), 0);
+		assert_eq!(sweep.sweep::<GroupMeta<ByDateTime>>(&mut store, threshold).unwrap(), 0);
 		assert_eq!(
 			store.rows_visited(),
 			total as usize,
@@ -528,13 +528,12 @@ mod meta_sweep_tests {
 
 		let mut sweep = MetaSweep::default();
 		let early = event_coord_at_millis(50).to_order();
-		assert_eq!(sweep.sweep::<GroupMeta<DateTimeCoord>>(&mut store, early).unwrap(), 0);
-		assert_eq!(sweep.sweep::<GroupMeta<DateTimeCoord>>(&mut store, early).unwrap(), 0);
+		assert_eq!(sweep.sweep::<GroupMeta<ByDateTime>>(&mut store, early).unwrap(), 0);
+		assert_eq!(sweep.sweep::<GroupMeta<ByDateTime>>(&mut store, early).unwrap(), 0);
 
 		let walked = store.rows_visited();
 		assert_eq!(
-			sweep.sweep::<GroupMeta<DateTimeCoord>>(&mut store, event_coord_at_millis(90).to_order())
-				.unwrap(),
+			sweep.sweep::<GroupMeta<ByDateTime>>(&mut store, event_coord_at_millis(90).to_order()).unwrap(),
 			0
 		);
 		assert_eq!(
@@ -548,7 +547,7 @@ mod meta_sweep_tests {
 		let mut reclaimed = 0;
 		for _ in 0..2 {
 			reclaimed += sweep
-				.sweep::<GroupMeta<DateTimeCoord>>(&mut store, event_coord_at_millis(150).to_order())
+				.sweep::<GroupMeta<ByDateTime>>(&mut store, event_coord_at_millis(150).to_order())
 				.unwrap();
 		}
 		assert_eq!(

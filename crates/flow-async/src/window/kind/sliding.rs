@@ -12,14 +12,14 @@ mod tests {
 	use super::*;
 	use crate::{
 		factory::coord::event_coord_at_millis,
-		window::{coord::DateTimeCoord, span::WindowSpan},
+		window::{coord::ByDateTime, span::WindowSpan},
 	};
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
 	}
 
-	fn starts(coord: DateTimeCoord) -> Vec<DateTimeCoord> {
+	fn starts(coord: ByDateTime) -> Vec<ByDateTime> {
 		WindowSpan::covering(coord, ms(1_000), ms(250))
 			.expect("a coordinate near the epoch has every window end before the maximum")
 			.into_iter()
@@ -27,8 +27,8 @@ mod tests {
 			.collect()
 	}
 
-	fn at(millis: i64) -> DateTimeCoord {
-		DateTimeCoord(DateTime::from_millis(millis))
+	fn at(millis: i64) -> ByDateTime {
+		ByDateTime(DateTime::from_millis(millis))
 	}
 
 	#[test]
@@ -77,7 +77,7 @@ mod tests {
 			.find(|span| span.start == at(4_250))
 			.expect("the window starting at the coordinate");
 
-		assert_eq!(span.start, DateTimeCoord(DateTime::from_millis(4_250)));
-		assert_eq!(span.end, DateTimeCoord(DateTime::from_millis(5_250)));
+		assert_eq!(span.start, ByDateTime(DateTime::from_millis(4_250)));
+		assert_eq!(span.end, ByDateTime(DateTime::from_millis(5_250)));
 	}
 }

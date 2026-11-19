@@ -145,13 +145,13 @@ mod tests {
 				CountedAccumulator,
 				testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree},
 			},
-			coord::DateTimeCoord,
+			coord::ByDateTime,
 		},
 	};
 
 	#[test]
 	fn immutable_endpoint_freezes_open_and_tracks_live_close() {
-		let mut accumulator: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
+		let mut accumulator: ImmutableEndpoint<ByDateTime, i64> = ImmutableEndpoint::immutable(millis(10));
 		accumulator.add(&[(event_coord_at_millis(0), 100)]);
 		accumulator.add(&[(event_coord_at_millis(5), 200)]);
 		accumulator.add(&[(event_coord_at_millis(12), 300)]);
@@ -171,7 +171,7 @@ mod tests {
 
 	#[test]
 	fn immutable_endpoint_default_is_fully_invertible() {
-		assert_add_remove_is_inverse::<ImmutableEndpoint<DateTimeCoord, i64>>(
+		assert_add_remove_is_inverse::<ImmutableEndpoint<ByDateTime, i64>>(
 			&[(event_coord_at_millis(1), 10i64), (event_coord_at_millis(3), 30)],
 			(event_coord_at_millis(2), 20i64),
 		);
@@ -181,7 +181,7 @@ mod tests {
 	fn immutable_endpoint_default_open_moves_when_the_earliest_row_is_retracted() {
 		// Without an immutable span the open is never frozen, so retracting the earliest row must promote the
 		// next.
-		let mut accumulator: CountedAccumulator<ImmutableEndpoint<DateTimeCoord, i64>> =
+		let mut accumulator: CountedAccumulator<ImmutableEndpoint<ByDateTime, i64>> =
 			CountedAccumulator::new(ImmutableEndpoint::default());
 		accumulator.add(&[(event_coord_at_millis(0), 100)]);
 		accumulator.add(&[(event_coord_at_millis(5), 200)]);
@@ -202,7 +202,7 @@ mod tests {
 	fn immutable_endpoint_close_is_the_latest_surviving_row_not_the_open() {
 		// Only the earliest immutable slot is kept, so retracting the live tail must never make close report
 		// the window's first value as its last.
-		let mut accumulator: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
+		let mut accumulator: ImmutableEndpoint<ByDateTime, i64> = ImmutableEndpoint::immutable(millis(10));
 		accumulator.add(&[(event_coord_at_millis(0), 1)]);
 		accumulator.add(&[(event_coord_at_millis(5), 2)]);
 		accumulator.add(&[(event_coord_at_millis(20), 3)]);
@@ -216,8 +216,8 @@ mod tests {
 	fn immutable_endpoint_matches_the_unsealed_arm_for_in_order_adds() {
 		// Freezing the open and replaying the tail must reproduce exactly what retaining everything gives.
 		assert_arms_agree(
-			ImmutableEndpoint::<DateTimeCoord, i64>::immutable(millis(5)),
-			ImmutableEndpoint::<DateTimeCoord, i64>::default(),
+			ImmutableEndpoint::<ByDateTime, i64>::immutable(millis(5)),
+			ImmutableEndpoint::<ByDateTime, i64>::default(),
 			&[
 				Op::Add((event_coord_at_millis(0), 1)),
 				Op::Add((event_coord_at_millis(10), 2)),
@@ -231,10 +231,10 @@ mod tests {
 	fn immutable_endpoint_merge_keeps_a_branch_open_that_predates_the_seal_line() {
 		// merge combines two parallel histories, never late arrivals, so the receiver's immutable line must not
 		// swallow the other branch.
-		let mut left: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
+		let mut left: ImmutableEndpoint<ByDateTime, i64> = ImmutableEndpoint::immutable(millis(10));
 		left.add(&[(event_coord_at_millis(0), 1)]);
 
-		let mut right: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
+		let mut right: ImmutableEndpoint<ByDateTime, i64> = ImmutableEndpoint::immutable(millis(10));
 		right.add(&[(event_coord_at_millis(50), 5)]);
 		right.add(&[(event_coord_at_millis(70), 7)]);
 
@@ -249,11 +249,11 @@ mod tests {
 
 	#[test]
 	fn immutable_endpoint_roundtrip() {
-		let mut ep: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
+		let mut ep: ImmutableEndpoint<ByDateTime, i64> = ImmutableEndpoint::immutable(millis(10));
 		ep.add(&[(event_coord_at_millis(0), 100)]);
 		ep.add(&[(event_coord_at_millis(12), 300)]);
 		let bytes = ep.encode_state().expect("encode");
-		let restored: ImmutableEndpoint<DateTimeCoord, i64> = decode(&bytes).expect("decode");
+		let restored: ImmutableEndpoint<ByDateTime, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, ep);
 	}
 }

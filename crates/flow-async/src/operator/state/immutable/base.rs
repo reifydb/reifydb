@@ -141,16 +141,16 @@ mod tests {
 	use reifydb_value::factory::time::millis;
 
 	use super::*;
-	use crate::{factory::coord::event_coord_at_millis, window::coord::DateTimeCoord};
+	use crate::{factory::coord::event_coord_at_millis, window::coord::ByDateTime};
 
 	#[test]
 	fn immutable_a_tail_matches_the_btreemap_it_replaced() {
 		// a container that orders or ages differently silently changes the aggregate a window emits
 		let immutable = millis(20);
-		let mut base: ImmutableBase<DateTimeCoord, i64> = ImmutableBase::maybe_immutable(Some(immutable));
-		let mut tail: BTreeMap<DateTimeCoord, i64> = BTreeMap::new();
-		let mut high_water: Option<DateTimeCoord> = None;
-		let mut immutable_high: Option<DateTimeCoord> = None;
+		let mut base: ImmutableBase<ByDateTime, i64> = ImmutableBase::maybe_immutable(Some(immutable));
+		let mut tail: BTreeMap<ByDateTime, i64> = BTreeMap::new();
+		let mut high_water: Option<ByDateTime> = None;
+		let mut immutable_high: Option<ByDateTime> = None;
 		let mut immutable_count: u64 = 0;
 		let mut aged_apart = false;
 
@@ -173,7 +173,7 @@ mod tests {
 			}
 
 			let aged = base.push(slot, value);
-			let mut expected_aged: Vec<(DateTimeCoord, i64)> = Vec::new();
+			let mut expected_aged: Vec<(ByDateTime, i64)> = Vec::new();
 			if !matches!(immutable_high, Some(immutable) if slot <= immutable) {
 				high_water = Some(match high_water {
 					Some(hw) if hw >= slot => hw,
@@ -211,7 +211,7 @@ mod tests {
 	#[test]
 	fn a_coordinate_exactly_one_immutable_span_behind_the_high_water_stays_live() {
 		// The boundary is load-bearing: folding it would discard a retraction that is still allowed.
-		let mut base: ImmutableBase<DateTimeCoord, i64> = ImmutableBase::maybe_immutable(Some(millis(10)));
+		let mut base: ImmutableBase<ByDateTime, i64> = ImmutableBase::maybe_immutable(Some(millis(10)));
 		base.push(event_coord_at_millis(0), 1);
 		base.push(event_coord_at_millis(10), 2);
 		assert_eq!(base.immutable_count(), 0, "a coordinate exactly at the bound is still immutable");
@@ -225,7 +225,7 @@ mod tests {
 	#[test]
 	fn a_corrected_coordinate_that_folds_twice_is_still_one_observation() {
 		// A repeat of an already immutable slot is that row arriving again, never a second one.
-		let mut base: ImmutableBase<DateTimeCoord, i64> = ImmutableBase::maybe_immutable(Some(millis(1)));
+		let mut base: ImmutableBase<ByDateTime, i64> = ImmutableBase::maybe_immutable(Some(millis(1)));
 		base.push(event_coord_at_millis(0), 10);
 		base.push(event_coord_at_millis(2), 20);
 		assert_eq!(base.len(), 2);
@@ -237,7 +237,7 @@ mod tests {
 	#[test]
 	fn a_row_below_the_immutable_line_is_dropped_while_one_just_above_it_still_counts() {
 		// The fast path assumes ordered arrival, so a row at or under the highest immutable slot is lost.
-		let mut base: ImmutableBase<DateTimeCoord, i64> = ImmutableBase::maybe_immutable(Some(millis(1)));
+		let mut base: ImmutableBase<ByDateTime, i64> = ImmutableBase::maybe_immutable(Some(millis(1)));
 		base.push(event_coord_at_millis(0), 1);
 		base.push(event_coord_at_millis(10), 2);
 		assert_eq!(base.immutable_count(), 1);
@@ -258,7 +258,7 @@ mod tests {
 	#[test]
 	fn removing_the_row_that_set_the_high_water_does_not_lower_the_immutable_line() {
 		// The immutable line is monotonic: a retraction of the newest row must never un-fold what it aged out.
-		let mut base: ImmutableBase<DateTimeCoord, i64> = ImmutableBase::maybe_immutable(Some(millis(10)));
+		let mut base: ImmutableBase<ByDateTime, i64> = ImmutableBase::maybe_immutable(Some(millis(10)));
 		base.push(event_coord_at_millis(0), 1);
 		base.push(event_coord_at_millis(50), 2);
 		assert_eq!(base.immutable_count(), 1);
@@ -274,13 +274,13 @@ mod tests {
 	#[test]
 	fn absorbing_a_disjoint_branch_keeps_every_observation_from_both_sides() {
 		// absorb takes slot-disjoint branches, so dropping the other side's immutable total undercounts it.
-		let mut left: ImmutableBase<DateTimeCoord, i64> = ImmutableBase::maybe_immutable(Some(millis(10)));
+		let mut left: ImmutableBase<ByDateTime, i64> = ImmutableBase::maybe_immutable(Some(millis(10)));
 		left.push(event_coord_at_millis(0), 1);
 		left.push(event_coord_at_millis(50), 2);
 		assert_eq!(left.immutable_count(), 1);
 		assert_eq!(left.len(), 2);
 
-		let mut right: ImmutableBase<DateTimeCoord, i64> = ImmutableBase::maybe_immutable(Some(millis(10)));
+		let mut right: ImmutableBase<ByDateTime, i64> = ImmutableBase::maybe_immutable(Some(millis(10)));
 		right.push(event_coord_at_millis(100), 3);
 		right.push(event_coord_at_millis(200), 4);
 		assert_eq!(right.immutable_count(), 1);
@@ -298,9 +298,9 @@ mod tests {
 	#[test]
 	fn absorb_resolves_a_shared_live_coordinate_through_the_combine_rule() {
 		// A slot both branches hold live is one row, so it must collapse to a single counted entry.
-		let mut left: ImmutableBase<DateTimeCoord, i64> = ImmutableBase::default();
+		let mut left: ImmutableBase<ByDateTime, i64> = ImmutableBase::default();
 		left.push(event_coord_at_millis(0), 1);
-		let mut right: ImmutableBase<DateTimeCoord, i64> = ImmutableBase::default();
+		let mut right: ImmutableBase<ByDateTime, i64> = ImmutableBase::default();
 		right.push(event_coord_at_millis(0), 9);
 
 		left.absorb(&right, |mine, theirs| *mine.max(theirs));
@@ -312,7 +312,7 @@ mod tests {
 	#[test]
 	fn without_an_immutable_span_no_distance_is_far_enough_to_fold() {
 		// Every differential test compares against this arm, so it must retain every slot it is given.
-		let mut base: ImmutableBase<DateTimeCoord, i64> = ImmutableBase::default();
+		let mut base: ImmutableBase<ByDateTime, i64> = ImmutableBase::default();
 		base.push(event_coord_at_millis(0), 1);
 		base.push(event_coord_at_millis(1_000_000), 2);
 		base.push(event_coord_at_millis(0), 3);

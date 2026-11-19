@@ -128,13 +128,13 @@ mod tests {
 				CountedAccumulator,
 				testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree, drive},
 			},
-			coord::DateTimeCoord,
+			coord::ByDateTime,
 		},
 	};
 
 	#[test]
 	fn immutable_min_folds_aged_extreme() {
-		let mut accumulator: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::immutable(millis(10));
+		let mut accumulator: ImmutableMin<ByDateTime, i64> = ImmutableMin::immutable(millis(10));
 		accumulator.add(&[(event_coord_at_millis(0), 2)]);
 		accumulator.add(&[(event_coord_at_millis(5), 9)]);
 		accumulator.add(&[(event_coord_at_millis(12), 7)]);
@@ -146,11 +146,11 @@ mod tests {
 	#[test]
 	fn immutable_min_default_never_folds_and_is_fully_invertible() {
 		// Without an immutable span the minimum is never frozen, so retracting it must reveal the next one.
-		assert_add_remove_is_inverse::<ImmutableMin<DateTimeCoord, i64>>(
+		assert_add_remove_is_inverse::<ImmutableMin<ByDateTime, i64>>(
 			&[(event_coord_at_millis(1), 10i64), (event_coord_at_millis(2), 20)],
 			(event_coord_at_millis(3), 30i64),
 		);
-		let mut accumulator: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
+		let mut accumulator: ImmutableMin<ByDateTime, i64> = ImmutableMin::default();
 		accumulator.add(&[(event_coord_at_millis(0), 5)]);
 		accumulator.add(&[(event_coord_at_millis(1_000_000), 8)]);
 		accumulator.remove(&[(event_coord_at_millis(0), 5)]);
@@ -160,9 +160,9 @@ mod tests {
 	#[test]
 	fn immutable_min_merge_keeps_the_smaller_value_at_a_shared_coordinate() {
 		// Two branches holding the same slot must never let the incoming value replace a smaller one.
-		let mut accumulator: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
+		let mut accumulator: ImmutableMin<ByDateTime, i64> = ImmutableMin::default();
 		accumulator.add(&[(event_coord_at_millis(0), 1)]);
-		let mut other: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
+		let mut other: ImmutableMin<ByDateTime, i64> = ImmutableMin::default();
 		other.add(&[(event_coord_at_millis(0), 9)]);
 
 		accumulator.merge(&other);
@@ -177,10 +177,10 @@ mod tests {
 	fn immutable_min_default_merge_leaves_nothing_folded() {
 		// merge is the only path that can fold without an immutable span, and an immutable minimum never
 		// retracts.
-		let mut left: CountedAccumulator<ImmutableMin<DateTimeCoord, i64>> =
+		let mut left: CountedAccumulator<ImmutableMin<ByDateTime, i64>> =
 			CountedAccumulator::new(ImmutableMin::default());
 		left.add(&[(event_coord_at_millis(0), 5)]);
-		let mut right: CountedAccumulator<ImmutableMin<DateTimeCoord, i64>> =
+		let mut right: CountedAccumulator<ImmutableMin<ByDateTime, i64>> =
 			CountedAccumulator::new(ImmutableMin::default());
 		right.add(&[(event_coord_at_millis(1_000_000), 8)]);
 
@@ -196,8 +196,8 @@ mod tests {
 	#[test]
 	fn immutable_min_with_an_immutable_span_beyond_the_data_matches_the_plain_arm() {
 		// Nothing ages in either arm, so any divergence is an aging rule that fired when it must not.
-		let mut immutable: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::immutable(millis(1_000));
-		let mut plain: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
+		let mut immutable: ImmutableMin<ByDateTime, i64> = ImmutableMin::immutable(millis(1_000));
+		let mut plain: ImmutableMin<ByDateTime, i64> = ImmutableMin::default();
 		for (slot, value) in [(0, 5i64), (10, 2), (20, 7)] {
 			immutable.add(&[(event_coord_at_millis(slot), value)]);
 			plain.add(&[(event_coord_at_millis(slot), value)]);
@@ -213,8 +213,8 @@ mod tests {
 	fn immutable_min_matches_the_plain_arm_for_in_order_adds() {
 		// Folding is a memory optimisation over adds; without a retraction it must not move the answer.
 		assert_arms_agree(
-			ImmutableMin::<DateTimeCoord, i64>::immutable(millis(5)),
-			ImmutableMin::<DateTimeCoord, i64>::default(),
+			ImmutableMin::<ByDateTime, i64>::immutable(millis(5)),
+			ImmutableMin::<ByDateTime, i64>::default(),
 			&[
 				Op::Add((event_coord_at_millis(0), 9)),
 				Op::Add((event_coord_at_millis(10), 2)),
@@ -234,10 +234,10 @@ mod tests {
 			Op::Remove((event_coord_at_millis(0), 5)),
 			Op::Remove((event_coord_at_millis(50), 8)),
 		];
-		let mut immutable: CountedAccumulator<ImmutableMin<DateTimeCoord, i64>> =
+		let mut immutable: CountedAccumulator<ImmutableMin<ByDateTime, i64>> =
 			CountedAccumulator::new(ImmutableMin::immutable(millis(10)));
 		drive(&mut immutable, &ops);
-		let mut plain: CountedAccumulator<ImmutableMin<DateTimeCoord, i64>> =
+		let mut plain: CountedAccumulator<ImmutableMin<ByDateTime, i64>> =
 			CountedAccumulator::new(ImmutableMin::default());
 		drive(&mut plain, &ops);
 
@@ -251,10 +251,10 @@ mod tests {
 	fn immutable_min_merge_keeps_a_branch_minimum_that_predates_the_immutable_line() {
 		// merge combines two parallel histories, never late arrivals, so the receiver's immutable line must not
 		// swallow the other branch.
-		let mut left: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::immutable(millis(10));
+		let mut left: ImmutableMin<ByDateTime, i64> = ImmutableMin::immutable(millis(10));
 		left.add(&[(event_coord_at_millis(0), 5)]);
 
-		let mut right: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::immutable(millis(10));
+		let mut right: ImmutableMin<ByDateTime, i64> = ImmutableMin::immutable(millis(10));
 		right.add(&[(event_coord_at_millis(50), 7)]);
 		right.add(&[(event_coord_at_millis(70), 9)]);
 
@@ -270,8 +270,8 @@ mod tests {
 	#[test]
 	fn immutable_min_compacts_only_with_an_immutable_span() {
 		// without an immutable span nothing folds, so the tail must count as growing with every sample
-		assert!(!ImmutableMin::<DateTimeCoord, i64>::default().compacts());
-		assert!(!ImmutableMin::<DateTimeCoord, i64>::maybe_immutable(None).compacts());
-		assert!(ImmutableMin::<DateTimeCoord, i64>::immutable(millis(10)).compacts());
+		assert!(!ImmutableMin::<ByDateTime, i64>::default().compacts());
+		assert!(!ImmutableMin::<ByDateTime, i64>::maybe_immutable(None).compacts());
+		assert!(ImmutableMin::<ByDateTime, i64>::immutable(millis(10)).compacts());
 	}
 }

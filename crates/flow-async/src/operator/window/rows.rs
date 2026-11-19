@@ -21,7 +21,7 @@ use crate::{
 		window::operator::{WindowOperator, required_row_numbers},
 	},
 	window::{
-		coord::DateTimeCoord,
+		coord::ByDateTime,
 		driver::rows::{RetractRows, WindowColumns, WindowDiff, WindowRows},
 	},
 };
@@ -69,7 +69,7 @@ impl<'a> BuiltinRows<'a> {
 	fn columns(
 		&mut self,
 		batch: &RecordBatch,
-	) -> Result<WindowColumns<Hash128, DateTimeCoord, (WindowSlotKey, SlotRow)>, ValueError> {
+	) -> Result<WindowColumns<Hash128, ByDateTime, (WindowSlotKey, SlotRow)>, ValueError> {
 		let row_count = batch.num_rows();
 		if row_count == 0 {
 			return WindowColumns::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -87,8 +87,8 @@ impl<'a> BuiltinRows<'a> {
 				(
 					slot_coord(
 						match self.pane {
-							Some(pane) => DateTimeCoord(*time).floor_to(pane),
-							None => DateTimeCoord(*time),
+							Some(pane) => ByDateTime(*time).floor_to(pane),
+							None => ByDateTime(*time),
 						},
 						number.map_or(0, |number| number.0),
 					),
@@ -103,7 +103,7 @@ impl<'a> BuiltinRows<'a> {
 			(0..row_count).collect(),
 			numbers,
 			groups.hashes,
-			times.into_iter().map(|time| Some(DateTimeCoord(time))).collect(),
+			times.into_iter().map(|time| Some(ByDateTime(time))).collect(),
 			contributions,
 		)
 	}
@@ -134,7 +134,7 @@ impl<'a> BuiltinRows<'a> {
 
 impl WindowRows for BuiltinRows<'_> {
 	type Group = Hash128;
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type Contribution = (WindowSlotKey, SlotRow);
 
 	fn diff_count(&self) -> usize {
@@ -144,7 +144,7 @@ impl WindowRows for BuiltinRows<'_> {
 	fn diff(
 		&mut self,
 		index: usize,
-	) -> Result<WindowDiff<Hash128, DateTimeCoord, (WindowSlotKey, SlotRow)>, ValueError> {
+	) -> Result<WindowDiff<Hash128, ByDateTime, (WindowSlotKey, SlotRow)>, ValueError> {
 		let change = self.change;
 		let Some(diff) = change.diffs.get(index) else {
 			return internal_err!(

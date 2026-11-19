@@ -3,10 +3,10 @@
 
 use reifydb_value::factory::time::at_millis;
 
-use crate::window::coord::DateTimeCoord;
+use crate::window::coord::ByDateTime;
 
-pub fn event_coord_at_millis(value: i64) -> DateTimeCoord {
-	DateTimeCoord::of(&at_millis(value))
+pub fn event_coord_at_millis(value: i64) -> ByDateTime {
+	ByDateTime::of(&at_millis(value))
 }
 
 #[cfg(test)]

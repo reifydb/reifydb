@@ -505,7 +505,7 @@ mod tests {
 	};
 	use reifydb_flow_async::window::{
 		accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator},
-		coord::{DateTimeCoord, RowSpan, U8Coord},
+		coord::{ByDateTime, ByU8, RowSpan},
 		driver::rolling::rolling_cutoff,
 		engine::pane::PaneFold,
 		span::WindowSpan,
@@ -612,8 +612,8 @@ mod tests {
 		};
 	}
 
-	probe!(DateTimeCoord, u32, Duration, |s: &WindowSettings<DateTimeCoord>| s.immutable);
-	probe!(U8Coord, u64, RowSpan, |s: &WindowSettings<U8Coord>| s.immutable);
+	probe!(ByDateTime, u32, Duration, |s: &WindowSettings<ByDateTime>| s.immutable);
+	probe!(ByU8, u64, RowSpan, |s: &WindowSettings<ByU8>| s.immutable);
 
 	type TimeProbe = Probe<Duration, u32>;
 	type SlotProbe = Probe<RowSpan, u64>;
@@ -645,22 +645,22 @@ mod tests {
 	fn the_span_is_the_declared_size_aligned_down_from_the_coordinate() {
 		// The engine builds the span from the size in the with clause; a hard-coded or ignored size would give
 		// every operator the same window.
-		let coord = DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap());
+		let coord = ByDateTime(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap());
 		let minute = time_driver(&tumbling_time(60, None, None));
 		let five_minutes = time_driver(&tumbling_time(300, None, None));
 
 		assert_eq!(
 			WindowSpan::for_coord(coord, minute.settings.fixed_size()),
 			WindowSpan::new(
-				DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap()),
-				DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 31, 0).unwrap())
+				ByDateTime(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap()),
+				ByDateTime(DateTime::from_ymd_hms(2024, 1, 15, 10, 31, 0).unwrap())
 			)
 		);
 		assert_eq!(
 			WindowSpan::for_coord(coord, five_minutes.settings.fixed_size()),
 			WindowSpan::new(
-				DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap()),
-				DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 35, 0).unwrap())
+				ByDateTime(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap()),
+				ByDateTime(DateTime::from_ymd_hms(2024, 1, 15, 10, 35, 0).unwrap())
 			)
 		);
 	}
@@ -699,8 +699,8 @@ mod tests {
 		assert_eq!(driver.settings.lateness, RowSpan::of(4));
 		assert_eq!(driver.settings.immutable, Some(RowSpan::of(2)));
 		assert_eq!(
-			WindowSpan::for_coord(U8Coord(23), driver.settings.fixed_size()),
-			WindowSpan::new(U8Coord(20), U8Coord(30))
+			WindowSpan::for_coord(ByU8(23), driver.settings.fixed_size()),
+			WindowSpan::new(ByU8(20), ByU8(30))
 		);
 	}
 
@@ -722,9 +722,9 @@ mod tests {
 
 		assert_eq!(driver.settings.slide, Some(RowSpan::of(4)));
 		assert_eq!(
-			WindowSpan::covering(U8Coord(23), driver.settings.fixed_size(), slide)
+			WindowSpan::covering(ByU8(23), driver.settings.fixed_size(), slide)
 				.expect("every window around slot 23 ends before the maximum"),
-			vec![WindowSpan::new(U8Coord(16), U8Coord(26)), WindowSpan::new(U8Coord(20), U8Coord(30)),]
+			vec![WindowSpan::new(ByU8(16), ByU8(26)), WindowSpan::new(ByU8(20), ByU8(30)),]
 		);
 	}
 
@@ -776,7 +776,7 @@ mod tests {
 	}
 
 	struct SpanProbe {
-		spans: Mutex<Vec<WindowSpan<DateTimeCoord>>>,
+		spans: Mutex<Vec<WindowSpan<ByDateTime>>>,
 	}
 
 	impl OperatorMetadata for SpanProbe {
@@ -789,7 +789,7 @@ mod tests {
 	}
 
 	impl WindowedOperator for SpanProbe {
-		type Coord = DateTimeCoord;
+		type Coord = ByDateTime;
 		type GroupKey = u32;
 		type Accumulator = LastValue<i64>;
 		type Output = Out;
@@ -800,7 +800,7 @@ mod tests {
 			})
 		}
 
-		fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+		fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 			Ok(vec![None; rows.len()])
 		}
 
@@ -813,7 +813,7 @@ mod tests {
 			Ok(vec![None; rows.len()])
 		}
 
-		fn new_accumulator(&self, _: &WindowSettings<DateTimeCoord>) -> LastValue<i64> {
+		fn new_accumulator(&self, _: &WindowSettings<ByDateTime>) -> LastValue<i64> {
 			LastValue::default()
 		}
 	}
@@ -821,13 +821,13 @@ mod tests {
 	impl Emit for SpanProbe {
 		type Kinds = crate::flow::operator::windowed::operator::NoRolling;
 
-		fn build_output(&self, _: &u32, span: WindowSpan<DateTimeCoord>, _: &i64) -> Option<Out> {
+		fn build_output(&self, _: &u32, span: WindowSpan<ByDateTime>, _: &i64) -> Option<Out> {
 			self.spans.lock().push(span);
 			None
 		}
 	}
 
-	fn rolling_lagged(size: i64, pane: i64, lag: Option<i64>) -> WindowSettings<DateTimeCoord> {
+	fn rolling_lagged(size: i64, pane: i64, lag: Option<i64>) -> WindowSettings<ByDateTime> {
 		let with = ApplyWith {
 			window: Some(WindowKind::Rolling {
 				size: WindowSize::Duration(secs(size)),
@@ -839,11 +839,11 @@ mod tests {
 			immutable: None,
 			retention: None,
 		};
-		<DateTimeCoord as SealDomain>::window_settings_of(&with).unwrap()
+		<ByDateTime as SealDomain>::window_settings_of(&with).unwrap()
 	}
 
-	fn at(seconds: i64) -> DateTimeCoord {
-		DateTimeCoord(DateTime::from_millis(seconds * 1_000))
+	fn at(seconds: i64) -> ByDateTime {
+		ByDateTime(DateTime::from_millis(seconds * 1_000))
 	}
 
 	#[test]
@@ -933,7 +933,7 @@ mod tests {
 	}
 
 	impl WindowedOperator for TallyProbe {
-		type Coord = DateTimeCoord;
+		type Coord = ByDateTime;
 		type GroupKey = u32;
 		type Accumulator = Tally;
 		type Output = Out;
@@ -942,7 +942,7 @@ mod tests {
 			Ok(Self)
 		}
 
-		fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+		fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 			Ok(vec![None; rows.len()])
 		}
 
@@ -955,7 +955,7 @@ mod tests {
 			Ok(vec![None; rows.len()])
 		}
 
-		fn new_accumulator(&self, _: &WindowSettings<DateTimeCoord>) -> Tally {
+		fn new_accumulator(&self, _: &WindowSettings<ByDateTime>) -> Tally {
 			Tally::default()
 		}
 	}
@@ -963,7 +963,7 @@ mod tests {
 	impl Emit for TallyProbe {
 		type Kinds = Invertible;
 
-		fn build_output(&self, _: &u32, _: WindowSpan<DateTimeCoord>, total: &i64) -> Option<Out> {
+		fn build_output(&self, _: &u32, _: WindowSpan<ByDateTime>, total: &i64) -> Option<Out> {
 			Some(Out {
 				v: *total,
 			})

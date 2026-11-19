@@ -18,21 +18,21 @@ use super::{
 };
 use crate::window::{
 	accumulator::{AccumulatorEvents, AccumulatorOp},
-	coord::DateTimeCoord,
+	coord::ByDateTime,
 	engine::tumbling::TumblingBuckets,
 	span::WindowSpan,
 };
 
-pub(crate) type EngineBuckets = TumblingBuckets<Hash128, DateTimeCoord, SlotContributions>;
+pub(crate) type EngineBuckets = TumblingBuckets<Hash128, ByDateTime, SlotContributions>;
 
 pub(crate) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 
-type WindowKey = (Hash128, WindowSpan<DateTimeCoord>);
+type WindowKey = (Hash128, WindowSpan<ByDateTime>);
 
 struct RoutedWindow {
 	key: WindowKey,
 	events: AccumulatorEvents<SlotContributions>,
-	latest: Option<DateTimeCoord>,
+	latest: Option<ByDateTime>,
 }
 
 #[derive(Default)]
@@ -46,7 +46,7 @@ pub(crate) struct Routed {
 	pub buckets: EngineBuckets,
 	pub group_values: HashMap<Hash128, Vec<Value>>,
 	pub arrival: Vec<WindowKey>,
-	pub window_max_coord: HashMap<WindowKey, DateTimeCoord>,
+	pub window_max_coord: HashMap<WindowKey, ByDateTime>,
 }
 
 impl Routing {
@@ -54,10 +54,10 @@ impl Routing {
 		&mut self,
 		hash: Hash128,
 		gvals: &[Value],
-		span: WindowSpan<DateTimeCoord>,
+		span: WindowSpan<ByDateTime>,
 		op: AccumulatorOp,
 		contribution: (WindowSlotKey, SlotRow),
-		event_coord: DateTimeCoord,
+		event_coord: ByDateTime,
 	) {
 		let key = (hash, span);
 		let index = match self.index.entry(key) {
@@ -74,7 +74,7 @@ impl Routing {
 		};
 		let window = &mut self.windows[index];
 		if op == AccumulatorOp::Add {
-			window.latest = Some(DateTimeCoord(
+			window.latest = Some(ByDateTime(
 				window.latest.map_or_else(DateTime::default, |latest| latest.0).max(event_coord.0),
 			));
 		}
@@ -107,7 +107,7 @@ pub(crate) fn group_of(groups: &WindowGroups, partition: Hash128, window_id: u64
 	*groups.get(&(partition, window_id)).expect("every routed window is resolved before the engine runs")
 }
 
-pub(crate) fn slot_coord(event_coord: DateTimeCoord, row_number: u64) -> WindowSlotKey {
+pub(crate) fn slot_coord(event_coord: ByDateTime, row_number: u64) -> WindowSlotKey {
 	WindowSlotKey::new(event_coord, row_number)
 }
 
@@ -142,7 +142,7 @@ pub(crate) fn route_into_buckets<F>(
 	routing: &mut Routing,
 ) -> Result<(), ValueError>
 where
-	F: Fn(usize) -> (WindowSpan<DateTimeCoord>, DateTimeCoord),
+	F: Fn(usize) -> (WindowSpan<ByDateTime>, ByDateTime),
 {
 	let row_count = columns.num_rows();
 	if row_count == 0 {
@@ -225,12 +225,12 @@ mod bucket_start_tests {
 		let bucket = order(1_700_000_000_000);
 
 		assert_eq!(
-			<DateTimeCoord as Coord>::from_order(bucket),
-			DateTimeCoord(DateTime::from_epoch_millis(1_700_000_000_000).unwrap())
+			<ByDateTime as Coord>::from_order(bucket),
+			ByDateTime(DateTime::from_epoch_millis(1_700_000_000_000).unwrap())
 		);
 		assert_eq!(
-			<DateTimeCoord as Coord>::from_order(bucket),
-			<DateTimeCoord as Coord>::from_order(bucket),
+			<ByDateTime as Coord>::from_order(bucket),
+			<ByDateTime as Coord>::from_order(bucket),
 			"the stamp depends on the bucket alone, so it cannot vary between two runs"
 		);
 	}
@@ -239,8 +239,8 @@ mod bucket_start_tests {
 	fn adjacent_buckets_get_distinct_stamps_in_bucket_order() {
 		// A chained rollup (1s -> 1m) collapses onto one instant unless distinct buckets get
 		// distinct stamps.
-		let first = <DateTimeCoord as Coord>::from_order(order(1_700_000_000_000));
-		let second = <DateTimeCoord as Coord>::from_order(order(1_700_000_001_000));
+		let first = <ByDateTime as Coord>::from_order(order(1_700_000_000_000));
+		let second = <ByDateTime as Coord>::from_order(order(1_700_000_001_000));
 
 		assert!(first < second, "bucket order must survive into #time");
 		assert_eq!(second.0 - first.0, Duration::from_seconds(1).unwrap(), "a 1s bucket step is 1s in #time");
@@ -250,14 +250,14 @@ mod bucket_start_tests {
 	fn a_far_future_bucket_saturates_rather_than_wrapping() {
 		// An unrepresentable bucket must still order above a real one; wrapping would make it
 		// look ancient and be evicted at once.
-		assert_eq!(<DateTimeCoord as Coord>::from_order(u64::MAX), DateTimeCoord(DateTime::MAX));
-		assert!(<DateTimeCoord as Coord>::from_order(u64::MAX)
-			> <DateTimeCoord as Coord>::from_order(1_700_000_000_000));
+		assert_eq!(<ByDateTime as Coord>::from_order(u64::MAX), ByDateTime(DateTime::MAX));
+		assert!(<ByDateTime as Coord>::from_order(u64::MAX)
+			> <ByDateTime as Coord>::from_order(1_700_000_000_000));
 	}
 
 	#[test]
 	fn the_zero_bucket_maps_to_the_earliest_instant() {
 		// An unset window_start must not be mistakeable for a real time far from zero.
-		assert_eq!(<DateTimeCoord as Coord>::from_order(0), DateTimeCoord(DateTime::MIN));
+		assert_eq!(<ByDateTime as Coord>::from_order(0), ByDateTime(DateTime::MIN));
 	}
 }

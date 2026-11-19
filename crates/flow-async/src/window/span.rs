@@ -10,28 +10,28 @@ use reifydb_value::value::datetime::DateTime;
 
 use crate::{
 	operator::state::seal::coord::{Coord, IsZero},
-	window::coord::{DateTimeCoord, U8Coord},
+	window::coord::{ByDateTime, ByU8},
 };
 
 mod sealed {
 	pub trait Internal {}
 }
 
-impl sealed::Internal for DateTimeCoord {}
+impl sealed::Internal for ByDateTime {}
 
-impl sealed::Internal for U8Coord {}
+impl sealed::Internal for ByU8 {}
 
 pub trait WindowAnchor: sealed::Internal + Slot<Coord = Self> + Coord {
 	fn as_time(self) -> Option<DateTime>;
 }
 
-impl WindowAnchor for DateTimeCoord {
+impl WindowAnchor for ByDateTime {
 	fn as_time(self) -> Option<DateTime> {
 		Some(self.0)
 	}
 }
 
-impl WindowAnchor for U8Coord {
+impl WindowAnchor for ByU8 {
 	fn as_time(self) -> Option<DateTime> {
 		None
 	}
@@ -45,10 +45,10 @@ pub trait Slot: Copy + Ord + Debug + StateCodec {
 	fn order_key(&self) -> Self::Coord;
 }
 
-impl Slot for DateTimeCoord {
-	type Coord = DateTimeCoord;
+impl Slot for ByDateTime {
+	type Coord = ByDateTime;
 
-	fn order_key(&self) -> DateTimeCoord {
+	fn order_key(&self) -> ByDateTime {
 		*self
 	}
 }
@@ -154,20 +154,20 @@ mod tests {
 
 	#[test]
 	fn for_coord_aligns_datetime_to_span() {
-		let coord = DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap());
+		let coord = ByDateTime(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap());
 		let one_second = Duration::from_seconds(1).unwrap();
 		let one_minute = Duration::from_seconds(60).unwrap();
 
 		// A sub-minute (1s) window must stay 1s, not round up to a minute.
 		let sec = WindowSpan::for_coord(coord, one_second);
-		assert_eq!(sec.start, DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap()));
-		assert_eq!(sec.end, DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 26).unwrap()));
+		assert_eq!(sec.start, ByDateTime(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap()));
+		assert_eq!(sec.end, ByDateTime(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 26).unwrap()));
 		assert_eq!(sec.duration(), one_second);
 
 		// A 1m window aligns the coord down to the minute boundary.
 		let min = WindowSpan::for_coord(coord, one_minute);
-		assert_eq!(min.start, DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap()));
-		assert_eq!(min.end, DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 31, 0).unwrap()));
+		assert_eq!(min.start, ByDateTime(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap()));
+		assert_eq!(min.end, ByDateTime(DateTime::from_ymd_hms(2024, 1, 15, 10, 31, 0).unwrap()));
 		assert!(min.contains(coord));
 		assert!(!min.contains(min.end));
 	}
@@ -208,12 +208,12 @@ mod tests {
 		// A seal horizon is watermark - lateness; with both sides a bare u64 nothing stopped a
 		// millisecond span reaching a nanosecond coordinate, yielding a horizon a million times too
 		// small. Pairing a coordinate with its own Span makes the wrong subtraction fail to compile.
-		let watermark = DateTimeCoord(DateTime::from_epoch_millis(6_060_000).expect("representable instant"));
+		let watermark = ByDateTime(DateTime::from_epoch_millis(6_060_000).expect("representable instant"));
 		let one_minute = Duration::from_seconds(60).expect("representable span");
 
 		assert_eq!(
 			watermark.saturating_sub_span(one_minute),
-			DateTimeCoord(DateTime::from_epoch_millis(6_000_000).expect("representable")),
+			ByDateTime(DateTime::from_epoch_millis(6_000_000).expect("representable")),
 			"a minute behind the watermark is a minute, not a million times less"
 		);
 	}
@@ -222,8 +222,8 @@ mod tests {
 	fn a_coordinate_survives_the_round_trip_through_its_storage_encoding() {
 		// to_order/from_order are the persisted expiry-index encoding. They must be exact inverses:
 		// a lossy round trip would move a window's anchor and either seal it early or strand it.
-		let coord = DateTimeCoord(DateTime::from_epoch_millis(1_234_567).expect("representable"));
-		assert_eq!(<DateTimeCoord as Coord>::from_order(coord.to_order()), coord);
+		let coord = ByDateTime(DateTime::from_epoch_millis(1_234_567).expect("representable"));
+		assert_eq!(<ByDateTime as Coord>::from_order(coord.to_order()), coord);
 	}
 
 	#[test]
@@ -231,11 +231,11 @@ mod tests {
 		// The boundary is load-bearing in both directions. A window whose start sits exactly one lateness
 		// span behind the watermark is still reachable by a late event, so sealing it would discard a
 		// legitimate retraction; sealing nothing would let state grow without bound.
-		let watermark = DateTimeCoord(DateTime::from_epoch_millis(6_060_000).expect("representable"));
+		let watermark = ByDateTime(DateTime::from_epoch_millis(6_060_000).expect("representable"));
 		let horizon = output_watermark(watermark, Duration::from_seconds(60).expect("representable"));
 
-		let at_boundary = DateTimeCoord(DateTime::from_epoch_millis(6_000_000).expect("representable"));
-		let before_boundary = DateTimeCoord(DateTime::from_epoch_millis(5_999_999).expect("representable"));
+		let at_boundary = ByDateTime(DateTime::from_epoch_millis(6_000_000).expect("representable"));
+		let before_boundary = ByDateTime(DateTime::from_epoch_millis(5_999_999).expect("representable"));
 
 		assert!(!is_sealed(at_boundary, horizon), "the boundary window is still live");
 		assert!(is_sealed(before_boundary, horizon), "anything older is sealed");
@@ -244,7 +244,7 @@ mod tests {
 	#[test]
 	fn window_row_key_puts_the_group_before_the_coordinate() {
 		// A coordinate ahead of the group would interleave every group's windows in one key range.
-		let start = DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap());
+		let start = ByDateTime(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap());
 		let group = EncodedKey::builder().u32(3u32).u32(9u32).build();
 
 		let expected = EncodedKey::builder().u32(3u32).u32(9u32).datetime(&start.0).build();
@@ -282,19 +282,16 @@ mod tests {
 	#[test]
 	fn covering_on_an_ordinal_coord_counts_slots() {
 		// flooring the coord by the size would start the windows off the slide grid
-		let spans = WindowSpan::covering(U8Coord(23), RowSpan::of(10), RowSpan::of(4))
+		let spans = WindowSpan::covering(ByU8(23), RowSpan::of(10), RowSpan::of(4))
 			.expect("every window around slot 23 ends before the maximum");
 
-		assert_eq!(
-			spans,
-			vec![WindowSpan::new(U8Coord(16), U8Coord(26)), WindowSpan::new(U8Coord(20), U8Coord(30)),]
-		);
+		assert_eq!(spans, vec![WindowSpan::new(ByU8(16), ByU8(26)), WindowSpan::new(ByU8(20), ByU8(30)),]);
 	}
 
 	#[test]
 	fn checked_for_coord_refuses_a_window_that_would_end_past_the_maximum() {
 		// a window whose end overflows panics the flow in the addition instead of failing loud
-		let near = DateTimeCoord(DateTime::MAX.saturating_sub(Duration::from_seconds(10).unwrap()));
+		let near = ByDateTime(DateTime::MAX.saturating_sub(Duration::from_seconds(10).unwrap()));
 		let minute = Duration::from_seconds(60).unwrap();
 
 		assert_eq!(WindowSpan::checked_for_coord(near, minute), None);
@@ -307,7 +304,7 @@ mod tests {
 	#[test]
 	fn covering_refuses_a_window_that_would_end_past_the_maximum() {
 		// a covering window whose end overflows must not be cut short or panic
-		let near = DateTimeCoord(DateTime::MAX.saturating_sub(Duration::from_seconds(10).unwrap()));
+		let near = ByDateTime(DateTime::MAX.saturating_sub(Duration::from_seconds(10).unwrap()));
 
 		assert_eq!(WindowSpan::covering(near, millis(60_000), millis(30_000)), None);
 	}

@@ -28,9 +28,9 @@ mod tests {
 	use reifydb_value::value::duration::Duration;
 
 	use super::WindowSettings;
-	use crate::window::coord::DateTimeCoord;
+	use crate::window::coord::ByDateTime;
 
-	fn settings(pane: Option<Duration>) -> WindowSettings<DateTimeCoord> {
+	fn settings(pane: Option<Duration>) -> WindowSettings<ByDateTime> {
 		let hour = Duration::from_hours(1).unwrap();
 		WindowSettings {
 			kind: WindowKind::Rolling {

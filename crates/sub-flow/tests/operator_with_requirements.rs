@@ -12,7 +12,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_flow_async::window::{
-	coord::{DateTimeCoord, U8Coord},
+	coord::{ByDateTime, ByU8},
 	settings::WindowSettings,
 	span::WindowSpan,
 };
@@ -428,10 +428,10 @@ macro_rules! window_probe {
 	};
 }
 
-window_probe!(TimeWindowProbe, "time_window_probe", DateTimeCoord, NoRolling, GRow);
-window_probe!(SlotWindowProbe, "slot_window_probe", U8Coord, NoRolling, GRow);
-window_probe!(RollingProbe, "rolling_probe", DateTimeCoord, AllKinds, GRow);
-window_probe!(TopKProbe, "top_k_probe", DateTimeCoord, AllKinds, BTreeMap<u32, RankedRow>);
+window_probe!(TimeWindowProbe, "time_window_probe", ByDateTime, NoRolling, GRow);
+window_probe!(SlotWindowProbe, "slot_window_probe", ByU8, NoRolling, GRow);
+window_probe!(RollingProbe, "rolling_probe", ByDateTime, AllKinds, GRow);
+window_probe!(TopKProbe, "top_k_probe", ByDateTime, AllKinds, BTreeMap<u32, RankedRow>);
 
 fn windowed_memory() -> TestDb {
 	// Every window shape the create check branches on must be registered, or a skipped branch would read as a pass.
@@ -721,7 +721,7 @@ impl OperatorMetadata for RefusingWindowProbe {
 }
 
 impl WindowedOperator for RefusingWindowProbe {
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type GroupKey = u32;
 	type Accumulator = LastValue<i64>;
 	type Output = GRow;
@@ -730,7 +730,7 @@ impl WindowedOperator for RefusingWindowProbe {
 		Err(ValueError::from(CoreError::OperatorWithRetentionNotSupported).into())
 	}
 
-	fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+	fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 		Ok(vec![None; rows.len()])
 	}
 
@@ -743,7 +743,7 @@ impl WindowedOperator for RefusingWindowProbe {
 		Ok(vec![None; rows.len()])
 	}
 
-	fn new_accumulator(&self, _: &WindowSettings<DateTimeCoord>) -> LastValue<i64> {
+	fn new_accumulator(&self, _: &WindowSettings<ByDateTime>) -> LastValue<i64> {
 		LastValue::default()
 	}
 }
@@ -751,7 +751,7 @@ impl WindowedOperator for RefusingWindowProbe {
 impl Emit for RefusingWindowProbe {
 	type Kinds = NoRolling;
 
-	fn build_output(&self, _: &u32, _: WindowSpan<DateTimeCoord>, _: &i64) -> Option<GRow> {
+	fn build_output(&self, _: &u32, _: WindowSpan<ByDateTime>, _: &i64) -> Option<GRow> {
 		None
 	}
 }
@@ -778,7 +778,7 @@ impl OperatorMetadata for CarryProbe {
 }
 
 impl WindowedOperator for CarryProbe {
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type GroupKey = u32;
 	type Accumulator = LastValue<i64>;
 	type Output = CarryRow;
@@ -787,7 +787,7 @@ impl WindowedOperator for CarryProbe {
 		Ok(Self)
 	}
 
-	fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+	fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 		Ok(vec![None; rows.len()])
 	}
 
@@ -800,7 +800,7 @@ impl WindowedOperator for CarryProbe {
 		Ok(vec![None; rows.len()])
 	}
 
-	fn new_accumulator(&self, _: &WindowSettings<DateTimeCoord>) -> LastValue<i64> {
+	fn new_accumulator(&self, _: &WindowSettings<ByDateTime>) -> LastValue<i64> {
 		LastValue::default()
 	}
 }
@@ -808,7 +808,7 @@ impl WindowedOperator for CarryProbe {
 impl CarryEmit for CarryProbe {
 	type Carry = i64;
 
-	fn build_output(&self, _: &u32, _: WindowSpan<DateTimeCoord>, _: &i64, _: Option<&i64>) -> Option<CarryRow> {
+	fn build_output(&self, _: &u32, _: WindowSpan<ByDateTime>, _: &i64, _: Option<&i64>) -> Option<CarryRow> {
 		None
 	}
 

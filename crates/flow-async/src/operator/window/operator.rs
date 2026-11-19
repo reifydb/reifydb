@@ -42,7 +42,7 @@ use crate::{
 	},
 	timer::Timer,
 	window::{
-		coord::DateTimeCoord, driver::runner::WindowRunner, engine::config::WindowEngineConfig,
+		coord::ByDateTime, driver::runner::WindowRunner, engine::config::WindowEngineConfig,
 		kind::sliding::fits_slide,
 	},
 };
@@ -69,7 +69,7 @@ pub struct WindowOperator {
 	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
 	rolling: Option<Box<BuiltinRolling>>,
-	pub(super) runner: Option<WindowRunner<DateTimeCoord>>,
+	pub(super) runner: Option<WindowRunner<ByDateTime>>,
 }
 
 impl WindowOperator {

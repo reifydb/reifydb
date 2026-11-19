@@ -18,7 +18,7 @@ use reifydb_flow_async::{
 			WindowAccumulator,
 			invertible::{moments::Moments, multiset::Multiset, ordf64::OrdF64},
 		},
-		coord::DateTimeCoord,
+		coord::ByDateTime,
 		settings::WindowSettings,
 		span::WindowSpan,
 	},
@@ -137,7 +137,7 @@ impl OperatorMetadata for TestVolume {
 }
 
 impl WindowedOperator for TestVolume {
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type GroupKey = String;
 	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
@@ -146,13 +146,13 @@ impl WindowedOperator for TestVolume {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
-						Ok(row.row_time().map(DateTimeCoord))
+					.map(|row| -> Result<Option<ByDateTime>, SdkError> {
+						Ok(row.row_time().map(ByDateTime))
 					})
 					.transpose()
 					.map(Option::flatten)
@@ -183,7 +183,7 @@ impl WindowedOperator for TestVolume {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> VolumeAccumulator {
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> VolumeAccumulator {
 		VolumeAccumulator::default()
 	}
 }
@@ -191,7 +191,7 @@ impl WindowedOperator for TestVolume {
 impl Emit for TestVolume {
 	type Kinds = NoRolling;
 
-	fn build_output(&self, group: &String, span: WindowSpan<DateTimeCoord>, value: &OrdF64) -> Option<VolumeOut> {
+	fn build_output(&self, group: &String, span: WindowSpan<ByDateTime>, value: &OrdF64) -> Option<VolumeOut> {
 		Some(VolumeOut {
 			group: group.clone(),
 			window_start: span.start.to_order(),
@@ -216,7 +216,7 @@ impl OperatorMetadata for SealedVolume {
 }
 
 impl WindowedOperator for SealedVolume {
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type GroupKey = String;
 	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
@@ -225,13 +225,13 @@ impl WindowedOperator for SealedVolume {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
-						Ok(row.row_time().map(DateTimeCoord))
+					.map(|row| -> Result<Option<ByDateTime>, SdkError> {
+						Ok(row.row_time().map(ByDateTime))
 					})
 					.transpose()
 					.map(Option::flatten)
@@ -248,7 +248,7 @@ impl WindowedOperator for SealedVolume {
 		TestVolume.extract(ctx, cols, rows)
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> VolumeAccumulator {
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> VolumeAccumulator {
 		VolumeAccumulator::default()
 	}
 }
@@ -256,7 +256,7 @@ impl WindowedOperator for SealedVolume {
 impl Emit for SealedVolume {
 	type Kinds = NoRolling;
 
-	fn build_output(&self, group: &String, span: WindowSpan<DateTimeCoord>, value: &OrdF64) -> Option<VolumeOut> {
+	fn build_output(&self, group: &String, span: WindowSpan<ByDateTime>, value: &OrdF64) -> Option<VolumeOut> {
 		Some(VolumeOut {
 			group: group.clone(),
 			window_start: span.start.to_order(),
@@ -321,7 +321,7 @@ impl OperatorMetadata for TestMin {
 }
 
 impl WindowedOperator for TestMin {
-	type Coord = DateTimeCoord;
+	type Coord = ByDateTime;
 	type GroupKey = String;
 	type Accumulator = MinAccumulator;
 	type Output = MinOut;
@@ -330,13 +330,13 @@ impl WindowedOperator for TestMin {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
-						Ok(row.row_time().map(DateTimeCoord))
+					.map(|row| -> Result<Option<ByDateTime>, SdkError> {
+						Ok(row.row_time().map(ByDateTime))
 					})
 					.transpose()
 					.map(Option::flatten)
@@ -370,7 +370,7 @@ impl WindowedOperator for TestMin {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> MinAccumulator {
+	fn new_accumulator(&self, _settings: &WindowSettings<ByDateTime>) -> MinAccumulator {
 		MinAccumulator::default()
 	}
 }
@@ -378,7 +378,7 @@ impl WindowedOperator for TestMin {
 impl Emit for TestMin {
 	type Kinds = NoRolling;
 
-	fn build_output(&self, group: &String, span: WindowSpan<DateTimeCoord>, value: &OrdF64) -> Option<MinOut> {
+	fn build_output(&self, group: &String, span: WindowSpan<ByDateTime>, value: &OrdF64) -> Option<MinOut> {
 		Some(MinOut {
 			group: group.clone(),
 			window_start: span.start.to_order(),

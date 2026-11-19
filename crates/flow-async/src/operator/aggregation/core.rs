@@ -60,7 +60,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	operator::aggregation::accumulator::{RowAccumulator, avg_type, sum_type},
-	window::{coord::DateTimeCoord, engine::tumbling::TumblingEngine, span::WindowSpan},
+	window::{coord::ByDateTime, engine::tumbling::TumblingEngine, span::WindowSpan},
 };
 
 #[derive(Default)]
@@ -427,7 +427,7 @@ pub struct EmitRow {
 	pub group_values: Vec<Value>,
 	pub slot_values: Vec<Value>,
 	pub row_number: RowNumber,
-	pub span: Option<WindowSpan<DateTimeCoord>>,
+	pub span: Option<WindowSpan<ByDateTime>>,
 	pub time: Option<DateTime>,
 }
 
@@ -460,7 +460,7 @@ pub struct Aggregation {
 
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
-	tumbling_engine: Option<Box<TumblingEngine<Hash128, DateTimeCoord, RowAccumulator>>>,
+	tumbling_engine: Option<Box<TumblingEngine<Hash128, ByDateTime, RowAccumulator>>>,
 	digests: DigestSlots,
 	pub ctx: Arc<FlowContext>,
 }
@@ -601,7 +601,7 @@ impl Aggregation {
 
 	pub(crate) fn tumbling_engine_slot(
 		&mut self,
-	) -> &mut Option<Box<TumblingEngine<Hash128, DateTimeCoord, RowAccumulator>>> {
+	) -> &mut Option<Box<TumblingEngine<Hash128, ByDateTime, RowAccumulator>>> {
 		&mut self.tumbling_engine
 	}
 
@@ -730,7 +730,7 @@ impl Aggregation {
 		Ok(SlotViews(Arc::new(SlotColumns(slots))))
 	}
 
-	fn span_slot_values(&self, slot_values: &[Value], span: WindowSpan<DateTimeCoord>) -> Option<Vec<Value>> {
+	fn span_slot_values(&self, slot_values: &[Value], span: WindowSpan<ByDateTime>) -> Option<Vec<Value>> {
 		let kinds = self.slot_kinds.as_ref()?;
 		if !kinds.iter().any(|kind| kind.requires_span()) {
 			return None;
