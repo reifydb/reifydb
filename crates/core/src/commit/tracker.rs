@@ -55,7 +55,7 @@ struct TrackerInner {
 
 struct TrackerShared {
 	inner: Mutex<TrackerInner>,
-	frontier: AtomicU64,
+	released_through: AtomicU64,
 	entries: usize,
 }
 
@@ -72,7 +72,7 @@ impl WriteTracker {
 					received: seed,
 					storages: HashMap::new(),
 				}),
-				frontier: AtomicU64::new(seed.0),
+				released_through: AtomicU64::new(seed.0),
 				entries: entries.max(1),
 			}),
 		}
@@ -127,7 +127,7 @@ impl WriteTracker {
 	}
 
 	pub(crate) fn release(&self, version: CommitVersion) {
-		self.shared.frontier.fetch_max(version.0, Ordering::Release);
+		self.shared.released_through.fetch_max(version.0, Ordering::Release);
 	}
 
 	fn unregister(&self, storage: StorageId) {
@@ -148,8 +148,8 @@ pub struct TrackerLease {
 }
 
 impl TrackerLease {
-	pub fn frontier(&self) -> CommitVersion {
-		CommitVersion(self.tracker.shared.frontier.load(Ordering::Acquire))
+	pub fn released_through(&self) -> CommitVersion {
+		CommitVersion(self.tracker.shared.released_through.load(Ordering::Acquire))
 	}
 
 	pub fn last_writes(&self, partitions: &[Partition]) -> Vec<CommitVersion> {
@@ -201,7 +201,7 @@ mod tests {
 		tracker.record(v(11), &[set(VAULT, 1)]);
 		tracker.release(v(11));
 		assert_eq!(lease.last_writes(&[Partition(1), Partition(2)]), vec![v(11), v(10)]);
-		assert_eq!(lease.frontier(), v(11));
+		assert_eq!(lease.released_through(), v(11));
 	}
 
 	#[test]
@@ -273,10 +273,10 @@ mod tests {
 	}
 
 	#[test]
-	fn a_detached_tracker_never_moves_its_frontier() {
+	fn a_detached_tracker_never_moves_its_released_through() {
 		// with no commit queue there is no write feed, so no read may ever be served from a cache.
 		let tracker = WriteTracker::detached();
 		let lease = tracker.register(VAULT);
-		assert_eq!(lease.frontier(), v(0));
+		assert_eq!(lease.released_through(), v(0));
 	}
 }

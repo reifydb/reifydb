@@ -76,7 +76,7 @@ use crate::{
 	marker::MarkerMap,
 	operator::provider::StandardOperatorProvider,
 	progress::{
-		frontier::ControlFrontier,
+		pull_limit::PullLimit,
 		tracker::{FlowPositionTracker, FlowUpstreams},
 	},
 };
@@ -88,7 +88,7 @@ pub struct FlowActorParams {
 	pub terminal_committer: ActorRef<CommitterMessage>,
 	pub queue: CommitQueue,
 	pub loader: ActorRef<CommitLoaderMessage>,
-	pub control: ControlFrontier,
+	pub control: PullLimit,
 	pub custom_operators: CustomOperators,
 	pub substrate: FlowSubstrate,
 	pub operator_samples: OperatorSampleRegistry,
@@ -118,7 +118,7 @@ pub struct FlowActor {
 	terminal_committer: ActorRef<CommitterMessage>,
 	queue: CommitQueue,
 	loader: ActorRef<CommitLoaderMessage>,
-	control: ControlFrontier,
+	control: PullLimit,
 	custom_operators: CustomOperators,
 	substrate: FlowSubstrate,
 	operator_samples: OperatorSampleRegistry,
@@ -157,14 +157,14 @@ struct Split {
 
 #[derive(Clone, Copy)]
 enum DrainBound {
-	Frontier(CommitVersion),
+	Safe(CommitVersion),
 	Capped(CommitVersion),
 }
 
 impl DrainBound {
 	fn up_to(self) -> CommitVersion {
 		match self {
-			DrainBound::Frontier(version) | DrainBound::Capped(version) => version,
+			DrainBound::Safe(version) | DrainBound::Capped(version) => version,
 		}
 	}
 
@@ -181,7 +181,7 @@ pub struct FlowActorState {
 	cursor: CommitVersion,
 	cursor_lsn: Lsn,
 	pending_lsn: Lsn,
-	frontier: (CommitVersion, Lsn),
+	released: (CommitVersion, Lsn),
 	durable_cursor: CommitVersion,
 	committing: bool,
 	awaiting_load: bool,
@@ -511,8 +511,8 @@ impl FlowActor {
 
 	fn on_drain(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		let woken = self.wake_pending.swap(false, Ordering::SeqCst);
-		state.frontier = self.queue.released();
-		let safe = state.frontier.0.min(self.engine.done_until()).min(self.control.get());
+		state.released = self.queue.released();
+		let safe = state.released.0.min(self.engine.done_until()).min(self.control.get());
 		if state.poisoned || state.committing || state.awaiting_load {
 			if woken && !state.poisoned {
 				state.drain_after_commit = true;
@@ -530,7 +530,7 @@ impl FlowActor {
 			Some(split) if safe.0 > state.cursor.0 + split.span => {
 				DrainBound::Capped(CommitVersion(state.cursor.0 + split.span))
 			}
-			_ => DrainBound::Frontier(safe),
+			_ => DrainBound::Safe(safe),
 		};
 		state.read_cache.retain_after(state.cursor);
 		if bound.up_to() <= state.cursor {
@@ -841,7 +841,7 @@ impl FlowActor {
 					completeness_objects: state.completeness_objects.as_deref(),
 					cursor: state.cursor,
 					lsn: state.cursor_lsn,
-					frontier: state.frontier,
+					released: state.released,
 					durable_cursor: state.durable_cursor,
 					fold_shape: self.flow_tracker.fold_shape(self.flow_id),
 				},
@@ -876,7 +876,7 @@ impl FlowActor {
 				state.cursor = advance_to;
 				state.cursor_lsn = lsn;
 				for hold in holds {
-					self.substrate.frontiers.publish(hold.object, hold.watermark, advance_to);
+					self.substrate.output_watermarks.publish(hold.object, hold.watermark, advance_to);
 				}
 				self.move_lookup_lease(state);
 				self.publish_position(advance_to);
@@ -1041,7 +1041,7 @@ impl FlowActor {
 				advance_to
 			};
 			for hold in holds {
-				self.substrate.frontiers.publish(hold.object, hold.watermark, at);
+				self.substrate.output_watermarks.publish(hold.object, hold.watermark, at);
 			}
 		}
 		match result {
@@ -1155,7 +1155,7 @@ impl FlowActor {
 		match resolved {
 			Ok((holds, _)) => {
 				for hold in holds {
-					self.substrate.frontiers.publish(
+					self.substrate.output_watermarks.publish(
 						hold.object,
 						hold.watermark,
 						self.initial_cursor,
@@ -1470,7 +1470,7 @@ impl Actor for FlowActor {
 			cursor: self.initial_cursor,
 			cursor_lsn: self.initial_cursor_lsn,
 			pending_lsn: self.initial_cursor_lsn,
-			frontier: (CommitVersion(0), Lsn::new(0)),
+			released: (CommitVersion(0), Lsn::new(0)),
 			durable_cursor: self.initial_cursor,
 			committing: false,
 			awaiting_load: false,
@@ -1699,7 +1699,7 @@ mod pull_protocol {
 		engine: StandardEngine,
 		queue: CommitQueue,
 		flow_floor: CommitQueueFloor,
-		control: ControlFrontier,
+		control: PullLimit,
 		tracker: FlowPositionTracker,
 		committer_handle: CommitterHandle,
 		loader_handle: CommitLoaderHandle,
@@ -1791,7 +1791,7 @@ mod pull_protocol {
 			engine,
 			queue,
 			flow_floor,
-			control: ControlFrontier::new(),
+			control: PullLimit::new(),
 			tracker,
 			committer_handle,
 			loader_handle,
@@ -3730,7 +3730,7 @@ mod tick_failures {
 				LOOKUP_TRACKER_ENTRIES_TESTING as usize,
 			),
 			loader: idle(&engine, "unit-tick-loader"),
-			control: ControlFrontier::new(),
+			control: PullLimit::new(),
 			custom_operators: operators,
 			substrate,
 			operator_samples: OperatorSampleRegistry::new(),
@@ -3840,7 +3840,7 @@ mod tick_failures {
 				LOOKUP_TRACKER_ENTRIES_TESTING as usize,
 			),
 			loader: idle(&engine, "retention-loader"),
-			control: ControlFrontier::new(),
+			control: PullLimit::new(),
 			custom_operators: timer_operators(),
 			substrate,
 			operator_samples: OperatorSampleRegistry::new(),
@@ -4010,7 +4010,7 @@ mod tick_failures {
 				LOOKUP_TRACKER_ENTRIES_TESTING as usize,
 			),
 			loader: idle(&engine, "tick-failures-loader"),
-			control: ControlFrontier::new(),
+			control: PullLimit::new(),
 			custom_operators: timer_operators(),
 			substrate,
 			operator_samples: OperatorSampleRegistry::new(),
@@ -4487,7 +4487,7 @@ mod tick_failures {
 		let mut harness = TestHarness::new(actor);
 		assert!(!harness.state().poisoned, "precondition: registration must succeed");
 		harness.state_mut().hold_cache = Some(HoldCache {
-			frontiers: Vec::new(),
+			watermarks: Vec::new(),
 			holds: WatermarkHolds::new(),
 		});
 

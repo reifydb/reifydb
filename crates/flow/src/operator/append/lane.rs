@@ -85,14 +85,14 @@ fn resolve_down(dag: &FlowDag, mut node: OperatorId) -> Result<OperatorId, Value
 }
 
 fn chain_parent(dag: &FlowDag, node: OperatorId) -> Result<Option<OperatorId>, ValueError> {
-	let mut frontier = vec![node];
+	let mut pending = vec![node];
 	let mut parent = None;
-	while let Some(current) = frontier.pop() {
+	while let Some(current) = pending.pop() {
 		let found = dag.get_operator(&current).ok_or_else(|| missing(current))?;
 		for output in &found.outputs {
 			let target = dag.get_operator(output).ok_or_else(|| missing(*output))?;
 			if preserves_row_numbers(&target.ty) {
-				frontier.push(*output);
+				pending.push(*output);
 				continue;
 			}
 			if !matches!(target.ty, OperatorDef::Append { .. }) {

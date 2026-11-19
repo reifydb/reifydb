@@ -52,7 +52,7 @@ use crate::{
 			operator::{Emit, Extracted, WindowedOperator, extract_rows},
 			operator_watermark,
 			publish::{Emitted, UpdateRow},
-			timer_frontier, window_engine_config,
+			timer_operator_watermark, window_engine_config,
 		},
 	},
 };
@@ -166,10 +166,10 @@ where
 		engine: &mut Engine<A, K, V>,
 		reap_queue_empty: &mut bool,
 		store: &mut GuestAsHost<'_, C>,
-		frontier: A::Coord,
+		watermark: A::Coord,
 		seal_span: SealSpan<A>,
 	) -> Result<(), SdkError> {
-		let horizon = <A::Coord as SealDomain>::horizon(frontier, seal_span);
+		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
 		if horizon <= <A::Coord as Coord>::from_order(0) {
 			return Ok(());
 		}
@@ -205,7 +205,7 @@ where
 		};
 		*reap_queue_empty = drained.queue_is_empty();
 		if !*reap_queue_empty {
-			observe_batch(store, frontier, seal_span)?;
+			observe_batch(store, watermark, seal_span)?;
 		}
 		Ok(())
 	}
@@ -392,10 +392,10 @@ where
 			..
 		} = &mut *self;
 		let mut store = GuestAsHost(ctx);
-		let Some(frontier) = timer_frontier::<A::Coord>(&mut store, timer)? else {
+		let Some(watermark) = timer_operator_watermark::<A::Coord>(&mut store, timer)? else {
 			return Ok(());
 		};
-		Self::expire_through(engine, reap_queue_empty, &mut store, frontier, seal_span)
+		Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<(), SdkError> {

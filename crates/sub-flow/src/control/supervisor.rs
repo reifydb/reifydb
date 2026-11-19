@@ -84,7 +84,7 @@ use crate::{
 	},
 	marker::MarkerMap,
 	progress::{
-		frontier::ControlFrontier,
+		pull_limit::PullLimit,
 		output_watermark,
 		tracker::{FlowPositionTracker, FlowWaker, FoldShape, ObjectVersionTracker},
 	},
@@ -152,8 +152,8 @@ pub struct FlowSupervisorParams {
 	pub loader: ActorRef<CommitLoaderMessage>,
 	pub log: Arc<dyn CommitLog>,
 	pub floor: Arc<dyn CommitFloor>,
-	pub control: ControlFrontier,
-	pub poll_frontier: ReaderWatermark,
+	pub control: PullLimit,
+	pub polled_through: ReaderWatermark,
 	pub view_lineage: ViewLineage,
 	pub tracker: ObjectVersionTracker,
 	pub flow_tracker: FlowPositionTracker,
@@ -180,8 +180,8 @@ pub struct FlowSupervisor {
 	loader: ActorRef<CommitLoaderMessage>,
 	log: Arc<dyn CommitLog>,
 	floor: Arc<dyn CommitFloor>,
-	control: ControlFrontier,
-	poll_frontier: ReaderWatermark,
+	control: PullLimit,
+	polled_through: ReaderWatermark,
 	view_lineage: ViewLineage,
 	tracker: ObjectVersionTracker,
 	flow_tracker: FlowPositionTracker,
@@ -239,7 +239,7 @@ impl FlowSupervisor {
 			log: params.log,
 			floor: params.floor,
 			control: params.control,
-			poll_frontier: params.poll_frontier,
+			polled_through: params.polled_through,
 			view_lineage: params.view_lineage,
 			tracker: params.tracker,
 			flow_tracker: params.flow_tracker,
@@ -405,7 +405,7 @@ impl FlowSupervisor {
 			debug!(flow_id = flow_id.0, checkpoint = ?checkpoint, "spawned deferred flow actor");
 		}
 		state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
-		self.poll_frontier.store(scan_cursor);
+		self.polled_through.store(scan_cursor);
 	}
 
 	fn hydrate_output_watermarks(&self) {
@@ -417,7 +417,7 @@ impl FlowSupervisor {
 				if !entries.is_empty() {
 					debug!(count = entries.len(), "hydrated output watermarks");
 				}
-				self.substrate.frontiers.hydrate(entries);
+				self.substrate.output_watermarks.hydrate(entries);
 			}
 			Err(e) => panic!("flow supervisor cannot hydrate output frontiers: {e}"),
 		}
@@ -427,7 +427,7 @@ impl FlowSupervisor {
 		output_watermark::sweep(
 			&Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			self.engine.single(),
-			&self.substrate.frontiers,
+			&self.substrate.output_watermarks,
 		);
 		ctx.schedule_once(self.output_watermark_persist, || FlowSupervisorMessage::PersistOutputWatermarks);
 	}
@@ -438,8 +438,8 @@ impl FlowSupervisor {
 			return;
 		}
 
-		let frontier = self.queue.released();
-		let watermark = frontier.0;
+		let released = self.queue.released();
+		let watermark = released.0;
 		let done_until = self.engine.done_until();
 		let bound = watermark.min(done_until);
 		if watermark > done_until {
@@ -460,7 +460,7 @@ impl FlowSupervisor {
 				entries,
 				advance_to,
 				..
-			} => self.scan(state, ctx, &entries, advance_to, frontier),
+			} => self.scan(state, ctx, &entries, advance_to, released),
 			CommitPull::Behind => self.request_load(state, ctx, bound),
 		}
 	}
@@ -515,7 +515,7 @@ impl FlowSupervisor {
 		ctx: &Context<FlowSupervisorMessage>,
 		entries: &[Arc<CommitEntry>],
 		advance_to: CommitVersion,
-		frontier: (CommitVersion, Lsn),
+		released: (CommitVersion, Lsn),
 	) {
 		let changed = self.update_tracker(entries);
 		self.process_ddl(state, entries, ctx);
@@ -528,10 +528,10 @@ impl FlowSupervisor {
 		});
 		state.scan_lease = Some(scan_lease);
 		let scanned_from = state.scan_cursor;
-		state.scan_lsn = lsn_through(entries, advance_to, state.scan_lsn, frontier);
+		state.scan_lsn = lsn_through(entries, advance_to, state.scan_lsn, released);
 		state.scan_cursor = advance_to;
 		self.control.store(advance_to);
-		self.poll_frontier.store(advance_to);
+		self.polled_through.store(advance_to);
 
 		let now = self.clock.now();
 		if now - state.last_floor_at >= self.checkpoint_max_age {

@@ -41,7 +41,7 @@ pub struct OutputWatermarks {
 }
 
 impl OutputWatermarks {
-	pub fn publish(&self, output: ObjectId, frontier: DateTime, at: CommitVersion) {
+	pub fn publish(&self, output: ObjectId, watermark: DateTime, at: CommitVersion) {
 		reifydb_assertions! {
 			assert!(
 				at > CommitVersion(0),
@@ -50,7 +50,7 @@ impl OutputWatermarks {
 				 frontier was established"
 			);
 		}
-		let watermark_ms = frontier.to_millis();
+		let watermark_ms = watermark.to_millis();
 		self.inner
 			.entry(output)
 			.and_modify(|current| {

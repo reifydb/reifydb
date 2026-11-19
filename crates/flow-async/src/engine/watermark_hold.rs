@@ -49,19 +49,19 @@ impl FlowEngineInner {
 			.filter(|(registered, _)| *registered == flow_id)
 			.map(|(_, operator)| *operator)
 			.collect();
-		let frontiers = output_watermarks(txn, flow, &self.operators, topo, &lookups)?;
+		let watermarks = output_watermarks(txn, flow, &self.operators, topo, &lookups)?;
 
 		let mut held: WatermarkHolds = Vec::with_capacity(sinks.len());
 		for (object, operator_id) in sinks.iter().copied() {
-			let Some(frontier) = frontiers.get(&operator_id) else {
+			let Some(watermark) = watermarks.get(&operator_id) else {
 				continue;
 			};
-			if frontier.to_millis() == 0 {
+			if watermark.to_millis() == 0 {
 				continue;
 			}
 			held.push(WatermarkHold {
 				object,
-				watermark: *frontier,
+				watermark: *watermark,
 			});
 		}
 		Ok(held)
@@ -87,10 +87,10 @@ fn output_watermarks<T: FlowTransaction>(
 		} else {
 			let mut merged: Option<DateTime> = None;
 			for source in &node.inputs {
-				let Some(frontier) = computed.get(source).copied() else {
+				let Some(watermark) = computed.get(source).copied() else {
 					continue;
 				};
-				merged = Some(merged.map_or(frontier, |current: DateTime| current.min(frontier)));
+				merged = Some(merged.map_or(watermark, |current: DateTime| current.min(watermark)));
 			}
 			if lookups.contains(operator_id) {
 				let right = SourceWatermarks::source_watermark(*operator_id, txn)?;
@@ -103,12 +103,12 @@ fn output_watermarks<T: FlowTransaction>(
 			continue;
 		};
 
-		let frontier = operators
+		let watermark = operators
 			.get(&(flow.id, *operator_id))
 			.and_then(|operator| operator.seal_span())
 			.map_or(input, |span| output_watermark(ByDateTime(input), span).0);
 
-		computed.insert(*operator_id, frontier);
+		computed.insert(*operator_id, watermark);
 	}
 
 	Ok(computed)
@@ -182,10 +182,10 @@ mod tests {
 		}
 	}
 
-	fn hold(view: u64, frontier: i64) -> WatermarkHold {
+	fn hold(view: u64, watermark: i64) -> WatermarkHold {
 		WatermarkHold {
 			object: ObjectId::View(ViewId(view)),
-			watermark: at_millis(frontier),
+			watermark: at_millis(watermark),
 		}
 	}
 

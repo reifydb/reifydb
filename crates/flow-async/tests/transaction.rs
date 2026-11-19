@@ -15,8 +15,8 @@ mod core;
 #[path = "transaction/dictionary.rs"]
 mod dictionary;
 
-#[path = "transaction/frontier.rs"]
-mod frontier;
+#[path = "transaction/output_watermark.rs"]
+mod output_watermark;
 
 #[path = "transaction/group.rs"]
 mod group;

@@ -135,19 +135,19 @@ impl SubscriptionReader {
 			return;
 		}
 		self.floor.disarm();
-		let frontier = self.queue.released();
-		let released = frontier.0;
+		let released = self.queue.released();
+		let released_version = released.0;
 		let done_until = self.engine.done_until();
-		if released > done_until {
+		if released_version > done_until {
 			let self_ref = ctx.self_ref().clone();
 			self.engine.notify_on_mark(
-				released,
+				released_version,
 				Box::new(move || {
 					let _ = self_ref.send(SubscriptionReaderMessage::Wake);
 				}),
 			);
 		}
-		let bound = released.min(done_until);
+		let bound = released_version.min(done_until);
 		if bound <= state.cursor {
 			return;
 		}
@@ -158,7 +158,7 @@ impl SubscriptionReader {
 				advance_to,
 				more,
 			} => {
-				let lsn = lsn_through(&entries, advance_to, state.lsn, frontier);
+				let lsn = lsn_through(&entries, advance_to, state.lsn, released);
 				if entries.is_empty() {
 					self.moved(state, advance_to, lsn);
 					if more {

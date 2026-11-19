@@ -57,22 +57,22 @@ pub fn persist(
 	Ok(())
 }
 
-pub fn sweep(ctx: &Arc<TransactionContext>, single: &SingleTransaction, frontiers: &OutputWatermarks) {
-	if let Err(e) = try_sweep(ctx, single, frontiers) {
-		warn!(error = %e, "failed to persist output frontiers; the next sweep writes them again");
+pub fn sweep(ctx: &Arc<TransactionContext>, single: &SingleTransaction, output_watermarks: &OutputWatermarks) {
+	if let Err(e) = try_sweep(ctx, single, output_watermarks) {
+		warn!(error = %e, "failed to persist output output_watermarks; the next sweep writes them again");
 	}
 }
 
 pub fn try_sweep(
 	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
-	frontiers: &OutputWatermarks,
+	output_watermarks: &OutputWatermarks,
 ) -> Result<(), ValueError> {
-	let Some((generation, entries)) = frontiers.unpersisted() else {
+	let Some((generation, entries)) = output_watermarks.unpersisted() else {
 		return Ok(());
 	};
 	persist(ctx, single, &entries)?;
-	frontiers.mark_persisted(generation);
+	output_watermarks.mark_persisted(generation);
 	Ok(())
 }
 
@@ -205,10 +205,10 @@ mod tests {
 	fn a_sweep_persists_every_published_frontier() {
 		// A sweep that skips a live entry loses it on restart, since nothing else writes the row.
 		let single = SingleTransaction::testing();
-		let frontiers = OutputWatermarks::default();
-		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
+		let output_watermarks = OutputWatermarks::default();
+		output_watermarks.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
 
-		sweep(&system_ctx(), &single, &frontiers);
+		sweep(&system_ctx(), &single, &output_watermarks);
 
 		let read = hydrate(&system_ctx(), &single.read_store()).unwrap();
 		assert_eq!(read.len(), 1);
@@ -219,9 +219,9 @@ mod tests {
 	fn a_quiet_interval_opens_no_commit_at_all() {
 		// Sweeping every 5s forever keeps the store from ever going idle, which starves the WAL reset.
 		let single = SingleTransaction::testing();
-		let frontiers = OutputWatermarks::default();
-		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
-		sweep(&system_ctx(), &single, &frontiers);
+		let output_watermarks = OutputWatermarks::default();
+		output_watermarks.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
+		sweep(&system_ctx(), &single, &output_watermarks);
 
 		persist(
 			&system_ctx(),
@@ -233,7 +233,7 @@ mod tests {
 			}],
 		)
 		.unwrap();
-		sweep(&system_ctx(), &single, &frontiers);
+		sweep(&system_ctx(), &single, &output_watermarks);
 
 		assert_eq!(
 			hydrate(&system_ctx(), &single.read_store()).unwrap()[0].watermark,
@@ -246,16 +246,16 @@ mod tests {
 	fn a_sweep_that_failed_to_persist_is_retried_rather_than_marked_done() {
 		// Marking before the commit lands would strand the frontier until its producer happens to publish
 		// again.
-		let frontiers = OutputWatermarks::default();
-		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
+		let output_watermarks = OutputWatermarks::default();
+		output_watermarks.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
 
-		let (generation, entries) = frontiers.unpersisted().expect("a fresh publish must be unpersisted");
+		let (generation, entries) = output_watermarks.unpersisted().expect("a fresh publish must be unpersisted");
 		assert_eq!(entries.len(), 1);
 
-		assert!(frontiers.unpersisted().is_some(), "reading the entries must not count as persisting them");
+		assert!(output_watermarks.unpersisted().is_some(), "reading the entries must not count as persisting them");
 
-		frontiers.mark_persisted(generation);
-		assert!(frontiers.unpersisted().is_none());
+		output_watermarks.mark_persisted(generation);
+		assert!(output_watermarks.unpersisted().is_none());
 	}
 
 	#[test]
@@ -263,15 +263,15 @@ mod tests {
 		// A publish between the snapshot and the mark must not be swallowed; a quiet producer may never
 		// republish.
 		let single = SingleTransaction::testing();
-		let frontiers = OutputWatermarks::default();
-		frontiers.publish(OUTPUT, at_millis(4_000), CommitVersion(10));
+		let output_watermarks = OutputWatermarks::default();
+		output_watermarks.publish(OUTPUT, at_millis(4_000), CommitVersion(10));
 
-		let (generation, entries) = frontiers.unpersisted().unwrap();
-		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
+		let (generation, entries) = output_watermarks.unpersisted().unwrap();
+		output_watermarks.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
 		persist(&system_ctx(), &single, &entries).unwrap();
-		frontiers.mark_persisted(generation);
+		output_watermarks.mark_persisted(generation);
 
-		sweep(&system_ctx(), &single, &frontiers);
+		sweep(&system_ctx(), &single, &output_watermarks);
 
 		assert_eq!(hydrate(&system_ctx(), &single.read_store()).unwrap()[0].watermark, at_millis(9_000));
 	}
@@ -280,14 +280,14 @@ mod tests {
 	fn a_hydrated_frontier_is_never_swept_back_to_the_store_it_came_from() {
 		// A restart must not rewrite what it just read, or every restart pays a commit for nothing.
 		let single = SingleTransaction::testing();
-		let frontiers = OutputWatermarks::default();
+		let output_watermarks = OutputWatermarks::default();
 
-		frontiers.hydrate(vec![OutputWatermarkEntry {
+		output_watermarks.hydrate(vec![OutputWatermarkEntry {
 			output: OUTPUT,
 			watermark: at_millis(9_000),
 			at: CommitVersion(10),
 		}]);
-		sweep(&system_ctx(), &single, &frontiers);
+		sweep(&system_ctx(), &single, &output_watermarks);
 
 		assert!(hydrate(&system_ctx(), &single.read_store()).unwrap().is_empty());
 	}
@@ -296,12 +296,12 @@ mod tests {
 	fn a_sweep_persists_a_republish_that_lands_after_the_previous_one() {
 		// A later publish must overwrite the row, otherwise a restart resumes at a stale frontier.
 		let single = SingleTransaction::testing();
-		let frontiers = OutputWatermarks::default();
-		frontiers.publish(OUTPUT, at_millis(4_000), CommitVersion(10));
-		sweep(&system_ctx(), &single, &frontiers);
+		let output_watermarks = OutputWatermarks::default();
+		output_watermarks.publish(OUTPUT, at_millis(4_000), CommitVersion(10));
+		sweep(&system_ctx(), &single, &output_watermarks);
 
-		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
-		sweep(&system_ctx(), &single, &frontiers);
+		output_watermarks.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
+		sweep(&system_ctx(), &single, &output_watermarks);
 
 		let read = hydrate(&system_ctx(), &single.read_store()).unwrap();
 		assert_eq!(read[0].watermark, at_millis(9_000));

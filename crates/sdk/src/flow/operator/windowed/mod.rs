@@ -47,7 +47,7 @@ use crate::flow::operator::{
 };
 
 pub(crate) fn operator_watermark<C: SealDomain>(store: &mut impl WindowStore) -> Result<C, ValueError> {
-	C::frontier(store)
+	C::operator_watermark(store)
 }
 
 pub(crate) fn observe_batch<C: SealDomain>(
@@ -62,7 +62,7 @@ pub(crate) fn all_rows(cols: &impl ColumnsView) -> Vec<usize> {
 	(0..cols.row_count()).collect()
 }
 
-pub(crate) fn timer_frontier<C: SealDomain>(
+pub(crate) fn timer_operator_watermark<C: SealDomain>(
 	store: &mut impl WindowStore,
 	timer: Timer<'_>,
 ) -> Result<Option<C>, ValueError> {
@@ -70,7 +70,7 @@ pub(crate) fn timer_frontier<C: SealDomain>(
 		return Ok(None);
 	}
 	SealLedger::advance(store, fired_at(&timer))?;
-	C::frontier(store).map(Some)
+	C::operator_watermark(store).map(Some)
 }
 
 pub(crate) fn fired_at(timer: &Timer<'_>) -> FiredAt {

@@ -62,7 +62,7 @@ pub struct SliceConfig {
 }
 
 pub struct HoldCache {
-	pub(crate) frontiers: Vec<PublishedWatermark>,
+	pub(crate) watermarks: Vec<PublishedWatermark>,
 	pub(crate) holds: WatermarkHolds,
 }
 
@@ -72,7 +72,7 @@ pub struct SliceCursor<'a> {
 	pub completeness_objects: Option<&'a BTreeSet<u64>>,
 	pub cursor: CommitVersion,
 	pub lsn: Lsn,
-	pub frontier: (CommitVersion, Lsn),
+	pub released: (CommitVersion, Lsn),
 	pub durable_cursor: CommitVersion,
 	pub fold_shape: FoldShape,
 }
@@ -155,7 +155,7 @@ impl SliceComputer {
 		Ok(checkpoints)
 	}
 
-	fn unit_frontiers(
+	fn unit_watermarks(
 		&self,
 		flow_engine: &FlowEngineInner,
 		head: FlowId,
@@ -198,7 +198,7 @@ impl SliceComputer {
 			.map(Arc::as_ref)
 			.filter(|entry| is_relevant(entry, cursor.source_objects))
 			.collect();
-		let lsn = lsn_through(items, advance_to, cursor.lsn, cursor.frontier);
+		let lsn = lsn_through(items, advance_to, cursor.lsn, cursor.released);
 		let source = relevant.iter().map(|entry| entry.version.source).max();
 		let changes = collect_flow_changes(
 			&self.engine,
@@ -207,10 +207,10 @@ impl SliceComputer {
 			cursor.completeness_objects,
 		)?;
 		if changes.is_empty() {
-			let frontiers = self.unit_frontiers(flow_engine, cursor.flow_id, advance_to);
+			let watermarks = self.unit_watermarks(flow_engine, cursor.flow_id, advance_to);
 			if !checkpoint_due(advance_to, cursor.durable_cursor, config)
 				&& let Some(cache) = hold_cache.as_ref()
-				&& cache.frontiers == frontiers
+				&& cache.watermarks == watermarks
 			{
 				return Ok(SliceStep::Skip {
 					advance_to,
@@ -235,7 +235,7 @@ impl SliceComputer {
 					holds,
 					..
 				} => Some(HoldCache {
-					frontiers,
+					watermarks,
 					holds: holds.clone(),
 				}),
 				SliceStep::Commit {
@@ -1222,7 +1222,7 @@ mod integration {
 					completeness_objects: None,
 					cursor,
 					lsn: Lsn::new(0),
-					frontier: (CommitVersion(0), Lsn::new(0)),
+					released: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: durable,
 					fold_shape: FoldShape::PerSource,
 				},
@@ -1315,7 +1315,7 @@ mod integration {
 					completeness_objects: None,
 					cursor,
 					lsn: Lsn::new(0),
-					frontier: (CommitVersion(0), Lsn::new(0)),
+					released: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: cursor,
 					fold_shape: FoldShape::PerSource,
 				},
@@ -1447,7 +1447,7 @@ mod integration {
 					completeness_objects: None,
 					cursor,
 					lsn: Lsn::new(0),
-					frontier: (CommitVersion(0), Lsn::new(0)),
+					released: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: durable,
 					fold_shape: FoldShape::PerSource,
 				},
@@ -1590,7 +1590,7 @@ mod integration {
 					completeness_objects: None,
 					cursor,
 					lsn: Lsn::new(0),
-					frontier: (CommitVersion(0), Lsn::new(0)),
+					released: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: CommitVersion(0),
 					fold_shape: FoldShape::PerSource,
 				},
@@ -1627,7 +1627,7 @@ mod integration {
 				completeness_objects: None,
 				cursor: CommitVersion(0),
 				lsn: Lsn::new(0),
-				frontier: (CommitVersion(0), Lsn::new(0)),
+				released: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
 				fold_shape: FoldShape::PerSource,
 			},
@@ -1721,7 +1721,7 @@ mod integration {
 				completeness_objects: None,
 				cursor: CommitVersion(0),
 				lsn: Lsn::new(0),
-				frontier: (CommitVersion(0), Lsn::new(0)),
+				released: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
 				fold_shape: FoldShape::PerSource,
 			},
@@ -1785,7 +1785,7 @@ mod integration {
 				completeness_objects: None,
 				cursor: CommitVersion(0),
 				lsn: Lsn::new(0),
-				frontier: (CommitVersion(0), Lsn::new(0)),
+				released: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
 				fold_shape: FoldShape::PerSource,
 			},
@@ -1842,7 +1842,7 @@ mod integration {
 				completeness_objects: None,
 				cursor: CommitVersion(0),
 				lsn: Lsn::new(0),
-				frontier: (CommitVersion(0), Lsn::new(0)),
+				released: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
 				fold_shape: FoldShape::PerSource,
 			},
@@ -1854,7 +1854,7 @@ mod integration {
 	}
 
 	#[test]
-	fn a_step_that_writes_view_rows_commits_and_advances_the_output_frontier() {
+	fn a_step_that_writes_view_rows_commits_and_advances_the_materialized_through() {
 		// Readers of the view wait on the output frontier; a commit of view rows that does not move it leaves
 		// them waiting for rows that are already stored.
 		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build();
@@ -1874,7 +1874,7 @@ mod integration {
 		assert!(slice.combined.rows_ordered().next().is_some(), "the step must carry the view rows it wrote");
 		let version = commit(&committer, slice);
 
-		assert_eq!(materialization.output_frontier(), version);
+		assert_eq!(materialization.materialized_through(), version);
 		assert_eq!(view_row_count(&te, "FROM app::v"), 2);
 	}
 
@@ -1928,7 +1928,7 @@ mod integration {
 		};
 		let version = commit(&committer, slice);
 
-		assert_eq!(materialization.output_frontier(), version);
+		assert_eq!(materialization.materialized_through(), version);
 		assert_eq!(view_row_count(&te, "FROM app::v"), 2);
 		assert_eq!(view_row_count(&te, "FROM app::v FILTER { id > 3 }"), 2, "only the two newest rows fit");
 	}
@@ -2036,7 +2036,7 @@ mod integration {
 				completeness_objects: None,
 				cursor: from,
 				lsn: Lsn::new(0),
-				frontier: (CommitVersion(0), Lsn::new(0)),
+				released: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(4),
 				fold_shape: FoldShape::PerSource,
 			},
@@ -2060,7 +2060,7 @@ mod integration {
 			checkpoint_lag: 10_000,
 		};
 		let mut hold_cache = None;
-		flow_engine.substrate().frontiers.publish(PRODUCER, at_millis(40_000), CommitVersion(6));
+		flow_engine.substrate().output_watermarks.publish(PRODUCER, at_millis(40_000), CommitVersion(6));
 
 		let first = empty_pull(
 			&computer,
@@ -2170,7 +2170,7 @@ mod integration {
 			watermark: at_millis(12_345),
 		};
 		let mut hold_cache = Some(HoldCache {
-			frontiers: flow_engine.published_watermarks(flow, CommitVersion(7)),
+			watermarks: flow_engine.published_watermarks(flow, CommitVersion(7)),
 			holds: vec![sentinel],
 		});
 

@@ -418,10 +418,10 @@ impl JoinOperator {
 		pre: Option<RecordBatch>,
 		post: RecordBatch,
 	) -> Result<(Option<RecordBatch>, RecordBatch), ValueError> {
-		let (Some(retention), Some(frontier)) = (self.retention_of(side), host.flow_watermark()?) else {
+		let (Some(retention), Some(flow_watermark)) = (self.retention_of(side), host.flow_watermark()?) else {
 			return Ok((pre, post));
 		};
-		let horizon = <ByDateTime as SealDomain>::horizon(ByDateTime(frontier), retention).0;
+		let horizon = <ByDateTime as SealDomain>::horizon(ByDateTime(flow_watermark), retention).0;
 		let kept = time_at_or_after(&post, horizon)?;
 		if kept.false_count() == 0 {
 			return Ok((pre, post));

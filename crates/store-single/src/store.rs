@@ -543,23 +543,23 @@ fn settled_live(
 	batch_size: u64,
 	direction: Direction,
 ) -> u64 {
-	let frontiers = [buffer_cursor, persistent_cursor]
+	let last_keys = [buffer_cursor, persistent_cursor]
 		.into_iter()
 		.filter(|cursor| !cursor.is_exhausted())
 		.filter_map(|cursor| cursor.last_key());
 	let wanted = batch_size as usize;
 	let live = match direction {
-		Direction::Forward => match frontiers.min() {
-			Some(frontier) => entries
-				.range::<EncodedKey, _>((Bound::Unbounded, Bound::Included(frontier)))
+		Direction::Forward => match last_keys.min() {
+			Some(last_key) => entries
+				.range::<EncodedKey, _>((Bound::Unbounded, Bound::Included(last_key)))
 				.filter(|(_, value)| value.is_some())
 				.take(wanted)
 				.count(),
 			None => entries.values().filter(|value| value.is_some()).take(wanted).count(),
 		},
-		Direction::Reverse => match frontiers.max() {
-			Some(frontier) => entries
-				.range::<EncodedKey, _>((Bound::Included(frontier), Bound::Unbounded))
+		Direction::Reverse => match last_keys.max() {
+			Some(last_key) => entries
+				.range::<EncodedKey, _>((Bound::Included(last_key), Bound::Unbounded))
 				.rev()
 				.filter(|(_, value)| value.is_some())
 				.take(wanted)

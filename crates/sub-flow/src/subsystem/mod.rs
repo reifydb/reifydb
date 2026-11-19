@@ -71,7 +71,7 @@ use crate::{
 	},
 	marker::MarkerPlane,
 	progress::{
-		frontier::ControlFrontier,
+		pull_limit::PullLimit,
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 		watermark::compute_flow_watermarks,
 	},
@@ -116,8 +116,8 @@ impl FlowSubsystem {
 
 		let flow_scope = spawner.scope();
 
-		let poll_frontier = ReaderWatermark::default();
-		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
+		let polled_through = ReaderWatermark::default();
+		let materialization = FlowMaterialization::new(polled_through.clone(), flow_tracker.clone());
 		let markers = ioc.try_resolve::<LatencyConsumer>().map(|_| MarkerPlane::register(ioc));
 		let committer = Committer::new(
 			engine.clone(),
@@ -154,8 +154,8 @@ impl FlowSubsystem {
 		metrics_registry.register_collector(Arc::new(loader_metrics.clone()));
 		metrics_registry.register_collector(Arc::new(health.clone()));
 		metrics_registry.register_collector(Arc::new(PoisonedFlowsCollector::new(engine.clone())));
-		let control = ControlFrontier::new();
-		ioc.register_service::<ControlFrontier>(control.clone());
+		let control = PullLimit::new();
+		ioc.register_service::<PullLimit>(control.clone());
 		let loader_handle =
 			flow_scope.spawn_flow("flow-loader", CommitLoader::new(flow_wal.log.clone(), loader_metrics));
 		let pull_batch_bytes =
@@ -175,7 +175,7 @@ impl FlowSubsystem {
 				log: flow_wal.log.clone(),
 				floor: flow_wal.floor.clone(),
 				control,
-				poll_frontier: poll_frontier.clone(),
+				polled_through: polled_through.clone(),
 				view_lineage: view_lineage.clone(),
 				tracker: object_tracker.clone(),
 				flow_tracker: flow_tracker.clone(),
@@ -317,7 +317,7 @@ impl FlowSubsystem {
 			let materialization = materialization.clone();
 			move || {
 				compute_flow_watermarks(&tracker, &flow_tracker, || {
-					engine.done_until().max(materialization.output_frontier())
+					engine.done_until().max(materialization.materialized_through())
 				})
 			}
 		}));

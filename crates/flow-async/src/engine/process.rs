@@ -118,9 +118,9 @@ impl FlowEngineInner {
 		let sources = self.watermark_sources(&flow);
 
 		let (arrivals, mut silent) =
-			published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version, &sources);
+			published_arrivals(&self.sources, &self.substrate.output_watermarks, flow_id, version, &sources);
 		let (lookup_arrivals, lookup_silent) =
-			published_arrivals(&self.lookup_sources, &self.substrate.frontiers, flow_id, version, &sources);
+			published_arrivals(&self.lookup_sources, &self.substrate.output_watermarks, flow_id, version, &sources);
 		silent.extend(lookup_silent);
 		warn_unpublished(flow_id, &silent);
 		advance_source_watermarks(txn, &lookup_arrivals)?;
@@ -132,7 +132,7 @@ impl FlowEngineInner {
 			.iter()
 			.chain(self.lookup_sources.iter())
 			.filter(|(_, registrations)| registrations.iter().any(|(registered, _)| *registered == flow_id))
-			.map(|(object, _)| self.substrate.frontiers.resolve(*object, version))
+			.map(|(object, _)| self.substrate.output_watermarks.resolve(*object, version))
 			.collect()
 	}
 
@@ -170,14 +170,14 @@ impl FlowEngineInner {
 		arrivals.extend(completeness_arrivals(&self.sources, flow_id, &asserted));
 		let (published, mut silent) = published_arrivals(
 			&self.sources,
-			&self.substrate.frontiers,
+			&self.substrate.output_watermarks,
 			flow_id,
 			CommitVersion(version.source.0),
 			&sources,
 		);
 		let (lookup_published, lookup_silent) = published_arrivals(
 			&self.lookup_sources,
-			&self.substrate.frontiers,
+			&self.substrate.output_watermarks,
 			flow_id,
 			CommitVersion(version.source.0),
 			&sources,
@@ -267,7 +267,7 @@ fn completeness_arrivals(
 
 fn published_arrivals(
 	sources: &BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
-	frontiers: &OutputWatermarks,
+	output_watermarks: &OutputWatermarks,
 	flow_id: FlowId,
 	version: CommitVersion,
 	counted: &[OperatorId],
@@ -283,7 +283,7 @@ fn published_arrivals(
 			continue;
 		}
 
-		match frontiers.resolve(*object, version) {
+		match output_watermarks.resolve(*object, version) {
 			PublishedWatermark::Visible(at) => {
 				out.extend(readers.into_iter().map(|source| SourceArrival {
 					source,
@@ -362,8 +362,8 @@ fn freeze_flow_watermark<T: FlowTransaction>(
 	arrivals: &[SourceArrival],
 ) -> Result<(), ValueError> {
 	if !sources.is_empty() {
-		let frontier = SourceWatermarks::flow_watermark(sources, txn)?;
-		txn.set_flow_watermark(frontier);
+		let flow_watermark = SourceWatermarks::flow_watermark(sources, txn)?;
+		txn.set_flow_watermark(flow_watermark);
 	}
 	for arrival in arrivals {
 		SourceWatermarks::advance(arrival.source, txn, arrival.at)?;
@@ -515,12 +515,12 @@ mod tests {
 		// A sibling flow's reader must never be advanced by rows it never saw.
 		let object = ObjectId::View(ViewId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3)), (FlowId(2), OperatorId(4))])]);
-		let frontiers = OutputWatermarks::default();
-		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
+		let output_watermarks = OutputWatermarks::default();
+		output_watermarks.publish(object, at_millis(9_000), CommitVersion(10));
 
 		let (arrivals, _) = published_arrivals(
 			&sources,
-			&frontiers,
+			&output_watermarks,
 			FlowId(1),
 			CommitVersion(20),
 			&[OperatorId(3), OperatorId(4)],
@@ -541,12 +541,12 @@ mod tests {
 		// are still in flight.
 		let object = ObjectId::View(ViewId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
-		let frontiers = OutputWatermarks::default();
-		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
+		let output_watermarks = OutputWatermarks::default();
+		output_watermarks.publish(object, at_millis(9_000), CommitVersion(10));
 
 		assert!(published_arrivals(
 			&sources,
-			&frontiers,
+			&output_watermarks,
 			FlowId(1),
 			CommitVersion(10),
 			&[OperatorId(3), OperatorId(4)]
@@ -556,7 +556,7 @@ mod tests {
 		assert_eq!(
 			published_arrivals(
 				&sources,
-				&frontiers,
+				&output_watermarks,
 				FlowId(1),
 				CommitVersion(11),
 				&[OperatorId(3), OperatorId(4)]
@@ -576,11 +576,11 @@ mod tests {
 		// zero.
 		let object = ObjectId::Table(TableId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
-		let frontiers = OutputWatermarks::default();
+		let output_watermarks = OutputWatermarks::default();
 
 		let (arrivals, _) = published_arrivals(
 			&sources,
-			&frontiers,
+			&output_watermarks,
 			FlowId(1),
 			CommitVersion(20),
 			&[OperatorId(3), OperatorId(4)],
@@ -599,12 +599,12 @@ mod tests {
 			(stuck, vec![(FlowId(1), OperatorId(3))]),
 			(live, vec![(FlowId(1), OperatorId(4))]),
 		]);
-		let frontiers = OutputWatermarks::default();
-		frontiers.publish(live, at_millis(9_000), CommitVersion(10));
+		let output_watermarks = OutputWatermarks::default();
+		output_watermarks.publish(live, at_millis(9_000), CommitVersion(10));
 
 		let (_, silent) = published_arrivals(
 			&sources,
-			&frontiers,
+			&output_watermarks,
 			FlowId(1),
 			CommitVersion(20),
 			&[OperatorId(3), OperatorId(4)],
@@ -622,11 +622,11 @@ mod tests {
 			(stuck, vec![(FlowId(1), OperatorId(3))]),
 			(live, vec![(FlowId(1), OperatorId(4))]),
 		]);
-		let frontiers = OutputWatermarks::default();
-		frontiers.publish(live, at_millis(9_000), CommitVersion(10));
+		let output_watermarks = OutputWatermarks::default();
+		output_watermarks.publish(live, at_millis(9_000), CommitVersion(10));
 
 		let (_, silent) =
-			published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20), &[OperatorId(4)]);
+			published_arrivals(&sources, &output_watermarks, FlowId(1), CommitVersion(20), &[OperatorId(4)]);
 
 		assert!(silent.is_empty(), "an uncounted reader's view must not be named; found {silent:?}");
 	}
@@ -641,11 +641,11 @@ mod tests {
 			(stuck, vec![(FlowId(1), OperatorId(3))]),
 			(other, vec![(FlowId(1), OperatorId(4))]),
 		]);
-		let frontiers = OutputWatermarks::default();
+		let output_watermarks = OutputWatermarks::default();
 
 		let (arrivals, silent) = published_arrivals(
 			&sources,
-			&frontiers,
+			&output_watermarks,
 			FlowId(1),
 			CommitVersion(20),
 			&[OperatorId(3), OperatorId(4)],
@@ -665,12 +665,12 @@ mod tests {
 			(stuck, vec![(FlowId(1), OperatorId(3))]),
 			(withheld, vec![(FlowId(1), OperatorId(4))]),
 		]);
-		let frontiers = OutputWatermarks::default();
-		frontiers.publish(withheld, at_millis(9_000), CommitVersion(20));
+		let output_watermarks = OutputWatermarks::default();
+		output_watermarks.publish(withheld, at_millis(9_000), CommitVersion(20));
 
 		let (arrivals, silent) = published_arrivals(
 			&sources,
-			&frontiers,
+			&output_watermarks,
 			FlowId(1),
 			CommitVersion(20),
 			&[OperatorId(3), OperatorId(4)],
@@ -690,12 +690,12 @@ mod tests {
 			(table, vec![(FlowId(1), OperatorId(3))]),
 			(live, vec![(FlowId(1), OperatorId(4))]),
 		]);
-		let frontiers = OutputWatermarks::default();
-		frontiers.publish(live, at_millis(9_000), CommitVersion(10));
+		let output_watermarks = OutputWatermarks::default();
+		output_watermarks.publish(live, at_millis(9_000), CommitVersion(10));
 
 		let (_, silent) = published_arrivals(
 			&sources,
-			&frontiers,
+			&output_watermarks,
 			FlowId(1),
 			CommitVersion(20),
 			&[OperatorId(3), OperatorId(4)],
@@ -733,7 +733,7 @@ mod tests {
 		inner.register_flow_dag(flow.clone());
 		inner.sources.insert(object, vec![(FlowId(1), SOURCE)]);
 		inner.add_sink(FlowId(2), OperatorId(4), object);
-		inner.substrate.frontiers.publish(object, at_millis(30_000), CommitVersion(1));
+		inner.substrate.output_watermarks.publish(object, at_millis(30_000), CommitVersion(1));
 
 		let mut txn = deferred(&engine);
 		let topo = flow.topological_order();
@@ -801,7 +801,7 @@ mod tests {
 		inner.register_flow_dag(flow.clone());
 		inner.add_lookup_source(FlowId(1), OperatorId(2), view);
 		inner.add_sink(FlowId(2), OperatorId(4), view);
-		inner.substrate.frontiers.publish(view, at_millis(30_000), CommitVersion(1));
+		inner.substrate.output_watermarks.publish(view, at_millis(30_000), CommitVersion(1));
 
 		let mut txn = deferred(&engine);
 		SourceWatermarks::advance(SOURCE, &mut txn, at_millis(90_000)).unwrap();

@@ -573,7 +573,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_backfill_over_existing_rows_commits_them_and_advances_the_output_frontier() {
+	fn a_backfill_over_existing_rows_commits_them_and_advances_the_materialized_through() {
 		// A new view's readers wait on the output frontier; a backfill that stores rows without moving it
 		// leaves them waiting for rows that are already there.
 		let te = TestEngine::builder().with_commit_queue().build();
@@ -584,7 +584,7 @@ mod tests {
 
 		let (version, materialization) = backfill_and_commit(&te);
 
-		assert_eq!(materialization.output_frontier(), version);
+		assert_eq!(materialization.materialized_through(), version);
 		assert_eq!(te.query("FROM app::v").first().map(|f| f.row_count()).unwrap_or(0), 3);
 	}
 

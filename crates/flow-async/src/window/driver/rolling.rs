@@ -295,7 +295,7 @@ impl<C: SealDomain> RollingRunner<C> {
 		RollingIndexEntry<H::Group>: OperatorState,
 		HookGroup<H, H::Accumulator>: OperatorState + HeapSize,
 	{
-		let cutoff = self.cutoff(C::frontier(store)?);
+		let cutoff = self.cutoff(C::operator_watermark(store)?);
 		let before = engine.earliest_expiry(store)?;
 		let keys = engine.state_keys(&routed.groups);
 		let applied = {

@@ -44,7 +44,7 @@ use crate::{
 			guest_as_host::GuestAsHost,
 			observe_batch,
 			operator::{CarryEmit, Contribution, Contributions, Extracted, WindowedOperator, extract_rows},
-			operator_watermark, timer_frontier, window_engine_config,
+			operator_watermark, timer_operator_watermark, window_engine_config,
 		},
 	},
 };
@@ -332,10 +332,10 @@ where
 			return Ok(());
 		};
 		let mut store = GuestAsHost(ctx);
-		let Some(frontier) = timer_frontier::<A::Coord>(&mut store, timer)? else {
+		let Some(watermark) = timer_operator_watermark::<A::Coord>(&mut store, timer)? else {
 			return Ok(());
 		};
-		let horizon = <A::Coord as SealDomain>::horizon(frontier, seal_span);
+		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
 		Self::expire_through(&mut self.engine, &mut store, horizon)
 	}
 

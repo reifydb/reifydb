@@ -40,9 +40,9 @@ pub trait SealDomain: Coord {
 
 	fn observe(store: &mut dyn WindowStore, newest: Self, seal_span: Self::SealSpan) -> Result<(), ValueError>;
 
-	fn frontier(store: &mut dyn WindowStore) -> Result<Self, ValueError>;
+	fn operator_watermark(store: &mut dyn WindowStore) -> Result<Self, ValueError>;
 
-	fn horizon(frontier: Self, seal_span: Self::SealSpan) -> Self;
+	fn horizon(watermark: Self, seal_span: Self::SealSpan) -> Self;
 
 	fn rearm_decay(
 		store: &mut dyn WindowStore,
@@ -138,15 +138,15 @@ impl SealDomain for ByDateTime {
 		store.arm_timer(at, TimerKind::Seal, &EncodedKey::new(Vec::new()))
 	}
 
-	fn frontier(store: &mut dyn WindowStore) -> Result<Self, ValueError> {
+	fn operator_watermark(store: &mut dyn WindowStore) -> Result<Self, ValueError> {
 		let ledger = SealLedger::read_order(store)?.unwrap_or(0);
 		let watermark = store.flow_watermark()?.map_or(0, |at| at.to_order());
 		Ok(Self::from_order(ledger.max(watermark)))
 	}
 
-	fn horizon(frontier: Self, seal_span: Duration) -> Self {
+	fn horizon(watermark: Self, seal_span: Duration) -> Self {
 		Self(SealRule::of(seal_span)
-			.horizon_at(frontier)
+			.horizon_at(watermark)
 			.map_or(DateTime::MIN, |horizon| horizon.0.saturating_add(Duration::from_nanoseconds_const(1))))
 	}
 
@@ -268,8 +268,8 @@ mod tests {
 		let mut lagging_ledger = MockStore::default().with_flow_watermark(at_millis(9_000));
 		SealLedger::advance(&mut lagging_ledger, FiredAt::of(&timer(3_000))).unwrap();
 
-		assert_eq!(ByDateTime::frontier(&mut lagging_watermark).unwrap(), ByDateTime(at_millis(9_000)));
-		assert_eq!(ByDateTime::frontier(&mut lagging_ledger).unwrap(), ByDateTime(at_millis(9_000)));
+		assert_eq!(ByDateTime::operator_watermark(&mut lagging_watermark).unwrap(), ByDateTime(at_millis(9_000)));
+		assert_eq!(ByDateTime::operator_watermark(&mut lagging_ledger).unwrap(), ByDateTime(at_millis(9_000)));
 	}
 
 	#[test]
@@ -277,7 +277,7 @@ mod tests {
 		// neither input may default to "now", or a operator that never fired a timer drops every row
 		let mut store = MockStore::default();
 
-		assert_eq!(ByDateTime::frontier(&mut store).unwrap(), ByDateTime(DateTime::MIN));
+		assert_eq!(ByDateTime::operator_watermark(&mut store).unwrap(), ByDateTime(DateTime::MIN));
 		assert!(store.state_get(from_ref(&seal_ledger_key())).unwrap().pop().flatten().is_none());
 	}
 

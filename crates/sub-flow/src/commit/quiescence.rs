@@ -16,40 +16,40 @@ pub struct FlowMaterialization {
 }
 
 struct FlowMaterializationInner {
-	poll_frontier: ReaderWatermark,
+	polled_through: ReaderWatermark,
 	flows: FlowPositionTracker,
-	output_frontier: AtomicU64,
+	materialized_through: AtomicU64,
 	latch: AtomicU64,
 }
 
 impl FlowMaterialization {
-	pub fn new(poll_frontier: ReaderWatermark, flows: FlowPositionTracker) -> Self {
+	pub fn new(polled_through: ReaderWatermark, flows: FlowPositionTracker) -> Self {
 		Self {
 			inner: Arc::new(FlowMaterializationInner {
-				poll_frontier,
+				polled_through,
 				flows,
-				output_frontier: AtomicU64::new(0),
+				materialized_through: AtomicU64::new(0),
 				latch: AtomicU64::new(0),
 			}),
 		}
 	}
 
 	pub fn record_output(&self, version: CommitVersion) {
-		self.inner.output_frontier.fetch_max(version.0, Ordering::AcqRel);
+		self.inner.materialized_through.fetch_max(version.0, Ordering::AcqRel);
 	}
 
-	pub fn output_frontier(&self) -> CommitVersion {
-		CommitVersion(self.inner.output_frontier.load(Ordering::Acquire))
+	pub fn materialized_through(&self) -> CommitVersion {
+		CommitVersion(self.inner.materialized_through.load(Ordering::Acquire))
 	}
 
 	pub fn caught_up(&self) -> CommitVersion {
-		let poll = self.inner.poll_frontier.get();
+		let poll = self.inner.polled_through.get();
 
 		let Some(slowest) = self.inner.flows.all().values().min().copied() else {
 			return CommitVersion(self.latch(poll.0));
 		};
 
-		if slowest.0 < self.inner.output_frontier.load(Ordering::Acquire) {
+		if slowest.0 < self.inner.materialized_through.load(Ordering::Acquire) {
 			return CommitVersion(self.inner.latch.load(Ordering::Acquire));
 		}
 
@@ -75,7 +75,7 @@ mod tests {
 	}
 
 	#[test]
-	fn with_no_live_flows_the_poll_frontier_is_the_watermark() {
+	fn with_no_live_flows_the_polled_through_is_the_watermark() {
 		// With no deferred flow nothing can lag, so gating on the empty set would pin a
 		// flow-less database's watermark at zero and hang every caller waiting on it.
 		let (poll, _flows, materialization) = parts();
@@ -119,7 +119,7 @@ mod tests {
 	}
 
 	#[test]
-	fn the_watermark_advances_once_every_flow_passes_the_output_frontier() {
+	fn the_watermark_advances_once_every_flow_passes_the_materialized_through() {
 		// The output gate must release once every flow has consumed it, or the watermark
 		// deadlocks on its own gate and never advances again.
 		let (poll, flows, materialization) = parts();

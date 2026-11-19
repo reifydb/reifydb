@@ -230,7 +230,7 @@ impl CommitQueue {
 		let mut inner = self.shared.inner.write();
 		if version <= inner.released || inner.parked.contains_key(&version) {
 			panic!(
-				"the commit queue received version {} twice or at or below its released frontier {}, so \
+				"the commit queue received version {} twice or at or below its released through {}, so \
 				 a commit was published twice or the queue was seeded above a commit it never saw",
 				version.0, inner.released.0
 			);
@@ -401,15 +401,15 @@ pub fn lsn_through(
 	entries: &[Arc<CommitEntry>],
 	through: CommitVersion,
 	floor: Lsn,
-	frontier: (CommitVersion, Lsn),
+	released: (CommitVersion, Lsn),
 ) -> Lsn {
 	let lsn = entries
 		.iter()
 		.filter(|entry| entry.version.commit <= through)
 		.map(|entry| entry.lsn)
 		.fold(floor, Lsn::max);
-	if through >= frontier.0 {
-		lsn.max(frontier.1)
+	if through >= released.0 {
+		lsn.max(released.1)
 	} else {
 		lsn
 	}

@@ -1468,7 +1468,7 @@ mod commit_integration {
 
 		commit_one(&handle, control_slice(false));
 		assert_eq!(
-			committer.materialization.output_frontier(),
+			committer.materialization.materialized_through(),
 			CommitVersion(0),
 			"a control-only slice produced no output, or the assertion below says nothing"
 		);
@@ -1476,7 +1476,7 @@ mod commit_integration {
 		let version = commit_one(&handle, control_slice(true));
 
 		assert!(version > CommitVersion(0), "the checkpoint must commit, or no version can be recorded");
-		assert_eq!(committer.materialization.output_frontier(), version);
+		assert_eq!(committer.materialization.materialized_through(), version);
 	}
 
 	fn row(number: u64) -> EncodedKey {

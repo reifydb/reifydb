@@ -26,7 +26,7 @@ impl FlowShutdownState {
 		if let Err(e) = output_watermark::try_sweep(
 			&Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			self.engine.single(),
-			&self.substrate.frontiers,
+			&self.substrate.output_watermarks,
 		) {
 			panic!("flow shutdown could not persist its output frontiers: {e}");
 		}

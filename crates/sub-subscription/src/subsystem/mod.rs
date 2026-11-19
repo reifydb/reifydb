@@ -72,7 +72,7 @@ use crate::{
 
 const SUBSCRIPTION_READER: &str = "subscription";
 
-fn frontier_lsn(wal: &CommitWal) -> Lsn {
+fn released_lsn(wal: &CommitWal) -> Lsn {
 	let cursors = wal.cursors().unwrap_or_else(|err| {
 		panic!("commit log cursors could not be read for the subscription reader: {err}")
 	});
@@ -134,7 +134,7 @@ impl SubscriptionSubsystem {
 		let SubscriptionQueueFloor(floor) = floor;
 		let start = engine.current_version()?;
 		let wal = engine.multi().wal().clone();
-		let start_lsn = frontier_lsn(&wal);
+		let start_lsn = released_lsn(&wal);
 		let loader_handle = spawner.spawn_coordination(
 			"sub-subscription-loader",
 			CommitLoader::new(Arc::new(WalCommitLog::new(wal, SUBSCRIPTION_READER)), loader_metrics),
@@ -370,7 +370,7 @@ mod tests {
 		let appended = wal.cursors().expect("commit log cursors").appended;
 		assert!(appended.is_some_and(|lsn| lsn.as_u64() > 1), "precondition: the log holds several records");
 
-		let start = frontier_lsn(&wal);
+		let start = released_lsn(&wal);
 
 		assert_eq!(
 			Some(start),

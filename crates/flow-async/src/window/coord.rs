@@ -166,12 +166,12 @@ impl SealDomain for ByU8 {
 		Ok(())
 	}
 
-	fn frontier(store: &mut dyn WindowStore) -> Result<Self, ValueError> {
+	fn operator_watermark(store: &mut dyn WindowStore) -> Result<Self, ValueError> {
 		Ok(Self::from_order(SealLedger::read_order(store)?.unwrap_or(0)))
 	}
 
-	fn horizon(frontier: Self, seal_span: RowSpan) -> Self {
-		frontier.saturating_sub_span(seal_span)
+	fn horizon(watermark: Self, seal_span: RowSpan) -> Self {
+		watermark.saturating_sub_span(seal_span)
 	}
 
 	fn rearm_decay(
@@ -351,12 +351,12 @@ mod tests {
 		// nothing arms a timer here, so the batch itself must advance the ledger or the horizon never moves
 		let mut store = MockStore::default();
 
-		assert_eq!(ByU8::frontier(&mut store).unwrap(), ByU8(0));
+		assert_eq!(ByU8::operator_watermark(&mut store).unwrap(), ByU8(0));
 
 		ByU8::observe(&mut store, ByU8(90), RowSpan::ZERO).unwrap();
 		ByU8::observe(&mut store, ByU8(30), RowSpan::ZERO).unwrap();
 
-		assert_eq!(ByU8::frontier(&mut store).unwrap(), ByU8(90));
+		assert_eq!(ByU8::operator_watermark(&mut store).unwrap(), ByU8(90));
 		assert_eq!(ByU8::horizon(ByU8(90), RowSpan::of(64)), ByU8(26));
 	}
 
@@ -516,7 +516,7 @@ mod tests {
 		// A frontier above zero on a new operator would seal early slots before any row arrived.
 		let mut store = MockStore::default();
 
-		assert_eq!(<ByU8 as SealDomain>::frontier(&mut store).unwrap(), ByU8(0));
+		assert_eq!(<ByU8 as SealDomain>::watermark(&mut store).unwrap(), ByU8(0));
 	}
 
 	#[test]

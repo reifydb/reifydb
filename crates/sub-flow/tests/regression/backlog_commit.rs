@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_engine::lift::entry_changed_objects;
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
-use reifydb_sub_flow::progress::frontier::ControlFrontier;
+use reifydb_sub_flow::progress::pull_limit::PullLimit;
 use reifydb_value::value::duration::Duration;
 
 use crate::gate::{GatedPassThrough, gate, set_gate};
@@ -95,7 +95,7 @@ fn await_drain_frontiers(db: &TestDb) {
 	let control = db
 		.engine()
 		.ioc()
-		.resolve::<ControlFrontier>()
+		.resolve::<PullLimit>()
 		.expect("the flow subsystem registers its control frontier");
 	assert!(
 		poll_until(

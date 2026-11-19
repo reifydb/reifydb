@@ -9,11 +9,11 @@ use std::sync::{
 use reifydb_core::common::CommitVersion;
 
 #[derive(Clone, Default)]
-pub struct ControlFrontier {
+pub struct PullLimit {
 	inner: Arc<AtomicU64>,
 }
 
-impl ControlFrontier {
+impl PullLimit {
 	pub fn new() -> Self {
 		Self::default()
 	}

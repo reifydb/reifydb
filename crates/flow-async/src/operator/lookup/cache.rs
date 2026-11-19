@@ -53,12 +53,12 @@ impl LookupCache {
 		if floor.is_some_and(|floor| read < floor) {
 			return hits;
 		}
-		let frontier = lease.frontier();
+		let released_through = lease.released_through();
 		let held: Vec<(usize, &Cached)> = partitions
 			.iter()
 			.enumerate()
 			.filter_map(|(at, partition)| self.rows.get(partition).map(|cached| (at, cached)))
-			.filter(|(_, cached)| cached.version.max(seen) <= frontier)
+			.filter(|(_, cached)| cached.version.max(seen) <= released_through)
 			.collect();
 		if held.is_empty() {
 			return hits;

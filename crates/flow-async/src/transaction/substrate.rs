@@ -34,7 +34,7 @@ use crate::{
 #[derive(Clone)]
 pub struct FlowSubstrate {
 	pub dictionary: DictionaryAllocatorRegistry,
-	pub frontiers: OutputWatermarks,
+	pub output_watermarks: OutputWatermarks,
 	pub operators: Option<OperatorStore>,
 	pub writes: WriteTracker,
 }
@@ -43,7 +43,7 @@ impl FlowSubstrate {
 	pub fn new(dictionary: DictionaryAllocatorRegistry, writes: WriteTracker) -> Self {
 		Self {
 			dictionary,
-			frontiers: OutputWatermarks::default(),
+			output_watermarks: OutputWatermarks::default(),
 			operators: None,
 			writes,
 		}
