@@ -247,9 +247,9 @@ mod tests {
 	}
 
 	#[test]
-	fn the_durable_watermark_never_passes_the_written_one() {
+	fn durable_through_never_passes_written_through() {
 		// durable is what the barrier rule reads before letting a store flush derived state, so a
-		// watermark that ran ahead of the writes would let the store persist data the log lost.
+		// durable through that ran ahead of the writes would let the store persist data the log lost.
 		let writer = detached();
 		for offset in 0..8 {
 			writer.commit(&record(offset)).unwrap();
@@ -308,7 +308,7 @@ mod tests {
 	}
 
 	#[test]
-	fn an_explicit_flush_advances_the_watermark() {
+	fn an_explicit_flush_advances_durable_through() {
 		// flush is the only way a commit ever becomes durable.
 		let writer = detached();
 		writer.commit(&record(0)).unwrap();
@@ -319,7 +319,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_rebase_resets_the_watermarks_like_a_cut() {
+	fn a_rebase_resets_durable_and_written_through_like_a_cut() {
 		// a rebase empties the partition, so both marks must fall or a vanished record reads as durable.
 		let writer = detached();
 		writer.commit(&record(0)).unwrap();

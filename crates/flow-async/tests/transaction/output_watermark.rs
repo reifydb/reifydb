@@ -10,10 +10,10 @@ use reifydb_value::factory::time::at_millis;
 
 const OUTPUT: ObjectId = ObjectId::View(ViewId(42));
 
-fn entry(watermark: i64, at: u64) -> OutputWatermarkEntry {
+fn entry(output_watermark: i64, at: u64) -> OutputWatermarkEntry {
 	OutputWatermarkEntry {
 		output: OUTPUT,
-		watermark: at_millis(watermark),
+		output_watermark: at_millis(output_watermark),
 		at: CommitVersion(at),
 	}
 }

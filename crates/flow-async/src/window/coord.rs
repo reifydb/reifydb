@@ -170,8 +170,8 @@ impl SealDomain for ByU8 {
 		Ok(Self::from_order(SealLedger::read_order(store)?.unwrap_or(0)))
 	}
 
-	fn horizon(watermark: Self, seal_span: RowSpan) -> Self {
-		watermark.saturating_sub_span(seal_span)
+	fn horizon(operator_watermark: Self, seal_span: RowSpan) -> Self {
+		operator_watermark.saturating_sub_span(seal_span)
 	}
 
 	fn rearm_decay(
@@ -516,7 +516,7 @@ mod tests {
 		// An operator watermark above zero on a new operator would seal early slots before any row arrived.
 		let mut store = MockStore::default();
 
-		assert_eq!(<ByU8 as SealDomain>::watermark(&mut store).unwrap(), ByU8(0));
+		assert_eq!(<ByU8 as SealDomain>::operator_watermark(&mut store).unwrap(), ByU8(0));
 	}
 
 	#[test]

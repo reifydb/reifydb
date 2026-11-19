@@ -37,7 +37,7 @@ use reifydb_core::{
 use reifydb_engine::{backfill::run, engine::StandardEngine, lift::entry_changed_objects};
 use reifydb_flow::txn::FlowBatch;
 use reifydb_flow_async::{
-	engine::{FlowEngineInner, watermark_hold::WatermarkHolds},
+	engine::{FlowEngineInner, output_watermark_hold::OutputWatermarkHolds},
 	operator::InputOrder,
 	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction},
 };
@@ -218,7 +218,7 @@ pub(crate) fn compute_unit_backfill(
 	members: &[(FlowDag, ViewId)],
 	snapshot: &Snapshot,
 	reads: &[(CommitVersion, Vec<ObjectId>)],
-) -> Result<(FlowSlice, WatermarkHolds), ValueError> {
+) -> Result<(FlowSlice, OutputWatermarkHolds), ValueError> {
 	let version = snapshot.version;
 	let fed: Vec<(FlowId, ViewId)> = members.iter().map(|(member, view)| (member.id, *view)).collect();
 	let batch_size = query_batch_size(engine)?;

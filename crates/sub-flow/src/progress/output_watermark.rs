@@ -22,7 +22,7 @@ const HYDRATE_BATCH: u64 = 1024;
 
 fn encode(entry: &OutputWatermarkEntry) -> EncodedPodRow {
 	let mut bytes = Vec::with_capacity(16);
-	bytes.extend_from_slice(&entry.watermark.to_millis().to_be_bytes());
+	bytes.extend_from_slice(&entry.output_watermark.to_millis().to_be_bytes());
 	bytes.extend_from_slice(&entry.at.0.to_be_bytes());
 	EncodedPodRow::new(&bytes)
 }
@@ -34,7 +34,7 @@ fn decode(object: ObjectId, row: &EncodedPodRow) -> Option<OutputWatermarkEntry>
 	}
 	Some(OutputWatermarkEntry {
 		output: object,
-		watermark: DateTime::from_millis(i64::from_be_bytes(bytes[..8].try_into().ok()?)),
+		output_watermark: DateTime::from_millis(i64::from_be_bytes(bytes[..8].try_into().ok()?)),
 		at: CommitVersion(u64::from_be_bytes(bytes[8..].try_into().ok()?)),
 	})
 }
@@ -112,7 +112,7 @@ mod tests {
 		// A truncated stamp silently rewinds an output watermark, which re-opens a horizon that already sealed.
 		let entry = OutputWatermarkEntry {
 			output: OUTPUT,
-			watermark: at_millis(1_700_000_000_123),
+			output_watermark: at_millis(1_700_000_000_123),
 			at: CommitVersion(u64::MAX),
 		};
 
@@ -133,12 +133,12 @@ mod tests {
 		let written = vec![
 			OutputWatermarkEntry {
 				output: OUTPUT,
-				watermark: at_millis(9_000),
+				output_watermark: at_millis(9_000),
 				at: CommitVersion(10),
 			},
 			OutputWatermarkEntry {
 				output: ObjectId::table(7),
-				watermark: at_millis(4_000),
+				output_watermark: at_millis(4_000),
 				at: CommitVersion(20),
 			},
 		];
@@ -160,7 +160,7 @@ mod tests {
 			&single,
 			&vec![OutputWatermarkEntry {
 				output: OUTPUT,
-				watermark: at_millis(4_000),
+				output_watermark: at_millis(4_000),
 				at: CommitVersion(10),
 			}],
 		)
@@ -170,7 +170,7 @@ mod tests {
 			&single,
 			&vec![OutputWatermarkEntry {
 				output: OUTPUT,
-				watermark: at_millis(9_000),
+				output_watermark: at_millis(9_000),
 				at: CommitVersion(20),
 			}],
 		)
@@ -179,7 +179,7 @@ mod tests {
 		let read = hydrate(&system_ctx(), &single.read_store()).unwrap();
 
 		assert_eq!(read.len(), 1, "the object must hold exactly one output watermark row");
-		assert_eq!(read[0].watermark, at_millis(9_000));
+		assert_eq!(read[0].output_watermark, at_millis(9_000));
 		assert_eq!(read[0].at, CommitVersion(20));
 	}
 
@@ -212,7 +212,7 @@ mod tests {
 
 		let read = hydrate(&system_ctx(), &single.read_store()).unwrap();
 		assert_eq!(read.len(), 1);
-		assert_eq!(read[0].watermark, at_millis(9_000));
+		assert_eq!(read[0].output_watermark, at_millis(9_000));
 	}
 
 	#[test]
@@ -228,7 +228,7 @@ mod tests {
 			&single,
 			&vec![OutputWatermarkEntry {
 				output: OUTPUT,
-				watermark: at_millis(1),
+				output_watermark: at_millis(1),
 				at: CommitVersion(1),
 			}],
 		)
@@ -236,7 +236,7 @@ mod tests {
 		sweep(&system_ctx(), &single, &output_watermarks);
 
 		assert_eq!(
-			hydrate(&system_ctx(), &single.read_store()).unwrap()[0].watermark,
+			hydrate(&system_ctx(), &single.read_store()).unwrap()[0].output_watermark,
 			at_millis(1),
 			"the second sweep rewrote a row nothing had republished"
 		);
@@ -273,7 +273,7 @@ mod tests {
 
 		sweep(&system_ctx(), &single, &output_watermarks);
 
-		assert_eq!(hydrate(&system_ctx(), &single.read_store()).unwrap()[0].watermark, at_millis(9_000));
+		assert_eq!(hydrate(&system_ctx(), &single.read_store()).unwrap()[0].output_watermark, at_millis(9_000));
 	}
 
 	#[test]
@@ -284,7 +284,7 @@ mod tests {
 
 		output_watermarks.hydrate(vec![OutputWatermarkEntry {
 			output: OUTPUT,
-			watermark: at_millis(9_000),
+			output_watermark: at_millis(9_000),
 			at: CommitVersion(10),
 		}]);
 		sweep(&system_ctx(), &single, &output_watermarks);
@@ -304,7 +304,7 @@ mod tests {
 		sweep(&system_ctx(), &single, &output_watermarks);
 
 		let read = hydrate(&system_ctx(), &single.read_store()).unwrap();
-		assert_eq!(read[0].watermark, at_millis(9_000));
+		assert_eq!(read[0].output_watermark, at_millis(9_000));
 		assert_eq!(read[0].at, CommitVersion(20));
 	}
 
@@ -313,12 +313,12 @@ mod tests {
 		// A little-endian stamp would make version 256 sort below version 2 on any raw byte compare.
 		let low = encode(&OutputWatermarkEntry {
 			output: OUTPUT,
-			watermark: at_millis(0),
+			output_watermark: at_millis(0),
 			at: CommitVersion(2),
 		});
 		let high = encode(&OutputWatermarkEntry {
 			output: OUTPUT,
-			watermark: at_millis(0),
+			output_watermark: at_millis(0),
 			at: CommitVersion(256),
 		});
 

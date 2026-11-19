@@ -218,8 +218,8 @@ where
 				observe_batch(&mut store, newest.add_span(idle_retention), seal_span)?;
 			}
 		}
-		let watermark = operator_watermark::<A::Coord>(&mut store)?;
-		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
+		let operator_watermark = operator_watermark::<A::Coord>(&mut store)?;
+		let horizon = <A::Coord as SealDomain>::horizon(operator_watermark, seal_span);
 		Self::expire_through(&mut self.engine, &mut store, horizon)?;
 		let mut dropped = 0u64;
 		buckets.retain(|(_, span), events| {
@@ -332,10 +332,10 @@ where
 			return Ok(());
 		};
 		let mut store = GuestAsHost(ctx);
-		let Some(watermark) = timer_operator_watermark::<A::Coord>(&mut store, timer)? else {
+		let Some(operator_watermark) = timer_operator_watermark::<A::Coord>(&mut store, timer)? else {
 			return Ok(());
 		};
-		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
+		let horizon = <A::Coord as SealDomain>::horizon(operator_watermark, seal_span);
 		Self::expire_through(&mut self.engine, &mut store, horizon)
 	}
 

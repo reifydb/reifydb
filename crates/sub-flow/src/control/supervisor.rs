@@ -439,13 +439,13 @@ impl FlowSupervisor {
 		}
 
 		let released = self.queue.released();
-		let watermark = released.0;
+		let released_version = released.0;
 		let done_until = self.engine.done_until();
-		let bound = watermark.min(done_until);
-		if watermark > done_until {
+		let bound = released_version.min(done_until);
+		if released_version > done_until {
 			let self_ref = ctx.self_ref().clone();
 			self.engine.notify_on_mark(
-				watermark,
+				released_version,
 				Box::new(move || {
 					let _ = self_ref.send(FlowSupervisorMessage::Wake);
 				}),

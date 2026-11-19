@@ -24,7 +24,7 @@ use crate::{
 pub fn close_through<G, C, A>(
 	engine: &mut TumblingEngine<G, C, A>,
 	store: &mut dyn WindowStore,
-	watermark: C,
+	operator_watermark: C,
 	seal_span: C::SealSpan,
 	budget: usize,
 	may_retire: bool,
@@ -34,7 +34,7 @@ where
 	C: SealDomain + WindowAnchor + Hash,
 	A: WindowAccumulator,
 {
-	let horizon = C::horizon(watermark, seal_span);
+	let horizon = C::horizon(operator_watermark, seal_span);
 	if horizon <= C::from_order(0) {
 		return Ok(false);
 	}
@@ -62,11 +62,11 @@ where
 	A: WindowAccumulator,
 {
 	SealLedger::advance(store, fired)?;
-	let watermark = C::from_order(fired.at().to_order());
-	if C::horizon(watermark, seal_span) <= C::from_order(0) {
+	let operator_watermark = C::from_order(fired.at().to_order());
+	if C::horizon(operator_watermark, seal_span) <= C::from_order(0) {
 		return Ok(());
 	}
-	if close_through(engine, store, watermark, seal_span, budget, may_retire)? {
+	if close_through(engine, store, operator_watermark, seal_span, budget, may_retire)? {
 		C::arm_reap(store, fired.at(), seal_span)?;
 	}
 	let earliest = engine.earliest_expiry(store)?;

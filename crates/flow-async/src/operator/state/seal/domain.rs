@@ -42,7 +42,7 @@ pub trait SealDomain: Coord {
 
 	fn operator_watermark(store: &mut dyn WindowStore) -> Result<Self, ValueError>;
 
-	fn horizon(watermark: Self, seal_span: Self::SealSpan) -> Self;
+	fn horizon(operator_watermark: Self, seal_span: Self::SealSpan) -> Self;
 
 	fn rearm_decay(
 		store: &mut dyn WindowStore,
@@ -140,13 +140,13 @@ impl SealDomain for ByDateTime {
 
 	fn operator_watermark(store: &mut dyn WindowStore) -> Result<Self, ValueError> {
 		let ledger = SealLedger::read_order(store)?.unwrap_or(0);
-		let watermark = store.flow_watermark()?.map_or(0, |at| at.to_order());
-		Ok(Self::from_order(ledger.max(watermark)))
+		let flow_watermark = store.flow_watermark()?.map_or(0, |at| at.to_order());
+		Ok(Self::from_order(ledger.max(flow_watermark)))
 	}
 
-	fn horizon(watermark: Self, seal_span: Duration) -> Self {
+	fn horizon(operator_watermark: Self, seal_span: Duration) -> Self {
 		Self(SealRule::of(seal_span)
-			.horizon_at(watermark)
+			.horizon_at(operator_watermark)
 			.map_or(DateTime::MIN, |horizon| horizon.0.saturating_add(Duration::from_nanoseconds_const(1))))
 	}
 
@@ -260,15 +260,15 @@ mod tests {
 	}
 
 	#[test]
-	fn the_wall_clock_operator_watermark_merges_the_ledger_and_the_watermark_upward() {
+	fn the_wall_clock_operator_watermark_merges_the_ledger_and_the_flow_watermark_upward() {
 		// without the max a newly attached source drags the watermark down and re-admits sealed rows
-		let mut lagging_watermark = MockStore::default().with_flow_watermark(at_millis(3_000));
-		SealLedger::advance(&mut lagging_watermark, FiredAt::of(&timer(9_000))).unwrap();
+		let mut lagging_flow_watermark = MockStore::default().with_flow_watermark(at_millis(3_000));
+		SealLedger::advance(&mut lagging_flow_watermark, FiredAt::of(&timer(9_000))).unwrap();
 
 		let mut lagging_ledger = MockStore::default().with_flow_watermark(at_millis(9_000));
 		SealLedger::advance(&mut lagging_ledger, FiredAt::of(&timer(3_000))).unwrap();
 
-		assert_eq!(ByDateTime::operator_watermark(&mut lagging_watermark).unwrap(), ByDateTime(at_millis(9_000)));
+		assert_eq!(ByDateTime::operator_watermark(&mut lagging_flow_watermark).unwrap(), ByDateTime(at_millis(9_000)));
 		assert_eq!(ByDateTime::operator_watermark(&mut lagging_ledger).unwrap(), ByDateTime(at_millis(9_000)));
 	}
 

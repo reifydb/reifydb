@@ -7,7 +7,7 @@ mod process;
 pub mod register;
 mod tick;
 mod timers;
-pub mod watermark_hold;
+pub mod output_watermark_hold;
 mod watermarks;
 
 use std::{

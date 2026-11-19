@@ -85,7 +85,7 @@ pub struct SubscriptionReader {
 	queue: CommitQueue,
 	floor: CommitQueueFloor,
 	consumer: SubscriptionCommitLogConsumer,
-	watermark: ReaderPosition,
+	position: ReaderPosition,
 	clock: Clock,
 	start: CommitVersion,
 	start_lsn: Lsn,
@@ -99,7 +99,7 @@ impl SubscriptionReader {
 		queue: CommitQueue,
 		floor: CommitQueueFloor,
 		consumer: SubscriptionCommitLogConsumer,
-		watermark: ReaderPosition,
+		position: ReaderPosition,
 		start: CommitVersion,
 		start_lsn: Lsn,
 		loader: ActorRef<CommitLoaderMessage>,
@@ -110,7 +110,7 @@ impl SubscriptionReader {
 			queue,
 			floor,
 			consumer,
-			watermark,
+			position,
 			clock,
 			start,
 			start_lsn,
@@ -275,7 +275,7 @@ impl SubscriptionReader {
 		state.cursor = to;
 		state.lsn = lsn;
 		self.floor.advance(to);
-		self.watermark.store(to);
+		self.position.store(to);
 	}
 
 	fn on_dispatched(
@@ -374,7 +374,7 @@ impl Actor for SubscriptionReader {
 	type Message = SubscriptionReaderMessage;
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
-		self.watermark.store(self.start);
+		self.position.store(self.start);
 		let _ = ctx.self_ref().send(SubscriptionReaderMessage::Wake);
 		ctx.schedule_once(Duration::from_milliseconds(TICK_INTERVAL_MS).unwrap(), || {
 			SubscriptionReaderMessage::Tick

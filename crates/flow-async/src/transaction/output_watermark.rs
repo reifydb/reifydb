@@ -27,7 +27,7 @@ pub enum PublishedWatermark {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OutputWatermarkEntry {
 	pub output: ObjectId,
-	pub watermark: DateTime,
+	pub output_watermark: DateTime,
 	pub at: CommitVersion,
 }
 
@@ -41,7 +41,7 @@ pub struct OutputWatermarks {
 }
 
 impl OutputWatermarks {
-	pub fn publish(&self, output: ObjectId, watermark: DateTime, at: CommitVersion) {
+	pub fn publish(&self, output: ObjectId, output_watermark: DateTime, at: CommitVersion) {
 		reifydb_assertions! {
 			assert!(
 				at > CommitVersion(0),
@@ -50,7 +50,7 @@ impl OutputWatermarks {
 				 output watermark was established"
 			);
 		}
-		let watermark_ms = watermark.to_millis();
+		let watermark_ms = output_watermark.to_millis();
 		self.inner
 			.entry(output)
 			.and_modify(|current| {
@@ -87,7 +87,7 @@ impl OutputWatermarks {
 			.iter()
 			.map(|entry| OutputWatermarkEntry {
 				output: *entry.key(),
-				watermark: DateTime::from_millis(entry.watermark_ms),
+				output_watermark: DateTime::from_millis(entry.watermark_ms),
 				at: entry.at,
 			})
 			.collect()
@@ -107,7 +107,7 @@ impl OutputWatermarks {
 
 	pub fn hydrate(&self, entries: OutputWatermarkEntries) {
 		for entry in entries {
-			let watermark_ms = entry.watermark.to_millis();
+			let watermark_ms = entry.output_watermark.to_millis();
 			self.inner
 				.entry(entry.output)
 				.and_modify(|current| {

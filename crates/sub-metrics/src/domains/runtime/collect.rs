@@ -176,9 +176,9 @@ fn collect_dictionary(c: &Collectors, out: &mut Vec<MetricsSample>) {
 	out.push(MetricsSample::heap("dictionary", "cached_entry_bytes", ByteSize::from_bytes(bytes)));
 }
 
-pub fn collect_watermarks(c: &Collectors) -> Vec<MetricsSample> {
+pub fn collect_mvcc(c: &Collectors) -> Vec<MetricsSample> {
 	let mut out = Vec::with_capacity(9);
-	collect_mvcc(c, &mut out);
+	push_mvcc(c, &mut out);
 	out
 }
 
@@ -186,15 +186,15 @@ pub fn collect_operators(c: &Collectors) -> Vec<MetricsSample> {
 	c.registry.collect_operators()
 }
 
-fn collect_mvcc(c: &Collectors, out: &mut Vec<MetricsSample>) {
+fn push_mvcc(c: &Collectors, out: &mut Vec<MetricsSample>) {
 	let commit = c.engine.done_until().0;
 	let query = c.engine.query_done_until().0;
 	let last = c.engine.current_version().map(|v| v.0).unwrap_or(commit);
 
-	out.push(MetricsSample::version("mvcc", "commit_watermark", commit));
-	out.push(MetricsSample::version("mvcc", "query_watermark", query));
+	out.push(MetricsSample::version("mvcc", "commit_done_until", commit));
+	out.push(MetricsSample::version("mvcc", "query_done_until", query));
 	out.push(MetricsSample::version("mvcc", "last_allocated_version", last));
-	out.push(MetricsSample::version("mvcc", "watermark_lag", last.saturating_sub(query)));
+	out.push(MetricsSample::version("mvcc", "query_done_until_lag", last.saturating_sub(query)));
 	out.push(MetricsSample::version("mvcc", "query_command_skew", commit.saturating_sub(query)));
 	out.push(MetricsSample::count("mvcc", "oracle_window_count", c.engine.oracle_window_count() as u64));
 }

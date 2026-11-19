@@ -166,10 +166,10 @@ where
 		engine: &mut Engine<A, K, V>,
 		reap_queue_empty: &mut bool,
 		store: &mut GuestAsHost<'_, C>,
-		watermark: A::Coord,
+		operator_watermark: A::Coord,
 		seal_span: SealSpan<A>,
 	) -> Result<(), SdkError> {
-		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
+		let horizon = <A::Coord as SealDomain>::horizon(operator_watermark, seal_span);
 		if horizon <= <A::Coord as Coord>::from_order(0) {
 			return Ok(());
 		}
@@ -205,7 +205,7 @@ where
 		};
 		*reap_queue_empty = drained.queue_is_empty();
 		if !*reap_queue_empty {
-			observe_batch(store, watermark, seal_span)?;
+			observe_batch(store, operator_watermark, seal_span)?;
 		}
 		Ok(())
 	}
@@ -226,8 +226,8 @@ where
 			if let Some(newest) = newest {
 				observe_batch(&mut store, newest, seal_span)?;
 			}
-			let watermark = operator_watermark::<A::Coord>(&mut store)?;
-			let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
+			let operator_watermark = operator_watermark::<A::Coord>(&mut store)?;
+			let horizon = <A::Coord as SealDomain>::horizon(operator_watermark, seal_span);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
 				if is_sealed(span.start, horizon) {
@@ -241,7 +241,7 @@ where
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
 			order.retain(|key| buckets.contains_key(key));
-			Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span)?;
+			Self::expire_through(engine, reap_queue_empty, &mut store, operator_watermark, seal_span)?;
 			if buckets.is_empty() {
 				return Ok(emitted);
 			}
@@ -392,10 +392,10 @@ where
 			..
 		} = &mut *self;
 		let mut store = GuestAsHost(ctx);
-		let Some(watermark) = timer_operator_watermark::<A::Coord>(&mut store, timer)? else {
+		let Some(operator_watermark) = timer_operator_watermark::<A::Coord>(&mut store, timer)? else {
 			return Ok(());
 		};
-		Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span)
+		Self::expire_through(engine, reap_queue_empty, &mut store, operator_watermark, seal_span)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<(), SdkError> {

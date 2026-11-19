@@ -44,7 +44,7 @@ use crate::{
 			cgroup_cpu_rows, cgroup_io_rows, cgroup_memory_rows, cgroup_pressure_rows, process_io_rows,
 			process_memory_rows, process_sched_rows,
 		},
-		runtime::collect::{Collectors, collect_memory, collect_operators, collect_watermarks},
+		runtime::collect::{Collectors, collect_memory, collect_operators, collect_mvcc},
 	},
 	framework::{
 		accumulator::{Measure, MetricsAccumulator, MetricsRow, PublishedSurface},
@@ -169,9 +169,9 @@ impl MetricsSamplerActor {
 			long_rows(collect_memory(&self.collectors)),
 		);
 		accumulator.push(
-			MetricsDomain::RuntimeWatermarks,
+			MetricsDomain::RuntimeMvcc,
 			Surface::Current,
-			long_rows(collect_watermarks(&self.collectors)),
+			long_rows(collect_mvcc(&self.collectors)),
 		);
 		accumulator.push(
 			MetricsDomain::RuntimeOperators,

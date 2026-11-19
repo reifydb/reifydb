@@ -29,7 +29,7 @@ use reifydb_engine::{
 };
 use reifydb_flow::operator::sink::table::dictionary_lookup_view_columns;
 use reifydb_flow_async::{
-	engine::{COMPLETENESS_OBJECT, FlowEngineInner, watermark_hold::WatermarkHolds},
+	engine::{COMPLETENESS_OBJECT, FlowEngineInner, output_watermark_hold::OutputWatermarkHolds},
 	transaction::{
 		DeferredParams, FlowTransaction, LookupContext, deferred::DeferredTransaction,
 		output_watermark::PublishedWatermark,
@@ -63,7 +63,7 @@ pub struct SliceConfig {
 
 pub struct HoldCache {
 	pub(crate) watermarks: Vec<PublishedWatermark>,
-	pub(crate) holds: WatermarkHolds,
+	pub(crate) holds: OutputWatermarkHolds,
 }
 
 pub struct SliceCursor<'a> {
@@ -83,14 +83,14 @@ pub enum SliceStep {
 		advance_to: CommitVersion,
 		lsn: Lsn,
 		more: bool,
-		holds: WatermarkHolds,
+		holds: OutputWatermarkHolds,
 	},
 
 	Skip {
 		advance_to: CommitVersion,
 		lsn: Lsn,
 		more: bool,
-		holds: WatermarkHolds,
+		holds: OutputWatermarkHolds,
 	},
 }
 
@@ -172,8 +172,8 @@ impl SliceComputer {
 		flow_engine: &FlowEngineInner,
 		txn: &mut DeferredTransaction,
 		head: FlowId,
-	) -> Result<WatermarkHolds, ValueError> {
-		let mut holds = WatermarkHolds::new();
+	) -> Result<OutputWatermarkHolds, ValueError> {
+		let mut holds = OutputWatermarkHolds::new();
 		for flow in self.unit_ids(head) {
 			holds.extend(flow_engine.holds(txn, flow)?);
 		}
@@ -370,7 +370,7 @@ impl SliceComputer {
 		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
 		state_version: CommitVersion,
-	) -> Result<(WatermarkHolds, Pending), ValueError> {
+	) -> Result<(OutputWatermarkHolds, Pending), ValueError> {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
 
@@ -403,7 +403,7 @@ impl SliceComputer {
 		flow_id: FlowId,
 		state_version: CommitVersion,
 		groups: Vec<Vec<Change>>,
-	) -> Result<(Vec<(Pending, bool)>, WatermarkHolds), ValueError> {
+	) -> Result<(Vec<(Pending, bool)>, OutputWatermarkHolds), ValueError> {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
 
@@ -887,7 +887,7 @@ mod integration {
 	};
 	use reifydb_flow::txn::FlowGet;
 	use reifydb_flow_async::{
-		engine::watermark_hold::WatermarkHold,
+		engine::output_watermark_hold::OutputWatermarkHold,
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{
 			read::{ReadFrom, read_from},
@@ -1093,9 +1093,9 @@ mod integration {
 
 		assert_eq!(
 			held,
-			vec![WatermarkHold {
+			vec![OutputWatermarkHold {
 				object: ObjectId::View(ViewId(3)),
-				watermark: at_millis(30_000)
+				output_watermark: at_millis(30_000)
 			}],
 			"resolved_holds must read the seeded watermark through the shared substrate"
 		);
@@ -2165,9 +2165,9 @@ mod integration {
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,
 		};
-		let sentinel = WatermarkHold {
+		let sentinel = OutputWatermarkHold {
 			object: ObjectId::View(ViewId(3)),
-			watermark: at_millis(12_345),
+			output_watermark: at_millis(12_345),
 		};
 		let mut hold_cache = Some(HoldCache {
 			watermarks: flow_engine.published_watermarks(flow, CommitVersion(7)),

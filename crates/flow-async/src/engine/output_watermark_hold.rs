@@ -15,20 +15,20 @@ use reifydb_value::{error::ValueError, value::datetime::DateTime};
 use crate::{
 	engine::FlowEngineInner,
 	operator::{BoxedHostOperator, state::seal::rule::output_watermark},
-	transaction::{FlowTransaction, watermark::SourceWatermarks},
+	transaction::{FlowTransaction, output_watermark::SourceWatermarks},
 	window::coord::ByDateTime,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WatermarkHold {
+pub struct OutputWatermarkHold {
 	pub object: ObjectId,
-	pub watermark: DateTime,
+	pub output_watermark: DateTime,
 }
 
-pub type WatermarkHolds = Vec<WatermarkHold>;
+pub type OutputWatermarkHolds = Vec<OutputWatermarkHold>;
 
 impl FlowEngineInner {
-	pub fn holds<T: FlowTransaction>(&self, txn: &mut T, flow_id: FlowId) -> Result<WatermarkHolds, ValueError> {
+	pub fn holds<T: FlowTransaction>(&self, txn: &mut T, flow_id: FlowId) -> Result<OutputWatermarkHolds, ValueError> {
 		let Some(flow) = self.flows.get(&flow_id) else {
 			return Ok(Vec::new());
 		};
@@ -51,17 +51,17 @@ impl FlowEngineInner {
 			.collect();
 		let watermarks = output_watermarks(txn, flow, &self.operators, topo, &lookups)?;
 
-		let mut held: WatermarkHolds = Vec::with_capacity(sinks.len());
+		let mut held: OutputWatermarkHolds = Vec::with_capacity(sinks.len());
 		for (object, operator_id) in sinks.iter().copied() {
-			let Some(watermark) = watermarks.get(&operator_id) else {
+			let Some(output_watermark) = watermarks.get(&operator_id) else {
 				continue;
 			};
-			if watermark.to_millis() == 0 {
+			if output_watermark.to_millis() == 0 {
 				continue;
 			}
-			held.push(WatermarkHold {
+			held.push(OutputWatermarkHold {
 				object,
-				watermark: *watermark,
+				output_watermark: *output_watermark,
 			});
 		}
 		Ok(held)
@@ -87,10 +87,10 @@ fn output_watermarks<T: FlowTransaction>(
 		} else {
 			let mut merged: Option<DateTime> = None;
 			for source in &node.inputs {
-				let Some(watermark) = computed.get(source).copied() else {
+				let Some(output_watermark) = computed.get(source).copied() else {
 					continue;
 				};
-				merged = Some(merged.map_or(watermark, |current: DateTime| current.min(watermark)));
+				merged = Some(merged.map_or(output_watermark, |current: DateTime| current.min(output_watermark)));
 			}
 			if lookups.contains(operator_id) {
 				let right = SourceWatermarks::source_watermark(*operator_id, txn)?;
@@ -103,12 +103,12 @@ fn output_watermarks<T: FlowTransaction>(
 			continue;
 		};
 
-		let watermark = operators
+		let output_watermark = operators
 			.get(&(flow.id, *operator_id))
 			.and_then(|operator| operator.seal_span())
 			.map_or(input, |span| output_watermark(ByDateTime(input), span).0);
 
-		computed.insert(*operator_id, watermark);
+		computed.insert(*operator_id, output_watermark);
 	}
 
 	Ok(computed)
@@ -182,10 +182,10 @@ mod tests {
 		}
 	}
 
-	fn hold(view: u64, watermark: i64) -> WatermarkHold {
-		WatermarkHold {
+	fn hold(view: u64, output_watermark: i64) -> OutputWatermarkHold {
+		OutputWatermarkHold {
 			object: ObjectId::View(ViewId(view)),
-			watermark: at_millis(watermark),
+			output_watermark: at_millis(output_watermark),
 		}
 	}
 
@@ -380,7 +380,7 @@ mod tests {
 			self
 		}
 
-		fn holds(self, advances: WatermarkAdvances) -> WatermarkHolds {
+		fn holds(self, advances: WatermarkAdvances) -> OutputWatermarkHolds {
 			let Harness {
 				engine,
 				mut inner,

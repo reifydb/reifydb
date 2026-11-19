@@ -8,7 +8,7 @@ use reifydb_value::value::value_type::ValueType;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum MetricsDomain {
 	RuntimeMemory,
-	RuntimeWatermarks,
+	RuntimeMvcc,
 	RuntimeOperators,
 	ProcProcessIo,
 	ProcProcessMemory,
@@ -241,7 +241,7 @@ fn long_spec(domain: MetricsDomain, namespace: NamespaceId, has_total: bool) -> 
 impl MetricsDomain {
 	pub const ALL: [MetricsDomain; 25] = [
 		MetricsDomain::RuntimeMemory,
-		MetricsDomain::RuntimeWatermarks,
+		MetricsDomain::RuntimeMvcc,
 		MetricsDomain::RuntimeOperators,
 		MetricsDomain::ProcProcessIo,
 		MetricsDomain::ProcProcessMemory,
@@ -280,7 +280,7 @@ impl MetricsDomain {
 			| MetricsDomain::ProcCgroupCpu
 			| MetricsDomain::ProcCgroupPressure => PushKind::Census,
 			MetricsDomain::RuntimeMemory
-			| MetricsDomain::RuntimeWatermarks
+			| MetricsDomain::RuntimeMvcc
 			| MetricsDomain::RuntimeOperators
 			| MetricsDomain::StoreMultiCommit
 			| MetricsDomain::StoreMultiRange
@@ -300,7 +300,7 @@ impl MetricsDomain {
 	pub fn snapshots_path(self) -> Option<&'static str> {
 		match self {
 			MetricsDomain::RuntimeMemory => Some("system::metric::runtime::memory::snapshots"),
-			MetricsDomain::RuntimeWatermarks => Some("system::metric::runtime::watermark::snapshots"),
+			MetricsDomain::RuntimeMvcc => Some("system::metric::runtime::mvcc::snapshots"),
 			MetricsDomain::RuntimeOperators => Some("system::metric::runtime::operator::snapshots"),
 			MetricsDomain::Instruments => Some("system::metric::instrument::snapshots"),
 			MetricsDomain::Epoch => Some("system::metric::epoch::snapshots"),
@@ -336,8 +336,8 @@ impl MetricsDomain {
 			MetricsDomain::RuntimeMemory => {
 				long_spec(self, NamespaceId::SYSTEM_METRIC_RUNTIME_MEMORY, false)
 			}
-			MetricsDomain::RuntimeWatermarks => {
-				long_spec(self, NamespaceId::SYSTEM_METRIC_RUNTIME_WATERMARK, false)
+			MetricsDomain::RuntimeMvcc => {
+				long_spec(self, NamespaceId::SYSTEM_METRIC_RUNTIME_MVCC, false)
 			}
 			MetricsDomain::RuntimeOperators => {
 				long_spec(self, NamespaceId::SYSTEM_METRIC_RUNTIME_OPERATOR, true)

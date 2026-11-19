@@ -481,9 +481,9 @@ mod tests {
 	}
 
 	#[test]
-	fn a_fresh_index_scans_rather_than_trusting_an_unset_watermark() {
+	fn a_fresh_index_scans_rather_than_trusting_an_unset_earliest() {
 		// An operator rebuilt after a restart or a retried commit inherits no bound; if an unset
-		// watermark gated the scan, every window a predecessor armed would never expire.
+		// cached earliest gated the scan, every window a predecessor armed would never expire.
 		let mut store = MockStore::default();
 		expiry_set(
 			&mut store,
@@ -496,11 +496,11 @@ mod tests {
 
 		let mut index = ExpiryIndex::<Expiry>::default();
 		let due = index.due::<Entry>(&mut store, 100, 16).unwrap();
-		assert_eq!(due.len(), 1, "an index with no watermark must reach the store");
+		assert_eq!(due.len(), 1, "an index with no cached earliest must reach the store");
 	}
 
 	#[test]
-	fn an_uncapped_scan_raises_the_watermark_so_a_lower_threshold_never_reaches_the_store() {
+	fn an_uncapped_scan_raises_the_cached_earliest_so_a_lower_threshold_never_reaches_the_store() {
 		// The whole point of the gate: once a scan proved nothing is due at or below its threshold,
 		// a lower threshold must not pay for another range scan. The planted entry is invisible to
 		// the index, so finding it would prove the store was read.
@@ -520,12 +520,12 @@ mod tests {
 		.unwrap();
 
 		let due = index.due::<Entry>(&mut store, 100, 16).unwrap();
-		assert!(due.is_empty(), "a threshold below the raised watermark must skip the range scan entirely");
+		assert!(due.is_empty(), "a threshold below the raised cached earliest must skip the range scan entirely");
 	}
 
 	#[test]
-	fn a_set_below_the_watermark_lowers_it_so_the_next_scan_finds_the_entry() {
-		// An insert can only bring the true earliest forward. A watermark that ignored the insert
+	fn a_set_below_the_cached_earliest_lowers_it_so_the_next_scan_finds_the_entry() {
+		// An insert can only bring the true earliest forward. A cached earliest that ignored the insert
 		// would sit above it and the window would silently never expire.
 		let mut store = MockStore::default();
 		let mut index = ExpiryIndex::<Expiry>::default();
@@ -550,9 +550,9 @@ mod tests {
 	}
 
 	#[test]
-	fn an_entry_armed_during_a_scan_survives_that_scan_raising_the_watermark() {
+	fn an_entry_armed_during_a_scan_survives_that_scan_raising_the_cached_earliest() {
 		// A rolling expire re-arms surviving buffers inside the same scan. The raise must be capped
-		// by what was armed, or the re-armed entry is sealed behind a watermark above it.
+		// by what was armed, or the re-armed entry is sealed behind a cached earliest above it.
 		let mut store = MockStore::default();
 		let mut index = ExpiryIndex::<Expiry>::default();
 
@@ -684,7 +684,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_capped_scan_leaves_the_watermark_below_its_own_threshold() {
+	fn a_capped_scan_leaves_the_cached_earliest_below_its_own_threshold() {
 		// A scan that hit the batch cap left entries at or below its threshold behind. Raising past
 		// them would strand the deferred backlog forever.
 		let mut store = MockStore::default();
@@ -710,7 +710,7 @@ mod tests {
 	#[test]
 	fn a_capped_drain_reaches_every_entry_across_successive_scans() {
 		// The tumbling and rolling expire loops drain in batches; if a capped batch could raise the
-		// watermark the tail of the backlog would never be handed back and those windows never seal.
+		// cached earliest the tail of the backlog would never be handed back and those windows never seal.
 		let mut store = MockStore::default();
 		for expiry in 1u64..=5 {
 			expiry_set(
@@ -744,7 +744,7 @@ mod tests {
 	}
 
 	#[test]
-	fn reading_the_earliest_expiry_tightens_the_watermark_to_what_the_index_holds() {
+	fn reading_the_earliest_expiry_tightens_the_cached_earliest_to_what_the_index_holds() {
 		// The rolling face reads the exact earliest to arm its timer; recording it keeps the gate
 		// tight, and an empty index must gate every threshold rather than leave the bound unset.
 		let mut store = MockStore::default();

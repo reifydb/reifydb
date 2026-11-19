@@ -106,11 +106,11 @@ const RUNTIME_DOMAINS: [(NamespaceId, &str, &str, SeriesId, &[ColumnId]); 3] = [
 		&ColumnId::RUNTIME_MEMORY_SNAPSHOTS_COLUMNS,
 	),
 	(
-		NamespaceId::SYSTEM_METRIC_RUNTIME_WATERMARK,
-		"system::metric::runtime::watermark",
-		"watermark",
-		SeriesId::RUNTIME_WATERMARKS_SNAPSHOTS,
-		&ColumnId::RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS,
+		NamespaceId::SYSTEM_METRIC_RUNTIME_MVCC,
+		"system::metric::runtime::mvcc",
+		"mvcc",
+		SeriesId::RUNTIME_MVCC_SNAPSHOTS,
+		&ColumnId::RUNTIME_MVCC_SNAPSHOTS_COLUMNS,
 	),
 	(
 		NamespaceId::SYSTEM_METRIC_RUNTIME_OPERATOR,

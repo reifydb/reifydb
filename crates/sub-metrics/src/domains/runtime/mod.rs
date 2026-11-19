@@ -3,23 +3,23 @@
 
 pub mod collect;
 
-use collect::{Collectors, collect_memory, collect_operators, collect_watermarks};
+use collect::{Collectors, collect_memory, collect_operators, collect_mvcc};
 use reifydb_core::{interface::catalog::id::NamespaceId, metrics::sample::MetricsSample};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Domain {
 	Memory,
-	Watermarks,
+	Mvcc,
 	Operators,
 }
 
 impl Domain {
-	pub const ALL: [Domain; 3] = [Domain::Memory, Domain::Watermarks, Domain::Operators];
+	pub const ALL: [Domain; 3] = [Domain::Memory, Domain::Mvcc, Domain::Operators];
 
 	pub fn namespace(&self) -> NamespaceId {
 		match self {
 			Domain::Memory => NamespaceId::SYSTEM_METRIC_RUNTIME_MEMORY,
-			Domain::Watermarks => NamespaceId::SYSTEM_METRIC_RUNTIME_WATERMARK,
+			Domain::Mvcc => NamespaceId::SYSTEM_METRIC_RUNTIME_MVCC,
 			Domain::Operators => NamespaceId::SYSTEM_METRIC_RUNTIME_OPERATOR,
 		}
 	}
@@ -27,7 +27,7 @@ impl Domain {
 	pub fn local_name(&self) -> &'static str {
 		match self {
 			Domain::Memory => "memory",
-			Domain::Watermarks => "watermarks",
+			Domain::Mvcc => "mvcc",
 			Domain::Operators => "operators",
 		}
 	}
@@ -35,7 +35,7 @@ impl Domain {
 	pub fn collect(&self, c: &Collectors) -> Vec<MetricsSample> {
 		match self {
 			Domain::Memory => collect_memory(c),
-			Domain::Watermarks => collect_watermarks(c),
+			Domain::Mvcc => collect_mvcc(c),
 			Domain::Operators => collect_operators(c),
 		}
 	}

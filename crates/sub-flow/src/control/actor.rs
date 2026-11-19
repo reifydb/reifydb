@@ -38,7 +38,7 @@ use reifydb_core::{
 use reifydb_core::{interface::catalog::storage::StorageId, key::any::TaggedKey};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow_async::{
-	engine::{FlowEngineInner, watermark_hold::WatermarkHolds},
+	engine::{FlowEngineInner, output_watermark_hold::OutputWatermarkHolds},
 	operator::metrics::OperatorSampleRegistry,
 	transaction::{LookupContext, substrate::FlowSubstrate},
 };
@@ -187,7 +187,7 @@ pub struct FlowActorState {
 	awaiting_load: bool,
 	poisoned: bool,
 	retry_count: u32,
-	pending_holds: WatermarkHolds,
+	pending_holds: OutputWatermarkHolds,
 	drain_after_commit: bool,
 	last_checkpoint_at: DateTime,
 	checkpoint_replies: Vec<Box<dyn FnOnce() + Send>>,
@@ -506,7 +506,7 @@ impl FlowActor {
 				lsn: state.cursor_lsn,
 			},
 		));
-		self.dispatch_commit(state, ctx, slice, advance_to, state.cursor_lsn, false, WatermarkHolds::new());
+		self.dispatch_commit(state, ctx, slice, advance_to, state.cursor_lsn, false, OutputWatermarkHolds::new());
 	}
 
 	fn on_drain(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
@@ -876,7 +876,7 @@ impl FlowActor {
 				state.cursor = advance_to;
 				state.cursor_lsn = lsn;
 				for hold in holds {
-					self.substrate.output_watermarks.publish(hold.object, hold.watermark, advance_to);
+					self.substrate.output_watermarks.publish(hold.object, hold.output_watermark, advance_to);
 				}
 				self.move_lookup_lease(state);
 				self.publish_position(advance_to);
@@ -970,7 +970,7 @@ impl FlowActor {
 		advance_to: CommitVersion,
 		lsn: Lsn,
 		more: bool,
-		holds: WatermarkHolds,
+		holds: OutputWatermarkHolds,
 	) {
 		reifydb_assertions! {
 			assert!(
@@ -1041,7 +1041,7 @@ impl FlowActor {
 				advance_to
 			};
 			for hold in holds {
-				self.substrate.output_watermarks.publish(hold.object, hold.watermark, at);
+				self.substrate.output_watermarks.publish(hold.object, hold.output_watermark, at);
 			}
 		}
 		match result {
@@ -1157,7 +1157,7 @@ impl FlowActor {
 				for hold in holds {
 					self.substrate.output_watermarks.publish(
 						hold.object,
-						hold.watermark,
+						hold.output_watermark,
 						self.initial_cursor,
 					);
 				}
@@ -1476,7 +1476,7 @@ impl Actor for FlowActor {
 			awaiting_load: false,
 			poisoned,
 			retry_count: 0,
-			pending_holds: WatermarkHolds::new(),
+			pending_holds: OutputWatermarkHolds::new(),
 			drain_after_commit: false,
 			last_checkpoint_at: self.clock.now(),
 			checkpoint_replies: Vec::new(),
@@ -1840,7 +1840,7 @@ mod pull_protocol {
 			substrate: FlowSubstrate,
 		) -> FlowActorHandle {
 			let flow_id = flow.id;
-			self.await_safe_watermark(cursor);
+			self.await_readable_through(cursor);
 
 			let handle = self.engine.spawner().spawn_flow(
 				"pull-protocol-flow",
@@ -1893,7 +1893,7 @@ mod pull_protocol {
 			substrate: FlowSubstrate,
 		) -> FlowActorHandle {
 			let flow_id = flow.id;
-			self.await_safe_watermark(cursor);
+			self.await_readable_through(cursor);
 
 			let actor = FlowActor::new(FlowActorParams {
 				engine: self.engine.clone(),
@@ -1972,14 +1972,14 @@ mod pull_protocol {
 			}
 		}
 
-		fn await_safe_watermark(&self, want: CommitVersion) {
+		fn await_readable_through(&self, want: CommitVersion) {
 			let deadline = Clock::Real.instant() + seconds(10);
 			loop {
 				let safe = self.queue.released_through().min(self.engine.done_until());
 				if safe >= want {
 					return;
 				}
-				assert!(Clock::Real.instant() < deadline, "safe watermark never reached {}", want.0);
+				assert!(Clock::Real.instant() < deadline, "readable through never reached {}", want.0);
 				sleep(millis(5).to_std());
 			}
 		}
@@ -2174,12 +2174,12 @@ mod pull_protocol {
 
 		h.te.command("INSERT app::t [{ id: 1 }]");
 		let first = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(first);
+		h.await_readable_through(first);
 		h.wake(&actor);
 
 		h.te.command("INSERT app::t [{ id: 2 }]");
 		let target = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(target);
+		h.await_readable_through(target);
 		h.wake(&actor);
 
 		let rows = h.await_view_rows(2, seconds(10));
@@ -2208,13 +2208,13 @@ mod pull_protocol {
 			h.wake(&actor);
 		}
 		let target = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(target);
+		h.await_readable_through(target);
 		h.wake(&actor);
 
 		let rows = h.await_view_rows(total, seconds(15));
 		assert_eq!(rows, total, "a burst must not drop an accumulated version");
 
-		h.await_safe_watermark(h.engine.current_version().expect("current version"));
+		h.await_readable_through(h.engine.current_version().expect("current version"));
 		let commits = h.view_bearing_records(v0);
 		assert!(
 			commits > 0 && commits <= total,
@@ -2235,7 +2235,7 @@ mod pull_protocol {
 			h.te.command(&format!("INSERT app::t [{{ id: {id} }}]"));
 		}
 		let target = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(target);
+		h.await_readable_through(target);
 
 		h.flow_floor.advance(target);
 		h.wake(&actor);
@@ -2275,7 +2275,7 @@ mod pull_protocol {
 
 		h.te.command("INSERT app::t [{ id: 1 }]");
 		let first = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(first);
+		h.await_readable_through(first);
 		h.wake(&producer);
 		assert_eq!(h.await_view_rows(1, seconds(10)), 1, "the producer must emit the first row");
 		let producer_position = h
@@ -2289,7 +2289,7 @@ mod pull_protocol {
 			"precondition: the producer must lag the version the reader reads through, otherwise the gate \
 			 does not hold the reader below its read end"
 		);
-		h.await_safe_watermark(read_end);
+		h.await_readable_through(read_end);
 		h.wake(&consumer);
 		assert_eq!(
 			h.await_query_rows("FROM app::w", 1, seconds(10)),
@@ -2309,7 +2309,7 @@ mod pull_protocol {
 			h.await_position_at_least(read_end, seconds(10)).is_some(),
 			"the producer must publish the commit carrying the second row"
 		);
-		h.await_safe_watermark(h.engine.current_version().expect("current version"));
+		h.await_readable_through(h.engine.current_version().expect("current version"));
 		h.wake(&consumer);
 
 		assert_eq!(
@@ -2350,7 +2350,7 @@ mod pull_protocol {
 
 		h.te.command("INSERT app::t [{ id: 1 }]");
 		let safe = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(safe);
+		h.await_readable_through(safe);
 		assert_eq!(
 			h.flow_position(h.flow_id),
 			Some(v0),
@@ -2433,7 +2433,7 @@ mod pull_protocol {
 
 		h.te.command("INSERT app::t [{ id: 1 }]");
 		let safe = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(safe);
+		h.await_readable_through(safe);
 		for _ in 0..5 {
 			assert!(consumer.actor_ref().send(FlowActorMessage::Drain).is_ok(), "send drain");
 			sleep(millis(30).to_std());
@@ -2470,14 +2470,14 @@ mod pull_protocol {
 			h.te.command(&format!("INSERT app::t [{{ id: {id}, pad: \"{pad}\" }}]"));
 		}
 		let target = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(target);
+		h.await_readable_through(target);
 		h.wake(&producer);
 		assert!(
 			h.await_position_at_least(target, seconds(30)).is_some(),
 			"the producer must consume every insert before the reader is exercised"
 		);
 		let produced = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(produced);
+		h.await_readable_through(produced);
 		h.wake(&producer);
 		assert!(
 			h.await_position_at_least(produced, seconds(30)).is_some(),
@@ -2516,14 +2516,14 @@ mod pull_protocol {
 		h.te.command("INSERT app::t [{ id: 1 }]");
 		h.te.command("INSERT app::t [{ id: 2 }]");
 		let target = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(target);
+		h.await_readable_through(target);
 		h.wake(&actor);
 
 		sleep(millis(300).to_std());
 		assert_eq!(
 			h.tracker.all().get(&h.flow_id).copied(),
 			Some(v0),
-			"a flow must hold at the pull limit even though the safe watermark is beyond it"
+			"a flow must hold at the pull limit even though readable through is beyond it"
 		);
 		assert_eq!(h.view_rows(), 0, "no row above the pull limit may materialize");
 
@@ -2560,7 +2560,7 @@ mod pull_protocol {
 
 		h.te.command("INSERT app::t [{ id: 1 }]");
 		let target = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(target);
+		h.await_readable_through(target);
 
 		assert!(
 			ahead.released_through().0 >= h.engine.done_until().0 + 5,
@@ -2615,7 +2615,7 @@ mod pull_protocol {
 			}
 			h.te.command(&format!("INSERT app::t [{{ id: {id}, g: 1, v: 5 }}]"));
 			target = h.engine.current_version().expect("current version");
-			h.await_safe_watermark(target);
+			h.await_readable_through(target);
 			h.wake(&actor);
 			assert_eq!(
 				h.await_view_rows(expected_rows, seconds(10)),
@@ -2632,7 +2632,7 @@ mod pull_protocol {
 
 		h.te.command("INSERT app::unrelated [{ id: 1 }]");
 		let gap = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(gap);
+		h.await_readable_through(gap);
 		assert!(gap > target, "the test needs unconsumed safe versions above the settled cursor");
 
 		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
@@ -2667,7 +2667,7 @@ mod pull_protocol {
 
 		h.te.command("INSERT app::t [{ id: 1, g: 1, v: 5 }]");
 		let target = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(target);
+		h.await_readable_through(target);
 		h.wake(&actor);
 		assert_eq!(
 			h.await_view_rows(1, seconds(10)),
@@ -2688,7 +2688,7 @@ mod pull_protocol {
 
 		h.te.command("INSERT app::unrelated [{ id: 1 }]");
 		let gap = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(gap);
+		h.await_readable_through(gap);
 		assert!(gap > target, "the test needs unconsumed safe versions above the settled cursor");
 
 		let Clock::Mock(clock) = h.engine.clock() else {
@@ -2735,7 +2735,7 @@ mod pull_protocol {
 
 		h.te.command(r#"INSERT app::t [{ id: 1, v: 10, ts: "1970-01-01T00:01:00Z" }]"#);
 		let target = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(target);
+		h.await_readable_through(target);
 		h.wake(&actor);
 		assert_eq!(
 			h.await_view_rows(1, seconds(10)),
@@ -2756,7 +2756,7 @@ mod pull_protocol {
 		let tick_version = h
 			.await_version_beyond(pre_tick, seconds(10))
 			.expect("the tick must commit the eviction it fired");
-		h.await_safe_watermark(tick_version);
+		h.await_readable_through(tick_version);
 		(actor, pre_tick)
 	}
 
@@ -2848,7 +2848,7 @@ mod pull_protocol {
 			                  { id: 2, v: 20, ts: "1970-01-01T00:01:01Z" }]"#,
 		);
 		let filled = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(filled);
+		h.await_readable_through(filled);
 		h.wake(&actor);
 		assert_eq!(
 			h.await_view_rows(2, seconds(10)),
@@ -2864,7 +2864,7 @@ mod pull_protocol {
 
 		h.te.command(r#"INSERT app::t [{ id: 3, v: 30, ts: "1970-01-01T00:01:02Z" }]"#);
 		let overflow = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(overflow);
+		h.await_readable_through(overflow);
 		h.wake(&actor);
 		assert_eq!(
 			h.await_position(overflow, seconds(10)),
@@ -2877,7 +2877,7 @@ mod pull_protocol {
 		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
 		let tick_version =
 			h.await_version_beyond(pre_tick, seconds(10)).expect("the tick must commit the ttl eviction");
-		h.await_safe_watermark(tick_version);
+		h.await_readable_through(tick_version);
 
 		let deletes = h
 			.poll_until(seconds(10), || {
@@ -2992,7 +2992,7 @@ mod pull_protocol {
 			                   {id: 3, g: 2, ts: "1970-01-01T00:02:00Z"}]"#,
 		);
 		let target = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(target);
+		h.await_readable_through(target);
 		h.wake(&actor);
 		assert_eq!(h.await_view_rows(2, seconds(10)), 2, "the aggregate must materialize its two groups");
 		assert_eq!(h.await_position(target, seconds(5)), Some(target));
@@ -3109,7 +3109,7 @@ mod pull_protocol {
 
 		h.te.command(r#"INSERT app::t [{id: 4, g: 3, ts: "1970-01-01T00:03:00Z"}]"#);
 		let after_restart = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(after_restart);
+		h.await_readable_through(after_restart);
 		h.wake(&actor2);
 
 		assert!(
@@ -3142,7 +3142,7 @@ mod pull_protocol {
 				r#"INSERT app::t [{{ id: {id}, v: {id}, ts: "1970-01-01T00:{id:02}:00Z" }}]"#
 			));
 			let target = h.engine.current_version().expect("current version");
-			h.await_safe_watermark(target);
+			h.await_readable_through(target);
 			h.wake(&actor);
 			assert_eq!(
 				h.await_position(target, seconds(10)),
@@ -4488,7 +4488,7 @@ mod tick_failures {
 		assert!(!harness.state().poisoned, "precondition: registration must succeed");
 		harness.state_mut().hold_cache = Some(HoldCache {
 			watermarks: Vec::new(),
-			holds: WatermarkHolds::new(),
+			holds: OutputWatermarkHolds::new(),
 		});
 
 		tick(&mut harness);

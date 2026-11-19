@@ -21,7 +21,7 @@ impl NamespaceId {
 	pub const SYSTEM_METRIC_PROFILER_SPAN: NamespaceId = NamespaceId(11);
 	pub const SYSTEM_METRIC_RUNTIME: NamespaceId = NamespaceId(12);
 	pub const SYSTEM_METRIC_RUNTIME_MEMORY: NamespaceId = NamespaceId(13);
-	pub const SYSTEM_METRIC_RUNTIME_WATERMARK: NamespaceId = NamespaceId(14);
+	pub const SYSTEM_METRIC_RUNTIME_MVCC: NamespaceId = NamespaceId(14);
 	pub const SYSTEM_METRIC_RUNTIME_OPERATOR: NamespaceId = NamespaceId(15);
 	pub const SYSTEM_METRIC_PROC: NamespaceId = NamespaceId(16);
 	pub const SYSTEM_METRIC_PROC_PROCESS: NamespaceId = NamespaceId(17);

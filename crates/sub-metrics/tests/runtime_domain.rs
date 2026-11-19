@@ -3,7 +3,7 @@
 
 //! Runtime metrics domain split, driven end to end through the wired subsystem.
 //!
-//! Pins the per-domain partitioning on the real path: watermark metrics land under `watermarks`, never `memory`,
+//! Pins the per-domain partitioning on the real path: mvcc metrics land under `mvcc`, never `memory`,
 //! and an engine with no flow state exposes an empty `operators::current`. `::current` stays empty until a sampler
 //! tick runs, so the positive assertions poll; the absence assertions hold regardless of timing.
 
@@ -22,28 +22,28 @@ fn db_with_runtime_refresh() -> TestDb {
 }
 
 #[test]
-fn watermark_metrics_live_in_the_watermarks_domain_not_memory() {
+fn mvcc_metrics_live_in_the_mvcc_domain_not_memory() {
 	let db = db_with_runtime_refresh();
 
-	let watermark_lag = db.await_row_count(
-		"from system::metric::runtime::watermark::current filter { metric == \"watermark_lag\" }",
+	let query_done_until_lag = db.await_row_count(
+		"from system::metric::runtime::mvcc::current filter { metric == \"query_done_until_lag\" }",
 		1,
 		TIMEOUT,
 	);
-	assert_eq!(watermark_lag, 1, "watermark_lag must appear in the watermarks domain");
+	assert_eq!(query_done_until_lag, 1, "query_done_until_lag must appear in the mvcc domain");
 
 	assert_eq!(
 		db.row_count(
-			"from system::metric::runtime::watermark::current filter { metric == \"oracle_window_count\" }"
+			"from system::metric::runtime::mvcc::current filter { metric == \"oracle_window_count\" }"
 		),
 		1,
-		"oracle_window_count must be in the watermarks domain",
+		"oracle_window_count must be in the mvcc domain",
 	);
 
 	assert_eq!(
-		db.row_count("from system::metric::runtime::memory::current filter { metric == \"watermark_lag\" }"),
+		db.row_count("from system::metric::runtime::memory::current filter { metric == \"query_done_until_lag\" }"),
 		0,
-		"watermark_lag must not appear in the memory domain",
+		"query_done_until_lag must not appear in the memory domain",
 	);
 
 	assert_eq!(

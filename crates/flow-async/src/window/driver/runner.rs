@@ -122,8 +122,8 @@ where
 		{
 			C::observe(store, newest, seal_span)?;
 		}
-		let watermark = C::operator_watermark(store)?;
-		let horizon = C::horizon(watermark, seal_span);
+		let operator_watermark = C::operator_watermark(store)?;
+		let horizon = C::horizon(operator_watermark, seal_span);
 		let mut dropped = 0u64;
 		routed.buckets.retain(|(_, span), events| {
 			if is_sealed(span.start, horizon) {
@@ -138,7 +138,7 @@ where
 		self.sealed_drops.note(dropped);
 		if !C::arms_timer() {
 			let out = finish_tumbling(engine, store, routed, hooks, ExpiryAnchor::WindowStart)?;
-			self.close_inline(engine, store, watermark, seal_span)?;
+			self.close_inline(engine, store, operator_watermark, seal_span)?;
 			return Ok(out);
 		}
 		let before = engine.earliest_expiry(store)?;
@@ -152,14 +152,14 @@ where
 		&mut self,
 		engine: &mut TumblingEngine<G, C, A>,
 		store: &mut dyn WindowStore,
-		watermark: C,
+		operator_watermark: C,
 		seal_span: C::SealSpan,
 	) -> Result<(), ValueError>
 	where
 		G: Clone + Eq + Ord + Hash + Debug + StateCodec,
 		A: WindowAccumulator,
 	{
-		if close_through(engine, store, watermark, seal_span, usize::MAX, true)? {
+		if close_through(engine, store, operator_watermark, seal_span, usize::MAX, true)? {
 			self.reap_pending = true;
 		}
 		if self.reap_pending {
