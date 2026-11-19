@@ -27,7 +27,7 @@ use crate::{
 	operator::max_input_time,
 	transaction::{
 		ChangeCoordinate, FlowTransaction,
-		frontier::{Frontier, OutputFrontiers},
+		output_watermark::{OutputWatermarks, PublishedWatermark},
 		watermark::SourceWatermarks,
 	},
 };
@@ -123,11 +123,11 @@ impl FlowEngineInner {
 			published_arrivals(&self.lookup_sources, &self.substrate.frontiers, flow_id, version, &sources);
 		silent.extend(lookup_silent);
 		warn_unpublished(flow_id, &silent);
-		advance_lookup_frontiers(txn, &lookup_arrivals)?;
-		freeze_arrival_frontier(txn, &sources, &arrivals)
+		advance_source_watermarks(txn, &lookup_arrivals)?;
+		freeze_flow_watermark(txn, &sources, &arrivals)
 	}
 
-	pub fn published_frontiers(&self, flow_id: FlowId, version: CommitVersion) -> Vec<Frontier> {
+	pub fn published_watermarks(&self, flow_id: FlowId, version: CommitVersion) -> Vec<PublishedWatermark> {
 		self.sources
 			.iter()
 			.chain(self.lookup_sources.iter())
@@ -185,8 +185,8 @@ impl FlowEngineInner {
 		silent.extend(lookup_silent);
 		warn_unpublished(flow_id, &silent);
 		arrivals.extend(published);
-		advance_lookup_frontiers(txn, &lookup_published)?;
-		freeze_arrival_frontier(txn, &sources, &arrivals)?;
+		advance_source_watermarks(txn, &lookup_published)?;
+		freeze_flow_watermark(txn, &sources, &arrivals)?;
 
 		let mut nodes_processed = self.run_topology(txn, flow, pending, topo)?;
 		nodes_processed += self.dispatch_due_timers(txn, flow, version, topo)?;
@@ -267,7 +267,7 @@ fn completeness_arrivals(
 
 fn published_arrivals(
 	sources: &BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
-	frontiers: &OutputFrontiers,
+	frontiers: &OutputWatermarks,
 	flow_id: FlowId,
 	version: CommitVersion,
 	counted: &[OperatorId],
@@ -284,18 +284,20 @@ fn published_arrivals(
 		}
 
 		match frontiers.resolve(*object, version) {
-			Frontier::Visible(at) => out.extend(readers.into_iter().map(|source| SourceArrival {
-				source,
-				at,
-			})),
-			Frontier::Unpublished
+			PublishedWatermark::Visible(at) => {
+				out.extend(readers.into_iter().map(|source| SourceArrival {
+					source,
+					at,
+				}))
+			}
+			PublishedWatermark::Unpublished
 				if matches!(object, ObjectId::View(_))
 					&& readers.iter().any(|reader| counted.contains(reader)) =>
 			{
 				silent.push(*object)
 			}
-			Frontier::Unpublished => {}
-			Frontier::Withheld => {}
+			PublishedWatermark::Unpublished => {}
+			PublishedWatermark::Withheld => {}
 		}
 	}
 	if out.is_empty() {
@@ -347,14 +349,14 @@ fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>)
 	Ok(())
 }
 
-fn advance_lookup_frontiers<T: FlowTransaction>(txn: &mut T, arrivals: &[SourceArrival]) -> Result<(), ValueError> {
+fn advance_source_watermarks<T: FlowTransaction>(txn: &mut T, arrivals: &[SourceArrival]) -> Result<(), ValueError> {
 	for arrival in arrivals {
 		SourceWatermarks::advance(arrival.source, txn, arrival.at)?;
 	}
 	Ok(())
 }
 
-fn freeze_arrival_frontier<T: FlowTransaction>(
+fn freeze_flow_watermark<T: FlowTransaction>(
 	txn: &mut T,
 	sources: &[OperatorId],
 	arrivals: &[SourceArrival],
@@ -513,7 +515,7 @@ mod tests {
 		// A sibling flow's reader must never be advanced by rows it never saw.
 		let object = ObjectId::View(ViewId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3)), (FlowId(2), OperatorId(4))])]);
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
 
 		let (arrivals, _) = published_arrivals(
@@ -539,7 +541,7 @@ mod tests {
 		// are still in flight.
 		let object = ObjectId::View(ViewId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
 
 		assert!(published_arrivals(
@@ -574,7 +576,7 @@ mod tests {
 		// zero.
 		let object = ObjectId::Table(TableId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 
 		let (arrivals, _) = published_arrivals(
 			&sources,
@@ -597,7 +599,7 @@ mod tests {
 			(stuck, vec![(FlowId(1), OperatorId(3))]),
 			(live, vec![(FlowId(1), OperatorId(4))]),
 		]);
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 		frontiers.publish(live, at_millis(9_000), CommitVersion(10));
 
 		let (_, silent) = published_arrivals(
@@ -620,7 +622,7 @@ mod tests {
 			(stuck, vec![(FlowId(1), OperatorId(3))]),
 			(live, vec![(FlowId(1), OperatorId(4))]),
 		]);
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 		frontiers.publish(live, at_millis(9_000), CommitVersion(10));
 
 		let (_, silent) =
@@ -639,7 +641,7 @@ mod tests {
 			(stuck, vec![(FlowId(1), OperatorId(3))]),
 			(other, vec![(FlowId(1), OperatorId(4))]),
 		]);
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 
 		let (arrivals, silent) = published_arrivals(
 			&sources,
@@ -663,7 +665,7 @@ mod tests {
 			(stuck, vec![(FlowId(1), OperatorId(3))]),
 			(withheld, vec![(FlowId(1), OperatorId(4))]),
 		]);
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 		frontiers.publish(withheld, at_millis(9_000), CommitVersion(20));
 
 		let (arrivals, silent) = published_arrivals(
@@ -688,7 +690,7 @@ mod tests {
 			(table, vec![(FlowId(1), OperatorId(3))]),
 			(live, vec![(FlowId(1), OperatorId(4))]),
 		]);
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 		frontiers.publish(live, at_millis(9_000), CommitVersion(10));
 
 		let (_, silent) = published_arrivals(
@@ -849,7 +851,7 @@ mod tests {
 
 	#[test]
 	fn process_version_folds_an_assertion_into_the_frontier() {
-		// Without the fold reaching freeze_arrival_frontier the assertion is decoded and discarded.
+		// Without the fold reaching freeze_flow_watermark the assertion is decoded and discarded.
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
@@ -903,7 +905,7 @@ mod tests {
 		let asserted = BTreeMap::from([(9u64, at_millis(30_000))]);
 
 		let arrivals = completeness_arrivals(&sources, FlowId(1), &asserted);
-		freeze_arrival_frontier(&mut txn, &[SOURCE], &arrivals).unwrap();
+		freeze_flow_watermark(&mut txn, &[SOURCE], &arrivals).unwrap();
 
 		assert_eq!(
 			SourceWatermarks::source_watermark(SOURCE, &mut txn).unwrap(),
@@ -920,7 +922,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 
-		freeze_arrival_frontier(
+		freeze_flow_watermark(
 			&mut txn,
 			&[SOURCE],
 			&[SourceArrival {
@@ -929,7 +931,7 @@ mod tests {
 			}],
 		)
 		.unwrap();
-		freeze_arrival_frontier(
+		freeze_flow_watermark(
 			&mut txn,
 			&[SOURCE],
 			&[SourceArrival {

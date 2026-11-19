@@ -12,35 +12,35 @@ use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Published {
-	frontier_ms: i64,
+	watermark_ms: i64,
 	at: CommitVersion,
 	clamped: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Frontier {
+pub enum PublishedWatermark {
 	Unpublished,
 	Withheld,
 	Visible(DateTime),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FrontierEntry {
+pub struct OutputWatermarkEntry {
 	pub output: ObjectId,
-	pub frontier: DateTime,
+	pub watermark: DateTime,
 	pub at: CommitVersion,
 }
 
-pub type FrontierEntries = Vec<FrontierEntry>;
+pub type OutputWatermarkEntries = Vec<OutputWatermarkEntry>;
 
 #[derive(Clone, Default)]
-pub struct OutputFrontiers {
+pub struct OutputWatermarks {
 	inner: Arc<DashMap<ObjectId, Published>>,
 	generation: Arc<AtomicU64>,
 	persisted: Arc<AtomicU64>,
 }
 
-impl OutputFrontiers {
+impl OutputWatermarks {
 	pub fn publish(&self, output: ObjectId, frontier: DateTime, at: CommitVersion) {
 		reifydb_assertions! {
 			assert!(
@@ -50,50 +50,50 @@ impl OutputFrontiers {
 				 frontier was established"
 			);
 		}
-		let frontier_ms = frontier.to_millis();
+		let watermark_ms = frontier.to_millis();
 		self.inner
 			.entry(output)
 			.and_modify(|current| {
 				if !current.clamped {
-					current.frontier_ms = frontier_ms;
+					current.watermark_ms = watermark_ms;
 					current.at = at;
 					current.clamped = true;
-				} else if frontier_ms > current.frontier_ms {
-					current.frontier_ms = frontier_ms;
+				} else if watermark_ms > current.watermark_ms {
+					current.watermark_ms = watermark_ms;
 					current.at = at;
 				}
 			})
 			.or_insert(Published {
-				frontier_ms,
+				watermark_ms,
 				at,
 				clamped: true,
 			});
 		self.generation.fetch_add(1, Ordering::AcqRel);
 	}
 
-	pub fn resolve(&self, output: ObjectId, version: CommitVersion) -> Frontier {
+	pub fn resolve(&self, output: ObjectId, version: CommitVersion) -> PublishedWatermark {
 		match self.inner.get(&output) {
-			None => Frontier::Unpublished,
-			Some(published) if !published.clamped => Frontier::Withheld,
+			None => PublishedWatermark::Unpublished,
+			Some(published) if !published.clamped => PublishedWatermark::Withheld,
 			Some(published) if published.at < version => {
-				Frontier::Visible(DateTime::from_millis(published.frontier_ms))
+				PublishedWatermark::Visible(DateTime::from_millis(published.watermark_ms))
 			}
-			Some(_) => Frontier::Withheld,
+			Some(_) => PublishedWatermark::Withheld,
 		}
 	}
 
-	pub fn entries(&self) -> FrontierEntries {
+	pub fn entries(&self) -> OutputWatermarkEntries {
 		self.inner
 			.iter()
-			.map(|entry| FrontierEntry {
+			.map(|entry| OutputWatermarkEntry {
 				output: *entry.key(),
-				frontier: DateTime::from_millis(entry.frontier_ms),
+				watermark: DateTime::from_millis(entry.watermark_ms),
 				at: entry.at,
 			})
 			.collect()
 	}
 
-	pub fn unpersisted(&self) -> Option<(u64, FrontierEntries)> {
+	pub fn unpersisted(&self) -> Option<(u64, OutputWatermarkEntries)> {
 		let generation = self.generation.load(Ordering::Acquire);
 		if generation == self.persisted.load(Ordering::Acquire) {
 			return None;
@@ -105,22 +105,22 @@ impl OutputFrontiers {
 		self.persisted.fetch_max(generation, Ordering::AcqRel);
 	}
 
-	pub fn hydrate(&self, entries: FrontierEntries) {
+	pub fn hydrate(&self, entries: OutputWatermarkEntries) {
 		for entry in entries {
-			let frontier_ms = entry.frontier.to_millis();
+			let watermark_ms = entry.watermark.to_millis();
 			self.inner
 				.entry(entry.output)
 				.and_modify(|current| {
-					if frontier_ms > current.frontier_ms {
+					if watermark_ms > current.watermark_ms {
 						*current = Published {
-							frontier_ms,
+							watermark_ms,
 							at: entry.at,
 							clamped: false,
 						};
 					}
 				})
 				.or_insert(Published {
-					frontier_ms,
+					watermark_ms,
 					at: entry.at,
 					clamped: false,
 				});

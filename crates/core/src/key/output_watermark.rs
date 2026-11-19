@@ -17,12 +17,12 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
-#[key(tag = OutputFrontier)]
-pub struct OutputFrontierKey {
+#[key(tag = OutputWatermark)]
+pub struct OutputWatermarkKey {
 	pub object: ObjectId,
 }
 
-impl OutputFrontierKey {
+impl OutputWatermarkKey {
 	pub fn new(object: impl Into<ObjectId>) -> Self {
 		Self {
 			object: object.into(),
@@ -42,7 +42,7 @@ impl OutputFrontierKey {
 pub mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use super::OutputFrontierKey;
+	use super::OutputWatermarkKey;
 	use crate::{
 		interface::catalog::{id::ViewId, object::ObjectId},
 		key::KeyTag,
@@ -50,11 +50,11 @@ pub mod tests {
 
 	#[test]
 	fn test_encode_decode() {
-		let key = OutputFrontierKey {
+		let key = OutputWatermarkKey {
 			object: ObjectId::View(ViewId(0xABCD)),
 		};
 		let encoded = key.encode();
-		let decoded = OutputFrontierKey::decode(&encoded).unwrap();
+		let decoded = OutputWatermarkKey::decode(&encoded).unwrap();
 
 		assert_eq!(decoded.object, ObjectId::View(ViewId(0xABCD)));
 		assert_eq!(key, decoded);
@@ -63,18 +63,18 @@ pub mod tests {
 	#[test]
 	fn the_tag_byte_is_the_inverted_kind() {
 		// extend_u8 inverts, so a raw 0x1D here would sort into a neighbouring keyspace.
-		let encoded = OutputFrontierKey::encoded(ObjectId::View(ViewId(1)));
+		let encoded = OutputWatermarkKey::encoded(ObjectId::View(ViewId(1)));
 
-		assert_eq!(encoded.as_slice()[0], !(KeyTag::OutputFrontier as u8));
+		assert_eq!(encoded.as_slice()[0], !(KeyTag::OutputWatermark as u8));
 	}
 
 	#[test]
 	fn a_key_of_another_kind_never_decodes_as_a_frontier() {
 		// 0x1D previously held FlowNodeInternalState, so a stale row must be rejected, never misread.
-		let mut foreign = OutputFrontierKey::encoded(ObjectId::View(ViewId(1))).as_slice().to_vec();
+		let mut foreign = OutputWatermarkKey::encoded(ObjectId::View(ViewId(1))).as_slice().to_vec();
 		foreign[0] = !(KeyTag::FlowEdgeByFlow as u8);
 
-		assert!(OutputFrontierKey::decode(&EncodedKey::new(foreign)).is_none());
+		assert!(OutputWatermarkKey::decode(&EncodedKey::new(foreign)).is_none());
 	}
 
 	#[test]
@@ -87,24 +87,24 @@ pub mod tests {
 			ObjectId::ringbuffer(4),
 			ObjectId::queue(5),
 		] {
-			let encoded = OutputFrontierKey::encoded(object);
+			let encoded = OutputWatermarkKey::encoded(object);
 
 			assert_eq!(
 				encoded.as_slice()[0],
-				!(KeyTag::OutputFrontier as u8),
+				!(KeyTag::OutputWatermark as u8),
 				"{:?} encoded under a foreign tag",
 				object
 			);
-			assert_eq!(OutputFrontierKey::decode(&encoded).unwrap().object, object);
+			assert_eq!(OutputWatermarkKey::decode(&encoded).unwrap().object, object);
 		}
 	}
 
 	#[test]
 	fn test_order_preserving_within_same_object_kind() {
-		let key1 = OutputFrontierKey {
+		let key1 = OutputWatermarkKey {
 			object: ObjectId::table(1),
 		};
-		let key2 = OutputFrontierKey {
+		let key2 = OutputWatermarkKey {
 			object: ObjectId::table(2),
 		};
 
@@ -119,15 +119,15 @@ pub mod tests {
 mod verify_byte_identical {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::OutputFrontierKey;
+	use super::OutputWatermarkKey;
 	use crate::{
 		interface::catalog::{id::ViewId, object::ObjectId},
 		key::catalog::KeySerializerCatalogExt,
 	};
 
-	fn legacy_encode(key: &OutputFrontierKey) -> Vec<u8> {
+	fn legacy_encode(key: &OutputWatermarkKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(OutputFrontierKey::TAG as u8).extend_object_id(key.object);
+		serializer.extend_u8(OutputWatermarkKey::TAG as u8).extend_object_id(key.object);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 
@@ -140,7 +140,7 @@ mod verify_byte_identical {
 			ObjectId::ringbuffer(4),
 			ObjectId::queue(5),
 		] {
-			let key = OutputFrontierKey {
+			let key = OutputWatermarkKey {
 				object,
 			};
 			assert_eq!(legacy_encode(&key), key.encode().as_slice().to_vec(), "object={object:?}");

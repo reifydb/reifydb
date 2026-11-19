@@ -7,7 +7,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_flow_async::transaction::substrate::FlowSubstrate;
 use reifydb_runtime::context::transaction::TransactionContext;
 
-use crate::progress::output_frontier;
+use crate::progress::output_watermark;
 
 pub struct FlowShutdownState {
 	engine: StandardEngine,
@@ -22,8 +22,8 @@ impl FlowShutdownState {
 		}
 	}
 
-	pub fn persist_frontiers(&self) {
-		if let Err(e) = output_frontier::try_sweep(
+	pub fn persist_output_watermarks(&self) {
+		if let Err(e) = output_watermark::try_sweep(
 			&Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			self.engine.single(),
 			&self.substrate.frontiers,

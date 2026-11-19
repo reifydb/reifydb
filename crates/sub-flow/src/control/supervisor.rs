@@ -85,7 +85,7 @@ use crate::{
 	marker::MarkerMap,
 	progress::{
 		frontier::ControlFrontier,
-		output_frontier,
+		output_watermark,
 		tracker::{FlowPositionTracker, FlowWaker, FoldShape, ObjectVersionTracker},
 	},
 };
@@ -111,7 +111,7 @@ pub enum FlowSupervisorMessage {
 
 	WakeAll,
 
-	PersistFrontiers,
+	PersistOutputWatermarks,
 
 	CheckStalls,
 
@@ -167,7 +167,7 @@ pub struct FlowSupervisorParams {
 	pub load_batch_bytes: ByteSize,
 	pub checkpoint_lag: u64,
 	pub checkpoint_max_age: Duration,
-	pub frontier_persist: Duration,
+	pub output_watermark_persist: Duration,
 	pub markers: Option<MarkerMap>,
 }
 
@@ -195,7 +195,7 @@ pub struct FlowSupervisor {
 	load_batch_bytes: ByteSize,
 	checkpoint_lag: u64,
 	checkpoint_max_age: Duration,
-	frontier_persist: Duration,
+	output_watermark_persist: Duration,
 	full_wake_interval: Duration,
 	markers: Option<MarkerMap>,
 }
@@ -253,7 +253,7 @@ impl FlowSupervisor {
 			load_batch_bytes: params.load_batch_bytes,
 			checkpoint_lag: params.checkpoint_lag,
 			checkpoint_max_age: params.checkpoint_max_age,
-			frontier_persist: params.frontier_persist,
+			output_watermark_persist: params.output_watermark_persist,
 			full_wake_interval,
 			markers: params.markers,
 		}
@@ -328,7 +328,7 @@ impl FlowSupervisor {
 		drop(query);
 		self.publish_lineage(state);
 
-		self.hydrate_frontiers();
+		self.hydrate_output_watermarks();
 
 		let scan_cursor = scan_from;
 		let scan_lsn = self.floor.position().unwrap_or(Lsn::new(0));
@@ -408,14 +408,14 @@ impl FlowSupervisor {
 		self.poll_frontier.store(scan_cursor);
 	}
 
-	fn hydrate_frontiers(&self) {
-		match output_frontier::hydrate(
+	fn hydrate_output_watermarks(&self) {
+		match output_watermark::hydrate(
 			&Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			&self.engine.single().read_store(),
 		) {
 			Ok(entries) => {
 				if !entries.is_empty() {
-					debug!(count = entries.len(), "hydrated output frontiers");
+					debug!(count = entries.len(), "hydrated output watermarks");
 				}
 				self.substrate.frontiers.hydrate(entries);
 			}
@@ -423,13 +423,13 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn handle_persist_frontiers(&self, ctx: &Context<FlowSupervisorMessage>) {
-		output_frontier::sweep(
+	fn handle_persist_output_watermarks(&self, ctx: &Context<FlowSupervisorMessage>) {
+		output_watermark::sweep(
 			&Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			self.engine.single(),
 			&self.substrate.frontiers,
 		);
-		ctx.schedule_once(self.frontier_persist, || FlowSupervisorMessage::PersistFrontiers);
+		ctx.schedule_once(self.output_watermark_persist, || FlowSupervisorMessage::PersistOutputWatermarks);
 	}
 
 	fn handle_wake(&self, state: &mut SupervisorState, ctx: &Context<FlowSupervisorMessage>) {
@@ -1736,7 +1736,7 @@ impl Actor for FlowSupervisor {
 	type Message = FlowSupervisorMessage;
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
-		ctx.schedule_once(self.frontier_persist, || FlowSupervisorMessage::PersistFrontiers);
+		ctx.schedule_once(self.output_watermark_persist, || FlowSupervisorMessage::PersistOutputWatermarks);
 		ctx.schedule_once(Duration::from_milliseconds(FLOW_STALL_CHECK_INTERVAL_MS).unwrap(), || {
 			FlowSupervisorMessage::CheckStalls
 		});
@@ -1768,7 +1768,7 @@ impl Actor for FlowSupervisor {
 			} => self.handle_bootstrap(state, ctx, scan_from, scan_lease),
 			FlowSupervisorMessage::Wake => self.handle_wake(state, ctx),
 			FlowSupervisorMessage::WakeAll => self.handle_wake_all(state),
-			FlowSupervisorMessage::PersistFrontiers => self.handle_persist_frontiers(ctx),
+			FlowSupervisorMessage::PersistOutputWatermarks => self.handle_persist_output_watermarks(ctx),
 			FlowSupervisorMessage::CheckStalls => self.handle_check_stalls(state, ctx),
 			FlowSupervisorMessage::Reform {
 				head,

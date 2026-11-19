@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 mod dispatch;
-pub mod frontier;
 mod lifecycle;
 mod process;
 pub mod register;
 mod tick;
 mod timers;
+pub mod watermark_hold;
 mod watermarks;
 
 use std::{

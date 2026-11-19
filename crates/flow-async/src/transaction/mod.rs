@@ -41,10 +41,10 @@ use reifydb_value::{byte_size::ByteSize, value::datetime::DateTime};
 
 pub mod deferred;
 pub mod dictionary;
-pub mod frontier;
 pub mod join_expiry;
 #[cfg(test)]
 pub(crate) mod mock;
+pub mod output_watermark;
 pub mod read;
 pub mod reclaim;
 pub mod row_number;

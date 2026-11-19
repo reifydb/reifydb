@@ -22,7 +22,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WatermarkHold {
 	pub object: ObjectId,
-	pub frontier: DateTime,
+	pub watermark: DateTime,
 }
 
 pub type WatermarkHolds = Vec<WatermarkHold>;
@@ -49,7 +49,7 @@ impl FlowEngineInner {
 			.filter(|(registered, _)| *registered == flow_id)
 			.map(|(_, operator)| *operator)
 			.collect();
-		let frontiers = output_frontiers(txn, flow, &self.operators, topo, &lookups)?;
+		let frontiers = output_watermarks(txn, flow, &self.operators, topo, &lookups)?;
 
 		let mut held: WatermarkHolds = Vec::with_capacity(sinks.len());
 		for (object, operator_id) in sinks.iter().copied() {
@@ -61,14 +61,14 @@ impl FlowEngineInner {
 			}
 			held.push(WatermarkHold {
 				object,
-				frontier: *frontier,
+				watermark: *frontier,
 			});
 		}
 		Ok(held)
 	}
 }
 
-fn output_frontiers<T: FlowTransaction>(
+fn output_watermarks<T: FlowTransaction>(
 	txn: &mut T,
 	flow: &FlowDag,
 	operators: &BTreeMap<(FlowId, OperatorId), BoxedHostOperator>,
@@ -185,7 +185,7 @@ mod tests {
 	fn hold(view: u64, frontier: i64) -> WatermarkHold {
 		WatermarkHold {
 			object: ObjectId::View(ViewId(view)),
-			frontier: at_millis(frontier),
+			watermark: at_millis(frontier),
 		}
 	}
 

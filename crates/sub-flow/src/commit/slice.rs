@@ -29,9 +29,10 @@ use reifydb_engine::{
 };
 use reifydb_flow::operator::sink::table::dictionary_lookup_view_columns;
 use reifydb_flow_async::{
-	engine::{COMPLETENESS_OBJECT, FlowEngineInner, frontier::WatermarkHolds},
+	engine::{COMPLETENESS_OBJECT, FlowEngineInner, watermark_hold::WatermarkHolds},
 	transaction::{
-		DeferredParams, FlowTransaction, LookupContext, deferred::DeferredTransaction, frontier::Frontier,
+		DeferredParams, FlowTransaction, LookupContext, deferred::DeferredTransaction,
+		output_watermark::PublishedWatermark,
 	},
 };
 use reifydb_runtime::context::transaction::TransactionContext;
@@ -61,7 +62,7 @@ pub struct SliceConfig {
 }
 
 pub struct HoldCache {
-	pub(crate) frontiers: Vec<Frontier>,
+	pub(crate) frontiers: Vec<PublishedWatermark>,
 	pub(crate) holds: WatermarkHolds,
 }
 
@@ -154,10 +155,15 @@ impl SliceComputer {
 		Ok(checkpoints)
 	}
 
-	fn unit_frontiers(&self, flow_engine: &FlowEngineInner, head: FlowId, version: CommitVersion) -> Vec<Frontier> {
+	fn unit_frontiers(
+		&self,
+		flow_engine: &FlowEngineInner,
+		head: FlowId,
+		version: CommitVersion,
+	) -> Vec<PublishedWatermark> {
 		self.unit_ids(head)
 			.into_iter()
-			.flat_map(|flow| flow_engine.published_frontiers(flow, version))
+			.flat_map(|flow| flow_engine.published_watermarks(flow, version))
 			.collect()
 	}
 
@@ -881,7 +887,7 @@ mod integration {
 	};
 	use reifydb_flow::txn::FlowGet;
 	use reifydb_flow_async::{
-		engine::frontier::WatermarkHold,
+		engine::watermark_hold::WatermarkHold,
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{
 			read::{ReadFrom, read_from},
@@ -1089,7 +1095,7 @@ mod integration {
 			held,
 			vec![WatermarkHold {
 				object: ObjectId::View(ViewId(3)),
-				frontier: at_millis(30_000)
+				watermark: at_millis(30_000)
 			}],
 			"resolved_holds must read the seeded watermark through the shared substrate"
 		);
@@ -2161,10 +2167,10 @@ mod integration {
 		};
 		let sentinel = WatermarkHold {
 			object: ObjectId::View(ViewId(3)),
-			frontier: at_millis(12_345),
+			watermark: at_millis(12_345),
 		};
 		let mut hold_cache = Some(HoldCache {
-			frontiers: flow_engine.published_frontiers(flow, CommitVersion(7)),
+			frontiers: flow_engine.published_watermarks(flow, CommitVersion(7)),
 			holds: vec![sentinel],
 		});
 

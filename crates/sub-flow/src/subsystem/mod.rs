@@ -80,7 +80,7 @@ use crate::{
 
 const FLOW_CHECKPOINT_LAG: u64 = 10_000;
 const FLOW_CHECKPOINT_MAX_AGE_MS: i64 = 5_000;
-const FLOW_FRONTIER_PERSIST_MS: i64 = 5_000;
+const FLOW_OUTPUT_WATERMARK_PERSIST_MS: i64 = 5_000;
 
 pub struct FlowSubsystem {
 	flow_scope: ActorSpawner,
@@ -189,7 +189,8 @@ impl FlowSubsystem {
 				load_batch_bytes,
 				checkpoint_lag: FLOW_CHECKPOINT_LAG,
 				checkpoint_max_age: Duration::from_milliseconds(FLOW_CHECKPOINT_MAX_AGE_MS).unwrap(),
-				frontier_persist: Duration::from_milliseconds(FLOW_FRONTIER_PERSIST_MS).unwrap(),
+				output_watermark_persist: Duration::from_milliseconds(FLOW_OUTPUT_WATERMARK_PERSIST_MS)
+					.unwrap(),
 				markers: markers.map(|plane| plane.map().clone()),
 			}),
 		);
@@ -350,7 +351,7 @@ impl Shutdown for FlowSubsystem {
 			}
 		}
 
-		self.shutdown_state.persist_frontiers();
+		self.shutdown_state.persist_output_watermarks();
 		self.view_lineage.publish(Default::default());
 		errors.finish()
 	}

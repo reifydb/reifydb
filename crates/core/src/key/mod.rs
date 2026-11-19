@@ -17,7 +17,7 @@ pub mod metric;
 pub mod namespace;
 pub mod operator;
 pub mod operator_retention;
-pub mod output_frontier;
+pub mod output_watermark;
 pub mod partition;
 pub mod procedure;
 pub mod queue;

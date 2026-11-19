@@ -38,7 +38,7 @@ use reifydb_core::{
 use reifydb_core::{interface::catalog::storage::StorageId, key::any::TaggedKey};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow_async::{
-	engine::{FlowEngineInner, frontier::WatermarkHolds},
+	engine::{FlowEngineInner, watermark_hold::WatermarkHolds},
 	operator::metrics::OperatorSampleRegistry,
 	transaction::{LookupContext, substrate::FlowSubstrate},
 };
@@ -876,7 +876,7 @@ impl FlowActor {
 				state.cursor = advance_to;
 				state.cursor_lsn = lsn;
 				for hold in holds {
-					self.substrate.frontiers.publish(hold.object, hold.frontier, advance_to);
+					self.substrate.frontiers.publish(hold.object, hold.watermark, advance_to);
 				}
 				self.move_lookup_lease(state);
 				self.publish_position(advance_to);
@@ -1041,7 +1041,7 @@ impl FlowActor {
 				advance_to
 			};
 			for hold in holds {
-				self.substrate.frontiers.publish(hold.object, hold.frontier, at);
+				self.substrate.frontiers.publish(hold.object, hold.watermark, at);
 			}
 		}
 		match result {
@@ -1146,7 +1146,7 @@ impl FlowActor {
 		}
 	}
 
-	fn on_publish_restored_frontiers(&self, state: &mut FlowActorState) {
+	fn on_publish_restored_output_watermarks(&self, state: &mut FlowActorState) {
 		if state.poisoned {
 			return;
 		}
@@ -1157,7 +1157,7 @@ impl FlowActor {
 				for hold in holds {
 					self.substrate.frontiers.publish(
 						hold.object,
-						hold.frontier,
+						hold.watermark,
 						self.initial_cursor,
 					);
 				}
@@ -1459,7 +1459,7 @@ impl Actor for FlowActor {
 			ctx.schedule_once(interval, || FlowActorMessage::Sample);
 		}
 		if self.initial_cursor > CommitVersion::BEFORE_FIRST {
-			let _ = ctx.self_ref().send(FlowActorMessage::PublishRestoredFrontiers);
+			let _ = ctx.self_ref().send(FlowActorMessage::PublishRestoredOutputWatermarks);
 		}
 
 		let state = FlowActorState {
@@ -1544,8 +1544,8 @@ impl Actor for FlowActor {
 				self.on_sample(state, ctx);
 				Directive::Continue
 			}
-			FlowActorMessage::PublishRestoredFrontiers => {
-				self.on_publish_restored_frontiers(state);
+			FlowActorMessage::PublishRestoredOutputWatermarks => {
+				self.on_publish_restored_output_watermarks(state);
 				Directive::Continue
 			}
 			FlowActorMessage::UpdateSources {

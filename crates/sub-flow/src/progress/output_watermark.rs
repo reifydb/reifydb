@@ -7,9 +7,11 @@ use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::object::ObjectId, store::SingleVersionRange},
-	key::output_frontier::OutputFrontierKey,
+	key::output_watermark::OutputWatermarkKey,
 };
-use reifydb_flow_async::transaction::frontier::{FrontierEntries, FrontierEntry, OutputFrontiers};
+use reifydb_flow_async::transaction::output_watermark::{
+	OutputWatermarkEntries, OutputWatermarkEntry, OutputWatermarks,
+};
 use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::single::SingleTransaction;
@@ -18,21 +20,21 @@ use tracing::warn;
 
 const HYDRATE_BATCH: u64 = 1024;
 
-fn encode(entry: &FrontierEntry) -> EncodedPodRow {
+fn encode(entry: &OutputWatermarkEntry) -> EncodedPodRow {
 	let mut bytes = Vec::with_capacity(16);
-	bytes.extend_from_slice(&entry.frontier.to_millis().to_be_bytes());
+	bytes.extend_from_slice(&entry.watermark.to_millis().to_be_bytes());
 	bytes.extend_from_slice(&entry.at.0.to_be_bytes());
 	EncodedPodRow::new(&bytes)
 }
 
-fn decode(object: ObjectId, row: &EncodedPodRow) -> Option<FrontierEntry> {
+fn decode(object: ObjectId, row: &EncodedPodRow) -> Option<OutputWatermarkEntry> {
 	let bytes = row.body();
 	if bytes.len() != 16 {
 		return None;
 	}
-	Some(FrontierEntry {
+	Some(OutputWatermarkEntry {
 		output: object,
-		frontier: DateTime::from_millis(i64::from_be_bytes(bytes[..8].try_into().ok()?)),
+		watermark: DateTime::from_millis(i64::from_be_bytes(bytes[..8].try_into().ok()?)),
 		at: CommitVersion(u64::from_be_bytes(bytes[8..].try_into().ok()?)),
 	})
 }
@@ -40,22 +42,22 @@ fn decode(object: ObjectId, row: &EncodedPodRow) -> Option<FrontierEntry> {
 pub fn persist(
 	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
-	entries: &FrontierEntries,
+	entries: &OutputWatermarkEntries,
 ) -> Result<(), ValueError> {
 	if entries.is_empty() {
 		return Ok(());
 	}
 
-	let anchor = OutputFrontierKey::encoded(entries[0].output);
-	let mut txn = single.begin_command_ranged(ctx, [&anchor], vec![OutputFrontierKey::full_scan().encode()])?;
+	let anchor = OutputWatermarkKey::encoded(entries[0].output);
+	let mut txn = single.begin_command_ranged(ctx, [&anchor], vec![OutputWatermarkKey::full_scan().encode()])?;
 	for entry in entries {
-		txn.set(vec![(OutputFrontierKey::new(entry.output), encode(entry).into_bytes())])?;
+		txn.set(vec![(OutputWatermarkKey::new(entry.output), encode(entry).into_bytes())])?;
 	}
 	txn.commit()?;
 	Ok(())
 }
 
-pub fn sweep(ctx: &Arc<TransactionContext>, single: &SingleTransaction, frontiers: &OutputFrontiers) {
+pub fn sweep(ctx: &Arc<TransactionContext>, single: &SingleTransaction, frontiers: &OutputWatermarks) {
 	if let Err(e) = try_sweep(ctx, single, frontiers) {
 		warn!(error = %e, "failed to persist output frontiers; the next sweep writes them again");
 	}
@@ -64,7 +66,7 @@ pub fn sweep(ctx: &Arc<TransactionContext>, single: &SingleTransaction, frontier
 pub fn try_sweep(
 	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
-	frontiers: &OutputFrontiers,
+	frontiers: &OutputWatermarks,
 ) -> Result<(), ValueError> {
 	let Some((generation, entries)) = frontiers.unpersisted() else {
 		return Ok(());
@@ -74,12 +76,12 @@ pub fn try_sweep(
 	Ok(())
 }
 
-pub fn hydrate(ctx: &Arc<TransactionContext>, store: &SingleStore) -> Result<FrontierEntries, ValueError> {
+pub fn hydrate(ctx: &Arc<TransactionContext>, store: &SingleStore) -> Result<OutputWatermarkEntries, ValueError> {
 	let mut out = Vec::new();
 	let batch =
-		SingleVersionRange::range_batch(store, ctx, OutputFrontierKey::full_scan().encode(), HYDRATE_BATCH)?;
+		SingleVersionRange::range_batch(store, ctx, OutputWatermarkKey::full_scan().encode(), HYDRATE_BATCH)?;
 	for row in batch.items {
-		let Some(key) = OutputFrontierKey::decode(&row.key) else {
+		let Some(key) = OutputWatermarkKey::decode(&row.key) else {
 			continue;
 		};
 		if let Some(entry) = decode(key.object, EncodedPodRow::view(&row.bytes)) {
@@ -108,9 +110,9 @@ mod tests {
 	#[test]
 	fn a_frontier_round_trips_through_the_value_encoding() {
 		// A truncated stamp silently rewinds a frontier, which re-opens a horizon that already sealed.
-		let entry = FrontierEntry {
+		let entry = OutputWatermarkEntry {
 			output: OUTPUT,
-			frontier: at_millis(1_700_000_000_123),
+			watermark: at_millis(1_700_000_000_123),
 			at: CommitVersion(u64::MAX),
 		};
 
@@ -129,14 +131,14 @@ mod tests {
 		// Encoding and decoding agreeing in memory proves nothing if the key never lands inside the scan range.
 		let single = SingleTransaction::testing();
 		let written = vec![
-			FrontierEntry {
+			OutputWatermarkEntry {
 				output: OUTPUT,
-				frontier: at_millis(9_000),
+				watermark: at_millis(9_000),
 				at: CommitVersion(10),
 			},
-			FrontierEntry {
+			OutputWatermarkEntry {
 				output: ObjectId::table(7),
-				frontier: at_millis(4_000),
+				watermark: at_millis(4_000),
 				at: CommitVersion(20),
 			},
 		];
@@ -156,9 +158,9 @@ mod tests {
 		persist(
 			&system_ctx(),
 			&single,
-			&vec![FrontierEntry {
+			&vec![OutputWatermarkEntry {
 				output: OUTPUT,
-				frontier: at_millis(4_000),
+				watermark: at_millis(4_000),
 				at: CommitVersion(10),
 			}],
 		)
@@ -166,9 +168,9 @@ mod tests {
 		persist(
 			&system_ctx(),
 			&single,
-			&vec![FrontierEntry {
+			&vec![OutputWatermarkEntry {
 				output: OUTPUT,
-				frontier: at_millis(9_000),
+				watermark: at_millis(9_000),
 				at: CommitVersion(20),
 			}],
 		)
@@ -177,7 +179,7 @@ mod tests {
 		let read = hydrate(&system_ctx(), &single.read_store()).unwrap();
 
 		assert_eq!(read.len(), 1, "the object must hold exactly one frontier row");
-		assert_eq!(read[0].frontier, at_millis(9_000));
+		assert_eq!(read[0].watermark, at_millis(9_000));
 		assert_eq!(read[0].at, CommitVersion(20));
 	}
 
@@ -203,30 +205,30 @@ mod tests {
 	fn a_sweep_persists_every_published_frontier() {
 		// A sweep that skips a live entry loses it on restart, since nothing else writes the row.
 		let single = SingleTransaction::testing();
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
 
 		sweep(&system_ctx(), &single, &frontiers);
 
 		let read = hydrate(&system_ctx(), &single.read_store()).unwrap();
 		assert_eq!(read.len(), 1);
-		assert_eq!(read[0].frontier, at_millis(9_000));
+		assert_eq!(read[0].watermark, at_millis(9_000));
 	}
 
 	#[test]
 	fn a_quiet_interval_opens_no_commit_at_all() {
 		// Sweeping every 5s forever keeps the store from ever going idle, which starves the WAL reset.
 		let single = SingleTransaction::testing();
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
 		sweep(&system_ctx(), &single, &frontiers);
 
 		persist(
 			&system_ctx(),
 			&single,
-			&vec![FrontierEntry {
+			&vec![OutputWatermarkEntry {
 				output: OUTPUT,
-				frontier: at_millis(1),
+				watermark: at_millis(1),
 				at: CommitVersion(1),
 			}],
 		)
@@ -234,7 +236,7 @@ mod tests {
 		sweep(&system_ctx(), &single, &frontiers);
 
 		assert_eq!(
-			hydrate(&system_ctx(), &single.read_store()).unwrap()[0].frontier,
+			hydrate(&system_ctx(), &single.read_store()).unwrap()[0].watermark,
 			at_millis(1),
 			"the second sweep rewrote a row nothing had republished"
 		);
@@ -244,7 +246,7 @@ mod tests {
 	fn a_sweep_that_failed_to_persist_is_retried_rather_than_marked_done() {
 		// Marking before the commit lands would strand the frontier until its producer happens to publish
 		// again.
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
 
 		let (generation, entries) = frontiers.unpersisted().expect("a fresh publish must be unpersisted");
@@ -261,7 +263,7 @@ mod tests {
 		// A publish between the snapshot and the mark must not be swallowed; a quiet producer may never
 		// republish.
 		let single = SingleTransaction::testing();
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 		frontiers.publish(OUTPUT, at_millis(4_000), CommitVersion(10));
 
 		let (generation, entries) = frontiers.unpersisted().unwrap();
@@ -271,18 +273,18 @@ mod tests {
 
 		sweep(&system_ctx(), &single, &frontiers);
 
-		assert_eq!(hydrate(&system_ctx(), &single.read_store()).unwrap()[0].frontier, at_millis(9_000));
+		assert_eq!(hydrate(&system_ctx(), &single.read_store()).unwrap()[0].watermark, at_millis(9_000));
 	}
 
 	#[test]
 	fn a_hydrated_frontier_is_never_swept_back_to_the_store_it_came_from() {
 		// A restart must not rewrite what it just read, or every restart pays a commit for nothing.
 		let single = SingleTransaction::testing();
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 
-		frontiers.hydrate(vec![FrontierEntry {
+		frontiers.hydrate(vec![OutputWatermarkEntry {
 			output: OUTPUT,
-			frontier: at_millis(9_000),
+			watermark: at_millis(9_000),
 			at: CommitVersion(10),
 		}]);
 		sweep(&system_ctx(), &single, &frontiers);
@@ -294,7 +296,7 @@ mod tests {
 	fn a_sweep_persists_a_republish_that_lands_after_the_previous_one() {
 		// A later publish must overwrite the row, otherwise a restart resumes at a stale frontier.
 		let single = SingleTransaction::testing();
-		let frontiers = OutputFrontiers::default();
+		let frontiers = OutputWatermarks::default();
 		frontiers.publish(OUTPUT, at_millis(4_000), CommitVersion(10));
 		sweep(&system_ctx(), &single, &frontiers);
 
@@ -302,21 +304,21 @@ mod tests {
 		sweep(&system_ctx(), &single, &frontiers);
 
 		let read = hydrate(&system_ctx(), &single.read_store()).unwrap();
-		assert_eq!(read[0].frontier, at_millis(9_000));
+		assert_eq!(read[0].watermark, at_millis(9_000));
 		assert_eq!(read[0].at, CommitVersion(20));
 	}
 
 	#[test]
 	fn the_stamp_orders_lexicographically_the_same_as_numerically() {
 		// A little-endian stamp would make version 256 sort below version 2 on any raw byte compare.
-		let low = encode(&FrontierEntry {
+		let low = encode(&OutputWatermarkEntry {
 			output: OUTPUT,
-			frontier: at_millis(0),
+			watermark: at_millis(0),
 			at: CommitVersion(2),
 		});
-		let high = encode(&FrontierEntry {
+		let high = encode(&OutputWatermarkEntry {
 			output: OUTPUT,
-			frontier: at_millis(0),
+			watermark: at_millis(0),
 			at: CommitVersion(256),
 		});
 

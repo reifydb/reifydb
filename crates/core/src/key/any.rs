@@ -40,7 +40,7 @@ use crate::{
 			state::OperatorStateKey,
 		},
 		operator_retention::OperatorRetentionKey,
-		output_frontier::OutputFrontierKey,
+		output_watermark::OutputWatermarkKey,
 		partition::PartitionKey,
 		procedure::{ProcedureKey, ProcedureParamKey},
 		queue::{
@@ -96,7 +96,7 @@ pub enum TaggedKey {
 	OperatorByFlow(OperatorByFlowKey),
 	FlowEdge(FlowEdgeKey),
 	FlowEdgeByFlow(FlowEdgeByFlowKey),
-	OutputFrontier(OutputFrontierKey),
+	OutputWatermark(OutputWatermarkKey),
 	Dictionary(DictionaryKey),
 	DictionaryEntry(DictionaryEntryKey),
 	DictionaryEntryIndex(DictionaryEntryIndexKey),
@@ -195,7 +195,7 @@ impl TaggedKey {
 			Self::OperatorByFlow(_) => KeyTag::OperatorByFlow,
 			Self::FlowEdge(_) => KeyTag::FlowEdge,
 			Self::FlowEdgeByFlow(_) => KeyTag::FlowEdgeByFlow,
-			Self::OutputFrontier(_) => KeyTag::OutputFrontier,
+			Self::OutputWatermark(_) => KeyTag::OutputWatermark,
 			Self::Dictionary(_) => KeyTag::Dictionary,
 			Self::DictionaryEntry(_) => KeyTag::DictionaryEntry,
 			Self::DictionaryEntryIndex(_) => KeyTag::DictionaryEntryIndex,
@@ -309,7 +309,7 @@ impl TaggedKey {
 			Self::OperatorByFlow(key) => key.encode(),
 			Self::FlowEdge(key) => key.encode(),
 			Self::FlowEdgeByFlow(key) => key.encode(),
-			Self::OutputFrontier(key) => key.encode(),
+			Self::OutputWatermark(key) => key.encode(),
 			Self::Dictionary(key) => key.encode(),
 			Self::DictionaryEntry(key) => key.encode(),
 			Self::DictionaryEntryIndex(key) => key.encode(),
@@ -410,7 +410,7 @@ impl TaggedKey {
 			KeyTag::OperatorByFlow => OperatorByFlowKey::decode(key).map(Self::OperatorByFlow),
 			KeyTag::FlowEdge => FlowEdgeKey::decode(key).map(Self::FlowEdge),
 			KeyTag::FlowEdgeByFlow => FlowEdgeByFlowKey::decode(key).map(Self::FlowEdgeByFlow),
-			KeyTag::OutputFrontier => OutputFrontierKey::decode(key).map(Self::OutputFrontier),
+			KeyTag::OutputWatermark => OutputWatermarkKey::decode(key).map(Self::OutputWatermark),
 			KeyTag::Dictionary => DictionaryKey::decode(key).map(Self::Dictionary),
 			KeyTag::DictionaryEntry => DictionaryEntryKey::decode(key).map(Self::DictionaryEntry),
 			KeyTag::DictionaryEntryIndex => {
@@ -668,9 +668,9 @@ impl From<FlowEdgeByFlowKey> for TaggedKey {
 	}
 }
 
-impl From<OutputFrontierKey> for TaggedKey {
-	fn from(key: OutputFrontierKey) -> Self {
-		Self::OutputFrontier(key)
+impl From<OutputWatermarkKey> for TaggedKey {
+	fn from(key: OutputWatermarkKey) -> Self {
+		Self::OutputWatermark(key)
 	}
 }
 
@@ -1262,7 +1262,7 @@ impl KeyFields for TaggedKey {
 			Self::OperatorByFlow(key) => key.fields(),
 			Self::FlowEdge(key) => key.fields(),
 			Self::FlowEdgeByFlow(key) => key.fields(),
-			Self::OutputFrontier(key) => key.fields(),
+			Self::OutputWatermark(key) => key.fields(),
 			Self::Dictionary(key) => key.fields(),
 			Self::DictionaryEntry(key) => key.fields(),
 			Self::DictionaryEntryIndex(key) => key.fields(),
@@ -1363,7 +1363,7 @@ impl Ord for TaggedKey {
 			(Self::OperatorByFlow(left), Self::OperatorByFlow(right)) => left.cmp_fields(right),
 			(Self::FlowEdge(left), Self::FlowEdge(right)) => left.cmp_fields(right),
 			(Self::FlowEdgeByFlow(left), Self::FlowEdgeByFlow(right)) => left.cmp_fields(right),
-			(Self::OutputFrontier(left), Self::OutputFrontier(right)) => left.cmp_fields(right),
+			(Self::OutputWatermark(left), Self::OutputWatermark(right)) => left.cmp_fields(right),
 			(Self::Dictionary(left), Self::Dictionary(right)) => left.cmp_fields(right),
 			(Self::DictionaryEntry(left), Self::DictionaryEntry(right)) => left.cmp_fields(right),
 			(Self::DictionaryEntryIndex(left), Self::DictionaryEntryIndex(right)) => left.cmp_fields(right),
@@ -1508,7 +1508,7 @@ mod tests {
 				state::{GroupId, KeyspaceId, OperatorStateKey},
 			},
 			operator_retention::OperatorRetentionKey,
-			output_frontier::OutputFrontierKey,
+			output_watermark::OutputWatermarkKey,
 			partition::PartitionKey,
 			procedure::{ProcedureKey, ProcedureParamKey},
 			queue::{
@@ -2229,7 +2229,7 @@ mod tests {
 				flow: FlowId(36),
 				edge: FlowEdgeId(37),
 			}),
-			probe(OutputFrontierKey {
+			probe(OutputWatermarkKey {
 				object: ObjectId::view(38),
 			}),
 			probe(DictionaryKey {

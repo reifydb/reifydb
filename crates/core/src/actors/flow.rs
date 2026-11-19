@@ -39,7 +39,7 @@ pub enum FlowActorMessage {
 
 	Sample,
 
-	PublishRestoredFrontiers,
+	PublishRestoredOutputWatermarks,
 
 	UpdateSources {
 		source_objects: Arc<BTreeSet<ObjectId>>,

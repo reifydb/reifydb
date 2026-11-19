@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 use reifydb::{
 	SqliteConfig, WithSubsystem,
-	core::{common::CommitVersion, interface::store::SingleVersionRange, key::output_frontier::OutputFrontierKey},
+	core::{
+		common::CommitVersion, interface::store::SingleVersionRange, key::output_watermark::OutputWatermarkKey,
+	},
 	embedded,
 	testing::db::{TempDbPath, TestDb},
 };
@@ -46,7 +48,7 @@ fn persisted_stamps(db: &TestDb) -> Vec<CommitVersion> {
 	let batch = SingleVersionRange::range_batch(
 		&store,
 		&system_ctx(),
-		OutputFrontierKey::full_scan().encode(),
+		OutputWatermarkKey::full_scan().encode(),
 		SCAN_BATCH,
 	)
 	.expect("scan the output frontier keyspace");

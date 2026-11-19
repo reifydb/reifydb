@@ -51,7 +51,7 @@ use crate::{
 			state::{GroupId, KeyspaceId, OperatorStateKey},
 		},
 		operator_retention::OperatorRetentionKey,
-		output_frontier::OutputFrontierKey,
+		output_watermark::OutputWatermarkKey,
 		partition::PartitionKey,
 		procedure::{ProcedureKey, ProcedureParamKey},
 		queue::{
@@ -213,7 +213,7 @@ fn representative(kind: KeyTag) -> EncodedKey {
 			edge: FlowEdgeId(1),
 		}
 		.encode(),
-		KeyTag::OutputFrontier => OutputFrontierKey {
+		KeyTag::OutputWatermark => OutputWatermarkKey {
 			object: ObjectId::table(TableId(1)),
 		}
 		.encode(),

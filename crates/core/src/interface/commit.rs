@@ -277,7 +277,7 @@ mod exclusion_tests {
 			KeyTag::OperatorByFlow => {}
 			KeyTag::FlowEdge => {}
 			KeyTag::FlowEdgeByFlow => {}
-			KeyTag::OutputFrontier => {}
+			KeyTag::OutputWatermark => {}
 			KeyTag::Dictionary => {}
 			KeyTag::DictionaryEntry => {}
 			KeyTag::DictionaryEntryIndex => {}

@@ -26,7 +26,7 @@ use tracing::instrument;
 use crate::{
 	error::FlowAsyncError,
 	transaction::{
-		frontier::OutputFrontiers,
+		output_watermark::OutputWatermarks,
 		scope::{OperatorScope, operator_state_coordinates},
 	},
 };
@@ -34,7 +34,7 @@ use crate::{
 #[derive(Clone)]
 pub struct FlowSubstrate {
 	pub dictionary: DictionaryAllocatorRegistry,
-	pub frontiers: OutputFrontiers,
+	pub frontiers: OutputWatermarks,
 	pub operators: Option<OperatorStore>,
 	pub writes: WriteTracker,
 }
@@ -43,7 +43,7 @@ impl FlowSubstrate {
 	pub fn new(dictionary: DictionaryAllocatorRegistry, writes: WriteTracker) -> Self {
 		Self {
 			dictionary,
-			frontiers: OutputFrontiers::default(),
+			frontiers: OutputWatermarks::default(),
 			operators: None,
 			writes,
 		}
