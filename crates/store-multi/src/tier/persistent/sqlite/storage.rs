@@ -443,7 +443,7 @@ impl SqlitePersistentStorage {
 	pub fn expired_keys(
 		&self,
 		table: EntryKind,
-		cutoff: DateTime,
+		floor: DateTime,
 		cursor: Option<(DateTime, &[u8])>,
 		limit: usize,
 	) -> Result<Vec<(EncodedKey, DateTime)>, ValueError> {
@@ -480,7 +480,7 @@ impl SqlitePersistentStorage {
 				))));
 			}
 		};
-		let mut params: Vec<Box<dyn ToSql>> = vec![Box::new(cutoff.to_nanos())];
+		let mut params: Vec<Box<dyn ToSql>> = vec![Box::new(floor.to_nanos())];
 		if let Some((at, key)) = cursor {
 			params.push(Box::new(at.to_nanos()));
 			match table_sql.schema {
@@ -2346,16 +2346,16 @@ mod tests {
 		DateTime::from_nanos(nanos)
 	}
 
-	fn expired_at(s: &SqlitePersistentStorage, kind: EntryKind, cutoff: i64) -> Vec<u64> {
-		s.expired_keys(kind, at(cutoff), None, 100)
+	fn expired_at(s: &SqlitePersistentStorage, kind: EntryKind, floor: i64) -> Vec<u64> {
+		s.expired_keys(kind, at(floor), None, 100)
 			.unwrap()
 			.into_iter()
 			.map(|(key, _)| RowKey::decode(&key).unwrap().row.0)
 			.collect()
 	}
 
-	fn partitioned_expired_at(s: &SqlitePersistentStorage, kind: EntryKind, cutoff: i64) -> Vec<u64> {
-		s.expired_keys(kind, at(cutoff), None, 100)
+	fn partitioned_expired_at(s: &SqlitePersistentStorage, kind: EntryKind, floor: i64) -> Vec<u64> {
+		s.expired_keys(kind, at(floor), None, 100)
 			.unwrap()
 			.into_iter()
 			.map(|(key, _)| PartitionedRowKey::decode(&key).unwrap().row.0)
@@ -2632,7 +2632,7 @@ mod tests {
 	}
 
 	#[test]
-	fn expired_keys_returns_rows_at_or_below_the_cutoff_oldest_first() {
+	fn expired_keys_returns_rows_below_the_floor_oldest_first() {
 		// Eviction drains from the head, so youngest-first would strand the oldest rows forever.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(
@@ -2650,11 +2650,15 @@ mod tests {
 		.unwrap();
 
 		assert_eq!(
-			expired_at(&s, table(), 300),
+			expired_at(&s, table(), 301),
 			vec![2, 3, 1],
-			"candidates must come back ordered by their own stamp, oldest first, cutoff inclusive"
+			"candidates must come back ordered by their own stamp, oldest first, floor exclusive"
 		);
-		assert_eq!(expired_at(&s, table(), 99), Vec::<u64>::new(), "a cutoff below every stamp yields nothing");
+		assert_eq!(
+			expired_at(&s, table(), 100),
+			Vec::<u64>::new(),
+			"a floor at the oldest stamp yields nothing"
+		);
 	}
 
 	#[test]
@@ -2665,7 +2669,7 @@ mod tests {
 		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
 
 		assert_eq!(
-			expired_at(&s, table(), 1_000),
+			expired_at(&s, table(), 1_001),
 			Vec::<u64>::new(),
 			"a valueless row must not surface as an expiry candidate"
 		);
@@ -2676,16 +2680,16 @@ mod tests {
 		// Without this the index is unsound under UPDATE: a row rewritten inside its ttl still dies.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(stamped(100)))])])).unwrap();
-		assert_eq!(expired_at(&s, table(), 150), vec![1], "precondition: the row starts out expired");
+		assert_eq!(expired_at(&s, table(), 151), vec![1], "precondition: the row starts out expired");
 
 		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(1), Some(stamped(900)))])])).unwrap();
 
 		assert_eq!(
-			expired_at(&s, table(), 150),
+			expired_at(&s, table(), 151),
 			Vec::<u64>::new(),
 			"rewriting the row must carry its new stamp into the index, not leave the stale one"
 		);
-		assert_eq!(expired_at(&s, table(), 900), vec![1], "and the row expires again against the new stamp");
+		assert_eq!(expired_at(&s, table(), 901), vec![1], "and the row expires again against the new stamp");
 	}
 
 	#[test]
@@ -2696,7 +2700,7 @@ mod tests {
 			.unwrap();
 
 		assert_eq!(
-			expired_at(&s, EntryKind::Multi, 1_000),
+			expired_at(&s, EntryKind::Multi, 1_001),
 			Vec::<u64>::new(),
 			"a non-row entry must never produce expiry candidates, whatever its bytes look like"
 		);

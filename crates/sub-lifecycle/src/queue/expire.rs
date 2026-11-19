@@ -167,7 +167,7 @@ impl QueueExpireTask {
 		view_owned: bool,
 		row: RowNumber,
 		attempt: u32,
-		cutoff: DateTime,
+		expiry_floor: DateTime,
 	) -> Result<Option<Doomed>, ValueError> {
 		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
 		let record = query_txn
@@ -177,7 +177,7 @@ impl QueueExpireTask {
 			.and_then(|stored| decode_queue_attempt(EncodedQueueAttemptRow::view(&stored.bytes)));
 
 		if let Some(record) = record {
-			if record.finished_at > cutoff {
+			if record.finished_at >= expiry_floor {
 				return Ok(None);
 			}
 			let sweep = if !view_owned {
@@ -328,11 +328,11 @@ impl QueueExpireTask {
 		Ok(out)
 	}
 
-	fn cutoff_of(&self, queue: &Queue, now: DateTime) -> Option<(DateTime, (Floor, FloorTerm))> {
+	fn expiry_floor_of(&self, queue: &Queue, now: DateTime) -> Option<(DateTime, (Floor, FloorTerm))> {
 		let ttl = queue.done.ttl?;
 		let binding = self.plane.cutoff_with_binding(LifecycleClass::QueueDoneTtl, now, Some(ttl))?;
 		match binding.0 {
-			Floor::Instant(cutoff) => Some((cutoff, binding)),
+			Floor::Instant(expiry_floor) => Some((expiry_floor, binding)),
 			Floor::Version(_) => None,
 		}
 	}
@@ -386,7 +386,7 @@ impl LifecycleTask for QueueExpireTask {
 		let mut skipped = 0u64;
 
 		'queues: for queue in &queues[start.min(queues.len())..] {
-			let Some((cutoff, binding)) = self.cutoff_of(queue, now) else {
+			let Some((expiry_floor, binding)) = self.expiry_floor_of(queue, now) else {
 				continue;
 			};
 			floor = Some(binding);
@@ -451,7 +451,13 @@ impl LifecycleTask for QueueExpireTask {
 						{
 							continue;
 						}
-						match self.classify(queue.id, view.is_some(), *row, *attempt, cutoff) {
+						match self.classify(
+							queue.id,
+							view.is_some(),
+							*row,
+							*attempt,
+							expiry_floor,
+						) {
 							Ok(Some(item)) => doomed.push(item),
 							Ok(None) => {}
 							Err(e) => {

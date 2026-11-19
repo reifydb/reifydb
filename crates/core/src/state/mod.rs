@@ -7,20 +7,3 @@ pub mod join;
 pub mod per_key;
 pub mod timer;
 pub mod typed;
-
-pub mod horizon {
-	use reifydb_value::value::datetime::DateTime;
-
-	#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-	pub struct Cutoff(pub DateTime);
-
-	impl Cutoff {
-		pub fn instant(&self) -> DateTime {
-			self.0
-		}
-
-		pub fn raw(&self) -> u64 {
-			self.0.to_order()
-		}
-	}
-}

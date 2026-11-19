@@ -28,7 +28,7 @@ use reifydb_core::{
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
 	lifecycle::{
-		class::{Floor, FloorTerm, LifecycleClass},
+		class::{Floor, FloorTerm, InstantFloor, LifecycleClass},
 		metrics::LifecycleMetrics,
 		progress::Progress,
 		task::LifecycleTask,
@@ -36,7 +36,6 @@ use reifydb_core::{
 	retry::is_conflict,
 	ring::Ring,
 	row::Ttl,
-	state::horizon::Cutoff,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
@@ -195,7 +194,7 @@ impl Evictor {
 			}
 			let (storage, ttl) = &eligible[(start + offset) % eligible.len()];
 			let storage = *storage;
-			let Some((cutoff, _)) = self.expiry_cutoff(now, ttl) else {
+			let Some((expiry_floor, _)) = self.instant_floor(now, ttl) else {
 				stats.objects_skipped += 1;
 				resume_after = Some(storage);
 				continue;
@@ -204,7 +203,7 @@ impl Evictor {
 			stats.objects_scanned += 1;
 			let expired_before = stats.rows_expired;
 			let skipped_before = stats.handoffs_skipped;
-			match self.evict_storage(state, storage, cutoff, batch_size, &mut budget, &mut stats) {
+			match self.evict_storage(state, storage, expiry_floor, batch_size, &mut budget, &mut stats) {
 				Ok(()) => {
 					state.failures.remove(&storage);
 				}
@@ -266,21 +265,21 @@ impl Evictor {
 	fn class_floor(&self, eligible: &[(StorageId, Ttl)], now: DateTime) -> Option<(Floor, FloorTerm)> {
 		let mut floor: Option<(Floor, FloorTerm)> = None;
 		for (_, ttl) in eligible {
-			let Some((cutoff, binding)) = self.expiry_cutoff(now, ttl) else {
+			let Some((expiry_floor, binding)) = self.instant_floor(now, ttl) else {
 				continue;
 			};
 			floor = Some(match floor {
-				Some(held) if held.0.monotonic_key() <= cutoff.raw() => held,
-				_ => (Floor::Instant(cutoff.instant()), binding),
+				Some(held) if held.0.monotonic_key() <= expiry_floor.raw() => held,
+				_ => (Floor::Instant(expiry_floor.instant()), binding),
 			});
 		}
 		floor
 	}
 
-	fn expiry_cutoff(&self, now: DateTime, ttl: &Ttl) -> Option<(Cutoff, FloorTerm)> {
+	fn instant_floor(&self, now: DateTime, ttl: &Ttl) -> Option<(InstantFloor, FloorTerm)> {
 		let (floor, binding) =
 			self.plane.cutoff_with_binding(LifecycleClass::RowTtl, now, Some(ttl.duration))?;
-		Some((Cutoff(floor.instant()?), binding))
+		Some((InstantFloor(floor.instant()?), binding))
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -289,7 +288,7 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		storage: StorageId,
-		cutoff: Cutoff,
+		expiry_floor: InstantFloor,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
@@ -302,17 +301,19 @@ impl Evictor {
 				RowFamily::Table,
 				RowWriter::Evictor,
 				eviction,
-				cutoff,
+				expiry_floor,
 				batch_size,
 				budget,
 				stats,
 			),
-			StorageId::View(id) => self.evict_view(state, id, eviction, cutoff, batch_size, budget, stats),
+			StorageId::View(id) => {
+				self.evict_view(state, id, eviction, expiry_floor, batch_size, budget, stats)
+			}
 			StorageId::RingBuffer(id) => {
-				self.evict_ringbuffer(state, id, eviction, cutoff, batch_size, budget, stats)
+				self.evict_ringbuffer(state, id, eviction, expiry_floor, batch_size, budget, stats)
 			}
 			StorageId::Series(id) => {
-				self.evict_series(state, id, eviction, cutoff, batch_size, budget, stats)
+				self.evict_series(state, id, eviction, expiry_floor, batch_size, budget, stats)
 			}
 			StorageId::Queue(_) => Ok(()),
 		}
@@ -332,7 +333,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		id: ViewId,
 		eviction: EvictionVisibility,
-		cutoff: Cutoff,
+		expiry_floor: InstantFloor,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
@@ -354,7 +355,7 @@ impl Evictor {
 				RowFamily::Table,
 				RowWriter::Flow(id),
 				eviction,
-				cutoff,
+				expiry_floor,
 				batch_size,
 				budget,
 				stats,
@@ -365,7 +366,7 @@ impl Evictor {
 				RowFamily::Series,
 				RowWriter::Flow(id),
 				eviction,
-				cutoff,
+				expiry_floor,
 				batch_size,
 				budget,
 				stats,
@@ -386,7 +387,7 @@ impl Evictor {
 		family: RowFamily,
 		writer: RowWriter,
 		eviction: EvictionVisibility,
-		cutoff: Cutoff,
+		expiry_floor: InstantFloor,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
@@ -405,7 +406,15 @@ impl Evictor {
 					return Ok(());
 				}
 				let (rows, drained) = self.evict_rows_batch(
-					state, storage, family, writer, eviction, cutoff, batch_size, &keyspace, stats,
+					state,
+					storage,
+					family,
+					writer,
+					eviction,
+					expiry_floor,
+					batch_size,
+					&keyspace,
+					stats,
 				)?;
 				stats.rows_expired += rows;
 				if rows > 0 || !drained {
@@ -442,7 +451,7 @@ impl Evictor {
 		cursor_key: &CursorKey,
 		keyspace: &TaggedKeyBoundRange,
 		family: RowFamily,
-		cutoff: Cutoff,
+		expiry_floor: InstantFloor,
 		batch_size: usize,
 	) -> Result<(Vec<TaggedKey>, bool), ValueError> {
 		if let (Some(persistent), Some(kind)) = (self.store.persistent(), classify_range(&keyspace.encode())) {
@@ -451,7 +460,7 @@ impl Evictor {
 				persistent,
 				kind,
 				family,
-				cutoff,
+				expiry_floor,
 				state.expiry_cursors.get(cursor_key),
 				batch_size,
 			)?;
@@ -466,7 +475,7 @@ impl Evictor {
 		}
 
 		let range = scan::resume_range(keyspace, state.cursors.get(cursor_key));
-		let result = scan::scan_expired(txn, range, family, cutoff, batch_size)?;
+		let result = scan::scan_expired(txn, range, family, expiry_floor, batch_size)?;
 		let drained = advance_cursor(state, cursor_key.clone(), result.next_cursor);
 		Ok((result.expired.into_iter().map(|row| row.key).collect(), drained))
 	}
@@ -480,7 +489,7 @@ impl Evictor {
 		family: RowFamily,
 		writer: RowWriter,
 		eviction: EvictionVisibility,
-		cutoff: Cutoff,
+		expiry_floor: InstantFloor,
 		batch_size: usize,
 		keyspace: &TaggedKeyBoundRange,
 		stats: &mut TickStats,
@@ -495,7 +504,7 @@ impl Evictor {
 		}
 
 		let (expired, drained) =
-			self.expired_batch(state, &mut txn, &cursor_key, keyspace, family, cutoff, batch_size)?;
+			self.expired_batch(state, &mut txn, &cursor_key, keyspace, family, expiry_floor, batch_size)?;
 		if expired.is_empty() {
 			txn.rollback()?;
 			return Ok((0, drained));
@@ -569,7 +578,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		id: RingBufferId,
 		eviction: EvictionVisibility,
-		cutoff: Cutoff,
+		expiry_floor: InstantFloor,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
@@ -580,8 +589,14 @@ impl Evictor {
 				if *budget == 0 {
 					return Ok(());
 				}
-				let (rows, drained) = self
-					.evict_ringbuffer_batch(state, id, eviction, cutoff, batch_size, &keyspace)?;
+				let (rows, drained) = self.evict_ringbuffer_batch(
+					state,
+					id,
+					eviction,
+					expiry_floor,
+					batch_size,
+					&keyspace,
+				)?;
 				stats.rows_expired += rows;
 				if rows > 0 || !drained {
 					*budget -= 1;
@@ -600,7 +615,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		id: RingBufferId,
 		eviction: EvictionVisibility,
-		cutoff: Cutoff,
+		expiry_floor: InstantFloor,
 		batch_size: usize,
 		keyspace: &TaggedKeyBoundRange,
 	) -> Result<(u64, bool), ValueError> {
@@ -621,7 +636,7 @@ impl Evictor {
 			&cursor_key,
 			keyspace,
 			RowFamily::RingBuffer,
-			cutoff,
+			expiry_floor,
 			batch_size,
 		)?;
 		if expired.is_empty() {
@@ -673,7 +688,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		id: SeriesId,
 		eviction: EvictionVisibility,
-		cutoff: Cutoff,
+		expiry_floor: InstantFloor,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
@@ -682,7 +697,7 @@ impl Evictor {
 			if *budget == 0 {
 				return Ok(());
 			}
-			let (rows, drained) = self.evict_series_batch(state, id, eviction, cutoff, batch_size)?;
+			let (rows, drained) = self.evict_series_batch(state, id, eviction, expiry_floor, batch_size)?;
 			stats.rows_expired += rows;
 			if rows > 0 || !drained {
 				*budget -= 1;
@@ -699,7 +714,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		id: SeriesId,
 		eviction: EvictionVisibility,
-		cutoff: Cutoff,
+		expiry_floor: InstantFloor,
 		batch_size: usize,
 	) -> Result<(u64, bool), ValueError> {
 		let storage = StorageId::Series(id);
@@ -725,7 +740,7 @@ impl Evictor {
 			&cursor_key,
 			&keyspace,
 			RowFamily::Series,
-			cutoff,
+			expiry_floor,
 			batch_size,
 		)?;
 		if expired.is_empty() {
@@ -1055,8 +1070,8 @@ mod tests {
 
 	#[test]
 	fn two_rows_a_millisecond_apart_expire_independently() {
-		// Expiry anchors on each row's own updated_at, not a quantised epoch sample, so a cutoff
-		// falling between two writes 1ms apart must kill exactly one of them.
+		// Expiry anchors on each row's own updated_at, not an epoch sample, so a floor between two writes kills
+		// exactly one.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
@@ -1066,8 +1081,7 @@ mod tests {
 		test.mock_clock().advance_millis(1);
 		test.command("INSERT test::t [{ v: 2 }]");
 
-		// The cutoff lands on the first write's own instant and expiry is inclusive, so v=1 dies
-		// at the boundary and v=2 lives.
+		// The floor lands one tick past the first write, so v=1 dies at the boundary and v=2 lives.
 		let mut state = EvictorState::default();
 		Evictor::new((*test).clone()).run_tick(
 			&mut state,
@@ -1084,6 +1098,37 @@ mod tests {
 			row_count(&test, "from test::t filter v == 2"),
 			1,
 			"and it must be the younger one; evicting v=2 would mean the cutoff was rounded up"
+		);
+	}
+
+	#[test]
+	fn a_row_one_nanosecond_inside_its_ttl_survives_the_boundary_tick() {
+		// Off by one tick either way, rows would expire early or outlive their ttl.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
+
+		test.command("INSERT test::t [{ v: 1 }]");
+		let first_write = test.mock_clock().now();
+		test.mock_clock().advance_nanos(1);
+		test.command("INSERT test::t [{ v: 2 }]");
+
+		let mut state = EvictorState::default();
+		Evictor::new((*test).clone()).run_tick(
+			&mut state,
+			LifecycleClass::RowTtl,
+			first_write.checked_add(HOUR.to_duration()).unwrap(),
+		);
+
+		assert_eq!(
+			row_count(&test, "from test::t filter v == 1"),
+			0,
+			"a row exactly one ttl old must be removed at the boundary tick"
+		);
+		assert_eq!(
+			row_count(&test, "from test::t filter v == 2"),
+			1,
+			"a row one nanosecond inside its ttl must survive the same tick"
 		);
 	}
 
@@ -1960,9 +2005,13 @@ mod tests {
 		);
 		assert_eq!(
 			evictor.plane().snapshot(LifecycleClass::RowTtl).floor_version,
-			now.checked_sub(FOUR_HOURS.to_duration()).unwrap().to_order(),
+			now.checked_sub(FOUR_HOURS.to_duration())
+				.unwrap()
+				.checked_add(ValueDuration::from_nanoseconds_const(1))
+				.unwrap()
+				.to_order(),
 			"the floor must come from the 4h object this tick never visited, because that is the \
-			 oldest cutoff the class is still bound by"
+			 oldest floor the class is still bound by"
 		);
 	}
 
@@ -2005,7 +2054,11 @@ mod tests {
 
 		assert_eq!(
 			snapshot.floor_version,
-			second.checked_sub(FOUR_HOURS.to_duration()).unwrap().to_order(),
+			second.checked_sub(FOUR_HOURS.to_duration())
+				.unwrap()
+				.checked_add(ValueDuration::from_nanoseconds_const(1))
+				.unwrap()
+				.to_order(),
 			"the second tick starts at the 4h object, and the class floor must still be measured from \
 			 the longest declared ttl rather than from whatever the rotation happened to reach"
 		);

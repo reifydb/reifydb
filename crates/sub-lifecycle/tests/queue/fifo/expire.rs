@@ -203,6 +203,25 @@ fn test_a_finished_item_inside_the_window_survives() {
 }
 
 #[test]
+fn test_a_finished_item_exactly_one_window_old_is_swept_and_one_nanosecond_younger_survives() {
+	// Off by one tick either way, the sweep destroys promised history or keeps expired history.
+	let t = engine_with_queue(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#);
+	t.mock_clock().set_nanos(0);
+	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }]");
+	let queue = queue_id(&t, "jobs");
+	finish(&t);
+	t.mock_clock().set_nanos(1);
+	finish(&t);
+
+	t.mock_clock().set_nanos(3_600_000_000_000);
+	sweeper(&t).run_slice();
+
+	assert_eq!(items(&t), 1, "only the item finished exactly one window ago may go");
+	assert_eq!(attempt_count(&t, queue), 1, "the survivor keeps its attempt record");
+	assert_eq!(states(&t, queue).len(), 1, "and its scheduling state");
+}
+
+#[test]
 fn test_an_unfinished_item_is_never_swept_however_old_it_is() {
 	// Age alone must never delete an unfinished promise. A ready item that outlived the window is
 	// backlog, not garbage; deleting it silently drops work the caller was told was accepted.

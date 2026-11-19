@@ -40,6 +40,19 @@ impl Floor {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InstantFloor(pub DateTime);
+
+impl InstantFloor {
+	pub fn instant(&self) -> DateTime {
+		self.0
+	}
+
+	pub fn raw(&self) -> u64 {
+		self.0.to_order()
+	}
+}
+
 impl fmt::Display for Floor {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {

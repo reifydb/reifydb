@@ -33,7 +33,7 @@ pub(super) fn build_create_current_sql(table_name: &str) -> String {
 pub(super) fn build_expired_keys_sql(table_name: &str, has_cursor: bool, limit: usize) -> String {
 	let mut sql = format!(
 		"SELECT key, updated_at FROM \"{0}\" \
-		 WHERE value IS NOT NULL AND updated_at IS NOT NULL AND updated_at <= ?1",
+		 WHERE value IS NOT NULL AND updated_at IS NOT NULL AND updated_at < ?1",
 		table_name
 	);
 	if has_cursor {
@@ -263,7 +263,7 @@ pub(super) fn build_get_current_sql_partitioned(table_name: &str, key_count: usi
 pub(super) fn build_expired_keys_sql_row(table_name: &str, has_cursor: bool, limit: usize) -> String {
 	let mut sql = format!(
 		"SELECT key, updated_at FROM \"{0}\" \
-		 WHERE value IS NOT NULL AND updated_at IS NOT NULL AND updated_at <= ?1",
+		 WHERE value IS NOT NULL AND updated_at IS NOT NULL AND updated_at < ?1",
 		table_name
 	);
 	if has_cursor {
@@ -276,7 +276,7 @@ pub(super) fn build_expired_keys_sql_row(table_name: &str, has_cursor: bool, lim
 pub(super) fn build_expired_keys_sql_partitioned(table_name: &str, has_cursor: bool, limit: usize) -> String {
 	let mut sql = format!(
 		"SELECT partition_hi, partition_lo, row, updated_at FROM \"{0}\" \
-		 WHERE value IS NOT NULL AND updated_at IS NOT NULL AND updated_at <= ?1",
+		 WHERE value IS NOT NULL AND updated_at IS NOT NULL AND updated_at < ?1",
 		table_name
 	);
 	if has_cursor {
@@ -626,7 +626,7 @@ pub(super) fn build_expired_keys_sql_keyed(
 	let list = column_list(columns);
 	let mut sql = format!(
 		"SELECT {1}, updated_at FROM \"{0}\" \
-		 WHERE value IS NOT NULL AND updated_at IS NOT NULL AND updated_at <= ?1",
+		 WHERE value IS NOT NULL AND updated_at IS NOT NULL AND updated_at < ?1",
 		table_name, list
 	);
 	if has_cursor {

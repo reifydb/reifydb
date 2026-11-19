@@ -235,12 +235,12 @@ impl MultiPersistentTier {
 	pub fn expired_keys(
 		&self,
 		table: EntryKind,
-		cutoff: DateTime,
+		floor: DateTime,
 		cursor: Option<(DateTime, &[u8])>,
 		limit: usize,
 	) -> Result<Vec<(EncodedKey, DateTime)>, ValueError> {
 		match self {
-			Self::Sqlite(s) => s.expired_keys(table, cutoff, cursor, limit),
+			Self::Sqlite(s) => s.expired_keys(table, floor, cursor, limit),
 		}
 	}
 
@@ -306,7 +306,7 @@ impl MultiPersistentTier {
 	pub fn expired_keys(
 		&self,
 		_table: EntryKind,
-		_cutoff: DateTime,
+		_floor: DateTime,
 		_cursor: Option<(DateTime, &[u8])>,
 		_limit: usize,
 	) -> Result<Vec<(EncodedKey, DateTime)>, ValueError> {

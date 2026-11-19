@@ -7,7 +7,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowFamily};
 use reifydb_core::{
 	interface::store::{EntryKind, MultiVersionRow},
 	key::{any::TaggedKey, bound::TaggedKeyBoundRange},
-	state::horizon::Cutoff,
+	lifecycle::class::InstantFloor,
 };
 use reifydb_store_multi::tier::persistent::MultiPersistentTier;
 use reifydb_transaction::{multi::RangeScope, transaction::command::CommandTransaction};
@@ -30,13 +30,13 @@ pub fn scan_expired_indexed(
 	persistent: &MultiPersistentTier,
 	kind: EntryKind,
 	family: RowFamily,
-	cutoff: Cutoff,
+	expiry_floor: InstantFloor,
 	cursor: Option<&ExpiryCursor>,
 	limit: usize,
 ) -> Result<ExpiredIndexScan, ValueError> {
 	let candidates = persistent.expired_keys(
 		kind,
-		cutoff.instant(),
+		expiry_floor.instant(),
 		cursor.map(|(at, key)| (*at, key.as_slice())),
 		limit,
 	)?;
@@ -48,7 +48,7 @@ pub fn scan_expired_indexed(
 		let Some(row) = txn.get(&[key.clone()])?.pop().flatten() else {
 			continue;
 		};
-		if family.updated_at(&row.bytes) <= cutoff.instant() {
+		if family.updated_at(&row.bytes) < expiry_floor.instant() {
 			expired.push(key);
 		}
 	}
@@ -74,7 +74,7 @@ pub fn scan_expired(
 	txn: &mut CommandTransaction,
 	range: TaggedKeyBoundRange,
 	family: RowFamily,
-	cutoff: Cutoff,
+	expiry_floor: InstantFloor,
 	limit: usize,
 ) -> Result<ExpiredScan, ValueError> {
 	let mut expired: Vec<MultiVersionRow<TaggedKey>> = Vec::new();
@@ -102,7 +102,7 @@ pub fn scan_expired(
 			}
 			let finished = current.take().unwrap();
 			let finished_key = finished.key.clone();
-			classify(finished, family, cutoff, &mut expired);
+			classify(finished, family, expiry_floor, &mut expired);
 			examined += 1;
 			if examined >= limit {
 				next_cursor = Some(finished_key);
@@ -114,7 +114,7 @@ pub fn scan_expired(
 	drop(stream);
 
 	if let Some(finished) = current.take() {
-		classify(finished, family, cutoff, &mut expired);
+		classify(finished, family, expiry_floor, &mut expired);
 	}
 
 	Ok(ExpiredScan {
@@ -126,10 +126,10 @@ pub fn scan_expired(
 fn classify(
 	row: MultiVersionRow<TaggedKey>,
 	family: RowFamily,
-	cutoff: Cutoff,
+	expiry_floor: InstantFloor,
 	expired: &mut Vec<MultiVersionRow<TaggedKey>>,
 ) {
-	if family.updated_at(&row.bytes) <= cutoff.instant() {
+	if family.updated_at(&row.bytes) < expiry_floor.instant() {
 		expired.push(row);
 	}
 }

@@ -43,13 +43,13 @@ impl FloorResolver {
 		self.epoch.version_at_or_before(EpochSeconds::from_datetime(expires_before)).map(CommitVersion)
 	}
 
-	pub fn expiry_instant(&self, now: DateTime, ttl: Duration) -> Option<DateTime> {
-		now.checked_sub(ttl)
+	pub fn row_expiry_floor(&self, now: DateTime, ttl: Duration) -> Option<DateTime> {
+		now.checked_sub(ttl)?.checked_add(Duration::from_nanoseconds_const(1))
 	}
 
 	pub fn term(&self, term: FloorTerm, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
 		match term {
-			FloorTerm::RowExpiry => self.expiry_instant(now, ttl?).map(Floor::Instant),
+			FloorTerm::RowExpiry => self.row_expiry_floor(now, ttl?).map(Floor::Instant),
 			FloorTerm::Horizon => self.expiry_cutoff(now, ttl?).map(Floor::Version),
 			FloorTerm::QueryDoneUntil => Some(Floor::Version(self.source.query_done_until())),
 			FloorTerm::LeaseMin => Some(Floor::Version(self.source.lease_min())),
@@ -169,6 +169,22 @@ mod tests {
 
 	fn one_hour() -> Duration {
 		Duration::from_hours(1).expect("one hour is representable")
+	}
+
+	#[test]
+	fn a_row_expiry_floor_is_the_oldest_instant_kept() {
+		// Every floor is exclusive, so resolving `now - ttl` itself would expire a row one tick late.
+		let oldest_kept = now()
+			.checked_sub(one_hour())
+			.unwrap()
+			.checked_add(Duration::from_nanoseconds_const(1))
+			.unwrap();
+
+		assert_eq!(
+			resolver().term(FloorTerm::RowExpiry, now(), Some(one_hour())),
+			Some(Floor::Instant(oldest_kept)),
+			"the row expiry floor must be the oldest instant a row may carry and still be kept"
+		);
 	}
 
 	#[test]
