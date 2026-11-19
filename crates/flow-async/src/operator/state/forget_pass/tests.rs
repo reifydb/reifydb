@@ -63,16 +63,16 @@ fn forgets_nothing_outside_the_named_group() {
 }
 
 #[test]
-fn spares_the_root_group_so_the_expiry_index_drains_on_its_own() {
+fn spares_the_root_group_so_the_due_index_drains_on_its_own() {
 	let mut store = MockStore::default();
 	let doomed = key(doomed_group(), KeyspaceId::ACCUMULATOR, 1);
-	let index = key(GroupId::ROOT, KeyspaceId::ROLLING_EXPIRY, 1);
+	let index = key(GroupId::ROOT, KeyspaceId::ROLLING_AGE_OUT, 1);
 	seed(&mut store, &doomed);
 	seed(&mut store, &index);
 
 	forget_group(&mut store, doomed_group(), &mut StoreForgetter, 256).unwrap();
 
-	assert!(present(&mut store, &index), "the root-resident expiry index must survive a group forget pass");
+	assert!(present(&mut store, &index), "the root-resident due index must survive a group forget pass");
 }
 
 #[test]
@@ -506,7 +506,7 @@ fn enqueueing_the_root_group_panics() {
 #[should_panic(expected = "group id 0 is the root group")]
 fn forgetting_the_root_group_panics() {
 	let mut store = MockStore::default();
-	seed(&mut store, &key(GroupId::ROOT, KeyspaceId::ROLLING_EXPIRY, 1));
+	seed(&mut store, &key(GroupId::ROOT, KeyspaceId::ROLLING_AGE_OUT, 1));
 	forget_group(&mut store, GroupId::ROOT, &mut StoreForgetter, 256).unwrap();
 }
 
@@ -515,7 +515,7 @@ fn forgetting_the_root_group_panics() {
 #[should_panic(expected = "group id 0 is the root group")]
 fn draining_a_root_group_written_straight_into_the_queue_panics() {
 	let mut store = MockStore::default();
-	seed(&mut store, &key(GroupId::ROOT, KeyspaceId::ROLLING_EXPIRY, 1));
+	seed(&mut store, &key(GroupId::ROOT, KeyspaceId::ROLLING_AGE_OUT, 1));
 	seed(&mut store, &queue_key(GroupId::ROOT));
 	drain(&mut store, &mut StoreForgetter, 256).unwrap();
 }

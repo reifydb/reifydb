@@ -54,7 +54,7 @@ use reifydb_value::{
 use crate::{
 	error::FlowAsyncError,
 	operator::state::{
-		expiry::{expiry_drop, expiry_get, expiry_set, managed_due_key, managed_latest_key},
+		due::{due_drop, due_get, due_set, managed_due_key, managed_latest_key},
 		forget_pass::IdentityForgetPass,
 		forget_pass_outcome::ForgetPassOutcome,
 		seal::rule::SEAL_GATE_STEP,
@@ -64,7 +64,7 @@ use crate::{
 		FlowTransaction, LookupAt,
 		dictionary::DictionaryExtension,
 		forget_pass::ForgetPassExtension,
-		join_expiry::{DueStart, JoinDueEntry, JoinDuePage, JoinRowExpiryExtension},
+		join_forget::{DueStart, JoinDueEntry, JoinDuePage, JoinRowForgetExtension},
 		row_number::RowNumberExtension,
 		state::{StateExtension, StateRange},
 	},
@@ -82,17 +82,17 @@ pub trait HostContext: WindowStore + Resolve {
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError>;
 
-	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<(), ValueError>;
+	fn join_forget_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<(), ValueError>;
 
-	fn join_expiry_clear(
+	fn join_forget_clear(
 		&mut self,
 		side: u8,
 		rows: &[(GroupId, RowNumber)],
 	) -> Result<Vec<Option<DateTime>>, ValueError>;
 
-	fn join_expiry_free(&mut self, entries: &[JoinDueEntry]) -> Result<(), ValueError>;
+	fn join_forget_free(&mut self, entries: &[JoinDueEntry]) -> Result<(), ValueError>;
 
-	fn join_expiry_min(&mut self) -> Result<Option<DateTime>, ValueError>;
+	fn join_forget_min(&mut self) -> Result<Option<DateTime>, ValueError>;
 
 	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage, ValueError>;
 
@@ -214,14 +214,14 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 			return internal_err!("operator {} wrote managed state but has no retention", self.operator);
 		};
 		let latest = managed_latest_key(group);
-		let previous = expiry_get::<DateTime>(self, &latest)?;
+		let previous = due_get::<DateTime>(self, &latest)?;
 		let due = forget_pass_due(self.batch_time, retention);
 		let due = previous.map_or(due, |previous| previous.max(due));
 		if let Some(previous) = previous.filter(|previous| *previous != due) {
-			expiry_drop(self, &managed_due_key(previous, group))?;
+			due_drop(self, &managed_due_key(previous, group))?;
 		}
-		expiry_set(self, managed_due_key(due, group), Vec::<u8>::new())?;
-		expiry_set(self, latest, due)?;
+		due_set(self, managed_due_key(due, group), Vec::<u8>::new())?;
+		due_set(self, latest, due)?;
 		self.txn.arm_timer(
 			self.operator,
 			&Timer {
@@ -590,24 +590,24 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		self.txn.disarm_timer_by_key(self.operator, kind, key)
 	}
 
-	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<(), ValueError> {
-		self.txn.join_expiry_arm(self.operator, side, rows)
+	fn join_forget_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<(), ValueError> {
+		self.txn.join_forget_arm(self.operator, side, rows)
 	}
 
-	fn join_expiry_clear(
+	fn join_forget_clear(
 		&mut self,
 		side: u8,
 		rows: &[(GroupId, RowNumber)],
 	) -> Result<Vec<Option<DateTime>>, ValueError> {
-		self.txn.join_expiry_clear(self.operator, side, rows)
+		self.txn.join_forget_clear(self.operator, side, rows)
 	}
 
-	fn join_expiry_free(&mut self, entries: &[JoinDueEntry]) -> Result<(), ValueError> {
-		self.txn.join_expiry_free(self.operator, entries)
+	fn join_forget_free(&mut self, entries: &[JoinDueEntry]) -> Result<(), ValueError> {
+		self.txn.join_forget_free(self.operator, entries)
 	}
 
-	fn join_expiry_min(&mut self) -> Result<Option<DateTime>, ValueError> {
-		self.txn.join_expiry_min(self.operator)
+	fn join_forget_min(&mut self) -> Result<Option<DateTime>, ValueError> {
+		self.txn.join_forget_min(self.operator)
 	}
 
 	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage, ValueError> {

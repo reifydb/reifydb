@@ -106,7 +106,7 @@ mod tests {
 		key::{
 			operator::{
 				keyspace::{
-					expiry::{Expiry, ExpiryKey},
+					due::{RollingAgeOut, RollingAgeOutKey},
 					join::{JoinLeft, JoinLeftKey},
 				},
 				state::{GroupId, KeyspaceMask},
@@ -157,17 +157,17 @@ mod tests {
 		// sweep
 		let store = open();
 		set_one::<JoinLeft>(&store, OWNER, &key(), b"left");
-		set_one::<Expiry>(
+		set_one::<RollingAgeOut>(
 			&store,
 			OWNER,
-			&ExpiryKey {
+			&RollingAgeOutKey {
 				threshold: Desc(7),
 				owner: Desc(Hash128(9)),
 			},
-			b"expiry",
+			b"age_out",
 		);
 		let occupied = store.occupied_keyspaces(OWNER).unwrap();
-		assert!(occupied.contains(&JoinLeft::ID) && occupied.contains(&Expiry::ID), "{occupied:?}");
+		assert!(occupied.contains(&JoinLeft::ID) && occupied.contains(&RollingAgeOut::ID), "{occupied:?}");
 	}
 
 	#[test]

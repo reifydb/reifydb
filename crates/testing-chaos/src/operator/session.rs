@@ -48,7 +48,7 @@ impl<'a, S: Subject> Session<'a, S> {
 			if self.view.len() == before || self.view.is_empty() {
 				return Ok(ticks);
 			}
-			assert!(ticks < max_ticks, "expiry did not reach quiescence within {ticks} ticks");
+			assert!(ticks < max_ticks, "ticking did not reach quiescence within {ticks} ticks");
 		}
 	}
 

@@ -53,7 +53,7 @@ use reifydb_value::{
 
 use super::{
 	cache::LookupCache,
-	expiry::LookupExpiry,
+	forget::LookupForget,
 	partition::{DictionaryMemo, PartitionLookup, RowKey},
 	store::{ReadLedger, StoredRead},
 };
@@ -122,7 +122,7 @@ pub struct LookupOperator {
 	config: LookupConfig,
 	cache: RefCell<LookupCache>,
 	lowered_left: Vec<LoweredExpr>,
-	expiry: LookupExpiry,
+	forget: LookupForget,
 	columns: JoinedColumnsCache,
 	output_sumtypes: HashMap<String, SumTypeId>,
 	left_kept: Vec<(String, DictionaryId)>,
@@ -255,7 +255,7 @@ impl LookupOperator {
 			.iter()
 			.map(|expression| LoweredExpr::new(expression.clone(), "lookup_key"))
 			.collect();
-		let expiry = LookupExpiry::new(config.left_lateness);
+		let forget = LookupForget::new(config.left_lateness);
 		let columns = JoinedColumnsCache::new(config.alias.clone(), false, SequenceColumn::Forward);
 		let output_sumtypes = schema_sumtypes(
 			&columns.builder(&config.left_schema, &config.right_schema)
@@ -267,7 +267,7 @@ impl LookupOperator {
 			config,
 			cache,
 			lowered_left,
-			expiry,
+			forget,
 			columns,
 			output_sumtypes,
 			left_kept,
@@ -851,7 +851,7 @@ impl LookupOperator {
 	) -> Result<(), ValueError> {
 		let cleared = mem::take(&mut output.cleared);
 		let armed = mem::take(&mut output.armed);
-		self.expiry.move_rows(host, &cleared, &armed)?;
+		self.forget.move_rows(host, &cleared, &armed)?;
 		let right = match output.right_rows.is_empty() {
 			true => None,
 			false => {
@@ -1011,7 +1011,7 @@ impl HostOperator for LookupOperator {
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		if timer.kind == TimerKind::Maintenance {
-			self.expiry.free_due(host, FiredAt::of(&timer))?;
+			self.forget.free_due(host, FiredAt::of(&timer))?;
 		}
 		Ok(None)
 	}
@@ -1031,7 +1031,7 @@ impl HostOperator for LookupOperator {
 	}
 
 	fn seal_span(&self) -> Option<Duration> {
-		self.expiry.lateness()
+		self.forget.lateness()
 	}
 
 	fn output_schema(&self) -> Option<SchemaRef> {
@@ -1889,8 +1889,8 @@ mod tests {
 	}
 
 	#[test]
-	fn an_expired_left_row_frees_its_read_version() {
-		// LT11 at operator level: without the expiry the stored read of a transient row is kept forever.
+	fn a_forgotten_left_row_frees_its_read_version() {
+		// LT11 at operator level: without the forget the stored read of a transient row is kept forever.
 		let engine = TestEngine::new();
 		let table = right_table(&engine, false);
 		let version = put_right(&engine, "a", 10);
@@ -1902,16 +1902,16 @@ mod tests {
 		let timer = Timer {
 			due: at_millis(20_000),
 			kind: TimerKind::Maintenance,
-			key: LookupExpiry::timer_key(),
+			key: LookupForget::timer_key(),
 		};
 		txn.disarm_timer(OperatorId(OP), &timer).unwrap();
 		let emitted = op.on_timer(&mut TxnHostContext::new(&mut txn, OperatorId(OP)), timer).unwrap();
 
-		assert!(emitted.is_none(), "an expiry emits nothing");
+		assert!(emitted.is_none(), "a forget emits nothing");
 		assert_eq!(stored_read(&mut txn, 7), None, "row 7 is past event time + lateness and is freed");
 		assert!(stores_a_right_row(&mut txn, 8), "row 8 outlives the fire");
 		let out = run(&mut op, &mut txn, version, Diff::remove(rows(&[Some("a")], &[7], at_millis(5_000))));
-		assert!(out.is_empty(), "an expired row has nothing left to retract");
+		assert!(out.is_empty(), "a forgotten row has nothing left to retract");
 	}
 
 	const RIGHT: u64 = 75;
@@ -2052,7 +2052,7 @@ mod tests {
 	}
 
 	#[test]
-	fn an_expired_left_row_leaves_the_index_and_is_never_re_emitted() {
+	fn a_forgotten_left_row_leaves_the_index_and_is_never_re_emitted() {
 		// a row left in the index would publish past its lateness, against a view row already gone.
 		let engine = TestEngine::new();
 		let table = right_table(&engine, false);
@@ -2064,7 +2064,7 @@ mod tests {
 		let timer = Timer {
 			due: at_millis(20_000),
 			kind: TimerKind::Maintenance,
-			key: LookupExpiry::timer_key(),
+			key: LookupForget::timer_key(),
 		};
 		txn.disarm_timer(OperatorId(OP), &timer).unwrap();
 		op.on_timer(&mut TxnHostContext::new(&mut txn, OperatorId(OP)), timer).unwrap();

@@ -238,7 +238,7 @@ mod tests {
 	use crate::key::{
 		operator::{
 			keyspace::{
-				expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix},
+				due::{RollingAgeOut, RollingAgeOutKey, TumblingSeal, TumblingSealSuffix},
 				join::{JoinLeft, JoinRight},
 			},
 			state::{GroupId, KeyspaceId, OperatorStateKey},
@@ -254,9 +254,9 @@ mod tests {
 		// a keyspace with no group column reads every row back stamped ROOT, so one group's sweep forgets
 		// another's rows and the rows it really holds are never named; nothing statically bounds which
 		// groups a writer passes, so the refusal has to happen at the write itself
-		typed_key::<Expiry>(
+		typed_key::<RollingAgeOut>(
 			GroupId::hashed(Hash128(1)),
-			&ExpiryKey {
+			&RollingAgeOutKey {
 				threshold: Desc(1),
 				owner: Desc(Hash128(2)),
 			},
@@ -278,13 +278,13 @@ mod tests {
 	}
 
 	#[test]
-	fn a_multi_column_expiry_suffix_matches_the_bytes_the_index_is_written_with() {
-		// expiry_due seeks by threshold alone into a key that also carries the owner, so if the typed
+	fn a_multi_column_due_suffix_matches_the_bytes_the_index_is_written_with() {
+		// due_entries seeks by threshold alone into a key that also carries the owner, so if the typed
 		// suffix laid its columns out differently the seek would land mid-key and skip live rows
 		let threshold = 0x0102_0304_0506_0708u64;
 		let owner = Hash128(0x1122_3344_5566_7788_99aa_bbcc_ddee_ff00);
 
-		let typed = ExpiryKey {
+		let typed = RollingAgeOutKey {
 			threshold: Desc(threshold),
 			owner: Desc(owner),
 		}
@@ -297,14 +297,14 @@ mod tests {
 
 	#[test]
 	fn a_descending_column_sorts_larger_values_first_once_it_reaches_the_wire() {
-		// the expiry index is read newest-due-first, which is only true if Desc actually complements:
+		// the due index is read newest-due-first, which is only true if Desc actually complements:
 		// storing the plain value would drain the backlog in exactly the wrong order
-		let small = ExpiryKey {
+		let small = RollingAgeOutKey {
 			threshold: Desc(1),
 			owner: Desc(Hash128(0)),
 		}
 		.to_suffix_bytes();
-		let large = ExpiryKey {
+		let large = RollingAgeOutKey {
 			threshold: Desc(u64::MAX),
 			owner: Desc(Hash128(0)),
 		}
@@ -314,48 +314,48 @@ mod tests {
 	}
 
 	#[test]
-	fn every_expiry_suffix_survives_the_round_trip_through_its_bytes() {
-		// expire drops the rows it drained by rebuilding their keys from the scan, so a column that
+	fn every_due_suffix_survives_the_round_trip_through_its_bytes() {
+		// seal_due drops the rows it drained by rebuilding their keys from the scan, so a column that
 		// decoded to a different value would leave the entry in the index and replay it forever
 		for (threshold, window) in [(0u64, 0u64), (1, 2), (u64::MAX, u64::MAX), (7, u64::MAX)] {
-			let key = TumblingExpirySuffix {
+			let key = TumblingSealSuffix {
 				threshold: Desc(threshold),
 				owner: Desc(Hash128(0xdead_beef)),
 				window_start: Desc(window),
 			};
 			let bytes = key.to_suffix_bytes();
 			assert_eq!(bytes.len(), 8 + 16 + 8, "threshold {threshold} window {window}");
-			assert_eq!(TumblingExpirySuffix::from_suffix_bytes(&bytes), Some(key));
+			assert_eq!(TumblingSealSuffix::from_suffix_bytes(&bytes), Some(key));
 		}
 	}
 
 	#[test]
-	fn an_expiry_suffix_of_the_wrong_width_is_refused_rather_than_read_short() {
+	fn a_due_suffix_of_the_wrong_width_is_refused_rather_than_read_short() {
 		// a truncated scan result must not decode into a key that addresses a live row
-		let full = ExpiryKey {
+		let full = RollingAgeOutKey {
 			threshold: Desc(9),
 			owner: Desc(Hash128(9)),
 		}
 		.to_suffix_bytes();
 
-		assert_eq!(ExpiryKey::from_suffix_bytes(&full[..full.len() - 1]), None);
-		assert_eq!(ExpiryKey::from_suffix_bytes(&[full.as_slice(), &[0u8]].concat()), None);
+		assert_eq!(RollingAgeOutKey::from_suffix_bytes(&full[..full.len() - 1]), None);
+		assert_eq!(RollingAgeOutKey::from_suffix_bytes(&[full.as_slice(), &[0u8]].concat()), None);
 	}
 
 	#[test]
-	fn the_two_expiry_keyspaces_never_address_the_same_row() {
+	fn the_two_due_keyspaces_never_address_the_same_row() {
 		// rolling and tumbling now hold separate ids; sharing one would let a rolling scan drain a
 		// tumbling window's entry and lose it
-		let rolling = typed_key::<Expiry>(
+		let rolling = typed_key::<RollingAgeOut>(
 			GroupId::ROOT,
-			&ExpiryKey {
+			&RollingAgeOutKey {
 				threshold: Desc(5),
 				owner: Desc(Hash128(1)),
 			},
 		);
-		let tumbling = typed_key::<TumblingExpiry>(
+		let tumbling = typed_key::<TumblingSeal>(
 			GroupId::ROOT,
-			&TumblingExpirySuffix {
+			&TumblingSealSuffix {
 				threshold: Desc(5),
 				owner: Desc(Hash128(1)),
 				window_start: Desc(0),

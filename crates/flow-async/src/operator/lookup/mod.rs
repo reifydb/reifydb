@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub(crate) mod cache;
-pub(crate) mod expiry;
+pub(crate) mod forget;
 pub mod operator;
 pub mod partition;
 pub(crate) mod store;

@@ -9,7 +9,7 @@ pub struct StateFootprint {
 
 	pub identity_rows: usize,
 
-	pub expiring_windows: usize,
+	pub sealing_windows: usize,
 
 	pub session_rows: usize,
 }

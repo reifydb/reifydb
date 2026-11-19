@@ -664,7 +664,7 @@ mod tests {
 
 	#[test]
 	fn a_lookup_lateness_over_an_event_source_is_accepted() {
-		// Event time is exactly what the left expiry measures against, so this is the shape polaris ships.
+		// Event time is exactly what forgetting left rows measures against, so this is the shape polaris ships.
 		let mut txn = create_test_admin_transaction();
 		let harness = Harness::new()
 			.node(table(1, TimeDomain::Event))

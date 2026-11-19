@@ -124,7 +124,7 @@ fn a_with_key_other_than_lateness_is_ast_005() {
 
 #[test]
 fn a_right_lateness_is_ast_005() {
-	// IC3: there are no right rows to expire.
+	// IC3: there are no right rows to forget.
 	let engine = engine();
 	let with = "retention: { left: 10s, right: 10s }";
 	assert_code(&engine.admin_err(&view("v", "{ FROM lk::price }", "(mint, p.mint)", with)), "AST_005");

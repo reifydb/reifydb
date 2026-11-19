@@ -221,7 +221,7 @@ mod tests {
 
 	#[test]
 	fn a_coordinate_survives_the_round_trip_through_its_storage_encoding() {
-		// to_order/from_order are the persisted expiry-index encoding. They must be exact inverses:
+		// to_order/from_order are the persisted due-index encoding. They must be exact inverses:
 		// a lossy round trip would move a window's anchor and either seal it early or strand it.
 		let coord = ByDateTime(DateTime::from_epoch_millis(1_234_567).expect("representable"));
 		assert_eq!(<ByDateTime as Coord>::from_order(coord.to_order()), coord);

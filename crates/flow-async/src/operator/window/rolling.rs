@@ -166,7 +166,7 @@ pub fn apply_rolling_engine(
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
-#[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
+#[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, aged_out = tracing::field::Empty))]
 pub fn seal_rolling_engine(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
@@ -192,7 +192,7 @@ pub fn seal_rolling_engine(
 	};
 	let parts = rolling_parts(operator, &kinds);
 	let emits = parts.runner.on_timer(&mut parts.engine, host, kind, fired, &mut hooks)?;
-	Span::current().record("expired", emits.len());
+	Span::current().record("aged_out", emits.len());
 	rolling_diffs(operator, emits, fired.at())
 }
 
@@ -289,7 +289,7 @@ mod tests {
 	fn the_coordinate_one_span_behind_the_operator_watermark_is_due_to_evict_at_that_operator_watermark() {
 		// A rolling window holds (operator watermark - span, operator watermark] and evicts inclusively at the
 		// low end, so the coordinate exactly one span behind must arm at coord + span. Tumbling's
-		// strict +1 gate arms one tick late and the boundary entry then never expires.
+		// strict +1 gate arms one tick late and the boundary entry then never ages out.
 		let span = Duration::from_seconds(5).expect("representable span");
 		let operator_watermark = order(10_000);
 
@@ -737,8 +737,8 @@ mod tests {
 			if round % 5 == 4 {
 				let next = base.saturating_sub(20);
 				cutoff = Some(next);
-				let expiries = engine
-					.expire(
+				let aged_out = engine
+					.age_out_due(
 						&mut store,
 						millis(next),
 						&RowPublisher::<_, Vec<Value>, _, _, _> {
@@ -756,18 +756,18 @@ mod tests {
 					*rows = kept;
 				}
 				frame.forget_empty();
-				for expiry in &expiries {
-					let rows = time_frame_of(&frame.live, &expiry.group);
-					match &expiry.post {
+				for aged in &aged_out {
+					let rows = time_frame_of(&frame.live, &aged.group);
+					match &aged.post {
 						None => assert!(
 							rows.is_empty(),
-							"a group with rows in its frame expired at round {round}"
+							"a group with rows in its frame aged out at round {round}"
 						),
 						Some(post) => assert_frame(
 							kinds,
 							&post.last_value,
 							&rows,
-							&format!("expiry round {round}"),
+							&format!("age out round {round}"),
 						),
 					}
 					checked += 1;
@@ -777,7 +777,7 @@ mod tests {
 		}
 
 		let drained = engine
-			.expire(
+			.age_out_due(
 				&mut store,
 				millis(base + 1_000_000),
 				&RowPublisher::<_, Vec<Value>, _, _, _> {

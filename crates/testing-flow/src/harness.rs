@@ -276,9 +276,9 @@ impl<O: HostOperator> Harness<O> {
 		let mut footprint = StateFootprint::default();
 		for item in &items {
 			if let TaggedKey::OperatorState(state) = &item.key
-				&& state.keyspace == KeyspaceId::TUMBLING_EXPIRY
+				&& state.keyspace == KeyspaceId::TUMBLING_SEAL
 			{
-				footprint.expiring_windows += 1;
+				footprint.sealing_windows += 1;
 			}
 			if let TaggedKey::OperatorState(state) = &item.key
 				&& SESSION_KEYSPACES.contains(&state.keyspace)

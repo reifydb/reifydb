@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod distinct;
-pub mod expiry;
+pub mod due;
 pub mod join;
 pub mod lookup;
 pub mod ringbuffer;
@@ -22,13 +22,14 @@ use crate::{
 		operator::{
 			keyspace::{
 				distinct::{DistinctEntry, DistinctLayout},
-				expiry::{
-					CustomManagedDue, CustomManagedLatest, Expiry, ForgetPassQueue, TumblingExpiry,
+				due::{
+					CustomManagedDue, CustomManagedLatest, ForgetPassQueue, RollingAgeOut,
+					TumblingSeal,
 				},
 				join::{
-					JoinExpiryDue, JoinLeft, JoinPin, JoinPublished, JoinRight, JoinRowExpiry,
-					JoinRowExpiryState, JoinRowExpirySuffix, JoinRowMapping, JoinSchema,
-					join_expiry_due_key,
+					JoinForgetDue, JoinLeft, JoinPin, JoinPublished, JoinRight, JoinRowForget,
+					JoinRowForgetState, JoinRowForgetSuffix, JoinRowMapping, JoinSchema,
+					join_forget_due_key,
 				},
 				lookup::LookupRead,
 				ringbuffer::{
@@ -176,8 +177,8 @@ catalogue!(
 	JoinPublished,
 	JoinPin,
 	JoinSchema,
-	JoinRowExpiry,
-	JoinExpiryDue,
+	JoinRowForget,
+	JoinForgetDue,
 	JoinRowMapping,
 	RingbufferForward,
 	RingbufferEntry,
@@ -189,8 +190,8 @@ catalogue!(
 	PartitionedRingbufferMeta,
 	TimerWheel,
 	TimerIndex,
-	Expiry,
-	TumblingExpiry,
+	RollingAgeOut,
+	TumblingSeal,
 	ForgetPassQueue,
 	DistinctEntry,
 	DistinctLayout,
@@ -218,7 +219,7 @@ pub enum RootSibling {
 
 pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &EncodedPodRow) -> RootSibling {
 	match keyspace {
-		KeyspaceId::JOIN_ROW_EXPIRY => join_row_expiry_sibling(group, suffix, row),
+		KeyspaceId::JOIN_ROW_FORGET => join_row_forget_sibling(group, suffix, row),
 		KeyspaceId::SESSION_MEMBER => session_member_sibling(group, suffix),
 
 		KeyspaceId::ACCUMULATOR
@@ -237,13 +238,13 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		KeyspaceId::JOIN_PUBLISHED
 		| KeyspaceId::JOIN_PIN
 		| KeyspaceId::JOIN_SCHEMA
-		| KeyspaceId::JOIN_EXPIRY_DUE
+		| KeyspaceId::JOIN_FORGET_DUE
 		| KeyspaceId::LOOKUP_READ
 		| KeyspaceId::JOIN_ROW_MAPPING
 		| KeyspaceId::DISTINCT_ENTRY
 		| KeyspaceId::DISTINCT_LAYOUT
-		| KeyspaceId::ROLLING_EXPIRY
-		| KeyspaceId::TUMBLING_EXPIRY
+		| KeyspaceId::ROLLING_AGE_OUT
+		| KeyspaceId::TUMBLING_SEAL
 		| KeyspaceId::FORGET_PASS_QUEUE
 		| KeyspaceId::SOURCE_WATERMARK
 		| KeyspaceId::SEAL_LEDGER
@@ -276,17 +277,17 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 	}
 }
 
-fn join_row_expiry_sibling(group: GroupId, suffix: &[u8], row: &EncodedPodRow) -> RootSibling {
-	let Some(suffix) = JoinRowExpirySuffix::from_suffix_bytes(suffix) else {
-		panic!("a join row expiry key carries a suffix that keyspace cannot decode");
+fn join_row_forget_sibling(group: GroupId, suffix: &[u8], row: &EncodedPodRow) -> RootSibling {
+	let Some(suffix) = JoinRowForgetSuffix::from_suffix_bytes(suffix) else {
+		panic!("a join row forget key carries a suffix that keyspace cannot decode");
 	};
-	let at = match JoinRowExpiryState::decode_state(row) {
+	let at = match JoinRowForgetState::decode_state(row) {
 		Ok(state) => state.at,
 		Err(err) => {
-			panic!("a join row expiry row will not decode, so its due index key cannot be derived: {err}")
+			panic!("a join row forget row will not decode, so its due index key cannot be derived: {err}")
 		}
 	};
-	RootSibling::Derived(join_expiry_due_key(at, group, suffix.side.0, suffix.row.0))
+	RootSibling::Derived(join_forget_due_key(at, group, suffix.side.0, suffix.row.0))
 }
 
 fn session_member_sibling(group: GroupId, suffix: &[u8]) -> RootSibling {
@@ -402,7 +403,7 @@ mod tests {
 		key::{
 			operator::{
 				keyspace::{
-					join::{JoinRowExpiryState, JoinRowExpirySuffix},
+					join::{JoinRowForgetState, JoinRowForgetSuffix},
 					window::RowIndex,
 				},
 				state::{GroupId, KeyspaceId},
@@ -420,12 +421,12 @@ mod tests {
 	fn every_registered_keyspace_answers_what_it_implies_outside_its_group() {
 		// A keyspace that never answers reaches a group sweep unclassified and orphans whatever it points at
 		// outside the group.
-		let suffix = JoinRowExpirySuffix {
+		let suffix = JoinRowForgetSuffix {
 			side: Asc(0),
 			row: Asc(RowNumber(1)),
 		}
 		.to_suffix_bytes();
-		let row = JoinRowExpiryState {
+		let row = JoinRowForgetState {
 			at: DateTime::default(),
 		}
 		.encode_state()
@@ -444,7 +445,7 @@ mod tests {
 		}
 		assert_eq!(
 			derived,
-			vec!["JOIN_ROW_EXPIRY"],
+			vec!["JOIN_ROW_FORGET"],
 			"only a keyspace whose ROOT key is a function of its own key and row may be forgotten by \
 			 construction; any other name here claims a derivation it does not have"
 		);

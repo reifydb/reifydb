@@ -162,7 +162,7 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn expire_through<C: GuestContext>(
+	fn seal_through<C: GuestContext>(
 		engine: &mut Engine<A, K, V>,
 		forget_pass_queue_empty: &mut bool,
 		store: &mut GuestAsHost<'_, C>,
@@ -174,19 +174,19 @@ where
 			return Ok(());
 		}
 		let store_queue_empty = *forget_pass_queue_empty;
-		let closing = engine.expire(store, horizon.to_order().saturating_sub(1))?;
-		let expired: Vec<GroupId> = closing.iter().map(|window| window.group_id).collect();
+		let closing = engine.seal_due(store, horizon.to_order().saturating_sub(1))?;
+		let due: Vec<GroupId> = closing.iter().map(|window| window.group_id).collect();
 		if StateStore::state_forgets_groups(store) {
-			enqueue_forgotten(store, &expired)?;
-			engine.expire_meta(store, horizon.to_order())?;
+			enqueue_forgotten(store, &due)?;
+			engine.forget_meta(store, horizon.to_order())?;
 			*forget_pass_queue_empty = true;
 			return Ok(());
 		}
-		enqueue(store, &expired)?;
-		if !expired.is_empty() {
+		enqueue(store, &due)?;
+		if !due.is_empty() {
 			*forget_pass_queue_empty = false;
 		}
-		engine.expire_meta(store, horizon.to_order())?;
+		engine.forget_meta(store, horizon.to_order())?;
 		if *forget_pass_queue_empty {
 			reifydb_assertions! {
 				let pending = reifydb_flow_async::operator::state::forget_pass::queued(store, 1)?;
@@ -200,7 +200,7 @@ where
 			return Ok(());
 		}
 		let drained = match store_queue_empty {
-			true => drain_groups(store, &expired, engine, FORGET_PASS_BATCH)?,
+			true => drain_groups(store, &due, engine, FORGET_PASS_BATCH)?,
 			false => drain(store, engine, FORGET_PASS_BATCH)?,
 		};
 		*forget_pass_queue_empty = drained.queue_is_empty();
@@ -241,13 +241,7 @@ where
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
 			order.retain(|key| buckets.contains_key(key));
-			Self::expire_through(
-				engine,
-				forget_pass_queue_empty,
-				&mut store,
-				operator_watermark,
-				seal_span,
-			)?;
+			Self::seal_through(engine, forget_pass_queue_empty, &mut store, operator_watermark, seal_span)?;
 			if buckets.is_empty() {
 				return Ok(emitted);
 			}
@@ -401,7 +395,7 @@ where
 		let Some(operator_watermark) = timer_operator_watermark::<A::Coord>(&mut store, timer)? else {
 			return Ok(());
 		};
-		Self::expire_through(engine, forget_pass_queue_empty, &mut store, operator_watermark, seal_span)
+		Self::seal_through(engine, forget_pass_queue_empty, &mut store, operator_watermark, seal_span)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<(), SdkError> {

@@ -18,7 +18,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	internal_err,
 	key::operator::{
-		keyspace::expiry::Expiry,
+		keyspace::due::RollingAgeOut,
 		state::{GroupId, GroupStateKey, GroupStateRange, IntoGroupStateKey, KeyspaceId},
 	},
 	metrics::heap::HeapSize,
@@ -30,7 +30,7 @@ use reifydb_value::{error::ValueError, reifydb_assertions, value::row_number::Ro
 use crate::{
 	operator::{
 		state::{
-			expiry::{ExpiryIndex, expiry_drop, rolling_expiry_key},
+			due::{DueIndex, due_drop, rolling_age_out_key},
 			seal::coord::Coord,
 		},
 		state_access::{get_classified, remove, set},
@@ -43,7 +43,7 @@ use crate::{
 			EmitKind, PaneKey,
 			config::WindowEngineConfig,
 			daba::{DabaPanes, DabaQueue, Merge},
-			group_hash, note_when_expiry_capped,
+			group_hash, note_when_due_capped,
 		},
 		meta::{RollingMetaKey, RollingPublished},
 	},
@@ -494,8 +494,8 @@ pub struct PaneEngine<G, C: Coord, A> {
 	merge: Merge<CountedAccumulator<A>>,
 	unmerge: Option<fn(&mut CountedAccumulator<A>, &CountedAccumulator<A>)>,
 	spans: PaneSpans<C::Span>,
-	expiry: ExpiryIndex<Expiry>,
-	expire_batch: usize,
+	age_out: DueIndex<RollingAgeOut>,
+	due_batch: usize,
 	_pd: PhantomData<G>,
 }
 
@@ -537,8 +537,8 @@ where
 			merge,
 			unmerge: None,
 			spans,
-			expiry: ExpiryIndex::default(),
-			expire_batch: config.expire_batch(),
+			age_out: DueIndex::default(),
+			due_batch: config.due_batch(),
 			_pd: PhantomData,
 		}
 	}
@@ -574,8 +574,8 @@ where
 		}
 	}
 
-	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>, ValueError> {
-		self.expiry.earliest(store)
+	pub fn earliest_age_out(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>, ValueError> {
+		self.age_out.earliest(store)
 	}
 
 	pub fn state_keys(&self, groups: &PaneGroups<G, C, Contribution<A>>) -> Vec<GroupStateKey> {
@@ -661,7 +661,7 @@ where
 		Ok(applied)
 	}
 
-	pub fn expire<P>(
+	pub fn age_out_due<P>(
 		&mut self,
 		store: &mut dyn StateStore,
 		cutoff: C,
@@ -672,16 +672,16 @@ where
 		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
 	{
 		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
-			self.expiry.due(store, cutoff.to_order(), self.expire_batch)?;
+			self.age_out.due(store, cutoff.to_order(), self.due_batch)?;
 		let mut applied = PaneApplied::default();
 		for (index_key, entry) in due {
-			expiry_drop(store, &index_key)?;
+			due_drop(store, &index_key)?;
 			let Some(row) = get_classified::<
 				_,
 				RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>,
 			>(store, from_ref(&RollingMetaKey(entry.group_id)))?
 			.remove(0) else {
-				return internal_err!("a rolling expiry row names a group with no group row");
+				return internal_err!("a rolling age out row names a group with no group row");
 			};
 			let view = Panes::new(store, entry.group_id);
 			self.settle(
@@ -699,8 +699,8 @@ where
 		if !applied.withdrawn.is_empty() {
 			store.remove_row_number_for_group(&applied.withdrawn)?;
 		}
-		self.expiry.settle(store)?;
-		note_when_expiry_capped(applied.emits.len(), self.expire_batch);
+		self.age_out.settle(store)?;
+		note_when_due_capped(applied.emits.len(), self.due_batch);
 		Ok(applied.emits)
 	}
 
@@ -1118,7 +1118,7 @@ where
 				let free = row.newest;
 				if cutoff.is_some_and(|cutoff| cutoff >= free) {
 					if let Some(old) = prior_oldest {
-						expiry_drop(store, &rolling_expiry_key(old, hash))?;
+						due_drop(store, &rolling_age_out_key(old, hash))?;
 					}
 					if row.published.is_some() {
 						return set(store, vec![(RollingMetaKey(group_id), row)]);
@@ -1134,12 +1134,12 @@ where
 		row.oldest = oldest;
 		if prior_oldest != Some(oldest) {
 			if let Some(old) = prior_oldest {
-				expiry_drop(store, &rolling_expiry_key(old, hash))?;
+				due_drop(store, &rolling_age_out_key(old, hash))?;
 			}
-			self.expiry.set(
+			self.age_out.set(
 				store,
 				vec![(
-					rolling_expiry_key(oldest, hash),
+					rolling_age_out_key(oldest, hash),
 					RollingIndexEntry {
 						group: group.clone(),
 						group_id,
@@ -1300,7 +1300,7 @@ mod tests {
 			self.newest.get(&group).is_none_or(|newest| pane >= newest.saturating_sub(line))
 		}
 
-		fn expire(&mut self, shape: Shape, group: u32, clock: Option<u64>) {
+		fn age_out(&mut self, shape: Shape, group: u32, clock: Option<u64>) {
 			if let Some(cutoff) = self.cutoff(shape, group, clock)
 				&& let Some(panes) = self.panes.get_mut(&group)
 			{
@@ -1336,7 +1336,7 @@ mod tests {
 		let mut published: HashMap<u32, Vec<(u64, i64)>> = HashMap::new();
 		let mut live: Vec<(u32, u64, u64, i64)> = Vec::new();
 		let (mut base, mut row, mut cutoff) = (1_000u64, 0u64, None::<u64>);
-		let (mut emitted, mut dropped, mut expired) = (0usize, 0u64, 0usize);
+		let (mut emitted, mut dropped, mut aged_out) = (0usize, 0u64, 0usize);
 		for round in 0..400u64 {
 			let mut groups: PaneGroups<u32, ByDateTime, (u64, i64)> = BTreeMap::new();
 			let mut admitted: Vec<(u32, u64, u64, i64, bool)> = Vec::new();
@@ -1387,7 +1387,7 @@ mod tests {
 				cutoff = Some(base.saturating_sub(40));
 			}
 			for group in touched {
-				model.expire(shape, group, cutoff);
+				model.age_out(shape, group, cutoff);
 			}
 			let order: Vec<_> = groups.keys().cloned().collect();
 			let applied = engine
@@ -1417,10 +1417,10 @@ mod tests {
 				cutoff = Some(cutoff.map_or(at, |c| c.max(at)));
 				let groups: Vec<u32> = model.panes.keys().copied().collect();
 				for group in groups {
-					model.expire(shape, group, cutoff);
+					model.age_out(shape, group, cutoff);
 				}
 				let out = engine
-					.expire(
+					.age_out_due(
 						&mut store,
 						ms(cutoff.unwrap()),
 						&RowPublisher::<_, NoKey, _, _, _> {
@@ -1431,7 +1431,7 @@ mod tests {
 						},
 					)
 					.unwrap();
-				expired += out.len();
+				aged_out += out.len();
 				emits.extend(out);
 			}
 			for emit in emits {
@@ -1456,7 +1456,7 @@ mod tests {
 			});
 			base += rng.below(3);
 		}
-		(emitted, dropped, expired)
+		(emitted, dropped, aged_out)
 	}
 
 	fn shapes() -> Vec<Shape> {
@@ -1482,13 +1482,13 @@ mod tests {
 		// A missed subtract, pop, crossing or drop line leaves a published row the panes do not support.
 		for shape in shapes() {
 			for seed in 0..12 {
-				let (emitted, dropped, expired) = drive(shape, seed);
+				let (emitted, dropped, aged_out) = drive(shape, seed);
 				assert!(emitted > 300, "the churn must publish often, emitted {emitted}");
 				assert!(
 					dropped > 10,
 					"late rows must reach the seal and retract lines, dropped {dropped}"
 				);
-				assert!(expired > 0, "the expiry pass must emit, expired {expired}");
+				assert!(aged_out > 0, "the age out pass must emit, aged out {aged_out}");
 			}
 		}
 	}
@@ -1697,13 +1697,13 @@ mod tests {
 		.emits
 	}
 
-	fn tally_expire(
+	fn tally_age_out(
 		engine: &mut PaneEngine<u32, ByDateTime, Tally>,
 		store: &mut MockStore,
 		cutoff: u64,
 		zero: Option<&dyn Fn(&i64) -> Result<Option<i64>, ValueError>>,
 	) -> Emits {
-		engine.expire(
+		engine.age_out_due(
 			store,
 			ms(cutoff),
 			&RowPublisher {
@@ -1727,8 +1727,8 @@ mod tests {
 	}
 
 	#[test]
-	fn an_emptied_window_updates_to_its_zero_row_keeps_the_row_number_and_leaves_the_expiry_index() {
-		// a remove here would free the row number, and a still-indexed zero row would re-expire forever.
+	fn an_emptied_window_updates_to_its_zero_row_keeps_the_row_number_and_leaves_the_due_index() {
+		// a remove here would free the row number, and a still-indexed zero row would age out again forever.
 		let zero = |prior: &i64| -> Result<Option<i64>, ValueError> { Ok((*prior != 0).then_some(0)) };
 		let zero: Option<&dyn Fn(&i64) -> Result<Option<i64>, ValueError>> = Some(&zero);
 		let mut engine = tally_engine();
@@ -1736,25 +1736,25 @@ mod tests {
 		let [inserted] = tally_insert(&mut engine, &mut store, 1_000, 5, None, zero).try_into().ok().unwrap();
 		let row = inserted.post.as_ref().expect("the first trade inserts").row_number;
 
-		let emptied = tally_expire(&mut engine, &mut store, 1_100, zero);
+		let emptied = tally_age_out(&mut engine, &mut store, 1_100, zero);
 		assert_eq!(only_update(&emptied), (row, 5, row, 0), "the emptied window must update to zero in place");
-		assert_eq!(engine.earliest_expiry(&mut store).unwrap(), None, "a zero row must leave the expiry index");
+		assert_eq!(engine.earliest_age_out(&mut store).unwrap(), None, "a zero row must leave the due index");
 		assert!(
-			tally_expire(&mut engine, &mut store, 1_200, zero).is_empty(),
-			"a later expiry must not emit the zero row again"
+			tally_age_out(&mut engine, &mut store, 1_200, zero).is_empty(),
+			"a later age out must not emit the zero row again"
 		);
 
 		let traded = tally_insert(&mut engine, &mut store, 1_300, 7, Some(1_240), zero);
 		assert_eq!(only_update(&traded), (row, 0, row, 7), "the next trade must update from the zero row");
-		assert!(engine.earliest_expiry(&mut store).unwrap().is_some(), "a traded row must be indexed again");
+		assert!(engine.earliest_age_out(&mut store).unwrap().is_some(), "a traded row must be indexed again");
 
-		let again = tally_expire(&mut engine, &mut store, 1_400, zero);
+		let again = tally_age_out(&mut engine, &mut store, 1_400, zero);
 		assert_eq!(only_update(&again), (row, 7, row, 0), "a re-traded row must empty to zero again");
 	}
 
 	#[test]
-	fn a_retraction_that_empties_the_window_zeroes_once_and_the_later_expiry_stays_silent() {
-		// the emptied group stays indexed, so without the already-zero check its expiry re-emits zero over
+	fn a_retraction_that_empties_the_window_zeroes_once_and_the_later_age_out_stays_silent() {
+		// the emptied group stays indexed, so without the already-zero check its age out re-emits zero over
 		// zero.
 		let zero = |prior: &i64| -> Result<Option<i64>, ValueError> { Ok((*prior != 0).then_some(0)) };
 		let zero: Option<&dyn Fn(&i64) -> Result<Option<i64>, ValueError>> = Some(&zero);
@@ -1785,13 +1785,13 @@ mod tests {
 			.emits;
 		assert_eq!(only_update(&retracted), (row, 5, row, 0), "the retraction must zero the row in place");
 		assert!(
-			tally_expire(&mut engine, &mut store, 1_100, zero).is_empty(),
-			"the expiry of an already-zero row must emit nothing"
+			tally_age_out(&mut engine, &mut store, 1_100, zero).is_empty(),
+			"the age out of an already-zero row must emit nothing"
 		);
 		assert_eq!(
-			engine.earliest_expiry(&mut store).unwrap(),
+			engine.earliest_age_out(&mut store).unwrap(),
 			None,
-			"the expired zero row must leave the index"
+			"the aged out zero row must leave the index"
 		);
 	}
 
@@ -1801,7 +1801,7 @@ mod tests {
 		let mut engine = tally_engine();
 		let mut store = MockStore::default();
 		tally_insert(&mut engine, &mut store, 1_000, 5, None, None);
-		let [emptied] = tally_expire(&mut engine, &mut store, 1_100, None).try_into().ok().unwrap();
+		let [emptied] = tally_age_out(&mut engine, &mut store, 1_100, None).try_into().ok().unwrap();
 		assert_eq!(emptied.kind(), Some(EmitKind::Remove), "the default action must remove the row");
 		let [reborn] =
 			tally_insert(&mut engine, &mut store, 1_300, 7, Some(1_240), None).try_into().ok().unwrap();

@@ -28,7 +28,7 @@ use crate::{
 			publish::publish,
 			route::Routed,
 		},
-		engine::{EmitKind, ExpiryAnchor, WindowReindex, tumbling::TumblingEngine},
+		engine::{EmitKind, SealAnchor, WindowReindex, tumbling::TumblingEngine},
 		meta::{EngineMeta, EngineMetaKey},
 		prefetch::Prefetched,
 		span::{WindowAnchor, WindowSpan},
@@ -55,7 +55,7 @@ pub fn finish_tumbling<H>(
 	store: &mut dyn StateStore,
 	routed: Routed<H::Group, H::Coord, Contributions<H>>,
 	hooks: &mut H,
-	anchor: ExpiryAnchor,
+	anchor: SealAnchor,
 ) -> Result<H::Out, ValueError>
 where
 	H: WindowHooks,

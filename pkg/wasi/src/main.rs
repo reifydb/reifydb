@@ -42,7 +42,7 @@ use reifydb_rql::RqlVersion;
 use reifydb_rql_frontend::RqlFrontendVersion;
 use reifydb_runtime::{
 	Runtime, RuntimeConfig,
-	actor::timers::drain_expired_timers,
+	actor::timers::drain_due_timers,
 	context::{RuntimeContext, clock::Clock, spawner::Spawner},
 	pool::PoolConfig,
 	shutdown::{Shutdown, ShutdownErrors},
@@ -276,7 +276,7 @@ fn main() {
 			}
 		};
 
-		drain_expired_timers();
+		drain_due_timers();
 
 		let cmd = msg.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
 

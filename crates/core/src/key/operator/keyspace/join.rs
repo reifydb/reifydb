@@ -53,7 +53,7 @@ pub struct JoinSchemaKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct JoinRowExpiryKey {
+pub struct JoinRowForgetKey {
 	pub group: Desc<GroupId>,
 	pub side: Asc<u8>,
 	pub row: Asc<RowNumber>,
@@ -66,13 +66,13 @@ pub struct JoinPinSuffix {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct JoinRowExpirySuffix {
+pub struct JoinRowForgetSuffix {
 	pub side: Asc<u8>,
 	pub row: Asc<RowNumber>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct JoinExpiryDueKey {
+pub struct JoinForgetDueKey {
 	pub at: Asc<DateTime>,
 	pub group: Desc<GroupId>,
 	pub side: Asc<u8>,
@@ -81,7 +81,7 @@ pub struct JoinExpiryDueKey {
 
 #[operator_state]
 #[derive(Clone)]
-pub struct JoinRowExpiryState {
+pub struct JoinRowForgetState {
 	pub at: DateTime,
 }
 
@@ -212,20 +212,20 @@ impl Keyspace for JoinSchema {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct JoinRowExpiry;
+pub struct JoinRowForget;
 
-impl Keyspace for JoinRowExpiry {
-	const ID: KeyspaceId = KeyspaceId::JOIN_ROW_EXPIRY;
-	const NAME: &'static str = "JOIN_ROW_EXPIRY";
+impl Keyspace for JoinRowForget {
+	const ID: KeyspaceId = KeyspaceId::JOIN_ROW_FORGET;
+	const NAME: &'static str = "JOIN_ROW_FORGET";
 	const RANGE_CACHED: bool = true;
 
-	type GroupedKey = JoinRowExpiryKey;
-	type Suffix = JoinRowExpirySuffix;
+	type GroupedKey = JoinRowForgetKey;
+	type Suffix = JoinRowForgetSuffix;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(
 			key.group.0,
-			JoinRowExpirySuffix {
+			JoinRowForgetSuffix {
 				side: key.side,
 				row: key.row,
 			},
@@ -233,7 +233,7 @@ impl Keyspace for JoinRowExpiry {
 	}
 
 	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
-		JoinRowExpiryKey {
+		JoinRowForgetKey {
 			group: Desc(group),
 			side: suffix.side,
 			row: suffix.row,
@@ -241,10 +241,10 @@ impl Keyspace for JoinRowExpiry {
 	}
 }
 
-pub fn join_expiry_due_key(at: DateTime, group: GroupId, side: u8, row: RowNumber) -> GroupStateKey {
-	typed_key::<JoinExpiryDue>(
+pub fn join_forget_due_key(at: DateTime, group: GroupId, side: u8, row: RowNumber) -> GroupStateKey {
+	typed_key::<JoinForgetDue>(
 		GroupId::ROOT,
-		&JoinExpiryDueKey {
+		&JoinForgetDueKey {
 			at: Asc(at),
 			group: Desc(group),
 			side: Asc(side),
@@ -254,15 +254,15 @@ pub fn join_expiry_due_key(at: DateTime, group: GroupId, side: u8, row: RowNumbe
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct JoinExpiryDue;
+pub struct JoinForgetDue;
 
-impl Keyspace for JoinExpiryDue {
-	const ID: KeyspaceId = KeyspaceId::JOIN_EXPIRY_DUE;
-	const NAME: &'static str = "JOIN_EXPIRY_DUE";
+impl Keyspace for JoinForgetDue {
+	const ID: KeyspaceId = KeyspaceId::JOIN_FORGET_DUE;
+	const NAME: &'static str = "JOIN_FORGET_DUE";
 	const RANGE_CACHED: bool = true;
 
-	type GroupedKey = JoinExpiryDueKey;
-	type Suffix = JoinExpiryDueKey;
+	type GroupedKey = JoinForgetDueKey;
+	type Suffix = JoinForgetDueKey;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)

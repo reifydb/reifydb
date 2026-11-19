@@ -673,7 +673,7 @@ mod tests {
 			operator::{
 				keyspace::{
 					distinct::{DistinctEntry, DistinctEntryKey},
-					expiry::{Expiry, ExpiryKey},
+					due::{RollingAgeOut, RollingAgeOutKey},
 					join::{JoinLeft, JoinLeftKey, JoinRight, JoinRightKey},
 				},
 				state::{GroupId, KeyspaceId, KeyspaceMask, group_inner_range},
@@ -741,14 +741,14 @@ mod tests {
 	}
 
 	fn seed_groupless(store: &SqlitePersistent) {
-		set_one::<Expiry>(
+		set_one::<RollingAgeOut>(
 			store,
 			OPERATOR,
-			&ExpiryKey {
+			&RollingAgeOutKey {
 				threshold: Desc(7),
 				owner: Desc(Hash128(9)),
 			},
-			b"expiry",
+			b"age_out",
 		);
 	}
 
@@ -820,7 +820,7 @@ mod tests {
 		seed(&store, &groups);
 		seed_groupless(&store);
 
-		let rolling = |key: &EncodedKey| parts(key).1 == KeyspaceId::ROLLING_EXPIRY;
+		let rolling = |key: &EncodedKey| parts(key).1 == KeyspaceId::ROLLING_AGE_OUT;
 
 		assert!(!sweep(&store, &groups).iter().any(rolling));
 		assert!(sweep(&store, &[GroupId::ROOT, group(11)]).iter().any(rolling));

@@ -12,7 +12,7 @@ use std::{
 };
 
 use super::{ActorRef, SendError};
-use crate::actor::timers::drain_expired_timers;
+use crate::actor::timers::drain_due_timers;
 
 pub struct ActorRefInner<M> {
 	pub(crate) processor: Rc<RefCell<Option<Box<dyn FnMut(M)>>>>,
@@ -99,7 +99,7 @@ impl<M> ActorRefInner<M> {
 			drop(processor);
 		}
 
-		drain_expired_timers();
+		drain_due_timers();
 
 		Ok(())
 	}

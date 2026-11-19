@@ -13,27 +13,27 @@ use super::store::{ReadLedger, StoredRead};
 use crate::{
 	operator::{
 		host::HostContext,
-		join::{expiry::JoinExpiryIndex, state::JoinSide, store::Store},
+		join::{forget::JoinForgetIndex, state::JoinSide, store::Store},
 		state::seal::{ledger::FiredAt, rule::SealRule},
 	},
-	transaction::join_expiry::DueStart,
+	transaction::join_forget::DueStart,
 };
 
 const LEFT_SIDE: u8 = 0;
 
-const EXPIRY_BATCH: usize = 256;
+const FORGET_BATCH: usize = 256;
 
 #[derive(Debug, Default)]
-pub(crate) struct LookupExpiry {
+pub(crate) struct LookupForget {
 	lateness: Option<Duration>,
-	index: JoinExpiryIndex,
+	index: JoinForgetIndex,
 }
 
-impl LookupExpiry {
+impl LookupForget {
 	pub(crate) fn new(lateness: Option<Duration>) -> Self {
 		Self {
 			lateness: lateness.filter(|span| !span.is_zero()),
-			index: JoinExpiryIndex::default(),
+			index: JoinForgetIndex::default(),
 		}
 	}
 
@@ -59,12 +59,12 @@ impl LookupExpiry {
 		}
 		let rule = SealRule::of(lateness);
 		let cleared: Vec<(GroupId, RowNumber)> = cleared.iter().map(|row| (GroupId::ROOT, *row)).collect();
-		for at in host.join_expiry_clear(LEFT_SIDE, &cleared)?.into_iter().flatten() {
+		for at in host.join_forget_clear(LEFT_SIDE, &cleared)?.into_iter().flatten() {
 			self.index.cleared(at);
 		}
 		let sealed: Vec<(GroupId, RowNumber, DateTime)> =
 			armed.iter().map(|(row, at)| (GroupId::ROOT, *row, rule.seal_instant(*at).at())).collect();
-		host.join_expiry_arm(LEFT_SIDE, &sealed)?;
+		host.join_forget_arm(LEFT_SIDE, &sealed)?;
 		for &(.., at) in &sealed {
 			self.index.armed(at);
 		}
@@ -80,7 +80,7 @@ impl LookupExpiry {
 			None => DueStart::Bottom,
 		};
 		let earliest = loop {
-			let page = host.join_due_page(fired.at(), EXPIRY_BATCH, &start)?;
+			let page = host.join_due_page(fired.at(), FORGET_BATCH, &start)?;
 			if page.due.is_empty() {
 				break page.next;
 			}
@@ -96,7 +96,7 @@ impl LookupExpiry {
 				}
 			}
 			ledger.commit(host)?;
-			host.join_expiry_free(&page.due)?;
+			host.join_forget_free(&page.due)?;
 			if !page.more {
 				break page.next;
 			}

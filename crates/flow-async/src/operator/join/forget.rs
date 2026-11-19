@@ -6,11 +6,11 @@ use reifydb_value::{error::ValueError, value::datetime::DateTime};
 use crate::operator::host::HostContext;
 
 #[derive(Debug, Default)]
-pub(crate) struct JoinExpiryIndex {
+pub(crate) struct JoinForgetIndex {
 	earliest: Option<Option<DateTime>>,
 }
 
-impl JoinExpiryIndex {
+impl JoinForgetIndex {
 	pub(crate) fn armed(&mut self, at: DateTime) {
 		if let Some(earliest) = self.earliest.as_mut() {
 			*earliest = Some(earliest.map_or(at, |seen| seen.min(at)));
@@ -27,7 +27,7 @@ impl JoinExpiryIndex {
 		if let Some(earliest) = self.earliest {
 			return Ok(earliest);
 		}
-		let earliest = host.join_expiry_min()?;
+		let earliest = host.join_forget_min()?;
 		self.earliest = Some(earliest);
 		Ok(earliest)
 	}

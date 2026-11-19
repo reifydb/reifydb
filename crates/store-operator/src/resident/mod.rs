@@ -31,7 +31,7 @@ use reifydb_core::{
 		store::WalFloorCheckpoint,
 	},
 	key::operator::{
-		keyspace::expiry::{FORGOTTEN_AT_FLUSH, ForgetPassQueueKey},
+		keyspace::due::{FORGOTTEN_AT_FLUSH, ForgetPassQueueKey},
 		state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey},
 	},
 	state::typed::SuffixBytes,

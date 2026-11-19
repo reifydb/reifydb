@@ -192,13 +192,13 @@ where
 	Contribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn expire_through<C: GuestContext>(
+	fn seal_through<C: GuestContext>(
 		engine: &mut CarryEngine<A>,
 		store: &mut GuestAsHost<'_, C>,
 		horizon: A::Coord,
 	) -> Result<(), SdkError> {
 		if horizon > <A::Coord as Coord>::from_order(0) {
-			engine.expire(store, horizon, |group, window_start| Self::row_key(group, window_start))?;
+			engine.seal_due(store, horizon, |group, window_start| Self::row_key(group, window_start))?;
 		}
 		Ok(())
 	}
@@ -220,7 +220,7 @@ where
 		}
 		let operator_watermark = operator_watermark::<A::Coord>(&mut store)?;
 		let horizon = <A::Coord as SealDomain>::horizon(operator_watermark, seal_span);
-		Self::expire_through(&mut self.engine, &mut store, horizon)?;
+		Self::seal_through(&mut self.engine, &mut store, horizon)?;
 		let mut dropped = 0u64;
 		buckets.retain(|(_, span), events| {
 			if is_sealed(span.start, horizon) {
@@ -336,7 +336,7 @@ where
 			return Ok(());
 		};
 		let horizon = <A::Coord as SealDomain>::horizon(operator_watermark, seal_span);
-		Self::expire_through(&mut self.engine, &mut store, horizon)
+		Self::seal_through(&mut self.engine, &mut store, horizon)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<(), SdkError> {

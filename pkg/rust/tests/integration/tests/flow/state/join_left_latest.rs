@@ -9,7 +9,7 @@ use crate::flow::state::{await_state_keys, state_keys};
 const TIMEOUT: Duration = Duration::from_seconds_const(15);
 
 const ANCHOR: &str = "from system::metric::flow::state::current
-	filter { keyspace == 'JOIN_ROW_EXPIRY' }";
+	filter { keyspace == 'JOIN_ROW_FORGET' }";
 
 const LEFT: &str = "from system::metric::flow::state::current
 	filter { keyspace == 'JOIN_LEFT' }";

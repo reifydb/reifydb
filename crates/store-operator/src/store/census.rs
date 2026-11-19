@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::{
-		keyspace::{KEYSPACES, columns_width, expiry::FORGOTTEN_AT_FLUSH},
+		keyspace::{KEYSPACES, columns_width, due::FORGOTTEN_AT_FLUSH},
 		state::{KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, OperatorStateKey},
 	},
 };

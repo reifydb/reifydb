@@ -18,7 +18,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	internal_err,
 	key::operator::{
-		keyspace::expiry::TumblingExpiry,
+		keyspace::due::TumblingSeal,
 		state::{GroupId, GroupStateKey, KeyspaceId},
 	},
 	metrics::heap::HeapSize,
@@ -34,7 +34,7 @@ use reifydb_value::{
 use crate::{
 	operator::{
 		state::{
-			expiry::{ExpiryIndex, tumbling_expiry_key},
+			due::{DueIndex, tumbling_seal_key},
 			forget_pass::Forgetter,
 		},
 		state_access::batch,
@@ -43,7 +43,7 @@ use crate::{
 		accumulator::{AccumulatorEvents, CountedAccumulator, WindowAccumulator},
 		engine::{
 			EmitKind, KeyspaceFamily, WindowReindex, WindowResult, WindowStateKey,
-			config::WindowEngineConfig, group_hash, note_when_expiry_capped,
+			config::WindowEngineConfig, group_hash, note_when_due_capped,
 		},
 		span::{WindowAnchor, WindowSpan},
 	},
@@ -68,7 +68,7 @@ struct PendingEmit<G, S, Output> {
 	withdraw: bool,
 }
 
-pub struct ExpiredWindow<G, S> {
+pub struct DueWindow<G, S> {
 	pub group: G,
 	pub group_id: GroupId,
 	pub window_start: S,
@@ -128,9 +128,9 @@ where
 
 pub struct TumblingEngine<G, S, Accumulator> {
 	family: KeyspaceFamily,
-	expire_batch: usize,
+	due_batch: usize,
 	dropped_retractions: u64,
-	expiry: ExpiryIndex<TumblingExpiry>,
+	seal: DueIndex<TumblingSeal>,
 	earliest: Option<Option<u64>>,
 	_pd: PhantomData<(G, S, Accumulator)>,
 }
@@ -146,9 +146,9 @@ where
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
 			family: config.family(),
-			expire_batch: config.expire_batch(),
+			due_batch: config.due_batch(),
 			dropped_retractions: 0,
-			expiry: ExpiryIndex::default(),
+			seal: DueIndex::default(),
 			earliest: None,
 			_pd: PhantomData,
 		}
@@ -169,14 +169,14 @@ where
 			let owner = group_hash(entry.group)?;
 			let order = entry.window_start.order_key().to_order();
 			if let Some(old) = entry.prior {
-				drops.push(tumbling_expiry_key(old, owner, order));
+				drops.push(tumbling_seal_key(old, owner, order));
 				if self.earliest.is_some_and(|known| known.is_none_or(|earliest| old <= earliest)) {
 					self.earliest = None;
 				}
 			}
 			if let Some(new) = entry.new {
 				sets.push((
-					tumbling_expiry_key(new, owner, order),
+					tumbling_seal_key(new, owner, order),
 					TumblingIndexEntry {
 						group: entry.group.clone(),
 						window_start: entry.window_start,
@@ -193,7 +193,7 @@ where
 			store.state_remove(&drops)?;
 		}
 		if !sets.is_empty() {
-			self.expiry.set(store, sets)?;
+			self.seal.set(store, sets)?;
 		}
 		Ok(())
 	}
@@ -456,19 +456,19 @@ where
 		Ok(results)
 	}
 
-	pub fn expire_within(
+	pub fn seal_due_within(
 		&mut self,
 		store: &mut dyn StateStore,
 		threshold: u64,
 		budget: usize,
-	) -> Result<Vec<ExpiredWindow<G, S>>, ValueError> {
-		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, S>)> = self.expiry.due(store, threshold, budget)?;
+	) -> Result<Vec<DueWindow<G, S>>, ValueError> {
+		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, S>)> = self.seal.due(store, threshold, budget)?;
 
-		let mut out: Vec<ExpiredWindow<G, S>> = Vec::with_capacity(due.len());
+		let mut out: Vec<DueWindow<G, S>> = Vec::with_capacity(due.len());
 		let mut index_keys: Vec<GroupStateKey> = Vec::with_capacity(due.len());
 		for (index_key, entry) in due {
 			index_keys.push(index_key);
-			out.push(ExpiredWindow {
+			out.push(DueWindow {
 				group: entry.group,
 				group_id: entry.group_id,
 				window_start: entry.window_start,
@@ -477,37 +477,37 @@ where
 		if !index_keys.is_empty() {
 			store.state_remove(&index_keys)?;
 		}
-		self.expiry.settle(store)?;
+		self.seal.settle(store)?;
 		if !out.is_empty() {
 			self.earliest = None;
 		}
 		reifydb_assertions! {
-			for entry in crate::operator::state::expiry::expiry_all::<TumblingExpiry, TumblingIndexEntry<G, S>>(store)? {
+			for entry in crate::operator::state::due::due_all::<TumblingSeal, TumblingIndexEntry<G, S>>(store)? {
 				assert!(
 					!out.iter().any(|window| window.group_id == entry.group_id),
-					"the expiry index still holds a row for a group that is about to be queued for \
+					"the due index still holds a row for a group that is about to be queued for \
 					 forgetting; a window group must own exactly one index row, or forgetting it orphans \
 					 the rows left behind under a group id nothing resolves again"
 				);
 			}
 		}
-		note_when_expiry_capped(out.len(), self.expire_batch);
+		note_when_due_capped(out.len(), self.due_batch);
 		Ok(out)
 	}
 
-	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>, ValueError> {
+	pub fn earliest_seal(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>, ValueError> {
 		if let Some(known) = self.earliest {
 			reifydb_assertions! {
-				let grounded = crate::operator::state::expiry::expiry_earliest::<TumblingExpiry>(store)?;
+				let grounded = crate::operator::state::due::due_earliest::<TumblingSeal>(store)?;
 				assert!(
 					known == grounded,
-					"the earliest expiry held in memory is {known:?} but the index holds {grounded:?}; \
+					"the earliest seal held in memory is {known:?} but the index holds {grounded:?}; \
 					 one above the index seals its earliest window late, one below seals early"
 				);
 			}
 			return Ok(known);
 		}
-		let earliest = self.expiry.earliest(store)?;
+		let earliest = self.seal.earliest(store)?;
 		self.earliest = Some(earliest);
 		Ok(earliest)
 	}

@@ -229,7 +229,7 @@ mod tests {
 		assert_eq!(
 			health.stalled_count(),
 			1,
-			"the restarted window must still expire, or one advance buys permanent immunity"
+			"the restarted window must still elapse, or one advance buys permanent immunity"
 		);
 	}
 

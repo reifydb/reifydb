@@ -336,7 +336,7 @@ impl LatestInnerHashJoin {
 
 				let prepared = prepare_entry_update(host, &ctx.state.left, keys.pre, ctx.rows)?;
 				let mut held = Vec::with_capacity(indices.len());
-				let mut expired = Vec::new();
+				let mut forgotten = Vec::new();
 				for &idx in indices {
 					match update_row_in_entry(
 						host,
@@ -347,7 +347,7 @@ impl LatestInnerHashJoin {
 						idx,
 					)? {
 						true => held.push(idx),
-						false => expired.push(idx),
+						false => forgotten.push(idx),
 					}
 				}
 				let mut result = match read_right_slot(host, &ctx.state.right, keys.pre)? {
@@ -360,7 +360,7 @@ impl LatestInnerHashJoin {
 					)?,
 					None => Vec::new(),
 				};
-				result.extend(self.handle_insert(host, post, &expired, keys.post, ctx)?);
+				result.extend(self.handle_insert(host, post, &forgotten, keys.post, ctx)?);
 				Ok(result)
 			}
 			JoinSide::Right => self.handle_right_insert(host, indices, keys.post, ctx),

@@ -36,7 +36,7 @@ impl<G: Clone, K: Clone, O: Clone, A, C: WindowAnchor> PanePublisher<G, C, A> fo
 			(None, Some(out)) => {
 				let Some(key) = self.key else {
 					return internal_err!(
-						"a rolling expiry would publish a group that had no published row"
+						"a rolling age out would publish a group that had no published row"
 					);
 				};
 				let post = RollingPublished {

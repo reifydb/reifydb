@@ -30,7 +30,7 @@ use crate::{
 			route::{Routed, Routing},
 			rows::{WindowColumns, WindowDiff, WindowRows},
 		},
-		engine::{EmitKind, ExpiryAnchor, WindowReindex, tumbling::TumblingEngine},
+		engine::{EmitKind, SealAnchor, WindowReindex, tumbling::TumblingEngine},
 		kind::session::open::{Insertion, Member, OpenSession, OpenSessions, Removal},
 		meta::{
 			EngineMeta, EngineMetaKey, OpenSessionsState, RowIndexKey, SessionKey, SessionMemberKey,
@@ -595,7 +595,7 @@ where
 	for (key, events) in routed.buckets.iter() {
 		let prior_last = gated[key].as_ref().map(|meta| meta.last_event_time);
 		let batch_last = routed.window_max_coord.get(key).map(|coord| coord.to_order());
-		let Some(last) = ExpiryAnchor::LastEvent.of(key.1.start.to_order(), prior_last.max(batch_last)) else {
+		let Some(last) = SealAnchor::LastEvent.of(key.1.start.to_order(), prior_last.max(batch_last)) else {
 			continue;
 		};
 		if is_sealed(C::from_order(last), horizon) {
@@ -643,7 +643,7 @@ where
 		arrival,
 		window_max_coord,
 	} = routed;
-	let anchor = ExpiryAnchor::LastEvent;
+	let anchor = SealAnchor::LastEvent;
 	let id_of = |group: &H::Group, start: H::Coord| GroupId::window(identities[group].0, start.to_order());
 	let results = engine.apply(
 		store,

@@ -444,7 +444,7 @@ mod tests {
 
 	#[test]
 	fn held_rows_answers_per_row_and_only_for_its_own_group() {
-		// a missing row reported held turns an expired row's update into a write of a row nobody holds
+		// a missing row reported held turns a forgotten row's update into a write of a row nobody holds
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(3);

@@ -72,7 +72,7 @@ use crate::{
 	operator::{
 		HostOperator, InputOrder, TimedOutput,
 		host::HostContext,
-		join::{Emitted, Identity, expiry::JoinExpiryIndex},
+		join::{Emitted, Identity, forget::JoinForgetIndex},
 		row_times,
 		state::{
 			forget_pass::{StoreForgetter, drain, drain_group, enqueue, queue_key, queued},
@@ -81,7 +81,7 @@ use crate::{
 		time_at_or_after,
 	},
 	timer::Timer,
-	transaction::join_expiry::{DueStart, JoinDueEntry, join_expiry_range},
+	transaction::join_forget::{DueStart, JoinDueEntry, join_forget_range},
 	window::coord::ByDateTime,
 };
 
@@ -95,7 +95,7 @@ const FORGET_PASS_BATCH: usize = 256;
 
 const QUEUE_SWEEP_EVERY: u64 = 1024;
 
-type ExpiryMoves = (Vec<(GroupId, RowNumber)>, Vec<(GroupId, RowNumber, DateTime)>);
+type ForgetMoves = (Vec<(GroupId, RowNumber)>, Vec<(GroupId, RowNumber, DateTime)>);
 
 fn group_by_key(keys: &[Option<Hash128>]) -> (Vec<Hash128>, HashMap<Hash128, Vec<usize>>, Vec<usize>) {
 	let mut order: Vec<Hash128> = Vec::new();
@@ -191,7 +191,7 @@ pub struct JoinOperator {
 	right_lateness: Option<Duration>,
 	ctx: Arc<FlowContext>,
 	forget_pass_fires: Counter,
-	expiry: JoinExpiryIndex,
+	forget: JoinForgetIndex,
 	columns: JoinedColumnsCache,
 }
 
@@ -261,7 +261,7 @@ impl JoinOperator {
 				"flow.operator.join.forget_pass_fires_total",
 				"Join forget pass timer fires",
 			),
-			expiry: JoinExpiryIndex::default(),
+			forget: JoinForgetIndex::default(),
 			output_sumtypes,
 		})
 	}
@@ -294,13 +294,13 @@ impl JoinOperator {
 	fn side_of(tag: u8) -> Result<JoinSide, ValueError> {
 		JoinSide::from_tag(tag).ok_or_else(|| {
 			ValueError::from(FlowAsyncError::Decode {
-				state: "join expiry key",
+				state: "join forget key",
 				cause: format!("unknown join side tag {tag}"),
 			})
 		})
 	}
 
-	fn expiry_group(&self, side: JoinSide, key: Option<Hash128>) -> Option<GroupId> {
+	fn forget_group_of(&self, side: JoinSide, key: Option<Hash128>) -> Option<GroupId> {
 		match key {
 			Some(hash) => Some(GroupId::hashed(hash)),
 			None if side == JoinSide::Left
@@ -313,7 +313,7 @@ impl JoinOperator {
 	}
 
 	fn resync_timer(&mut self, host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<(), ValueError> {
-		let earliest = self.expiry.min(host)?;
+		let earliest = self.forget.min(host)?;
 		self.arm_maintenance(host, earliest, retry)
 	}
 
@@ -336,7 +336,7 @@ impl JoinOperator {
 		}
 	}
 
-	fn move_join_expiries(
+	fn move_join_forgets(
 		&mut self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
@@ -351,8 +351,8 @@ impl JoinOperator {
 		}
 		let rule = SealRule::of(lateness);
 
-		for at in host.join_expiry_clear(side.tag(), cleared)?.into_iter().flatten() {
-			self.expiry.cleared(at);
+		for at in host.join_forget_clear(side.tag(), cleared)?.into_iter().flatten() {
+			self.forget.cleared(at);
 		}
 
 		let mut sealed = Vec::with_capacity(armed.len());
@@ -361,9 +361,9 @@ impl JoinOperator {
 			host.state_remove(from_ref(&queue_key(group)))?;
 			sealed.push((group, row_number, at));
 		}
-		host.join_expiry_arm(side.tag(), &sealed)?;
+		host.join_forget_arm(side.tag(), &sealed)?;
 		for &(.., at) in &sealed {
-			self.expiry.armed(at);
+			self.forget.armed(at);
 		}
 
 		self.resync_timer(host, None)
@@ -384,13 +384,13 @@ impl JoinOperator {
 		let mut armed = Vec::with_capacity(keys.len());
 		for (row_idx, key) in keys.iter().enumerate() {
 			let (Some(group), Some(at)) =
-				(self.expiry_group(side, *key), times.get(row_idx).copied().flatten())
+				(self.forget_group_of(side, *key), times.get(row_idx).copied().flatten())
 			else {
 				continue;
 			};
 			armed.push((group, row_numbers[row_idx], at));
 		}
-		self.move_join_expiries(host, side, &[], &armed)
+		self.move_join_forgets(host, side, &[], &armed)
 	}
 
 	fn clear_batch(
@@ -406,12 +406,12 @@ impl JoinOperator {
 		let row_numbers = require_row_numbers(columns)?;
 		let mut cleared = Vec::with_capacity(keys.len());
 		for (row_idx, key) in keys.iter().enumerate() {
-			let Some(group) = self.expiry_group(side, *key) else {
+			let Some(group) = self.forget_group_of(side, *key) else {
 				continue;
 			};
 			cleared.push((group, row_numbers[row_idx]));
 		}
-		self.move_join_expiries(host, side, &cleared, &[])
+		self.move_join_forgets(host, side, &cleared, &[])
 	}
 
 	fn drop_sealed(
@@ -434,30 +434,30 @@ impl JoinOperator {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn row_join_expiry(
+	fn row_join_forget(
 		&self,
 		side: JoinSide,
 		(pre, post): (&RecordBatch, &RecordBatch),
 		post_times: &[Option<DateTime>],
 		row_idx: usize,
 		keys: (Option<Hash128>, Option<Hash128>),
-		moves: &mut ExpiryMoves,
+		moves: &mut ForgetMoves,
 	) -> Result<(), ValueError> {
 		if self.lateness_of(side).is_none() {
 			return Ok(());
 		}
-		if let Some(group) = self.expiry_group(side, keys.0) {
+		if let Some(group) = self.forget_group_of(side, keys.0) {
 			moves.0.push((group, require_row_numbers(pre)?[row_idx]));
 		}
 		if let (Some(group), Some(at)) =
-			(self.expiry_group(side, keys.1), post_times.get(row_idx).copied().flatten())
+			(self.forget_group_of(side, keys.1), post_times.get(row_idx).copied().flatten())
 		{
 			moves.1.push((group, require_row_numbers(post)?[row_idx], at));
 		}
 		Ok(())
 	}
 
-	fn free_expired_left_row(
+	fn free_due_left_row(
 		&self,
 		host: &mut dyn HostContext,
 		state: &JoinState,
@@ -474,7 +474,7 @@ impl JoinOperator {
 		state.left.remove_row_in(host, group, from_ref(&row_number))
 	}
 
-	fn free_expired_right_row(
+	fn free_due_right_row(
 		&self,
 		host: &mut dyn HostContext,
 		state: &JoinState,
@@ -521,7 +521,7 @@ impl JoinOperator {
 		let state = JoinState::new();
 		let mut emptied: Vec<GroupId> = Vec::new();
 		let mut seen: HashSet<GroupId> = HashSet::new();
-		let mut start = match self.expiry.min(host)? {
+		let mut start = match self.forget.min(host)? {
 			Some(floor) => DueStart::Floor(floor),
 			None => DueStart::Bottom,
 		};
@@ -544,19 +544,19 @@ impl JoinOperator {
 			for group in &order {
 				let rows = &by_group[group];
 				for (_, entry) in rows.iter().filter(|(side, _)| *side == JoinSide::Left) {
-					self.free_expired_left_row(host, &state, entry)?;
+					self.free_due_left_row(host, &state, entry)?;
 				}
 				if rows.iter().any(|(side, _)| *side == JoinSide::Right) {
 					let left_numbers = state.left.row_numbers_in(host, *group)?;
 					for (_, entry) in rows.iter().filter(|(side, _)| *side == JoinSide::Right) {
-						self.free_expired_right_row(host, &state, entry, &left_numbers)?;
+						self.free_due_right_row(host, &state, entry, &left_numbers)?;
 					}
 				}
 				if seen.insert(*group) {
 					emptied.push(*group);
 				}
 			}
-			host.join_expiry_free(&page.due)?;
+			host.join_forget_free(&page.due)?;
 			if !page.more {
 				break page.next;
 			}
@@ -567,7 +567,7 @@ impl JoinOperator {
 		};
 
 		for group in emptied {
-			if host.state_last(join_expiry_range(group))?.is_some()
+			if host.state_last(join_forget_range(group))?.is_some()
 				|| state.left.holds_rows(host, group)?
 				|| state.right.holds_rows(host, group)?
 			{
@@ -579,15 +579,15 @@ impl JoinOperator {
 		}
 
 		reifydb_assertions! {
-			let scanned = host.join_expiry_min()?;
+			let scanned = host.join_forget_min()?;
 			assert!(
 				scanned == earliest,
 				"the drain read {earliest:?} as the first instant past {fired:?}, but the index now \
 				 holds {scanned:?}; arming the maintenance timer on a stale read leaves a row \
-				 unexpired until the next fire"
+				 unforgotten until the next fire"
 			);
 		}
-		self.expiry.settle(earliest);
+		self.forget.settle(earliest);
 		self.resync_timer(host, stalled.then_some(retry))
 	}
 
@@ -1331,7 +1331,7 @@ impl JoinOperator {
 				rows.hold(in_place.iter().map(|(_, number)| *number).zip(held).collect());
 			}
 		}
-		let mut moves: ExpiryMoves = (Vec::new(), Vec::new());
+		let mut moves: ForgetMoves = (Vec::new(), Vec::new());
 
 		for row_idx in 0..row_count {
 			let mut ctx = JoinContext {
@@ -1381,7 +1381,7 @@ impl JoinOperator {
 				}
 			};
 			result.extend(diffs);
-			self.row_join_expiry(
+			self.row_join_forget(
 				side,
 				(pre, post),
 				&post_times,
@@ -1390,11 +1390,11 @@ impl JoinOperator {
 				&mut moves,
 			)?;
 			if !distinct {
-				self.move_join_expiries(host, side, &moves.0, &moves.1)?;
+				self.move_join_forgets(host, side, &moves.0, &moves.1)?;
 				moves = (Vec::new(), Vec::new());
 			}
 		}
-		self.move_join_expiries(host, side, &moves.0, &moves.1)
+		self.move_join_forgets(host, side, &moves.0, &moves.1)
 	}
 }
 
@@ -1414,7 +1414,7 @@ mod seal_tests {
 			any::TaggedKey,
 			bound::TaggedKeyBoundRange,
 			operator::{
-				keyspace::join::{JoinLeft, JoinRight, JoinRowExpiryState as JoinRowExpiry},
+				keyspace::join::{JoinLeft, JoinRight, JoinRowForgetState as JoinRowForget},
 				state::{GroupStateKey, KeyspaceId},
 				traits::Keyspace,
 			},
@@ -1448,7 +1448,7 @@ mod seal_tests {
 		transaction::{
 			FlowTransaction,
 			deferred::DeferredTransaction,
-			join_expiry::{join_due_range, join_expiry_key},
+			join_forget::{join_due_range, join_forget_key},
 			mock::FlowTxn,
 			pending_get,
 			row_number::RowNumberExtension,
@@ -1575,19 +1575,19 @@ mod seal_tests {
 		GroupId::hashed(*hash)
 	}
 
-	fn join_expiry_of(
+	fn join_forget_of(
 		op: &JoinOperator,
 		txn: &mut DeferredTransaction,
 		group: GroupId,
 		side: JoinSide,
 		row_number: u64,
 	) -> Option<DateTime> {
-		let key = join_expiry_key(group, side.tag(), RowNumber(row_number));
+		let key = join_forget_key(group, side.tag(), RowNumber(row_number));
 		txn.state_get(op.operator, from_ref(&key))
 			.unwrap()
 			.pop()
 			.flatten()
-			.map(|row| decode::<JoinRowExpiry>(&row).unwrap().at)
+			.map(|row| decode::<JoinRowForget>(&row).unwrap().at)
 	}
 
 	fn due_index_rows(op: &JoinOperator, txn: &mut DeferredTransaction) -> usize {
@@ -1856,7 +1856,7 @@ mod seal_tests {
 		}
 	}
 
-	fn left_scans_freeing_expired_rights(operator: u64, rights: usize) -> usize {
+	fn left_scans_freeing_due_rights(operator: u64, rights: usize) -> usize {
 		// one key, six left rows that outlive the fire, and `rights` right rows all due at the same instant
 		let engine = TestEngine::new();
 		let mut op = join(operator, Some(seconds(3_600)), Some(seconds(10)));
@@ -1886,7 +1886,7 @@ mod seal_tests {
 
 	#[test]
 	fn an_inserted_row_is_armed_one_lateness_past_its_own_event_time() {
-		// the join expiry must be the row's own event time, not wall-clock, or a backfilled row evicts on
+		// the join forget entry must be the row's own event time, not wall-clock, or a backfilled row evicts on
 		// arrival
 		let engine = TestEngine::new();
 		let mut op = join(1, Some(seconds(10)), None);
@@ -1897,7 +1897,7 @@ mod seal_tests {
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
 			"the due time is event time + lateness + the strict gate step"
 		);
@@ -1905,9 +1905,9 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_row_armed_below_a_settled_floor_still_expires() {
-		// a pass settles the floor at the earliest live expiry and the next pass starts its due scan there,
-		// so a backfilled row arming beneath that floor is reachable only because arming lowers it
+	fn a_row_armed_below_a_settled_floor_is_still_forgotten() {
+		// a pass settles the floor at the earliest live forget entry and the next pass starts its due scan
+		// there, so a backfilled row arming beneath that floor is reachable only because arming lowers it
 		let engine = TestEngine::new();
 		let mut op = join(1, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1917,14 +1917,14 @@ mod seal_tests {
 
 		fire(&mut op, &mut txn, at_millis(9_000));
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 1),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 1),
 			Some(at_millis(15_001)),
-			"the pass must settle its floor on this expiry, which outlives the fire"
+			"the pass must settle its floor on this forget entry, which outlives the fire"
 		);
 
 		insert(&mut op, &mut txn, JoinSide::Left, &rows(&[7], &[2], at_millis(1_000)));
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 2),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 2),
 			Some(at_millis(11_001)),
 			"the backfilled row must arm below the settled floor or this test proves nothing"
 		);
@@ -1932,12 +1932,12 @@ mod seal_tests {
 		fire(&mut op, &mut txn, at_millis(12_000));
 
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 2),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 2),
 			None,
-			"a due scan that starts at a floor above the backfilled row leaves it unexpired forever"
+			"a due scan that starts at a floor above the backfilled row leaves it unforgotten forever"
 		);
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 1),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 1),
 			Some(at_millis(15_001)),
 			"and the row past the fire must keep its arming"
 		);
@@ -1958,7 +1958,7 @@ mod seal_tests {
 		let group = group_of(&hash_of(&op, JoinSide::Left, &post, 0));
 		assert_eq!(armed_timers(&op, &mut txn), 1, "an update re-arms one timer, it does not add one");
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(30_001)),
 			"and the due time follows the row's own last write"
 		);
@@ -1966,7 +1966,7 @@ mod seal_tests {
 
 	#[test]
 	fn a_row_still_inside_its_lateness_survives_a_maintenance_tick() {
-		// The gate is strict: a row whose due time lands one tick past the fire must not expire yet.
+		// The gate is strict: a row whose due time lands one tick past the fire must not be forgotten yet.
 		let engine = TestEngine::new();
 		let mut op = join(3, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1978,17 +1978,17 @@ mod seal_tests {
 
 		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 1, "the row must keep its state");
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
-			"and its join expiry must survive untouched"
+			"and its join forget entry must survive untouched"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 1, "its timer is not due and must be armed again");
 	}
 
 	#[test]
-	fn removing_a_row_takes_its_join_expiry_and_its_timer_with_it() {
-		// A source delete leaves no row to expire, so a join expiry left behind fires against state that is
-		// gone.
+	fn removing_a_row_takes_its_join_forget_and_its_timer_with_it() {
+		// A source delete leaves no row to forget, so a join forget entry left behind fires against state that
+		// is gone.
 		let engine = TestEngine::new();
 		let mut op = join(4, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1999,15 +1999,15 @@ mod seal_tests {
 		remove(&mut op, &mut txn, JoinSide::Left, &left);
 
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
 			None,
-			"the join expiry must go with the row"
+			"the join forget entry must go with the row"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 0, "and the timer that addressed it must be disarmed");
 	}
 
 	#[test]
-	fn a_sibling_row_under_the_same_key_outlives_its_neighbours_expiry() {
+	fn a_sibling_row_under_the_same_key_outlives_its_forgotten_neighbour() {
 		// A join group holds many rows, so freeing due rows must free exactly one and re-arm on the next
 		// earliest.
 		let engine = TestEngine::new();
@@ -2022,22 +2022,26 @@ mod seal_tests {
 		fire(&mut op, &mut txn, at_millis(15_001));
 
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 1),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 1),
 			None,
-			"the due row's join expiry must go"
+			"the due row's join forget entry must go"
 		);
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 2),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 2),
 			Some(at_millis(60_001)),
-			"its neighbour under the same key must keep its own join expiry"
+			"its neighbour under the same key must keep its own join forget entry"
 		);
 		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 1, "exactly one row was freed");
-		assert_eq!(armed_timers(&op, &mut txn), 1, "and the operator re-arms on the next earliest join expiry");
+		assert_eq!(
+			armed_timers(&op, &mut txn),
+			1,
+			"and the operator re-arms on the next earliest join forget entry"
+		);
 	}
 
 	#[test]
-	fn right_side_traffic_never_extends_a_left_rows_join_expiry() {
-		// A match is not a write to the left row; advancing its join expiry would keep a joined row alive
+	fn right_side_traffic_never_extends_a_left_rows_join_forget() {
+		// A match is not a write to the left row; advancing its join forget entry would keep a joined row alive
 		// forever.
 		let engine = TestEngine::new();
 		let mut op = join(6, Some(seconds(10)), None);
@@ -2049,16 +2053,17 @@ mod seal_tests {
 		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
-			"the left join expiry must still name the left row's own last write"
+			"the left join forget entry must still name the left row's own last write"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 1, "and a side with no lateness must arm nothing of its own");
 	}
 
 	#[test]
 	fn a_join_without_a_lateness_arms_nothing_at_all() {
-		// Arming without a lateness leaves one timer and one join expiry per row that nothing ever collects.
+		// Arming without a lateness leaves one timer and one join forget entry per row that nothing ever
+		// collects.
 		let engine = TestEngine::new();
 		let mut op = join(7, None, None);
 		let mut txn = txn_at(&engine, 100);
@@ -2068,16 +2073,16 @@ mod seal_tests {
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
 			None,
-			"no lateness means no join expiry"
+			"no lateness means no join forget entry"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 0, "and no timer");
 	}
 
 	#[test]
-	fn an_expired_row_frees_its_state_its_join_expiry_and_its_output_mapping_without_emitting() {
-		// An expired row is immutable downstream, so it must emit nothing while its mapping is forgotten.
+	fn a_forgotten_row_frees_its_state_its_join_forget_and_its_output_mapping_without_emitting() {
+		// A forgotten row is immutable downstream, so it must emit nothing while its mapping is forgotten.
 		let engine = TestEngine::new();
 		let mut op = join(8, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -2088,8 +2093,12 @@ mod seal_tests {
 
 		let emitted = fire(&mut op, &mut txn, at_millis(15_001));
 
-		assert!(emitted.is_none(), "freeing an expired row must publish no diff at all");
-		assert_eq!(join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42), None, "the join expiry must go");
+		assert!(emitted.is_none(), "freeing a forgotten row must publish no diff at all");
+		assert_eq!(
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
+			None,
+			"the join forget entry must go"
+		);
 		assert_eq!(
 			unmatched_mapping(&op, &mut txn, 42),
 			None,
@@ -2098,7 +2107,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_key_whose_last_row_expired_loses_the_group_that_carried_it() {
+	fn a_key_whose_last_row_was_forgotten_loses_the_group_that_carried_it() {
 		// a group's rows only leave through the forget pass, so freeing the last row must queue it
 		let engine = TestEngine::new();
 		let mut op = join(9, Some(seconds(10)), None);
@@ -2111,7 +2120,7 @@ mod seal_tests {
 		fire(&mut op, &mut txn, at_millis(15_001));
 
 		assert_eq!(group_rows(&op, &mut txn, group), 0, "the group's range must be left empty");
-		assert_eq!(armed_timers(&op, &mut txn), 0, "and the timer that drove the expiry must not re-arm");
+		assert_eq!(armed_timers(&op, &mut txn), 0, "and the timer that drove the forget must not re-arm");
 	}
 
 	#[test]
@@ -2132,13 +2141,14 @@ mod seal_tests {
 		assert_eq!(
 			side_rows(&op, &mut txn, group, JoinSide::Right),
 			1,
-			"an unexpired side keeps its rows and no join expiry holds the group open on its behalf"
+			"an unforgotten side keeps its rows and no join forget entry holds the group open on its behalf"
 		);
 	}
 
 	#[test]
 	fn a_row_short_of_its_own_lateness_holds_the_groups_timer_open() {
-		// The two sides expire on independent spans, so the group re-arms on whichever join expiry is next due.
+		// The two sides are forgotten on independent spans, so the group re-arms on whichever forget entry is
+		// next due.
 		let engine = TestEngine::new();
 		let mut op = join(11, Some(seconds(10)), Some(seconds(3_600)));
 		let mut txn = txn_at(&engine, 100);
@@ -2152,19 +2162,19 @@ mod seal_tests {
 
 		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 0, "the left row is past its own lateness");
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Right, 99),
+			join_forget_of(&op, &mut txn, group, JoinSide::Right, 99),
 			Some(at_millis(3_609_001)),
-			"the right row keeps the join expiry its own longer lateness gave it"
+			"the right row keeps the join forget entry its own longer lateness gave it"
 		);
 		assert_eq!(
 			armed_timers(&op, &mut txn),
 			1,
-			"and the operator re-arms on that join expiry rather than dropping it"
+			"and the operator re-arms on that join forget entry rather than dropping it"
 		);
 	}
 
 	#[test]
-	fn a_latest_join_expires_both_sides_on_their_own_lateness() {
+	fn a_latest_join_forgets_both_sides_on_their_own_lateness() {
 		// A latest join holds one right row per key, and that row must still arm its own lateness.
 		let engine = TestEngine::new();
 		let mut op = join_with(12, Emit::On, Some(JoinPick::latest()), Some(seconds(10)), Some(seconds(10)));
@@ -2176,16 +2186,20 @@ mod seal_tests {
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
-			"the left side is an ordinary row set and must expire normally"
+			"the left side is an ordinary row set and must be forgotten normally"
 		);
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Right, 99),
+			join_forget_of(&op, &mut txn, group, JoinSide::Right, 99),
 			Some(at_millis(19_001)),
-			"the right row is an ordinary kept row and must expire on its own lateness"
+			"the right row is an ordinary kept row and must be forgotten on its own lateness"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "and one timer covers the group's earliest join expiry");
+		assert_eq!(
+			armed_timers(&op, &mut txn),
+			1,
+			"and one timer covers the group's earliest join forget entry"
+		);
 	}
 
 	#[test]
@@ -2264,8 +2278,9 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_snapshot_join_expires_both_sides_on_their_own_lateness() {
-		// A sealed right row stashes its bytes into the pin, so pinning it no longer means it may never expire.
+	fn a_snapshot_join_forgets_both_sides_on_their_own_lateness() {
+		// A sealed right row stashes its bytes into the pin, so pinning it no longer means it may never be
+		// forgotten.
 		let engine = TestEngine::new();
 		let mut op = join_with(13, Emit::Off, None, Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
@@ -2276,21 +2291,25 @@ mod seal_tests {
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
-			"the left side is unaffected by the flag and must expire normally"
+			"the left side is unaffected by the flag and must be forgotten normally"
 		);
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Right, 99),
+			join_forget_of(&op, &mut txn, group, JoinSide::Right, 99),
 			Some(at_millis(19_001)),
 			"and the pinned right row must arm too, or a snapshot join grows without bound"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "and one timer covers the group's earliest join expiry");
+		assert_eq!(
+			armed_timers(&op, &mut txn),
+			1,
+			"and one timer covers the group's earliest join forget entry"
+		);
 	}
 
 	#[test]
-	fn an_expired_left_row_releases_the_published_ledger_it_held() {
-		// A pin is refcounted, so a left row that expires without releasing holds its stashed copy forever.
+	fn a_forgotten_left_row_releases_the_published_ledger_it_held() {
+		// A pin is refcounted, so a left row forgotten without releasing holds its stashed copy forever.
 		let engine = TestEngine::new();
 		let mut op = join_with(14, Emit::Off, None, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -2321,8 +2340,9 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn an_update_to_an_expired_snapshot_latest_left_row_never_lands_on_its_immutable_id() {
-		// Expiry is silent, so the immutable row keeps its id and a post published there overwrites history.
+	fn an_update_to_a_forgotten_snapshot_latest_left_row_never_lands_on_its_immutable_id() {
+		// Forgetting is silent, so the immutable row keeps its id and a post published there overwrites
+		// history.
 		let engine = TestEngine::new();
 		let mut op = join_with(18, Emit::Off, Some(JoinPick::latest()), Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -2349,13 +2369,13 @@ mod seal_tests {
 			.filter_map(|diff| diff.post())
 			.flat_map(|post| require_row_numbers(post).unwrap().to_vec())
 			.collect();
-		assert_eq!(landed.len(), 1, "the post of the expired row is published once, got {out:?}");
+		assert_eq!(landed.len(), 1, "the post of the forgotten row is published once, got {out:?}");
 		assert_ne!(landed, immutable, "the post must take a fresh id beside the immutable row, never its id");
 	}
 
 	#[test]
-	fn a_siblings_pin_on_the_same_right_row_survives_its_neighbours_expiry() {
-		// Release must be scoped to the expiring left row, or a live sibling loses the version it published.
+	fn a_siblings_pin_on_the_same_right_row_survives_its_forgotten_neighbour() {
+		// Release must be scoped to the forgotten left row, or a live sibling loses the version it published.
 		let engine = TestEngine::new();
 		let mut op = join_with(15, Emit::Off, None, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -2376,7 +2396,7 @@ mod seal_tests {
 		assert_eq!(
 			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PUBLISHED),
 			1,
-			"exactly the expired row's pair goes, never its neighbour's"
+			"exactly the forgotten row's pair goes, never its neighbour's"
 		);
 		assert_eq!(
 			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PIN),
@@ -2386,7 +2406,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_committed_join_expiry_leaves_neither_of_its_two_rows_behind_once_its_group_expires() {
+	fn a_committed_join_forget_leaves_neither_of_its_two_rows_behind_once_its_group_is_forgotten() {
 		// A sweep visits the group's own partition, so the root due row must never outlive the group it names.
 		let engine = TestEngine::new();
 		let mut op = join(16, Some(seconds(10)), None);
@@ -2396,9 +2416,9 @@ mod seal_tests {
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		commit(&engine, &mut txn);
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
-			"precondition: the group scoped join expiry is durable, not merely in the batch"
+			"precondition: the group scoped join forget entry is durable, not merely in the batch"
 		);
 		assert_eq!(due_index_rows(&op, &mut txn), 1, "precondition: so is the root due row indexing it");
 
@@ -2406,25 +2426,25 @@ mod seal_tests {
 		commit(&engine, &mut txn);
 
 		assert_eq!(
-			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
 			None,
-			"a group driven through free, enqueue and drain must leave no join expiry row"
+			"a group driven through free, enqueue and drain must leave no join forget row"
 		);
 		assert_eq!(due_index_rows(&op, &mut txn), 0, "and no root due row pointing back into it");
 	}
 
 	#[test]
-	fn expiring_right_rows_enumerate_their_groups_left_side_once_not_once_each() {
+	fn forgotten_right_rows_enumerate_their_groups_left_side_once_not_once_each() {
 		// the left side never changes under the right sweep, so re-reading it per right row is a wasted scan
-		let one = left_scans_freeing_expired_rights(20, 1);
-		let four = left_scans_freeing_expired_rights(21, 4);
+		let one = left_scans_freeing_due_rights(20, 1);
+		let four = left_scans_freeing_due_rights(21, 4);
 
 		assert_eq!(
 			one, 1,
-			"exactly one left read: the composite key enumeration; the row expiry probe vetoes the drain \
+			"exactly one left read: the composite key enumeration; the row forget probe vetoes the drain \
 			 before the left side is read again"
 		);
-		assert_eq!(four, one, "four expiring rights must not cost four enumerations of the same left side");
+		assert_eq!(four, one, "four forgotten rights must not cost four enumerations of the same left side");
 	}
 
 	fn sequenced(keys: &[i32], numbers: &[u64], sequences: &[u64], at: DateTime) -> RecordBatch {

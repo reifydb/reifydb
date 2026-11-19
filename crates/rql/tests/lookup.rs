@@ -98,7 +98,7 @@ fn a_lateness_without_left_is_ast_005() {
 
 #[test]
 fn a_right_lateness_is_ast_005() {
-	// A lookup keeps no right rows, so a right lateness has nothing to expire.
+	// A lookup keeps no right rows, so a right lateness has nothing to forget.
 	let engine = engine();
 	let with = " WITH { retention: { left: 10s, right: 10s } }";
 	assert_code(&engine.query_err(&lookup(BLOCK, USING, with)), "AST_005");

@@ -38,8 +38,8 @@ where
 	if horizon <= C::from_order(0) {
 		return Ok(false);
 	}
-	let expired = engine.expire_within(store, horizon.to_order().saturating_sub(1), budget)?;
-	let groups: Vec<GroupId> = expired.iter().map(|window| window.group_id).collect();
+	let due = engine.seal_due_within(store, horizon.to_order().saturating_sub(1), budget)?;
+	let groups: Vec<GroupId> = due.iter().map(|window| window.group_id).collect();
 	if may_forget && store.state_forgets_groups() {
 		enqueue_forgotten(store, &groups)?;
 		return Ok(false);
@@ -69,7 +69,7 @@ where
 	if close_through(engine, store, operator_watermark, seal_span, budget, may_forget)? {
 		C::arm_forget_pass(store, fired.at(), seal_span)?;
 	}
-	let earliest = engine.earliest_expiry(store)?;
+	let earliest = engine.earliest_seal(store)?;
 	C::rearm_seal(store, seal_span, None, earliest)
 }
 

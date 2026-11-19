@@ -123,7 +123,7 @@ fn enqueue_repeat<M: Send + Clone + 'static>(
 	});
 }
 
-pub fn drain_expired_timers() {
+pub fn drain_due_timers() {
 	if DRAINING.with(|d| d.get()) {
 		return;
 	}

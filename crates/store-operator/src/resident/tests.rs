@@ -19,7 +19,7 @@ use reifydb_core::{
 		operator::{
 			keyspace::{
 				columns_width,
-				expiry::{FORGOTTEN_AT_FLUSH, ForgetPassQueue, ForgetPassQueueKey},
+				due::{FORGOTTEN_AT_FLUSH, ForgetPassQueue, ForgetPassQueueKey},
 				join::{JoinLeft, JoinRight},
 			},
 			state::{GroupId, GroupStateKey, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, KeyspaceMask},
@@ -1093,7 +1093,7 @@ impl RangeSink for RecordingRange {
 #[test]
 fn a_flush_hands_the_range_tier_each_unbroken_run_of_removals_in_batch_order() {
 	let group = GroupId::hashed(Hash128(7));
-	let staged = |name: &str| GroupStateKey::new(group, KeyspaceId::JOIN_EXPIRY_DUE, name.as_bytes());
+	let staged = |name: &str| GroupStateKey::new(group, KeyspaceId::JOIN_FORGET_DUE, name.as_bytes());
 	let batch = FlushBatch {
 		writes: vec![
 			(OP_A, staged("a1"), StagedWrite::Set(row("v"))),

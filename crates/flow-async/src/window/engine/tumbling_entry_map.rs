@@ -18,7 +18,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	internal_err,
 	key::operator::{
-		keyspace::expiry::TumblingExpiry,
+		keyspace::due::TumblingSeal,
 		state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, KeyspaceMask},
 	},
 	metrics::heap::HeapSize,
@@ -33,7 +33,7 @@ use reifydb_value::{
 
 use crate::{
 	operator::state::{
-		expiry::{ExpiryIndex, expiry_drop, tumbling_expiry_key},
+		due::{DueIndex, due_drop, tumbling_seal_key},
 		forget_pass::Forgetter,
 	},
 	window::{
@@ -42,8 +42,8 @@ use crate::{
 			BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MapEntryKey, MetaSweep, WindowReindex,
 			WindowStateKey,
 			config::WindowEngineConfig,
-			group_hash, meta_key_for, note_when_expiry_capped,
-			tumbling::{ExpiredWindow, TumblingBuckets, TumblingIndexEntry},
+			group_hash, meta_key_for, note_when_due_capped,
+			tumbling::{DueWindow, TumblingBuckets, TumblingIndexEntry},
 		},
 		span::{WindowAnchor, WindowSpan},
 	},
@@ -156,8 +156,8 @@ where
 
 pub struct EntryMapTumblingEngine<G, S, K, V, O> {
 	meta_sweep: MetaSweep,
-	expire_batch: usize,
-	expiry: ExpiryIndex<TumblingExpiry>,
+	due_batch: usize,
+	seal: DueIndex<TumblingSeal>,
 	_pd: PhantomData<(G, S, K, V, fn() -> O)>,
 }
 
@@ -178,8 +178,8 @@ where
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
 			meta_sweep: MetaSweep::default(),
-			expire_batch: config.expire_batch(),
-			expiry: ExpiryIndex::default(),
+			due_batch: config.due_batch(),
+			seal: DueIndex::default(),
 			_pd: PhantomData,
 		}
 	}
@@ -195,11 +195,11 @@ where
 			let owner = group_hash(entry.group)?;
 			let order = entry.window_start.order_key().to_order();
 			if let Some(old) = entry.prior {
-				drops.push(tumbling_expiry_key(old, owner, order));
+				drops.push(tumbling_seal_key(old, owner, order));
 			}
 			if let Some(new) = entry.new {
 				sets.push((
-					tumbling_expiry_key(new, owner, order),
+					tumbling_seal_key(new, owner, order),
 					TumblingIndexEntry {
 						group: entry.group.clone(),
 						window_start: entry.window_start,
@@ -213,7 +213,7 @@ where
 			store.state_remove(&drops)?;
 		}
 		if !sets.is_empty() {
-			self.expiry.set(store, sets)?;
+			self.seal.set(store, sets)?;
 		}
 		Ok(())
 	}
@@ -655,39 +655,39 @@ where
 		Ok(pending)
 	}
 
-	pub fn expire(
+	pub fn seal_due(
 		&mut self,
 		store: &mut dyn StateStore,
 		threshold: u64,
-	) -> Result<Vec<ExpiredWindow<G, S>>, ValueError> {
+	) -> Result<Vec<DueWindow<G, S>>, ValueError> {
 		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, S>)> =
-			self.expiry.due(store, threshold, self.expire_batch)?;
+			self.seal.due(store, threshold, self.due_batch)?;
 
-		let mut out: Vec<ExpiredWindow<G, S>> = Vec::new();
+		let mut out: Vec<DueWindow<G, S>> = Vec::new();
 		for (index_key, entry) in due {
-			expiry_drop(store, &index_key)?;
-			out.push(ExpiredWindow {
+			due_drop(store, &index_key)?;
+			out.push(DueWindow {
 				group: entry.group,
 				group_id: entry.group_id,
 				window_start: entry.window_start,
 			});
 		}
-		self.expiry.settle(store)?;
+		self.seal.settle(store)?;
 		reifydb_assertions! {
-			for entry in crate::operator::state::expiry::expiry_all::<TumblingExpiry, TumblingIndexEntry<G, S>>(store)? {
+			for entry in crate::operator::state::due::due_all::<TumblingSeal, TumblingIndexEntry<G, S>>(store)? {
 				assert!(
 					!out.iter().any(|window| window.group_id == entry.group_id),
-					"the expiry index still holds a row for a group that is about to be queued for \
+					"the due index still holds a row for a group that is about to be queued for \
 					 forgetting; a window group must own exactly one index row, or forgetting it orphans \
 					 the rows left behind under a group id nothing resolves again"
 				);
 			}
 		}
-		note_when_expiry_capped(out.len(), self.expire_batch);
+		note_when_due_capped(out.len(), self.due_batch);
 		Ok(out)
 	}
 
-	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize, ValueError> {
+	pub fn forget_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize, ValueError> {
 		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
 	}
 }
@@ -976,7 +976,7 @@ mod tests {
 			}],
 		)
 		.unwrap();
-		assert_eq!(engine.expire(&mut store, 10).unwrap().len(), 1, "precondition: the window expires");
+		assert_eq!(engine.seal_due(&mut store, 10).unwrap().len(), 1, "precondition: the window seals");
 
 		let swept = store.group_sweep(&[group], usize::MAX, KeyspaceMask::data()).unwrap().rows;
 		assert!(!swept.is_empty(), "precondition: the window holds data to forget");
@@ -1021,10 +1021,10 @@ mod tests {
 		)
 		.unwrap();
 
-		let expired = engine.expire(&mut store, 10).unwrap();
-		assert_eq!(expired.len(), 1);
-		enqueue(&mut store, &[expired[0].group_id]).unwrap();
-		forget_group(&mut store, expired[0].group_id, &mut StoreForgetter, 256).unwrap();
+		let due = engine.seal_due(&mut store, 10).unwrap();
+		assert_eq!(due.len(), 1);
+		enqueue(&mut store, &[due[0].group_id]).unwrap();
+		forget_group(&mut store, due[0].group_id, &mut StoreForgetter, 256).unwrap();
 
 		assert_eq!(
 			stored(&engine, &mut store, (group, slot.clone())).expect("the forgotten window reads"),

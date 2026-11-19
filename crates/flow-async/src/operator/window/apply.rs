@@ -99,7 +99,7 @@ pub fn forget_sealed_groups(
 		return Ok(());
 	};
 	let rule = SealRule::tumbling(size, operator.lateness().unwrap_or_else(Duration::zero));
-	let budget = operator.engine_config().expire_batch();
+	let budget = operator.engine_config().due_batch();
 	with_engine(operator, |engine| {
 		forget_pass(engine, host, fired, rule.seal_span().duration(), budget).map(|_| ())
 	})
@@ -293,9 +293,9 @@ mod forget_pass_tests {
 
 	#[test]
 	fn a_forget_pass_backlog_larger_than_one_budget_arms_another_maintenance_pass() {
-		// one maintenance pass drains at most expire_batch groups; if the pass does not re-arm
+		// one maintenance pass drains at most due_batch groups; if the pass does not re-arm
 		// itself the remainder is never revisited and the forget pass queue grows without bound
-		let budget = window(1).engine_config().expire_batch() as u128;
+		let budget = window(1).engine_config().due_batch() as u128;
 
 		assert!(
 			forget_pass_with_queued(budget + 5) > 0,
@@ -325,7 +325,7 @@ mod seal_arm_tests {
 		key::{
 			any::TaggedKey,
 			operator::{
-				keyspace::{expiry::FORGOTTEN_AT_FLUSH, timer::TimerWheelKey},
+				keyspace::{due::FORGOTTEN_AT_FLUSH, timer::TimerWheelKey},
 				state::{GroupId, KeyspaceId},
 			},
 		},
@@ -362,7 +362,7 @@ mod seal_arm_tests {
 		window::{
 			accumulator::{AccumulatorEvents, AccumulatorOp},
 			driver::{route::Routed as DriverRouted, session::tracker_key, tumbling::finish_tumbling},
-			engine::{ExpiryAnchor, WindowReindex},
+			engine::{SealAnchor, WindowReindex},
 			span::WindowSpan,
 		},
 	};
@@ -553,14 +553,14 @@ mod seal_arm_tests {
 	}
 
 	#[test]
-	fn a_seal_run_closes_one_expire_budget_of_windows_per_timer_it_carries() {
+	fn a_seal_run_closes_one_due_batch_of_windows_per_timer_it_carries() {
 		// A run capped at one budget closes fewer windows than its timers would alone, leaving late rows
 		// admitted.
 		let engine = TestEngine::new();
 		let mut operator = session_window();
 		let id = operator.core.operator;
 		let mut txn = txn_at(&engine, 100);
-		let due = operator.engine_config().expire_batch() + 44;
+		let due = operator.engine_config().due_batch() + 44;
 		let starts: Vec<u64> = (0..due as u64).collect();
 		let mut host = TxnHostContext::new(&mut txn, id);
 		index_windows(&mut operator, &mut host, &starts);
@@ -626,14 +626,9 @@ mod seal_arm_tests {
 				HashMap::from([(hash, Vec::new())]),
 				start.0,
 			);
-			let diffs = finish_tumbling(
-				&mut tumbling,
-				&mut host,
-				routed,
-				&mut hooks,
-				ExpiryAnchor::WindowStart,
-			)
-			.unwrap();
+			let diffs =
+				finish_tumbling(&mut tumbling, &mut host, routed, &mut hooks, SealAnchor::WindowStart)
+					.unwrap();
 			*operator.core.tumbling_engine_slot() = Some(tumbling);
 			assert!(diffs.is_empty(), "precondition: a window that nets to empty publishes nothing");
 		}

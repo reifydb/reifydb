@@ -1125,8 +1125,8 @@ mod tests {
 	}
 
 	#[test]
-	fn unmerging_expired_slots_from_window_last_matches_a_rebuild_from_the_slots_left() {
-		// A rolling window subtracts expired slots from a running total; a wrong unmerge reports a time whose
+	fn unmerging_aged_out_slots_from_window_last_matches_a_rebuild_from_the_slots_left() {
+		// A rolling window subtracts aged out slots from a running total; a wrong unmerge reports a time whose
 		// rows already left.
 		let rows: [&[(u64, u64)]; 4] =
 			[&[(10, 1), (30, 2)], &[(30, 3), (30, 4)], &[(20, 5)], &[(30, 6), (25, 7)]];
@@ -1146,9 +1146,9 @@ mod tests {
 		}
 
 		let mut left: Vec<usize> = (0..slots.len()).collect();
-		for expired in [1, 0, 3, 2] {
-			running.unmerge(&slots[expired]);
-			left.retain(|&index| index != expired);
+		for aged_out in [1, 0, 3, 2] {
+			running.unmerge(&slots[aged_out]);
+			left.retain(|&index| index != aged_out);
 			let mut rebuilt = counted(&[SlotKind::WindowLast]);
 			for &index in &left {
 				rebuilt.merge(&slots[index]);
@@ -1156,10 +1156,10 @@ mod tests {
 			assert_eq!(
 				running.finalize(),
 				rebuilt.finalize(),
-				"after expiring slot {expired}, slots {left:?} remain"
+				"after aging out slot {aged_out}, slots {left:?} remain"
 			);
 		}
-		assert!(running.is_empty(), "every slot expired");
+		assert!(running.is_empty(), "every slot aged out");
 	}
 
 	fn at(seq: u64) -> WindowSlotKey {
@@ -1465,7 +1465,7 @@ mod tests {
 	#[test]
 	#[allow(clippy::approx_constant)]
 	fn kahan_compensation_preserves_small_terms_across_cancellation() {
-		// The cancellation the running accumulator hits when a huge trade expires: naive f64
+		// The cancellation the running accumulator hits when a huge trade ages out: naive f64
 		// rounds 3.14 away against 1e16, so retracting the 1e16 leaves 4.0 or 0.0.
 		let mut a = accumulator(&[SlotKind::Sum]);
 		add(&mut a, 0, vec![Some(Value::float8(1e16f64))]);
@@ -1529,7 +1529,7 @@ mod tests {
 	#[test]
 	fn unmerge_inverts_merge_for_all_invertible_slot_kinds() {
 		// The rolling engine maintains its running accumulator by merging new coords and
-		// unmerging expired ones, so any kind where unmerge is not merge's exact inverse
+		// unmerging aged out ones, so any kind where unmerge is not merge's exact inverse
 		// silently diverges from the buffer recombine.
 		let kinds = [
 			SlotKind::Count {
@@ -1567,7 +1567,7 @@ mod tests {
 
 	#[test]
 	fn unmerge_to_empty_resets_sum_exactly() {
-		// When the last coord of a group expires the slot must reset to exactly none, not keep
+		// When the last coord of a group ages out the slot must reset to exactly none, not keep
 		// float dust.
 		let kinds = [SlotKind::Sum];
 		let mut running = counted(&kinds);

@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::{
-			keyspace::expiry::{ForgetPassQueue, ForgetPassQueueKey},
+			keyspace::due::{ForgetPassQueue, ForgetPassQueueKey},
 			state::{GroupId, KeyspaceId},
 			traits::Keyspace,
 		},

@@ -54,9 +54,9 @@ pub struct WindowReindex<'a, G, S> {
 	pub new: Option<u64>,
 }
 
-fn note_when_expiry_capped(expired: usize, expire_batch: usize) {
-	if expired >= expire_batch {
-		debug!(expired, expire_batch, "window expiry hit per-tick batch cap, backlog deferred to next tick");
+fn note_when_due_capped(handled: usize, due_batch: usize) {
+	if handled >= due_batch {
+		debug!(handled, due_batch, "due batch hit per-tick cap, backlog deferred to next tick");
 	}
 }
 
@@ -399,16 +399,16 @@ pub fn meta_key_for(group: Hash128) -> MetaKey {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExpiryAnchor {
+pub enum SealAnchor {
 	WindowStart,
 	LastEvent,
 }
 
-impl ExpiryAnchor {
+impl SealAnchor {
 	pub fn of(&self, window_start: u64, last_event: Option<u64>) -> Option<u64> {
 		match self {
-			ExpiryAnchor::WindowStart => Some(window_start),
-			ExpiryAnchor::LastEvent => last_event,
+			SealAnchor::WindowStart => Some(window_start),
+			SealAnchor::LastEvent => last_event,
 		}
 	}
 }

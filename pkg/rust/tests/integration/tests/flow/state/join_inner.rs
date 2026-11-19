@@ -9,7 +9,7 @@ use crate::flow::state::{await_state_keys, state_keys};
 const TIMEOUT: Duration = Duration::from_seconds_const(15);
 
 const ANCHORED_KEYS: &str = "from system::metric::flow::state::current
-	filter { keyspace == 'JOIN_ROW_EXPIRY' }";
+	filter { keyspace == 'JOIN_ROW_FORGET' }";
 
 const LEFT_ROWS: &str = "from system::metric::flow::state::current
 	filter { keyspace == 'JOIN_LEFT' }";
@@ -217,7 +217,7 @@ fn both_sides_sealed_leave_the_join_operator_holding_nothing_per_key() {
 
 #[test]
 fn a_longer_right_lateness_forgets_on_its_own_schedule_rather_than_the_lefts() {
-	// Two spans under one group must expire independently, or the wider one is cut short by the narrower.
+	// Two spans under one group must be forgotten independently, or the wider one is cut short by the narrower.
 	let db = setup();
 	inner_join(&db, LEFT_SHORT_RIGHT_LONG);
 	db.command(r#"INSERT app::lhs [{ id: 1, k: 1, lv: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);

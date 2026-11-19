@@ -375,8 +375,9 @@ fn a_removed_left_row_retracts_exactly_the_view_row_it_published() {
 }
 
 #[test]
-fn the_lookup_lease_moves_past_the_read_versions_of_expired_left_rows() {
-	// LT11: once a left row expires its read version must stop holding GC, otherwise the lease pins it forever.
+fn the_lookup_lease_moves_past_the_read_versions_of_forgotten_left_rows() {
+	// LT11: once a left row is forgotten its read version must stop holding GC, otherwise the lease pins it
+	// forever.
 	let db = memory_db();
 	create_level(&db);
 	create_price_table(&db);
@@ -399,7 +400,7 @@ fn the_lookup_lease_moves_past_the_read_versions_of_expired_left_rows() {
 	let moved = poll_until(|| leases.min_active().filter(|lease| *lease > first), SETTLE);
 	assert!(
 		moved.is_some(),
-		"the lease must move above {first:?} once row 1 expired, still at {:?}",
+		"the lease must move above {first:?} once row 1 was forgotten, still at {:?}",
 		leases.min_active()
 	);
 }

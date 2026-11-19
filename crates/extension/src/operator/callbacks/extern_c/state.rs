@@ -1055,7 +1055,7 @@ pub(super) extern "C" fn host_get_or_create_row_numbers_for_groups(
 }
 
 #[cfg(test)]
-mod join_row_expiry_guard_tests {
+mod join_row_forget_guard_tests {
 	use std::{
 		cell::{Cell, RefCell},
 		collections::HashMap,
@@ -1089,7 +1089,7 @@ mod join_row_expiry_guard_tests {
 		},
 		transaction::{
 			LookupAt,
-			join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
+			join_forget::{DueStart, JoinDueEntry, JoinDuePage},
 		},
 	};
 	use reifydb_value::{
@@ -1284,7 +1284,7 @@ mod join_row_expiry_guard_tests {
 			Ok(())
 		}
 
-		fn join_expiry_arm(
+		fn join_forget_arm(
 			&mut self,
 			_side: u8,
 			_rows: &[(GroupId, RowNumber, DateTime)],
@@ -1292,7 +1292,7 @@ mod join_row_expiry_guard_tests {
 			Ok(())
 		}
 
-		fn join_expiry_clear(
+		fn join_forget_clear(
 			&mut self,
 			_side: u8,
 			rows: &[(GroupId, RowNumber)],
@@ -1300,11 +1300,11 @@ mod join_row_expiry_guard_tests {
 			Ok(vec![None; rows.len()])
 		}
 
-		fn join_expiry_free(&mut self, _entries: &[JoinDueEntry]) -> Result<(), ValueError> {
+		fn join_forget_free(&mut self, _entries: &[JoinDueEntry]) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn join_expiry_min(&mut self) -> Result<Option<DateTime>, ValueError> {
+		fn join_forget_min(&mut self) -> Result<Option<DateTime>, ValueError> {
 			Ok(None)
 		}
 
@@ -1591,9 +1591,9 @@ mod join_row_expiry_guard_tests {
 	}
 
 	#[test]
-	fn a_guest_write_to_the_join_row_expiry_keyspace_is_refused() {
+	fn a_guest_write_to_the_join_row_forget_keyspace_is_refused() {
 		// A guest write reaches the commit path, where routing decodes its body and panics the committer.
-		let key = framed(KeyspaceId::JOIN_ROW_EXPIRY);
+		let key = framed(KeyspaceId::JOIN_ROW_FORGET);
 		let value = EncodedPodRow::new(&[0u8; 4]);
 
 		let row = [ExternCStateEntry {
@@ -1614,7 +1614,7 @@ mod join_row_expiry_guard_tests {
 		let (removed, remove_reached) =
 			with_context(|ctx| host_state_remove(1, ctx, key_ref.as_ptr(), key_ref.len()));
 
-		assert_eq!(set, EXTERN_C_ERROR_INTERNAL, "a guest must not be able to write a join row expiry");
+		assert_eq!(set, EXTERN_C_ERROR_INTERNAL, "a guest must not be able to write a join row forget entry");
 		assert_eq!(removed, EXTERN_C_ERROR_INTERNAL, "nor remove one");
 		assert!(!set_reached, "and the refusal must land before the host is touched");
 		assert!(!remove_reached);
@@ -1709,7 +1709,7 @@ mod join_row_expiry_guard_tests {
 				KeyspaceId::CUSTOM_UNMANAGED,
 				KeyspaceId::GUEST_ACCUMULATOR,
 				KeyspaceId::WINDOW_META,
-				KeyspaceId::JOIN_ROW_EXPIRY,
+				KeyspaceId::JOIN_ROW_FORGET,
 			] {
 				let owns = match class {
 					OperatorClass::Managed => keyspace == KeyspaceId::CUSTOM_MANAGED,
@@ -1784,7 +1784,7 @@ mod join_row_expiry_guard_tests {
 			with_class_context(OperatorClass::Windowed, |ctx| guest_range(ctx, keyspace, None, None)).0
 		};
 		assert_eq!(range(KeyspaceId::GUEST_ROW_MAPPING), EXTERN_C_OK);
-		assert_eq!(range(KeyspaceId::TUMBLING_EXPIRY), EXTERN_C_OK);
+		assert_eq!(range(KeyspaceId::TUMBLING_SEAL), EXTERN_C_OK);
 		assert_eq!(range(KeyspaceId::TIMER_WHEEL), EXTERN_C_ERROR_INTERNAL);
 		assert_eq!(range(KeyspaceId::CUSTOM_MANAGED), EXTERN_C_ERROR_INTERNAL);
 	}

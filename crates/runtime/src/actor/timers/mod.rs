@@ -20,7 +20,7 @@ pub(crate) mod wasi;
 pub(crate) mod wasm;
 
 #[cfg(reifydb_target = "wasi")]
-use wasi::drain_expired_timers as wasi_drain;
+use wasi::drain_due_timers as wasi_drain;
 
 use super::mailbox::SendError;
 
@@ -89,12 +89,12 @@ pub(crate) fn next_timer_id() -> u64 {
 }
 
 #[cfg(reifydb_target = "wasi")]
-pub fn drain_expired_timers() {
+pub fn drain_due_timers() {
 	wasi_drain();
 }
 
 #[cfg(not(reifydb_target = "wasi"))]
-pub fn drain_expired_timers() {}
+pub fn drain_due_timers() {}
 
 #[cfg(all(test, reifydb_target = "host", not(reifydb_dst)))]
 mod tests {

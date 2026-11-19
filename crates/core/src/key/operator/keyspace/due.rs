@@ -19,13 +19,13 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct ExpiryKey {
+pub struct RollingAgeOutKey {
 	pub threshold: Desc<u64>,
 	pub owner: Desc<Hash128>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct TumblingExpiryKey {
+pub struct TumblingSealKey {
 	pub group: Desc<GroupId>,
 	pub threshold: Desc<u64>,
 	pub owner: Desc<Hash128>,
@@ -33,7 +33,7 @@ pub struct TumblingExpiryKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct TumblingExpirySuffix {
+pub struct TumblingSealSuffix {
 	pub threshold: Desc<u64>,
 	pub owner: Desc<Hash128>,
 	pub window_start: Desc<u64>,
@@ -56,15 +56,15 @@ pub struct CustomManagedLatestKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Expiry;
+pub struct RollingAgeOut;
 
-impl Keyspace for Expiry {
-	const ID: KeyspaceId = KeyspaceId::ROLLING_EXPIRY;
-	const NAME: &'static str = "ROLLING_EXPIRY";
+impl Keyspace for RollingAgeOut {
+	const ID: KeyspaceId = KeyspaceId::ROLLING_AGE_OUT;
+	const NAME: &'static str = "ROLLING_AGE_OUT";
 	const RANGE_CACHED: bool = true;
 
-	type GroupedKey = ExpiryKey;
-	type Suffix = ExpiryKey;
+	type GroupedKey = RollingAgeOutKey;
+	type Suffix = RollingAgeOutKey;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
@@ -76,20 +76,20 @@ impl Keyspace for Expiry {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TumblingExpiry;
+pub struct TumblingSeal;
 
-impl Keyspace for TumblingExpiry {
-	const ID: KeyspaceId = KeyspaceId::TUMBLING_EXPIRY;
-	const NAME: &'static str = "TUMBLING_EXPIRY";
+impl Keyspace for TumblingSeal {
+	const ID: KeyspaceId = KeyspaceId::TUMBLING_SEAL;
+	const NAME: &'static str = "TUMBLING_SEAL";
 	const RANGE_CACHED: bool = true;
 
-	type GroupedKey = TumblingExpiryKey;
-	type Suffix = TumblingExpirySuffix;
+	type GroupedKey = TumblingSealKey;
+	type Suffix = TumblingSealSuffix;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(
 			key.group.0,
-			TumblingExpirySuffix {
+			TumblingSealSuffix {
 				threshold: key.threshold,
 				owner: key.owner,
 				window_start: key.window_start,
@@ -98,7 +98,7 @@ impl Keyspace for TumblingExpiry {
 	}
 
 	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
-		TumblingExpiryKey {
+		TumblingSealKey {
 			group: Desc(group),
 			threshold: suffix.threshold,
 			owner: suffix.owner,

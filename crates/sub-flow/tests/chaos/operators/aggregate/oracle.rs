@@ -98,8 +98,8 @@ impl Model<AggregateRow> for AggregateOracle {
 	}
 
 	fn after_drain(&self) -> ViewClaim {
-		// Nothing expires and nothing is held back, so ticking past every horizon changes nothing. The
-		// driver checks this one under `Exactly`, which is what makes a group left behind after its last
+		// Nothing is dropped by time and nothing is held back, so ticking past every horizon changes nothing.
+		// The driver checks this one under `Exactly`, which is what makes a group left behind after its last
 		// row was retracted a failure rather than a permitted lag.
 		self.claim()
 	}

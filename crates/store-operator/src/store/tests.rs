@@ -22,7 +22,7 @@ use reifydb_core::{
 	key::{
 		bound::TaggedKeyBoundRange,
 		operator::{
-			keyspace::expiry::{FORGOTTEN_AT_FLUSH, ForgetPassQueue, ForgetPassQueueKey},
+			keyspace::due::{FORGOTTEN_AT_FLUSH, ForgetPassQueue, ForgetPassQueueKey},
 			state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, group_range, keyspace_range},
 		},
 		typed::direction::Desc,
@@ -472,18 +472,18 @@ fn a_checkpoint_merge_without_an_interlock_is_unaffected() {
 	);
 }
 
-const EXPIRY_KEYSPACE: KeyspaceId = KeyspaceId::JOIN_ROW_EXPIRY;
+const FORGET_KEYSPACE: KeyspaceId = KeyspaceId::JOIN_ROW_FORGET;
 
-fn expiry_group() -> GroupId {
+fn forget_group() -> GroupId {
 	GroupId::hashed(Hash128(91))
 }
 
-fn expiry_range() -> TaggedKeyBoundRange {
-	keyspace_range(OP, expiry_group(), EXPIRY_KEYSPACE)
+fn forget_range() -> TaggedKeyBoundRange {
+	keyspace_range(OP, forget_group(), FORGET_KEYSPACE)
 }
 
-fn expiry_remove(store: &StandardOperatorStore, suffix: u64) -> OperatorWrite {
-	let key = GroupStateKey::bound_unchecked(sweep_key(expiry_group(), EXPIRY_KEYSPACE, suffix));
+fn forget_remove(store: &StandardOperatorStore, suffix: u64) -> OperatorWrite {
+	let key = GroupStateKey::bound_unchecked(sweep_key(forget_group(), FORGET_KEYSPACE, suffix));
 	let pre =
 		store.state_get(OP, from_ref(&key)).unwrap().pop().flatten().map_or(LayeredPre::Absent, |row| {
 			LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64))
@@ -497,17 +497,17 @@ fn expiry_remove(store: &StandardOperatorStore, suffix: u64) -> OperatorWrite {
 
 fn tombstone_wall(store: &StandardOperatorStore, dead: u64) {
 	let armed: Vec<OperatorWrite> =
-		(0..dead).map(|suffix| sweep_insert(expiry_group(), EXPIRY_KEYSPACE, suffix, "armed")).collect();
+		(0..dead).map(|suffix| sweep_insert(forget_group(), FORGET_KEYSPACE, suffix, "armed")).collect();
 	store.apply_batch_with_checkpoints(&armed, &[], &[], Some(next_lsn())).unwrap();
 	flush(store);
 
-	let freed: Vec<OperatorWrite> = (0..dead).map(|suffix| expiry_remove(store, suffix)).collect();
+	let freed: Vec<OperatorWrite> = (0..dead).map(|suffix| forget_remove(store, suffix)).collect();
 	store.apply_batch_with_checkpoints(&freed, &[], &[], Some(next_lsn())).unwrap();
 }
 
 fn probe(store: &StandardOperatorStore, batch_size: u64) -> (u64, usize) {
 	let before = PageRequests::sample();
-	let batch = store.range_batch(expiry_range(), batch_size).unwrap();
+	let batch = store.range_batch(forget_range(), batch_size).unwrap();
 	(before.since(), batch.items.len())
 }
 

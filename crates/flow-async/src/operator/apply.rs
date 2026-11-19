@@ -7,7 +7,7 @@ use arrow_schema::{FieldRef, Schema, SchemaRef};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
-	key::operator::keyspace::expiry::CustomManagedDue,
+	key::operator::keyspace::due::CustomManagedDue,
 	metrics::heap::OperatorSample,
 	operator_with::{ApplyWith, WithSpan},
 	state::timer::TimerKind,
@@ -33,7 +33,7 @@ use crate::{
 		join::kept::dictionary_columns,
 		stamp_output_created,
 		state::{
-			expiry::{expiry_drop, expiry_due, managed_due_group, managed_latest_key},
+			due::{due_drop, due_entries, managed_due_group, managed_latest_key},
 			forget_pass::{StoreForgetter, drain, drain_group, enqueue},
 			seal::rule::{SEAL_GATE_STEP, SealRule},
 		},
@@ -190,14 +190,14 @@ const FORGET_PASS_BATCH: usize = 256;
 
 fn fire_forget_pass(host: &mut dyn HostContext, fired: DateTime) -> Result<(), ValueError> {
 	let mut retry = !drain(host, &mut StoreForgetter, FORGET_PASS_BATCH)?.queue_is_empty();
-	let due = expiry_due::<CustomManagedDue, Vec<u8>>(host, fired.to_order(), None, FORGET_PASS_BATCH)?;
+	let due = due_entries::<CustomManagedDue, Vec<u8>>(host, fired.to_order(), None, FORGET_PASS_BATCH)?;
 	retry |= due.len() == FORGET_PASS_BATCH;
 	for (key, _) in due {
 		let group = managed_due_group(&key)?;
 		enqueue(host, &[group])?;
 		retry |= drain_group(host, group, &mut StoreForgetter, FORGET_PASS_BATCH)?.still_queued;
-		expiry_drop(host, &key)?;
-		expiry_drop(host, &managed_latest_key(group))?;
+		due_drop(host, &key)?;
+		due_drop(host, &managed_latest_key(group))?;
 	}
 	if retry {
 		host.arm_timer(fired.saturating_add(SEAL_GATE_STEP), TimerKind::Reclaim, &EncodedKey::new(Vec::new()))?;

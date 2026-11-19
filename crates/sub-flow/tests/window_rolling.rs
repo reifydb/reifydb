@@ -531,8 +531,8 @@ fn a_row_behind_the_flow_watermark_reaches_no_subscriber_of_a_rolling_view() {
 }
 
 #[test]
-fn a_rolling_group_whose_newest_row_was_removed_frees_its_meta_once_the_rest_expires() {
-	// a group whose newest row was removed must free its high water row once the rest expires, otherwise it leaks.
+fn a_rolling_group_whose_newest_row_was_removed_frees_its_meta_once_the_rest_ages_out() {
+	// a group whose newest row was removed must free its high water row once the rest ages out, otherwise it leaks.
 	let db = setup_with_metrics();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { time: event(ts) }");

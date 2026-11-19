@@ -411,7 +411,7 @@ fn a_rolling_view_on_a_no_rolling_operator_reports_flow_066() {
 
 #[test]
 fn a_stopped_rolling_group_gives_back_its_meta_once_the_flow_watermark_passes_it() {
-	// The seal may add only its ledger row; a rolling driver that never expires leaves every dead group's meta.
+	// The seal may add only its ledger row; a rolling driver that never ages out leaves every dead group's meta.
 	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
 	for i in 0..6u64 {
 		h.apply(TestChangeBuilder::new().insert(input_row(i + 1, "BTC", 100 + i, 1.0)).build()).expect("apply");
@@ -425,7 +425,7 @@ fn a_stopped_rolling_group_gives_back_its_meta_once_the_flow_watermark_passes_it
 
 #[test]
 fn a_withdrawn_rolling_group_leaves_only_its_meta_behind() {
-	// Each withdrawn group may keep its group row and expiry entry for the seal to forget; a leaked row number
+	// Each withdrawn group may keep its group row and age out entry for the seal to forget; a leaked row number
 	// mapping adds a third.
 	let state_after = |groups: u64| {
 		let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SumAnyKind>>::new()

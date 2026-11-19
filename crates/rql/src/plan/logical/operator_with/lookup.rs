@@ -119,7 +119,7 @@ mod tests {
 
 	#[test]
 	fn lateness_right_is_rejected() {
-		// A lookup keeps no right rows, so a right lateness has nothing to expire and must be refused.
+		// A lookup keeps no right rows, so a right lateness has nothing to forget and must be refused.
 		assert_eq!(code(&lookup(" with { retention: { left: 10s, right: 10s } }")), "AST_005");
 		assert_eq!(code(&lookup(" with { retention: { right: 10s } }")), "AST_005");
 	}

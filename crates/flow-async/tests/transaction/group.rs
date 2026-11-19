@@ -39,7 +39,7 @@ fn ids_do_not_depend_on_the_order_the_keys_are_seen_in() {
 
 #[test]
 fn no_key_ever_resolves_to_the_root_scope() {
-	// root holds the timer wheel, expiry, the forget pass queue, the ringbuffer and the window meta
+	// root holds the timer wheel, the due indexes, the forget pass queue, the ringbuffer and the window meta
 	for i in 0..4096 {
 		assert!(!GroupId::of(&group(&format!("g{i}"))).is_root());
 	}

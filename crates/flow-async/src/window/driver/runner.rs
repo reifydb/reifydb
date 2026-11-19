@@ -34,7 +34,7 @@ use crate::{
 			store::WindowStore,
 			tumbling::finish_tumbling,
 		},
-		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingEngine},
+		engine::{SealAnchor, config::WindowEngineConfig, tumbling::TumblingEngine},
 		meta::{RowIndexKey, WindowMeta},
 		prefetch::Prefetched,
 		span::WindowAnchor,
@@ -49,7 +49,7 @@ pub struct WindowRunner<C: SealDomain> {
 	size: C::Span,
 	slide: Option<C::Span>,
 	seal_span: Option<C::SealSpan>,
-	expire_batch: usize,
+	due_batch: usize,
 	gap: Option<C::Span>,
 	sealed_drops: DropCounter,
 	refused: DropCounter,
@@ -71,7 +71,7 @@ where
 			size,
 			slide,
 			seal_span,
-			expire_batch: config.expire_batch(),
+			due_batch: config.due_batch(),
 			gap: None,
 			sealed_drops: DropCounter::new(operator, "mutations targeting sealed windows"),
 			refused: DropCounter::new(operator, "session rows refused by assignment"),
@@ -115,7 +115,7 @@ where
 		H::Group: Clone + Eq + Ord + Hash + Debug + StateCodec,
 	{
 		let Some(seal_span) = self.seal_span else {
-			return finish_tumbling(engine, store, routed, hooks, ExpiryAnchor::WindowStart);
+			return finish_tumbling(engine, store, routed, hooks, SealAnchor::WindowStart);
 		};
 		if !C::arms_timer()
 			&& let Some(newest) = routed.buckets.keys().map(|(_, span)| span.start).max()
@@ -137,13 +137,13 @@ where
 		routed.arrival.retain(|window| buckets.contains_key(window));
 		self.sealed_drops.note(dropped);
 		if !C::arms_timer() {
-			let out = finish_tumbling(engine, store, routed, hooks, ExpiryAnchor::WindowStart)?;
+			let out = finish_tumbling(engine, store, routed, hooks, SealAnchor::WindowStart)?;
 			self.close_inline(engine, store, operator_watermark, seal_span)?;
 			return Ok(out);
 		}
-		let before = engine.earliest_expiry(store)?;
-		let out = finish_tumbling(engine, store, routed, hooks, ExpiryAnchor::WindowStart)?;
-		let after = engine.earliest_expiry(store)?;
+		let before = engine.earliest_seal(store)?;
+		let out = finish_tumbling(engine, store, routed, hooks, SealAnchor::WindowStart)?;
+		let after = engine.earliest_seal(store)?;
 		C::rearm_seal(store, seal_span, before, after)?;
 		Ok(out)
 	}
@@ -163,7 +163,7 @@ where
 			self.forget_pass_pending = true;
 		}
 		if self.forget_pass_pending {
-			self.forget_pass_pending = !drain(store, engine, self.expire_batch)?.queue_is_empty();
+			self.forget_pass_pending = !drain(store, engine, self.due_batch)?.queue_is_empty();
 		}
 		Ok(())
 	}
@@ -183,9 +183,9 @@ where
 			return Ok(());
 		};
 		match kind {
-			TimerKind::Seal => seal(engine, store, fired, seal_span, self.expire_batch, true),
+			TimerKind::Seal => seal(engine, store, fired, seal_span, self.due_batch, true),
 			TimerKind::Maintenance => {
-				forget_pass(engine, store, fired, seal_span, self.expire_batch).map(|_| ())
+				forget_pass(engine, store, fired, seal_span, self.due_batch).map(|_| ())
 			}
 			other => internal_err!("a window runner fired a {:?} timer it never arms", other),
 		}
@@ -319,13 +319,13 @@ where
 			.filter(|window| !passed.bounds.contains_key(window))
 			.map(|(hash, start)| GroupId::window(hash, start))
 			.collect();
-		let before = engine.earliest_expiry(store)?;
+		let before = engine.earliest_seal(store)?;
 		let out =
 			finish_session(engine, store, passed.routed, &gated, &passed.bounds, &identities, gap, hooks)?;
 		if !gone.is_empty() {
 			drain_groups(store, &gone, engine, usize::MAX)?;
 		}
-		let after = engine.earliest_expiry(store)?;
+		let after = engine.earliest_seal(store)?;
 		C::rearm_seal(store, seal_span, before, after)?;
 		Ok(out)
 	}
@@ -344,7 +344,7 @@ where
 		let (Some(seal_span), Some(gap)) = (self.seal_span, self.gap) else {
 			return internal_err!("a session window runner needs a seal span and a gap");
 		};
-		seal(engine, store, fired, seal_span, self.expire_batch.saturating_mul(keys.len()), false)?;
+		seal(engine, store, fired, seal_span, self.due_batch.saturating_mul(keys.len()), false)?;
 		let mut hashes = keys
 			.iter()
 			.filter(|key| !key.is_empty())

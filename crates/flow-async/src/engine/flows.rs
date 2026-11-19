@@ -149,7 +149,7 @@ mod tests {
 		flow::operator::{FlowNode, OperatorDef},
 		interface::catalog::id::{SeriesId, ViewId},
 		key::operator::{
-			keyspace::join::{JoinRowExpiryState as JoinRowExpiry, join_expiry_due_key},
+			keyspace::join::{JoinRowForgetState as JoinRowForget, join_forget_due_key},
 			state::{GroupId, KeyspaceId, unmanaged_key},
 		},
 	};
@@ -167,7 +167,7 @@ mod tests {
 	use crate::{
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{
-			join_expiry::join_expiry_key,
+			join_forget::join_forget_key,
 			substrate::{FlowSubstrate, next_lsn},
 		},
 	};
@@ -273,7 +273,7 @@ mod tests {
 	}
 
 	#[test]
-	fn removing_a_flow_drops_both_keyspaces_its_join_expiries_occupy() {
+	fn removing_a_flow_drops_both_keyspaces_its_join_forget_entries_occupy() {
 		// The due index sits at root, outside every group partition, so only an operator drop can take it.
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
@@ -311,16 +311,16 @@ mod tests {
 			&[
 				OperatorWrite::Insert {
 					operator,
-					key: join_expiry_key(GroupId::hashed(Hash128(3)), 0, RowNumber(1)),
-					post: JoinRowExpiry {
+					key: join_forget_key(GroupId::hashed(Hash128(3)), 0, RowNumber(1)),
+					post: JoinRowForget {
 						at,
 					}
 					.encode_state()
-					.expect("a join expiry payload must encode"),
+					.expect("a join forget payload must encode"),
 				},
 				OperatorWrite::Insert {
 					operator,
-					key: join_expiry_due_key(at, GroupId::hashed(Hash128(3)), 0, RowNumber(1)),
+					key: join_forget_due_key(at, GroupId::hashed(Hash128(3)), 0, RowNumber(1)),
 					post: EncodedPodRow::new(&[]),
 				},
 			],
@@ -331,7 +331,7 @@ mod tests {
 		.unwrap();
 		assert_eq!(
 			occupied_keyspaces(&store, operator),
-			vec![KeyspaceId::JOIN_ROW_EXPIRY, KeyspaceId::JOIN_EXPIRY_DUE],
+			vec![KeyspaceId::JOIN_ROW_FORGET, KeyspaceId::JOIN_FORGET_DUE],
 			"precondition: an arm occupies a group scoped keyspace and a root scoped one"
 		);
 
@@ -345,7 +345,7 @@ mod tests {
 		assert_eq!(
 			store.bytes(operator).unwrap(),
 			ByteSize::ZERO,
-			"the retired operator's join expiries must be dropped"
+			"the retired operator's join forget entries must be dropped"
 		);
 		assert_eq!(
 			store.total_bytes().unwrap(),

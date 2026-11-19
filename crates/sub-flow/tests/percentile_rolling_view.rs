@@ -194,9 +194,9 @@ fn a_rolling_percentile_is_read_from_one_frame_digest_never_from_per_slot_percen
 		let out = insert_rows(&mut harness, &mut frame, &[(10, 3_000, 5), (11, 3_000, 6), (12, 3_000, 8)]);
 		assert_reads_the_frame(&[out], &frame, with_min, &format!("{path}: a fourth slot"));
 
-		let expired = harness.settle_timers(BASE_MS + SIZE_MS).expect("the seal timers fire");
+		let aged_out = harness.settle_timers(BASE_MS + SIZE_MS).expect("the seal timers fire");
 		frame.retain(|_, (slot, _)| *slot > 0);
-		assert_reads_the_frame(&expired, &frame, with_min, &format!("{path}: the oldest slot evicted"));
+		assert_reads_the_frame(&aged_out, &frame, with_min, &format!("{path}: the oldest slot evicted"));
 
 		let out =
 			harness.apply(generator::remove(vec![row(11, 3_000, 6)])).expect("the window applies a remove");

@@ -89,7 +89,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_moved_earliest_expiry_disarms_the_instant_it_replaces() {
+	fn a_moved_earliest_due_disarms_the_instant_it_replaces() {
 		// Without the disarm the wheel keeps a stale entry for every batch that moves the minimum.
 		let mut store = MockStore::recording_timers();
 
@@ -105,7 +105,7 @@ mod tests {
 	}
 
 	#[test]
-	fn an_unmoved_earliest_expiry_touches_no_timer_at_all() {
+	fn an_unmoved_earliest_due_touches_no_timer_at_all() {
 		// A disarm/arm pair on one instant is never a no-op; a failure between the two loses the seal.
 		let mut store = MockStore::recording_timers();
 
@@ -145,8 +145,8 @@ mod tests {
 
 	#[test]
 	fn an_unchanged_oldest_coordinate_touches_no_timer_at_all() {
-		// Rolling re-derives its earliest expiry every batch and most batches do not move it. A
-		// disarm/arm pair each time rewrites the wheel entry for groups whose expiry is unchanged,
+		// Rolling re-derives its earliest due every batch and most batches do not move it. A
+		// disarm/arm pair each time rewrites the wheel entry for groups whose due is unchanged,
 		// turning one seal timer into per-batch wheel churn.
 		let mut store = MockStore::recording_timers();
 		let gate = EvictionGate::new(ms(1_000));
@@ -159,7 +159,7 @@ mod tests {
 
 	#[test]
 	fn a_group_that_empties_disarms_without_arming_anything_new() {
-		// When the last coordinate leaves a rolling group there is no next expiry, so the standing
+		// When the last coordinate leaves a rolling group there is no next due, so the standing
 		// timer must come down or it seals an empty group forever - on a keyed wheel, one live
 		// entry per group that ever drained.
 		let mut store = MockStore::recording_timers();

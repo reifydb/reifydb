@@ -144,7 +144,7 @@ where
 		}
 	}
 
-	pub fn expire<K>(&mut self, store: &mut dyn StateStore, horizon: S, row_key: K) -> Result<usize, ValueError>
+	pub fn seal_due<K>(&mut self, store: &mut dyn StateStore, horizon: S, row_key: K) -> Result<usize, ValueError>
 	where
 		K: Fn(&G, S) -> EncodedKey,
 	{
@@ -539,7 +539,7 @@ mod tests {
 	use reifydb_codec::row::{operator::state::decode, pod::EncodedPodRow};
 	use reifydb_core::{
 		key::operator::{
-			keyspace::expiry::FORGOTTEN_AT_FLUSH,
+			keyspace::due::FORGOTTEN_AT_FLUSH,
 			state::{GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask, OperatorStateKey},
 		},
 		state::{
@@ -585,7 +585,7 @@ mod tests {
 		}
 
 		fn accumulator_count(&self) -> usize {
-			// Meta and the expiry index share the store, so count only the accumulator keyspace.
+			// Meta and the due index share the store, so count only the accumulator keyspace.
 			self.keyspace_count(KeyspaceId::ACCUMULATOR)
 		}
 
@@ -983,7 +983,7 @@ mod tests {
 			"carry keeps rows in its window entries, never in mappings"
 		);
 
-		let dropped = engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
+		let dropped = engine.seal_due(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
 
 		assert_eq!(dropped, 0, "both groups still have windows at or past the horizon");
 		assert_eq!(store.accumulator_count(), 10, "windows 5..9 of each group must keep their accumulators");
@@ -1001,7 +1001,7 @@ mod tests {
 			feed(&mut engine, &mut store, window_at(i * WINDOW), i as f64);
 		}
 
-		engine.expire(&mut store, window_at(WINDOW), seal_key).unwrap();
+		engine.seal_due(&mut store, window_at(WINDOW), seal_key).unwrap();
 
 		assert_eq!(store.accumulator_count(), 2, "only the window below the horizon folds");
 	}
@@ -1016,7 +1016,7 @@ mod tests {
 			feed(&mut engine, &mut store, window_at(i * WINDOW), i as f64);
 		}
 
-		let dropped = engine.expire(&mut store, window_at(100 * WINDOW), seal_key).unwrap();
+		let dropped = engine.seal_due(&mut store, window_at(100 * WINDOW), seal_key).unwrap();
 
 		assert_eq!(dropped, 1);
 		assert_eq!(store.accumulator_count(), 0, "a dead group must not leave accumulator rows behind");
@@ -1033,7 +1033,7 @@ mod tests {
 			feed_carrying(&mut engine, &mut store, window_at(i * WINDOW), i * WINDOW, i as f64);
 		}
 
-		let dropped = engine.expire(&mut store, window_at(100 * WINDOW), seal_key).unwrap();
+		let dropped = engine.seal_due(&mut store, window_at(100 * WINDOW), seal_key).unwrap();
 
 		assert_eq!(dropped, 0, "without retention an idle group's meta must stay");
 		assert_eq!(
@@ -1060,13 +1060,13 @@ mod tests {
 			feed_carrying(&mut engine, &mut store, window_at(i * WINDOW), i * WINDOW, i as f64);
 		}
 
-		let kept = engine.expire(&mut store, window_at(19 * WINDOW), seal_key).unwrap();
+		let kept = engine.seal_due(&mut store, window_at(19 * WINDOW), seal_key).unwrap();
 		assert_eq!(
 			(kept, store.meta_entry_count()),
 			(0, 1),
 			"window 9 plus a 10-window retention is not below 19"
 		);
-		let dropped = engine.expire(&mut store, window_at(20 * WINDOW), seal_key).unwrap();
+		let dropped = engine.seal_due(&mut store, window_at(20 * WINDOW), seal_key).unwrap();
 		assert_eq!(
 			(dropped, store.meta_entry_count()),
 			(1, 0),
@@ -1091,13 +1091,13 @@ mod tests {
 		for i in 0..3u64 {
 			feed_group(&mut engine, &mut store, "BTC", window_at(i * WINDOW), i as f64);
 		}
-		engine.expire(&mut store, window_at(10 * WINDOW), seal_key).unwrap();
+		engine.seal_due(&mut store, window_at(10 * WINDOW), seal_key).unwrap();
 		for i in 20..24u64 {
 			feed_group(&mut engine, &mut store, "ETH", window_at(i * WINDOW), i as f64);
 		}
 		assert_eq!(store.accumulator_count(), 4, "precondition: only ETH's four windows hold rows");
 
-		engine.expire(&mut store, window_at(30 * WINDOW), seal_key).unwrap();
+		engine.seal_due(&mut store, window_at(30 * WINDOW), seal_key).unwrap();
 
 		assert_eq!(store.accumulator_count(), 0, "ETH's windows are all below the horizon and must fold");
 	}
@@ -1111,7 +1111,7 @@ mod tests {
 		for i in 0..10u64 {
 			feed_carrying(&mut engine, &mut store, window_at(i * WINDOW), i * WINDOW, i as f64);
 		}
-		engine.expire(&mut store, window_at(9 * WINDOW), seal_key).unwrap();
+		engine.seal_due(&mut store, window_at(9 * WINDOW), seal_key).unwrap();
 
 		let results = feed_carrying(&mut engine, &mut store, window_at(9 * WINDOW), 9 * WINDOW + 1, 100.0);
 
@@ -1133,7 +1133,7 @@ mod tests {
 			feed_group(&mut engine, &mut store, "BTC", window_at(i * WINDOW), i as f64);
 		}
 
-		engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
+		engine.seal_due(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
 
 		assert_eq!(store.keyspace_count(KeyspaceId::FORGET_PASS_QUEUE), 5, "every closed window must be named");
 		assert!(
@@ -1158,7 +1158,7 @@ mod tests {
 			feed_group(&mut engine, &mut store, "BTC", window_at(i * WINDOW), i as f64);
 		}
 
-		engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
+		engine.seal_due(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
 
 		assert_eq!(store.keyspace_count(KeyspaceId::FORGET_PASS_QUEUE), 0);
 		assert_eq!(store.accumulator_count(), 5);
@@ -1175,7 +1175,7 @@ mod tests {
 		for i in 0..10u64 {
 			feed_carrying(&mut engine, &mut store, window_at(i * WINDOW), i * WINDOW, i as f64);
 		}
-		engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
+		engine.seal_due(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
 		let before = (store.accumulator_count(), store.row_mapping_count());
 
 		let results = feed_carrying(&mut engine, &mut store, window_at(2 * WINDOW), 2 * WINDOW + 1, 100.0);
@@ -1192,7 +1192,7 @@ mod tests {
 		for i in 0..10u64 {
 			feed_carrying(&mut engine, &mut store, window_at(i * WINDOW), i * WINDOW, i as f64);
 		}
-		engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
+		engine.seal_due(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
 		let before = (store.accumulator_count(), store.row_mapping_count());
 
 		let results = feed_carrying(&mut engine, &mut store, window_at(2 * WINDOW), 2 * WINDOW + 1, 100.0);
@@ -1215,11 +1215,11 @@ mod tests {
 			feed(&mut engine, &mut store, window_at(i * WINDOW), i as f64);
 		}
 
-		engine.expire(&mut store, window_at(3 * WINDOW), seal_key).unwrap();
+		engine.seal_due(&mut store, window_at(3 * WINDOW), seal_key).unwrap();
 		assert_eq!(store.accumulator_count(), 7);
-		engine.expire(&mut store, window_at(3 * WINDOW), seal_key).unwrap();
+		engine.seal_due(&mut store, window_at(3 * WINDOW), seal_key).unwrap();
 		assert_eq!(store.accumulator_count(), 7, "a repeat at the same horizon changes nothing");
-		engine.expire(&mut store, window_at(6 * WINDOW), seal_key).unwrap();
+		engine.seal_due(&mut store, window_at(6 * WINDOW), seal_key).unwrap();
 
 		assert_eq!(store.accumulator_count(), 4, "a higher horizon must fold the newly sealed windows");
 	}

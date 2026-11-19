@@ -221,7 +221,7 @@ impl KeyspaceId {
 
 	pub const EMIT: Self = Self(0x01);
 
-	pub const ROLLING_EXPIRY: Self = Self(0x02);
+	pub const ROLLING_AGE_OUT: Self = Self(0x02);
 
 	pub const ROW_INDEX: Self = Self(0x03);
 
@@ -261,11 +261,11 @@ impl KeyspaceId {
 
 	pub const FORGET_PASS_QUEUE: Self = Self(0x15);
 
-	pub const JOIN_ROW_EXPIRY: Self = Self(0x16);
+	pub const JOIN_ROW_FORGET: Self = Self(0x16);
 
 	pub const GUEST_ACCUMULATOR: Self = Self(0x17);
 
-	pub const TUMBLING_EXPIRY: Self = Self(0x18);
+	pub const TUMBLING_SEAL: Self = Self(0x18);
 
 	pub const PARTITIONED_RINGBUFFER_ENTRY: Self = Self(0x19);
 
@@ -275,7 +275,7 @@ impl KeyspaceId {
 
 	pub const CUSTOM_UNMANAGED: Self = Self(0x1C);
 
-	pub const JOIN_EXPIRY_DUE: Self = Self(0x1D);
+	pub const JOIN_FORGET_DUE: Self = Self(0x1D);
 
 	pub const CUSTOM_MANAGED: Self = Self(0x1E);
 
@@ -306,7 +306,7 @@ impl KeyspaceId {
 			Self::GUEST_ROW_MAPPING => "GUEST_ROW_MAPPING",
 			Self::ACCUMULATOR => "ACCUMULATOR",
 			Self::EMIT => "EMIT",
-			Self::ROLLING_EXPIRY => "ROLLING_EXPIRY",
+			Self::ROLLING_AGE_OUT => "ROLLING_AGE_OUT",
 			Self::ROW_INDEX => "ROW_INDEX",
 			Self::SESSION => "SESSION",
 			Self::ROLLING_META => "ROLLING_META",
@@ -326,10 +326,10 @@ impl KeyspaceId {
 			Self::JOIN_PIN => "JOIN_PIN",
 			Self::RINGBUFFER_META => "RINGBUFFER_META",
 			Self::FORGET_PASS_QUEUE => "FORGET_PASS_QUEUE",
-			Self::JOIN_ROW_EXPIRY => "JOIN_ROW_EXPIRY",
-			Self::JOIN_EXPIRY_DUE => "JOIN_EXPIRY_DUE",
+			Self::JOIN_ROW_FORGET => "JOIN_ROW_FORGET",
+			Self::JOIN_FORGET_DUE => "JOIN_FORGET_DUE",
 			Self::GUEST_ACCUMULATOR => "GUEST_ACCUMULATOR",
-			Self::TUMBLING_EXPIRY => "TUMBLING_EXPIRY",
+			Self::TUMBLING_SEAL => "TUMBLING_SEAL",
 			Self::PARTITIONED_RINGBUFFER_ENTRY => "PARTITIONED_RINGBUFFER_ENTRY",
 			Self::PARTITIONED_RINGBUFFER_TTL_ARM => "PARTITIONED_RINGBUFFER_TTL_ARM",
 			Self::PARTITIONED_RINGBUFFER_META => "PARTITIONED_RINGBUFFER_META",
@@ -370,8 +370,8 @@ const WINDOWED_KEYSPACES: [KeyspaceId; 15] = [
 	KeyspaceId::EMIT,
 	KeyspaceId::WINDOW_META,
 	KeyspaceId::SEAL_LEDGER,
-	KeyspaceId::ROLLING_EXPIRY,
-	KeyspaceId::TUMBLING_EXPIRY,
+	KeyspaceId::ROLLING_AGE_OUT,
+	KeyspaceId::TUMBLING_SEAL,
 	KeyspaceId::FORGET_PASS_QUEUE,
 	KeyspaceId::GUEST_MAP_ENTRY,
 	KeyspaceId::GUEST_ROW_MAPPING,
@@ -965,7 +965,7 @@ mod tests {
 	const DATA_KEYSPACES: [KeyspaceId; 5] = [
 		KeyspaceId::ACCUMULATOR,
 		KeyspaceId::EMIT,
-		KeyspaceId::ROLLING_EXPIRY,
+		KeyspaceId::ROLLING_AGE_OUT,
 		KeyspaceId::CUSTOM_UNMANAGED,
 		KeyspaceId::CUSTOM_MANAGED,
 	];
@@ -990,7 +990,7 @@ mod tests {
 		("GUEST_ROW_MAPPING", KeyspaceId::GUEST_ROW_MAPPING, Phase::Identity, true),
 		("ACCUMULATOR", KeyspaceId::ACCUMULATOR, Phase::Data, true),
 		("EMIT", KeyspaceId::EMIT, Phase::Data, true),
-		("ROLLING_EXPIRY", KeyspaceId::ROLLING_EXPIRY, Phase::Data, true),
+		("ROLLING_AGE_OUT", KeyspaceId::ROLLING_AGE_OUT, Phase::Data, true),
 		("ROW_INDEX", KeyspaceId::ROW_INDEX, Phase::Data, true),
 		("SESSION", KeyspaceId::SESSION, Phase::Data, true),
 		("ROLLING_META", KeyspaceId::ROLLING_META, Phase::Data, true),
@@ -1010,10 +1010,10 @@ mod tests {
 		("JOIN_PIN", KeyspaceId::JOIN_PIN, Phase::Data, true),
 		("RINGBUFFER_META", KeyspaceId::RINGBUFFER_META, Phase::Data, true),
 		("FORGET_PASS_QUEUE", KeyspaceId::FORGET_PASS_QUEUE, Phase::Data, true),
-		("JOIN_ROW_EXPIRY", KeyspaceId::JOIN_ROW_EXPIRY, Phase::Data, true),
-		("JOIN_EXPIRY_DUE", KeyspaceId::JOIN_EXPIRY_DUE, Phase::Data, true),
+		("JOIN_ROW_FORGET", KeyspaceId::JOIN_ROW_FORGET, Phase::Data, true),
+		("JOIN_FORGET_DUE", KeyspaceId::JOIN_FORGET_DUE, Phase::Data, true),
 		("GUEST_ACCUMULATOR", KeyspaceId::GUEST_ACCUMULATOR, Phase::Data, true),
-		("TUMBLING_EXPIRY", KeyspaceId::TUMBLING_EXPIRY, Phase::Data, true),
+		("TUMBLING_SEAL", KeyspaceId::TUMBLING_SEAL, Phase::Data, true),
 		("PARTITIONED_RINGBUFFER_ENTRY", KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY, Phase::Data, true),
 		("PARTITIONED_RINGBUFFER_TTL_ARM", KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM, Phase::Data, true),
 		("PARTITIONED_RINGBUFFER_META", KeyspaceId::PARTITIONED_RINGBUFFER_META, Phase::Data, true),
@@ -1414,7 +1414,7 @@ mod tests {
 		let inside = OperatorStateKey::new(operator, group, KeyspaceId::EMIT, vec![1]).encode();
 		assert!(contains(&range, inside.as_slice()));
 
-		for other in [KeyspaceId::ACCUMULATOR, KeyspaceId::ROLLING_EXPIRY, KeyspaceId::GUEST_ROW_MAPPING] {
+		for other in [KeyspaceId::ACCUMULATOR, KeyspaceId::ROLLING_AGE_OUT, KeyspaceId::GUEST_ROW_MAPPING] {
 			let key = OperatorStateKey::new(operator, group, other, vec![1]).encode();
 			assert!(!contains(&range, key.as_slice()), "keyspace {other:?} leaked into the emit range");
 		}
@@ -1609,7 +1609,7 @@ mod tests {
 			owned(OperatorClass::Windowed),
 			[
 				KeyspaceId::EMIT,
-				KeyspaceId::ROLLING_EXPIRY,
+				KeyspaceId::ROLLING_AGE_OUT,
 				KeyspaceId::ROW_INDEX,
 				KeyspaceId::SESSION,
 				KeyspaceId::ROLLING_META,
@@ -1618,7 +1618,7 @@ mod tests {
 				KeyspaceId::SEAL_LEDGER,
 				KeyspaceId::FORGET_PASS_QUEUE,
 				KeyspaceId::GUEST_ACCUMULATOR,
-				KeyspaceId::TUMBLING_EXPIRY,
+				KeyspaceId::TUMBLING_SEAL,
 				KeyspaceId::GUEST_MAP_ENTRY,
 				KeyspaceId::SESSION_MEMBER,
 				KeyspaceId::ROLLING_PANE,

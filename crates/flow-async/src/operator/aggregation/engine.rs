@@ -188,7 +188,7 @@ mod tests {
 
 	#[test]
 	fn no_window_group_can_ever_be_the_root_group() {
-		// Root owns the timer wheel, the expiry index and the forget pass queue, so a window landing on it
+		// Root owns the timer wheel, the due index and the forget pass queue, so a window landing on it
 		// would let the forget pass delete the operator's own scheduling state.
 		for window_id in [0u64, 1, u64::MAX - 1] {
 			for partition in [Hash128(0), Hash128(1), Hash128(u128::MAX)] {

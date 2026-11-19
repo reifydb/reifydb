@@ -559,7 +559,7 @@ fn a_dead_top_k_group_removes_every_ranked_row_on_its_timer() {
 
 #[test]
 fn a_top_k_trade_behind_the_window_is_dropped_and_a_trade_inside_it_revives_the_group() {
-	// A trade behind clock minus size must never resurrect expired panes; one inside must restart from its own
+	// A trade behind clock minus size must never resurrect aged-out panes; one inside must restart from its own
 	// pane.
 	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
 		.with(dead_with())

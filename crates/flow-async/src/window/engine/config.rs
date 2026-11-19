@@ -6,11 +6,11 @@ use crate::window::{
 	span::{SlotSpan, WindowAnchor},
 };
 
-pub const DEFAULT_EXPIRE_BATCH: usize = 256;
+pub const DEFAULT_DUE_BATCH: usize = 256;
 
 #[derive(Clone)]
 pub struct WindowEngineConfig {
-	expire_batch: usize,
+	due_batch: usize,
 	family: KeyspaceFamily,
 }
 
@@ -19,8 +19,8 @@ impl WindowEngineConfig {
 		WindowEngineConfigBuilder::new()
 	}
 
-	pub fn expire_batch(&self) -> usize {
-		self.expire_batch
+	pub fn due_batch(&self) -> usize {
+		self.due_batch
 	}
 
 	pub fn family(&self) -> KeyspaceFamily {
@@ -29,20 +29,20 @@ impl WindowEngineConfig {
 }
 
 pub struct WindowEngineConfigBuilder {
-	expire_batch: usize,
+	due_batch: usize,
 	family: KeyspaceFamily,
 }
 
 impl WindowEngineConfigBuilder {
 	fn new() -> Self {
 		Self {
-			expire_batch: DEFAULT_EXPIRE_BATCH,
+			due_batch: DEFAULT_DUE_BATCH,
 			family: KeyspaceFamily::Host,
 		}
 	}
 
-	pub fn expire_batch(mut self, batch: usize) -> Self {
-		self.expire_batch = batch;
+	pub fn due_batch(mut self, batch: usize) -> Self {
+		self.due_batch = batch;
 		self
 	}
 
@@ -53,7 +53,7 @@ impl WindowEngineConfigBuilder {
 
 	pub fn build(self) -> WindowEngineConfig {
 		WindowEngineConfig {
-			expire_batch: self.expire_batch,
+			due_batch: self.due_batch,
 			family: self.family,
 		}
 	}
@@ -123,19 +123,19 @@ mod tests {
 	use crate::window::coord::ByDateTime;
 
 	#[test]
-	fn the_expire_batch_defaults_and_survives_an_override() {
-		// The batch bounds one expiry pass; a builder that dropped it would sweep unbounded.
-		assert_eq!(WindowEngineConfig::builder().build().expire_batch(), DEFAULT_EXPIRE_BATCH);
-		assert_eq!(WindowEngineConfig::builder().expire_batch(9).build().expire_batch(), 9);
+	fn the_due_batch_defaults_and_survives_an_override() {
+		// The batch bounds one pass over the due index; a builder that dropped it would sweep unbounded.
+		assert_eq!(WindowEngineConfig::builder().build().due_batch(), DEFAULT_DUE_BATCH);
+		assert_eq!(WindowEngineConfig::builder().due_batch(9).build().due_batch(), 9);
 	}
 
 	#[test]
 	fn a_carry_config_forwards_its_base() {
 		let config: TumblingCarryConfig<ByDateTime> =
-			TumblingCarryConfig::builder(WindowEngineConfig::builder().expire_batch(7).build())
+			TumblingCarryConfig::builder(WindowEngineConfig::builder().due_batch(7).build())
 				.immutable(None)
 				.build();
 
-		assert_eq!(config.base().expire_batch(), 7, "the carry config must not detach a fresh base");
+		assert_eq!(config.base().due_batch(), 7, "the carry config must not detach a fresh base");
 	}
 }

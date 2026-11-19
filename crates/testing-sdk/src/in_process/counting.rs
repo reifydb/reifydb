@@ -27,7 +27,7 @@ use reifydb_flow_async::{
 	},
 	transaction::{
 		FlowTransaction, LookupAt,
-		join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
+		join_forget::{DueStart, JoinDueEntry, JoinDuePage},
 	},
 };
 use reifydb_value::{
@@ -251,28 +251,28 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		self.inner.disarm_timer_by_key(kind, key)
 	}
 
-	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<(), ValueError> {
-		self.record("join_expiry_arm", rows.len());
-		self.inner.join_expiry_arm(side, rows)
+	fn join_forget_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<(), ValueError> {
+		self.record("join_forget_arm", rows.len());
+		self.inner.join_forget_arm(side, rows)
 	}
 
-	fn join_expiry_clear(
+	fn join_forget_clear(
 		&mut self,
 		side: u8,
 		rows: &[(GroupId, RowNumber)],
 	) -> Result<Vec<Option<DateTime>>, ValueError> {
-		self.record("join_expiry_clear", rows.len());
-		self.inner.join_expiry_clear(side, rows)
+		self.record("join_forget_clear", rows.len());
+		self.inner.join_forget_clear(side, rows)
 	}
 
-	fn join_expiry_free(&mut self, entries: &[JoinDueEntry]) -> Result<(), ValueError> {
-		self.record("join_expiry_free", entries.len());
-		self.inner.join_expiry_free(entries)
+	fn join_forget_free(&mut self, entries: &[JoinDueEntry]) -> Result<(), ValueError> {
+		self.record("join_forget_free", entries.len());
+		self.inner.join_forget_free(entries)
 	}
 
-	fn join_expiry_min(&mut self) -> Result<Option<DateTime>, ValueError> {
-		self.record("join_expiry_min", 1);
-		self.inner.join_expiry_min()
+	fn join_forget_min(&mut self) -> Result<Option<DateTime>, ValueError> {
+		self.record("join_forget_min", 1);
+		self.inner.join_forget_min()
 	}
 
 	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage, ValueError> {

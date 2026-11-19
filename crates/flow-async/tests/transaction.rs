@@ -3,8 +3,8 @@
 
 #![cfg(feature = "runtime")]
 
-#[path = "transaction/join_expiry.rs"]
-mod join_expiry;
+#[path = "transaction/join_forget.rs"]
+mod join_forget;
 
 #[path = "transaction/common.rs"]
 mod common;

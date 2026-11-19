@@ -10,14 +10,14 @@ use reifydb_core::{
 	commit::tracker::WriteTracker,
 	interface::catalog::flow::OperatorId,
 	key::operator::{
-		keyspace::join::{JoinRowExpiryState as JoinRowExpiry, join_expiry_due_key},
+		keyspace::join::{JoinRowForgetState as JoinRowForget, join_forget_due_key},
 		state::{GroupId, KeyspaceId, OperatorStateKey},
 	},
 };
 use reifydb_flow_async::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
-	join_expiry::{DueStart, JoinDueEntry, JoinDuePage, JoinRowExpiryExtension, join_expiry_key},
+	join_forget::{DueStart, JoinDueEntry, JoinDuePage, JoinRowForgetExtension, join_forget_key},
 	state::StateExtension,
 	substrate::{FlowSubstrate, operator_section},
 };
@@ -84,13 +84,13 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 }
 
 fn arm_in(txn: &mut DeferredTransaction, group: GroupId, side: u8, row_number: u64, millis: u64) {
-	txn.join_expiry_arm(
+	txn.join_forget_arm(
 		NODE,
 		side,
 		&[(
 			group,
 			RowNumber(row_number),
-			at_millis(i64::try_from(millis).expect("test expiry millis fits in i64")),
+			at_millis(i64::try_from(millis).expect("test forget millis fits in i64")),
 		)],
 	)
 	.unwrap();
@@ -101,20 +101,20 @@ fn arm(txn: &mut DeferredTransaction, side: u8, row_number: u64, millis: u64) {
 }
 
 fn clear(txn: &mut DeferredTransaction, side: u8, row_number: u64) {
-	txn.join_expiry_clear(NODE, side, &[(group(), RowNumber(row_number))]).unwrap();
+	txn.join_forget_clear(NODE, side, &[(group(), RowNumber(row_number))]).unwrap();
 }
 
-fn expiry_at(txn: &mut DeferredTransaction, row_number: u64) -> Option<DateTime> {
-	txn.state_get(NODE, &[join_expiry_key(group(), LEFT, RowNumber(row_number))])
+fn forget_at(txn: &mut DeferredTransaction, row_number: u64) -> Option<DateTime> {
+	txn.state_get(NODE, &[join_forget_key(group(), LEFT, RowNumber(row_number))])
 		.unwrap()
 		.pop()
 		.flatten()
-		.map(|row| JoinRowExpiry::decode_state(&row).unwrap().at)
+		.map(|row| JoinRowForget::decode_state(&row).unwrap().at)
 }
 
 fn entry(group: GroupId, side: u8, row_number: u64, millis: u64) -> JoinDueEntry {
 	JoinDueEntry {
-		at: at_millis(i64::try_from(millis).expect("test expiry millis fits in i64")),
+		at: at_millis(i64::try_from(millis).expect("test forget millis fits in i64")),
 		group,
 		side,
 		row_number: RowNumber(row_number),
@@ -164,7 +164,7 @@ fn write_shapes(writes: &[OperatorWrite]) -> Vec<(KeyspaceId, &'static str)> {
 }
 
 #[test]
-fn an_armed_join_expiry_writes_both_its_group_row_and_its_root_due_row() {
+fn an_armed_join_forget_writes_both_its_group_row_and_its_root_due_row() {
 	// Either row alone is useless: a deadline nothing scans, or a due entry naming a row that no longer exists.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
@@ -174,29 +174,29 @@ fn an_armed_join_expiry_writes_both_its_group_row_and_its_root_due_row() {
 
 	let store = engine.inner().operator_state();
 	let stored = store
-		.state_get(NODE, &[join_expiry_key(group(), LEFT, RowNumber(42))])
+		.state_get(NODE, &[join_forget_key(group(), LEFT, RowNumber(42))])
 		.unwrap()
 		.pop()
 		.flatten()
-		.expect("the group scoped join expiry must be durable");
+		.expect("the group scoped join forget entry must be durable");
 	assert_eq!(
-		JoinRowExpiry::decode_state(&stored).unwrap().at,
+		JoinRowForget::decode_state(&stored).unwrap().at,
 		at_millis(5_000),
 		"the group scoped row carries the instant the point read answers with"
 	);
 	assert!(
-		store.state_get(NODE, &[join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(42))])
+		store.state_get(NODE, &[join_forget_due_key(at_millis(5_000), group(), LEFT, RowNumber(42))])
 			.unwrap()
 			.pop()
 			.flatten()
 			.is_some(),
 		"and the root due row must be keyed by that exact instant"
 	);
-	assert_eq!(txn.join_expiry_min(NODE).unwrap(), Some(at_millis(5_000)));
+	assert_eq!(txn.join_forget_min(NODE).unwrap(), Some(at_millis(5_000)));
 }
 
 #[test]
-fn a_cleared_join_expiry_takes_its_root_due_row_with_it() {
+fn a_cleared_join_forget_takes_its_root_due_row_with_it() {
 	// A due row left standing frees a row that is already gone, and re-frees whatever number is minted next.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
@@ -208,7 +208,7 @@ fn a_cleared_join_expiry_takes_its_root_due_row_with_it() {
 
 	let store = engine.inner().operator_state();
 	assert!(
-		store.state_get(NODE, &[join_expiry_key(group(), LEFT, RowNumber(42))])
+		store.state_get(NODE, &[join_forget_key(group(), LEFT, RowNumber(42))])
 			.unwrap()
 			.pop()
 			.flatten()
@@ -216,19 +216,19 @@ fn a_cleared_join_expiry_takes_its_root_due_row_with_it() {
 		"the group scoped row must go"
 	);
 	assert!(
-		store.state_get(NODE, &[join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(42))])
+		store.state_get(NODE, &[join_forget_due_key(at_millis(5_000), group(), LEFT, RowNumber(42))])
 			.unwrap()
 			.pop()
 			.flatten()
 			.is_none(),
 		"and so must the root due row that pointed at it"
 	);
-	assert_eq!(txn.join_expiry_min(NODE).unwrap(), None);
+	assert_eq!(txn.join_forget_min(NODE).unwrap(), None);
 }
 
 #[test]
-fn a_join_expiry_removed_after_its_row_committed_is_invisible_to_the_minimum() {
-	// Without shadowing, the minimum names a join expiry whose row is gone and the timer frees nothing.
+fn a_join_forget_removed_after_its_row_committed_is_invisible_to_the_minimum() {
+	// Without shadowing, the minimum names a join forget entry whose row is gone and the timer frees nothing.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 5_000);
@@ -240,24 +240,24 @@ fn a_join_expiry_removed_after_its_row_committed_is_invisible_to_the_minimum() {
 	assert!(
 		engine.inner()
 			.operator_state()
-			.state_get(NODE, &[join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(1))])
+			.state_get(NODE, &[join_forget_due_key(at_millis(5_000), group(), LEFT, RowNumber(1))])
 			.unwrap()
 			.pop()
 			.flatten()
 			.is_some(),
-		"precondition: the removed join expiry's due row is still durable"
+		"precondition: the removed join forget entry's due row is still durable"
 	);
 	assert_eq!(
-		txn.join_expiry_min(NODE).unwrap(),
+		txn.join_forget_min(NODE).unwrap(),
 		Some(at_millis(9_000)),
 		"a pending remove must hide its own committed row from the minimum"
 	);
-	assert_eq!(expiry_at(&mut txn, 1), None, "and the point read must agree with it");
+	assert_eq!(forget_at(&mut txn, 1), None, "and the point read must agree with it");
 }
 
 #[test]
-fn an_expiry_moved_later_in_the_batch_wins_over_the_committed_earlier_one() {
-	// A stale earlier expiry arms the timer before the row's real deadline and frees a live row: silent data loss.
+fn a_forget_moved_later_in_the_batch_wins_over_the_committed_earlier_one() {
+	// A stale earlier entry arms the timer before the row's real deadline and frees a live row: silent data loss.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 5_000);
@@ -268,7 +268,7 @@ fn an_expiry_moved_later_in_the_batch_wins_over_the_committed_earlier_one() {
 	assert!(
 		engine.inner()
 			.operator_state()
-			.state_get(NODE, &[join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(1))])
+			.state_get(NODE, &[join_forget_due_key(at_millis(5_000), group(), LEFT, RowNumber(1))])
 			.unwrap()
 			.pop()
 			.flatten()
@@ -276,11 +276,11 @@ fn an_expiry_moved_later_in_the_batch_wins_over_the_committed_earlier_one() {
 		"precondition: the store still carries the earlier due row"
 	);
 	assert_eq!(
-		txn.join_expiry_min(NODE).unwrap(),
+		txn.join_forget_min(NODE).unwrap(),
 		Some(at_millis(20_000)),
-		"the batch's own later expiry must win, not the committed earlier one"
+		"the batch's own later forget entry must win, not the committed earlier one"
 	);
-	assert_eq!(expiry_at(&mut txn, 1), Some(at_millis(20_000)));
+	assert_eq!(forget_at(&mut txn, 1), Some(at_millis(20_000)));
 }
 
 #[test]
@@ -296,7 +296,7 @@ fn a_re_arm_removes_the_due_row_of_the_instant_it_left_behind() {
 
 	let store = engine.inner().operator_state();
 	assert!(
-		store.state_get(NODE, &[join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(1))])
+		store.state_get(NODE, &[join_forget_due_key(at_millis(5_000), group(), LEFT, RowNumber(1))])
 			.unwrap()
 			.pop()
 			.flatten()
@@ -304,7 +304,7 @@ fn a_re_arm_removes_the_due_row_of_the_instant_it_left_behind() {
 		"the due row of the instant that was moved away from must not survive the move"
 	);
 	assert!(
-		store.state_get(NODE, &[join_expiry_due_key(at_millis(20_000), group(), LEFT, RowNumber(1))])
+		store.state_get(NODE, &[join_forget_due_key(at_millis(20_000), group(), LEFT, RowNumber(1))])
 			.unwrap()
 			.pop()
 			.flatten()
@@ -330,7 +330,7 @@ fn a_move_later_never_hides_an_untouched_neighbour_that_is_now_the_earliest() {
 	arm(&mut txn, LEFT, 1, 20_000);
 
 	assert_eq!(
-		txn.join_expiry_min(NODE).unwrap(),
+		txn.join_forget_min(NODE).unwrap(),
 		Some(at_millis(9_000)),
 		"the untouched neighbour is now the earliest and must be the one that answers"
 	);
@@ -338,7 +338,8 @@ fn a_move_later_never_hides_an_untouched_neighbour_that_is_now_the_earliest() {
 
 #[test]
 fn an_operator_with_more_pending_removes_than_one_page_still_finds_the_true_minimum() {
-	// A fixed page bound returns a join expiry the batch already removed, and every extra remove pushes it further.
+	// A fixed page bound returns a forget entry the batch already removed, and every extra remove pushes it
+	// further.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	for row_number in 1u64..=8 {
@@ -351,14 +352,14 @@ fn an_operator_with_more_pending_removes_than_one_page_still_finds_the_true_mini
 	}
 
 	assert_eq!(
-		txn.join_expiry_min(NODE).unwrap(),
+		txn.join_forget_min(NODE).unwrap(),
 		Some(at_millis(6_000)),
-		"five removes must be stepped over to reach the sixth join expiry"
+		"five removes must be stepped over to reach the sixth join forget entry"
 	);
 }
 
 #[test]
-fn an_operator_whose_every_join_expiry_was_removed_reports_no_minimum_at_all() {
+fn an_operator_whose_every_join_forget_was_removed_reports_no_minimum_at_all() {
 	// A leftover minimum re-arms a timer on an empty operator, which keeps its groups out of reclamation forever.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
@@ -371,12 +372,13 @@ fn an_operator_whose_every_join_expiry_was_removed_reports_no_minimum_at_all() {
 		clear(&mut txn, LEFT, row_number);
 	}
 
-	assert_eq!(txn.join_expiry_min(NODE).unwrap(), None);
+	assert_eq!(txn.join_forget_min(NODE).unwrap(), None);
 }
 
 #[test]
-fn the_due_page_folds_a_batchs_own_due_join_expiry_in_with_the_committed_ones() {
-	// A join expiry armed and already due in this batch has no committed row, so the store alone never frees it.
+fn the_due_page_folds_a_batchs_own_due_join_forget_in_with_the_committed_ones() {
+	// A join forget entry armed and already due in this batch has no committed row, so the store alone never frees
+	// it.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 3_000);
@@ -390,19 +392,20 @@ fn the_due_page_folds_a_batchs_own_due_join_expiry_in_with_the_committed_ones() 
 	assert_eq!(
 		page.due,
 		vec![entry(group(), LEFT, 1, 3_000), entry(group(), LEFT, 2, 4_000)],
-		"the committed and the batch's own due join expiry both come back, oldest due first"
+		"the committed and the batch's own due join forget entry both come back, oldest due first"
 	);
 	assert!(!page.more);
 	assert_eq!(
-		txn.join_expiry_min(NODE).unwrap(),
+		txn.join_forget_min(NODE).unwrap(),
 		Some(at_millis(3_000)),
 		"and the minimum still reaches past the fire to the earliest of them"
 	);
 }
 
 #[test]
-fn the_due_page_never_returns_a_join_expiry_the_batch_already_removed() {
-	// A removed join expiry handed back as due frees its row a second time, against state that is already gone.
+fn the_due_page_never_returns_a_join_forget_the_batch_already_removed() {
+	// A removed join forget entry handed back as due frees its row a second time, against state that is already
+	// gone.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 3_000);
@@ -448,13 +451,13 @@ fn a_due_page_narrower_than_the_operator_resumes_from_its_own_cursor() {
 
 	let first = txn.join_due_page(NODE, at_millis(10_000), 2, &DueStart::Bottom).unwrap();
 	assert_eq!(first.due, vec![entry(group(), LEFT, 1, 1_000), entry(group(), LEFT, 2, 2_000)]);
-	assert!(first.more, "four join expiries are still due and the page must say so");
+	assert!(first.more, "four join forget entries are still due and the page must say so");
 
 	let second = txn.join_due_page(NODE, at_millis(10_000), 2, &resume_from(&first)).unwrap();
 	assert_eq!(
 		second.due,
 		vec![entry(group(), LEFT, 3, 3_000), entry(group(), LEFT, 4, 4_000)],
-		"the cursor must resume past the join expiries the first page handed out, with nothing removed"
+		"the cursor must resume past the join forget entries the first page handed out, with nothing removed"
 	);
 	assert!(second.more);
 
@@ -491,15 +494,15 @@ fn the_due_read_is_answered_by_the_root_time_index_not_by_a_filtered_full_scan()
 }
 
 #[test]
-fn a_join_expiry_only_ever_written_in_this_batch_is_read_back_without_a_committed_row() {
-	// A merge that consulted only the store would report no join expiries for a batch that just armed them.
+fn a_join_forget_only_ever_written_in_this_batch_is_read_back_without_a_committed_row() {
+	// A merge that consulted only the store would report no join forget entries for a batch that just armed them.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
 	arm(&mut txn, LEFT, 1, 5_000);
 
-	assert_eq!(txn.join_expiry_min(NODE).unwrap(), Some(at_millis(5_000)));
-	assert_eq!(expiry_at(&mut txn, 1), Some(at_millis(5_000)));
+	assert_eq!(txn.join_forget_min(NODE).unwrap(), Some(at_millis(5_000)));
+	assert_eq!(forget_at(&mut txn, 1), Some(at_millis(5_000)));
 }
 
 #[test]
@@ -512,7 +515,7 @@ fn a_due_page_hands_every_group_back_under_its_own_identity() {
 	commit(&engine, &mut txn);
 
 	assert_eq!(
-		txn.join_expiry_min(NODE).unwrap(),
+		txn.join_forget_min(NODE).unwrap(),
 		Some(at_millis(1_000)),
 		"the minimum is the operator's earliest, whichever group holds it"
 	);
@@ -522,21 +525,21 @@ fn a_due_page_hands_every_group_back_under_its_own_identity() {
 		"and each due entry names the group whose row it frees"
 	);
 	assert_eq!(
-		expiry_at(&mut txn, 1),
+		forget_at(&mut txn, 1),
 		Some(at_millis(9_000)),
 		"the point read stays group scoped and must not answer with a neighbour's instant"
 	);
 }
 
 #[test]
-fn re_arming_a_join_expiry_the_store_already_holds_classifies_as_a_replace() {
+fn re_arming_a_join_forget_the_store_already_holds_classifies_as_a_replace() {
 	// An insert claimed for a key the store already carries inflates a census bucket that must stay flat.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 5_000);
 	assert_eq!(
 		write_shapes(&commit_writes(&engine, &mut txn)),
-		vec![(KeyspaceId::JOIN_ROW_EXPIRY, "insert"), (KeyspaceId::JOIN_EXPIRY_DUE, "insert")],
+		vec![(KeyspaceId::JOIN_ROW_FORGET, "insert"), (KeyspaceId::JOIN_FORGET_DUE, "insert")],
 		"precondition: the first arming has no committed row and must insert both of them"
 	);
 
@@ -545,17 +548,17 @@ fn re_arming_a_join_expiry_the_store_already_holds_classifies_as_a_replace() {
 	assert_eq!(
 		write_shapes(&commit_writes(&engine, &mut txn)),
 		vec![
-			(KeyspaceId::JOIN_ROW_EXPIRY, "replace"),
-			(KeyspaceId::JOIN_EXPIRY_DUE, "insert"),
-			(KeyspaceId::JOIN_EXPIRY_DUE, "remove"),
+			(KeyspaceId::JOIN_ROW_FORGET, "replace"),
+			(KeyspaceId::JOIN_FORGET_DUE, "insert"),
+			(KeyspaceId::JOIN_FORGET_DUE, "remove"),
 		],
 		"a re-arm replaces the group scoped row in place and moves the due row to its new instant"
 	);
 
 	let store = engine.inner().operator_state();
 	assert_eq!(
-		JoinRowExpiry::decode_state(
-			&store.state_get(NODE, &[join_expiry_key(group(), LEFT, RowNumber(1))])
+		JoinRowForget::decode_state(
+			&store.state_get(NODE, &[join_forget_key(group(), LEFT, RowNumber(1))])
 				.unwrap()
 				.pop()
 				.flatten()
@@ -568,7 +571,7 @@ fn re_arming_a_join_expiry_the_store_already_holds_classifies_as_a_replace() {
 	assert_eq!(
 		txn.join_due_page(NODE, at_millis(90_000), 16, &DueStart::Bottom).unwrap().due,
 		vec![entry(group(), LEFT, 1, 20_000)],
-		"and the operator still owns exactly one join expiry"
+		"and the operator still owns exactly one join forget entry"
 	);
 }
 
@@ -586,11 +589,11 @@ fn a_re_arm_raised_on_a_later_transaction_is_a_replace_too() {
 	assert_eq!(
 		write_shapes(&commit_writes(&engine, &mut second)),
 		vec![
-			(KeyspaceId::JOIN_ROW_EXPIRY, "replace"),
-			(KeyspaceId::JOIN_EXPIRY_DUE, "insert"),
-			(KeyspaceId::JOIN_EXPIRY_DUE, "remove"),
+			(KeyspaceId::JOIN_ROW_FORGET, "replace"),
+			(KeyspaceId::JOIN_FORGET_DUE, "insert"),
+			(KeyspaceId::JOIN_FORGET_DUE, "remove"),
 		],
-		"a fresh transaction must still see the committed join expiry as present"
+		"a fresh transaction must still see the committed join forget entry as present"
 	);
 	assert_eq!(
 		second.join_due_page(NODE, at_millis(90_000), 16, &DueStart::Bottom).unwrap().due,
@@ -611,7 +614,7 @@ fn the_two_sides_of_one_row_number_never_share_a_due_row() {
 	assert_eq!(
 		txn.join_due_page(NODE, at_millis(5_000), 16, &DueStart::Bottom).unwrap().due,
 		vec![entry(group(), LEFT, 1, 3_000), entry(group(), RIGHT, 1, 4_000)],
-		"one row number holds one expiry per side, not one between them"
+		"one row number holds one forget entry per side, not one between them"
 	);
 
 	clear(&mut txn, LEFT, 1);
@@ -619,12 +622,12 @@ fn the_two_sides_of_one_row_number_never_share_a_due_row() {
 	assert_eq!(
 		txn.join_due_page(NODE, at_millis(5_000), 16, &DueStart::Bottom).unwrap().due,
 		vec![entry(group(), RIGHT, 1, 4_000)],
-		"clearing one side must leave the other side's expiry standing"
+		"clearing one side must leave the other side's forget entry standing"
 	);
 }
 
 #[test]
-fn an_expiry_past_the_high_bit_of_its_nanosecond_encoding_is_not_due_before_one_below_it() {
+fn a_forget_past_the_high_bit_of_its_nanosecond_encoding_is_not_due_before_one_below_it() {
 	// Read as a signed integer the later instant goes negative and sorts earliest, which frees a row whose
 	// lateness has not run out.
 	const BELOW_HIGH_BIT: u64 = 9_223_372_036_854;
@@ -639,7 +642,7 @@ fn an_expiry_past_the_high_bit_of_its_nanosecond_encoding_is_not_due_before_one_
 	assert_eq!(
 		txn.join_due_page(
 			NODE,
-			at_millis(i64::try_from(BELOW_HIGH_BIT).expect("test expiry millis fits in i64")),
+			at_millis(i64::try_from(BELOW_HIGH_BIT).expect("test forget millis fits in i64")),
 			16,
 			&DueStart::Bottom
 		)
@@ -652,7 +655,7 @@ fn an_expiry_past_the_high_bit_of_its_nanosecond_encoding_is_not_due_before_one_
 	assert_eq!(
 		txn.join_due_page(
 			NODE,
-			at_millis(i64::try_from(ABOVE_HIGH_BIT).expect("test expiry millis fits in i64")),
+			at_millis(i64::try_from(ABOVE_HIGH_BIT).expect("test forget millis fits in i64")),
 			16,
 			&DueStart::Bottom
 		)
@@ -664,7 +667,7 @@ fn an_expiry_past_the_high_bit_of_its_nanosecond_encoding_is_not_due_before_one_
 }
 
 #[test]
-fn clearing_a_join_expiry_answers_with_the_instant_it_freed() {
+fn clearing_a_join_forget_answers_with_the_instant_it_freed() {
 	// The caller keeps a cached minimum; without the freed instant it cannot tell whether the row it just
 	// cleared was the earliest one, and has to rescan on every clear.
 	let engine = TestEngine::new();
@@ -673,20 +676,20 @@ fn clearing_a_join_expiry_answers_with_the_instant_it_freed() {
 	commit(&engine, &mut txn);
 
 	assert_eq!(
-		txn.join_expiry_clear(NODE, LEFT, &[(group(), RowNumber(42))]).unwrap()[0],
+		txn.join_forget_clear(NODE, LEFT, &[(group(), RowNumber(42))]).unwrap()[0],
 		Some(at_millis(5_000)),
 		"a clear must name the instant it removed"
 	);
 	assert_eq!(
-		txn.join_expiry_clear(NODE, LEFT, &[(group(), RowNumber(42))]).unwrap()[0],
+		txn.join_forget_clear(NODE, LEFT, &[(group(), RowNumber(42))]).unwrap()[0],
 		None,
-		"and answer with nothing when the row held no expiry"
+		"and answer with nothing when the row held no forget entry"
 	);
 }
 
 #[test]
 fn a_due_page_reports_the_first_instant_past_the_fire() {
-	// The row a page stops on is the earliest expiry the drain leaves behind, so the caller can arm its timer
+	// The row a page stops on is the earliest forget entry the drain leaves behind, so the caller can arm its timer
 	// from what it already read. Without it the operator rescans the index it just emptied to learn the same
 	// instant.
 	let engine = TestEngine::new();
@@ -706,10 +709,10 @@ fn a_due_page_reports_the_first_instant_past_the_fire() {
 		"the page must name the first instant it refused, and that instant is the next minimum"
 	);
 
-	txn.join_expiry_free(NODE, &page.due).unwrap();
+	txn.join_forget_free(NODE, &page.due).unwrap();
 
 	assert_eq!(
-		txn.join_expiry_min(NODE).unwrap(),
+		txn.join_forget_min(NODE).unwrap(),
 		page.next,
 		"and freeing everything the page held must leave exactly that instant as the minimum"
 	);
@@ -717,7 +720,7 @@ fn a_due_page_reports_the_first_instant_past_the_fire() {
 
 #[test]
 fn a_due_page_that_fills_its_budget_names_no_instant_past_the_fire() {
-	// A page cut short by its budget never reached the boundary, so anything it named would be an expiry the
+	// A page cut short by its budget never reached the boundary, so anything it named would be a forget entry the
 	// caller still has to free, and arming on it would skip that work.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
@@ -729,7 +732,7 @@ fn a_due_page_that_fills_its_budget_names_no_instant_past_the_fire() {
 
 	let page = txn.join_due_page(NODE, at_millis(5_000), 2, &DueStart::Bottom).unwrap();
 
-	assert!(page.more, "two of the four due expiries are still unread");
+	assert!(page.more, "two of the four due forget entries are still unread");
 	assert_eq!(page.next, None, "a page that stopped on its budget has not seen past the fire");
 }
 

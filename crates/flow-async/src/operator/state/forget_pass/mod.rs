@@ -7,7 +7,7 @@ use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	key::{
 		operator::{
-			keyspace::expiry::{FORGOTTEN_AT_FLUSH, ForgetPassQueue, ForgetPassQueueKey},
+			keyspace::due::{FORGOTTEN_AT_FLUSH, ForgetPassQueue, ForgetPassQueueKey},
 			state::{GroupId, GroupStateKey, KeyspaceMask, OperatorStateKey},
 		},
 		typed::direction::Desc,
@@ -64,7 +64,7 @@ pub fn enqueue(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<(), Val
 		for group in groups {
 			assert!(
 				!group.is_root(),
-				"group id 0 is the root group; forgetting it would delete the forget pass queue, the expiry indexes and the seal ledger"
+				"group id 0 is the root group; forgetting it would delete the forget pass queue, the due indexes and the seal ledger"
 			);
 		}
 	}
@@ -180,7 +180,7 @@ where
 	reifydb_assertions! {
 		assert!(
 			!group.is_root(),
-			"group id 0 is the root group; forgetting it would delete the forget pass queue, the expiry indexes and the seal ledger"
+			"group id 0 is the root group; forgetting it would delete the forget pass queue, the due indexes and the seal ledger"
 		);
 	}
 	if group.is_root() {
@@ -298,7 +298,7 @@ where
 		reifydb_assertions! {
 			assert!(
 				!group.is_root(),
-				"group id 0 is the root group; forgetting it would delete the forget pass queue, the expiry indexes and the seal ledger"
+				"group id 0 is the root group; forgetting it would delete the forget pass queue, the due indexes and the seal ledger"
 			);
 		}
 		if group.is_root() {
@@ -384,7 +384,7 @@ where
 	reifydb_assertions! {
 		assert!(
 			!group.is_root(),
-			"group id 0 is the root group; forgetting it would delete the forget pass queue, the expiry indexes and the seal ledger"
+			"group id 0 is the root group; forgetting it would delete the forget pass queue, the due indexes and the seal ledger"
 		);
 	}
 	if group.is_root() {

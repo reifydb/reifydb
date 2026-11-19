@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub(crate) mod expiry;
+pub(crate) mod due;
 pub mod forget_pass;
 pub mod forget_pass_outcome;
 pub mod immutable;

@@ -13,8 +13,8 @@ use reifydb_core::{
 		any::TaggedKey,
 		operator::{
 			keyspace::join::{
-				JoinExpiryDueKey, JoinRowExpiry as JoinRowExpirySpace, JoinRowExpiryState,
-				JoinRowExpirySuffix, join_expiry_due_key,
+				JoinForgetDueKey, JoinRowForget as JoinRowForgetSpace, JoinRowForgetState,
+				JoinRowForgetSuffix, join_forget_due_key,
 			},
 			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId},
 		},
@@ -44,38 +44,38 @@ pub struct JoinDueEntry {
 pub enum DueStart {
 	Bottom,
 	Floor(DateTime),
-	After(JoinExpiryDueKey),
+	After(JoinForgetDueKey),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JoinDuePage {
 	pub due: Vec<JoinDueEntry>,
-	pub resume: Option<JoinExpiryDueKey>,
+	pub resume: Option<JoinForgetDueKey>,
 	pub more: bool,
 	pub next: Option<DateTime>,
 }
 
-pub fn join_expiry_key(group: GroupId, side: u8, row_number: RowNumber) -> GroupStateKey {
-	typed_key::<JoinRowExpirySpace>(
+pub fn join_forget_key(group: GroupId, side: u8, row_number: RowNumber) -> GroupStateKey {
+	typed_key::<JoinRowForgetSpace>(
 		group,
-		&JoinRowExpirySuffix {
+		&JoinRowForgetSuffix {
 			side: Asc(side),
 			row: Asc(row_number),
 		},
 	)
 }
 
-pub fn join_expiry_range(group: GroupId) -> GroupStateRange {
+pub fn join_forget_range(group: GroupId) -> GroupStateRange {
 	GroupStateRange::Keyspace {
 		group,
-		keyspace: KeyspaceId::JOIN_ROW_EXPIRY,
+		keyspace: KeyspaceId::JOIN_ROW_FORGET,
 		start: Bound::Unbounded,
 		end: Bound::Unbounded,
 	}
 }
 
-pub fn join_due_floor(at: DateTime) -> JoinExpiryDueKey {
-	JoinExpiryDueKey {
+pub fn join_due_floor(at: DateTime) -> JoinForgetDueKey {
+	JoinForgetDueKey {
 		at: Asc(at),
 		group: BoundedKey::low(),
 		side: BoundedKey::low(),
@@ -86,21 +86,21 @@ pub fn join_due_floor(at: DateTime) -> JoinExpiryDueKey {
 pub fn join_due_range() -> GroupStateRange {
 	GroupStateRange::Keyspace {
 		group: GroupId::ROOT,
-		keyspace: KeyspaceId::JOIN_EXPIRY_DUE,
+		keyspace: KeyspaceId::JOIN_FORGET_DUE,
 		start: Bound::Unbounded,
 		end: Bound::Unbounded,
 	}
 }
 
-pub trait JoinRowExpiryExtension: FlowTransaction {
-	fn join_expiry_clear(
+pub trait JoinRowForgetExtension: FlowTransaction {
+	fn join_forget_clear(
 		&mut self,
 		id: OperatorId,
 		side: u8,
 		rows: &[(GroupId, RowNumber)],
 	) -> Result<Vec<Option<DateTime>>, ValueError> {
 		let keys: Vec<GroupStateKey> =
-			rows.iter().map(|&(group, row_number)| join_expiry_key(group, side, row_number)).collect();
+			rows.iter().map(|&(group, row_number)| join_forget_key(group, side, row_number)).collect();
 		let stored = self.state_get(id, &keys)?;
 		let mut seen = HashSet::with_capacity(keys.len());
 		let mut doomed = Vec::with_capacity(keys.len() * 2);
@@ -108,7 +108,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		for ((&(group, row_number), key), row) in rows.iter().zip(&keys).zip(&stored) {
 			let at = match row {
 				Some(row) if seen.insert(key.clone()) => {
-					JoinRowExpiryState::decode_state(row).map_err(ValueError::from)?.at
+					JoinRowForgetState::decode_state(row).map_err(ValueError::from)?.at
 				}
 				_ => {
 					cleared.push(None);
@@ -116,14 +116,14 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 				}
 			};
 			doomed.push(key.clone());
-			doomed.push(join_expiry_due_key(at, group, side, row_number));
+			doomed.push(join_forget_due_key(at, group, side, row_number));
 			cleared.push(Some(at));
 		}
 		self.state_remove(id, &doomed)?;
 		Ok(cleared)
 	}
 
-	fn join_expiry_arm(
+	fn join_forget_arm(
 		&mut self,
 		id: OperatorId,
 		side: u8,
@@ -141,49 +141,49 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 			}
 		}
 		let keys: Vec<GroupStateKey> =
-			latest.iter().map(|&(group, row_number, _)| join_expiry_key(group, side, row_number)).collect();
+			latest.iter().map(|&(group, row_number, _)| join_forget_key(group, side, row_number)).collect();
 		let stored = self.state_get(id, &keys)?;
 		let mut stale = Vec::new();
 		let mut armed = Vec::with_capacity(latest.len() * 2);
 		for ((&(group, row_number, at), key), row) in latest.iter().zip(keys).zip(&stored) {
 			if let Some(row) = row {
-				let previous = JoinRowExpiryState::decode_state(row).map_err(ValueError::from)?.at;
+				let previous = JoinRowForgetState::decode_state(row).map_err(ValueError::from)?.at;
 				if previous == at {
 					continue;
 				}
-				stale.push(join_expiry_due_key(previous, group, side, row_number));
+				stale.push(join_forget_due_key(previous, group, side, row_number));
 			}
 			armed.push((
 				key,
-				JoinRowExpiryState {
+				JoinRowForgetState {
 					at,
 				}
 				.encode_state()
 				.map_err(ValueError::from)?,
 			));
-			armed.push((join_expiry_due_key(at, group, side, row_number), EncodedPodRow::new(&[])));
+			armed.push((join_forget_due_key(at, group, side, row_number), EncodedPodRow::new(&[])));
 		}
 		self.state_remove(id, &stale)?;
 		self.state_set(id, armed)
 	}
 
-	fn join_expiry_free(&mut self, id: OperatorId, entries: &[JoinDueEntry]) -> Result<(), ValueError> {
+	fn join_forget_free(&mut self, id: OperatorId, entries: &[JoinDueEntry]) -> Result<(), ValueError> {
 		let doomed: Vec<GroupStateKey> = entries
 			.iter()
 			.flat_map(|entry| {
 				[
-					join_expiry_key(entry.group, entry.side, entry.row_number),
-					join_expiry_due_key(entry.at, entry.group, entry.side, entry.row_number),
+					join_forget_key(entry.group, entry.side, entry.row_number),
+					join_forget_due_key(entry.at, entry.group, entry.side, entry.row_number),
 				]
 			})
 			.collect();
 		self.state_remove(id, &doomed)
 	}
 
-	fn join_expiry_min(&mut self, id: OperatorId) -> Result<Option<DateTime>, ValueError> {
+	fn join_forget_min(&mut self, id: OperatorId) -> Result<Option<DateTime>, ValueError> {
 		let batch = self.state_range(
 			id,
-			StateRange::forward(join_due_range(), "join::expiry_min").limit(1).full_page(),
+			StateRange::forward(join_due_range(), "join::forget_min").limit(1).full_page(),
 		)?;
 		let Some(row) = batch.items.first() else {
 			return Ok(None);
@@ -215,7 +215,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		};
 		let range = GroupStateRange::Keyspace {
 			group: GroupId::ROOT,
-			keyspace: KeyspaceId::JOIN_EXPIRY_DUE,
+			keyspace: KeyspaceId::JOIN_FORGET_DUE,
 			start: from,
 			end: Bound::Unbounded,
 		};
@@ -255,11 +255,11 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 	}
 }
 
-impl<T: FlowTransaction> JoinRowExpiryExtension for T {}
+impl<T: FlowTransaction> JoinRowForgetExtension for T {}
 
-fn decode_due_suffix(key: &TaggedKey) -> Option<JoinExpiryDueKey> {
+fn decode_due_suffix(key: &TaggedKey) -> Option<JoinForgetDueKey> {
 	let TaggedKey::OperatorState(decoded) = key else {
 		return None;
 	};
-	JoinExpiryDueKey::from_suffix_bytes(&decoded.suffix)
+	JoinForgetDueKey::from_suffix_bytes(&decoded.suffix)
 }

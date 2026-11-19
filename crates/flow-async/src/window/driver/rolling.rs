@@ -296,7 +296,7 @@ impl<C: SealDomain> RollingRunner<C> {
 		HookGroup<H, H::Accumulator>: OperatorState + HeapSize,
 	{
 		let cutoff = self.cutoff(C::operator_watermark(store)?);
-		let before = engine.earliest_expiry(store)?;
+		let before = engine.earliest_age_out(store)?;
 		let keys = engine.state_keys(&routed.groups);
 		let applied = {
 			let mut prefetched = Prefetched::read(store, keys)?;
@@ -313,7 +313,7 @@ impl<C: SealDomain> RollingRunner<C> {
 		};
 		self.sealed_drops.note(applied.sealed_drops);
 		self.immutable_drops.note(applied.immutable_drops);
-		let after = engine.earliest_expiry(store)?;
+		let after = engine.earliest_age_out(store)?;
 		C::rearm_decay(store, self.size, Some(self.lag), before, after)?;
 		hooks.emit(applied.emits)
 	}
@@ -337,12 +337,12 @@ impl<C: SealDomain> RollingRunner<C> {
 			return internal_err!("a rolling window fired a {:?} timer it never arms", kind);
 		}
 		SealLedger::advance(store, fired)?;
-		let before = engine.earliest_expiry(store)?;
+		let before = engine.earliest_age_out(store)?;
 		let emits = match self.cutoff(C::from_order(fired.at().to_order())) {
-			Some(cutoff) => engine.expire(store, cutoff, &hooks.publisher())?,
+			Some(cutoff) => engine.age_out_due(store, cutoff, &hooks.publisher())?,
 			None => Vec::new(),
 		};
-		let after = engine.earliest_expiry(store)?;
+		let after = engine.earliest_age_out(store)?;
 		C::rearm_decay(store, self.size, Some(self.lag), before, after)?;
 		hooks.emit(emits)
 	}

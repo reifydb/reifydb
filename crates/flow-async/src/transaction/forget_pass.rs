@@ -48,7 +48,7 @@ pub trait ForgetPassExtension: StateExtension {
 		reifydb_assertions! {
 			assert!(
 				!group.is_root(),
-				"group id 0 is the root group; forgetting its identity would delete the timer wheel, the expiry index and the forget pass queue"
+				"group id 0 is the root group; forgetting its identity would delete the timer wheel, the due index and the forget pass queue"
 			);
 		}
 		if group.is_root() {
