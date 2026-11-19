@@ -23,7 +23,7 @@ use reifydb_flow::txn::{Intern, Resolve};
 use reifydb_flow_async::{
 	operator::{
 		host::{HostContext, TxnHostContext},
-		state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
+		state::{forget_pass::IdentityForgetPass, forget_pass_outcome::ForgetPassOutcome},
 	},
 	transaction::{
 		FlowTransaction, LookupAt,
@@ -210,10 +210,14 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 	}
 }
 
-impl<T: FlowTransaction> IdentityReclaim for CountingHost<'_, T> {
-	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>, ValueError> {
-		self.record("reclaim_identities", groups.len());
-		self.inner.reclaim_identities(groups, limit)
+impl<T: FlowTransaction> IdentityForgetPass for CountingHost<'_, T> {
+	fn forget_identities(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+	) -> Result<Vec<ForgetPassOutcome>, ValueError> {
+		self.record("forget_identities", groups.len());
+		self.inner.forget_identities(groups, limit)
 	}
 }
 
@@ -308,13 +312,13 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		self.inner.state_range_limited_visit(range, limit, visit)
 	}
 
-	fn reclaim_group_identities(
+	fn forget_group_identities(
 		&mut self,
 		groups: &[GroupId],
 		limit: usize,
-	) -> Result<Vec<ReclaimOutcome>, ValueError> {
-		self.record("reclaim_group_identities", groups.len());
-		self.inner.reclaim_group_identities(groups, limit)
+	) -> Result<Vec<ForgetPassOutcome>, ValueError> {
+		self.record("forget_group_identities", groups.len());
+		self.inner.forget_group_identities(groups, limit)
 	}
 
 	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>, ValueError> {

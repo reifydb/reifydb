@@ -69,7 +69,7 @@ fn deadline_of(frames: &[Frame]) -> DateTime {
 #[test]
 fn test_extend_moves_the_deadline_of_a_live_lease() {
 	// A worker holding a long-running task keeps its lease alive with this call. If the new
-	// deadline never reached the state record the reaper would take the item back mid-execution
+	// deadline never reached the state record the lease timeout task would take the item back mid-execution
 	// and hand the same work to someone else.
 	let t = engine_with_queue(ONE_PARTITION);
 	t.mock_clock().set_nanos(1_000);

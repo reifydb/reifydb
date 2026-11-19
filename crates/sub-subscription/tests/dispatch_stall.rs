@@ -236,7 +236,7 @@ fn run_child_with_limit(test_name: &str, limit: Duration) -> ChildOutput {
 		if Clock::Real.instant() >= deadline {
 			timed_out = true;
 			child.kill().expect("Failed to kill child past its wall-clock limit");
-			break child.wait().expect("Failed to reap killed child");
+			break child.wait().expect("Failed to wait for killed child");
 		}
 		sleep(Duration::from_milliseconds(10).unwrap().to_std());
 	};

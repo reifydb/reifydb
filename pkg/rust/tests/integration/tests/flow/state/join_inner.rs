@@ -175,7 +175,7 @@ fn a_right_only_lateness_forgets_the_right_row_and_leaves_the_left_one_addressab
 
 #[test]
 fn the_group_that_carried_the_key_outlives_a_seal_on_one_side_only() {
-	// Both sides share one group, so reclaiming identity on the first empty side frees state the other still reads.
+	// Both sides share one group, so forgetting identity on the first empty side frees state the other still reads.
 	let db = setup();
 	inner_join(&db, LEFT_ONLY);
 	fill_one_pair(&db);
@@ -193,7 +193,7 @@ fn the_group_that_carried_the_key_outlives_a_seal_on_one_side_only() {
 
 #[test]
 fn both_sides_sealed_leave_the_join_operator_holding_nothing_per_key() {
-	// Group identity is reclaimed only once both sides hold nothing, which is exactly this case.
+	// Group identity is forgotten only once both sides hold nothing, which is exactly this case.
 	let db = setup();
 	inner_join(&db, BOTH_SIDES);
 	fill_one_pair(&db);
@@ -332,7 +332,7 @@ fn a_pair_inserted_after_the_seal_arms_its_own_state_and_publishes_its_own_row()
 
 #[test]
 fn an_inner_join_without_a_seal_keeps_every_row_addressable_forever() {
-	// Arming unconditionally would reap joins that never asked to seal, silently freezing their rows.
+	// Arming unconditionally would forget joins that never asked to seal, silently freezing their rows.
 	let db = setup();
 	inner_join(&db, "");
 	fill_one_pair(&db);

@@ -7,7 +7,7 @@ use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	key::{
 		operator::{
-			keyspace::expiry::{RETIRED_AT_FLUSH, ReapQueue, ReapQueueKey},
+			keyspace::expiry::{FORGOTTEN_AT_FLUSH, ForgetPassQueue, ForgetPassQueueKey},
 			state::{GroupId, GroupStateKey, KeyspaceMask, OperatorStateKey},
 		},
 		typed::direction::Desc,
@@ -19,27 +19,28 @@ use reifydb_core::{
 };
 use reifydb_value::{error::ValueError, reifydb_assertions};
 
-use crate::operator::state::reclaim::ReclaimOutcome;
+use crate::operator::state::forget_pass_outcome::ForgetPassOutcome;
 
 #[cfg(test)]
 mod tests;
 
-pub trait Reaper {
-	fn reap(
+pub trait Forgetter {
+	fn forget(
 		&mut self,
 		store: &mut dyn StateStore,
 		rows: &[(GroupStateKey, EncodedPodRow)],
 	) -> Result<(), ValueError>;
 }
 
-pub trait IdentityReclaim: StateStore {
-	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>, ValueError>;
+pub trait IdentityForgetPass: StateStore {
+	fn forget_identities(&mut self, groups: &[GroupId], limit: usize)
+	-> Result<Vec<ForgetPassOutcome>, ValueError>;
 }
 
-pub struct StoreReaper;
+pub struct StoreForgetter;
 
-impl Reaper for StoreReaper {
-	fn reap(
+impl Forgetter for StoreForgetter {
+	fn forget(
 		&mut self,
 		store: &mut dyn StateStore,
 		rows: &[(GroupStateKey, EncodedPodRow)],
@@ -50,9 +51,9 @@ impl Reaper for StoreReaper {
 }
 
 pub fn queue_key(group: GroupId) -> GroupStateKey {
-	typed_key::<ReapQueue>(
+	typed_key::<ForgetPassQueue>(
 		GroupId::ROOT,
-		&ReapQueueKey {
+		&ForgetPassQueueKey {
 			group: Desc(group),
 		},
 	)
@@ -63,7 +64,7 @@ pub fn enqueue(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<(), Val
 		for group in groups {
 			assert!(
 				!group.is_root(),
-				"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
+				"group id 0 is the root group; forgetting it would delete the forget pass queue, the expiry indexes and the seal ledger"
 			);
 		}
 	}
@@ -78,11 +79,11 @@ pub fn enqueue(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<(), Val
 	store.state_set(rows)
 }
 
-pub fn enqueue_retired(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<(), ValueError> {
+pub fn enqueue_forgotten(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<(), ValueError> {
 	let rows: Vec<(GroupStateKey, EncodedPodRow)> = groups
 		.iter()
 		.filter(|group| !group.is_root())
-		.map(|group| (queue_key(*group), EncodedPodRow::new(RETIRED_AT_FLUSH)))
+		.map(|group| (queue_key(*group), EncodedPodRow::new(FORGOTTEN_AT_FLUSH)))
 		.collect();
 	if rows.is_empty() {
 		return Ok(());
@@ -108,7 +109,8 @@ impl DrainOutcome {
 }
 
 pub fn queued(store: &mut dyn StateStore, limit: usize) -> Result<Queued, ValueError> {
-	let page = store.state_scan_in::<ReapQueue>(GroupId::ROOT, Bound::Unbounded, Some(limit.saturating_add(1)))?;
+	let page =
+		store.state_scan_in::<ForgetPassQueue>(GroupId::ROOT, Bound::Unbounded, Some(limit.saturating_add(1)))?;
 	let more = page.len() > limit;
 	let groups = page.into_iter().take(limit).map(|(suffix, _)| suffix.group.0).collect();
 	Ok(Queued {
@@ -151,34 +153,34 @@ fn scan_group(store: &mut dyn StateStore, group: GroupId, budget: usize) -> Resu
 }
 
 pub fn drain_group<R>(
-	store: &mut dyn IdentityReclaim,
+	store: &mut dyn IdentityForgetPass,
 	group: GroupId,
-	reaper: &mut R,
+	forgetter: &mut R,
 	budget: usize,
 ) -> Result<GroupDrain, ValueError>
 where
-	R: Reaper,
+	R: Forgetter,
 {
 	let Some(scan) = scan_group(store, group, budget)? else {
-		return drain_group_scanning(store, group, reaper, budget);
+		return drain_group_scanning(store, group, forgetter, budget);
 	};
-	reap_scanned(store, group, scan, reaper, budget)
+	forget_scanned(store, group, scan, forgetter, budget)
 }
 
-fn reap_scanned<R>(
-	store: &mut dyn IdentityReclaim,
+fn forget_scanned<R>(
+	store: &mut dyn IdentityForgetPass,
 	group: GroupId,
 	scan: GroupScan,
-	reaper: &mut R,
+	forgetter: &mut R,
 	budget: usize,
 ) -> Result<GroupDrain, ValueError>
 where
-	R: Reaper,
+	R: Forgetter,
 {
 	reifydb_assertions! {
 		assert!(
 			!group.is_root(),
-			"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
+			"group id 0 is the root group; forgetting it would delete the forget pass queue, the expiry indexes and the seal ledger"
 		);
 	}
 	if group.is_root() {
@@ -189,7 +191,7 @@ where
 		});
 	}
 	store.remove_root_siblings(&scan.data)?;
-	reaper.reap(store, &scan.data)?;
+	forgetter.forget(store, &scan.data)?;
 	reifydb_assertions! {
 		let leftover = store.group_sweep(&[group], usize::MAX, KeyspaceMask::data())?.rows.len();
 		assert!(
@@ -206,7 +208,7 @@ where
 			still_queued: true,
 		});
 	}
-	let outcome = store.reclaim_identities(from_ref(&group), budget - freed)?.remove(0);
+	let outcome = store.forget_identities(from_ref(&group), budget - freed)?.remove(0);
 	let freed = freed + outcome.removed.as_u64() as usize;
 	if outcome.more {
 		return Ok(GroupDrain {
@@ -222,22 +224,22 @@ where
 }
 
 fn drain_group_scanning<R>(
-	store: &mut dyn IdentityReclaim,
+	store: &mut dyn IdentityForgetPass,
 	group: GroupId,
-	reaper: &mut R,
+	forgetter: &mut R,
 	budget: usize,
 ) -> Result<GroupDrain, ValueError>
 where
-	R: Reaper,
+	R: Forgetter,
 {
-	let freed = reap_group(store, group, reaper, budget)?;
+	let freed = forget_group(store, group, forgetter, budget)?;
 	if freed >= budget {
 		return Ok(GroupDrain {
 			freed,
 			still_queued: true,
 		});
 	}
-	let outcome = store.reclaim_identities(from_ref(&group), budget - freed)?.remove(0);
+	let outcome = store.forget_identities(from_ref(&group), budget - freed)?.remove(0);
 	let freed = freed + outcome.removed.as_u64() as usize;
 	if outcome.more {
 		return Ok(GroupDrain {
@@ -252,24 +254,28 @@ where
 	})
 }
 
-pub fn drain<R>(store: &mut dyn IdentityReclaim, reaper: &mut R, budget: usize) -> Result<DrainOutcome, ValueError>
+pub fn drain<R>(
+	store: &mut dyn IdentityForgetPass,
+	forgetter: &mut R,
+	budget: usize,
+) -> Result<DrainOutcome, ValueError>
 where
-	R: Reaper,
+	R: Forgetter,
 {
 	let scan = queued(store, budget)?;
-	let mut outcome = drain_groups(store, &scan.groups, reaper, budget)?;
+	let mut outcome = drain_groups(store, &scan.groups, forgetter, budget)?;
 	outcome.more = scan.more;
 	Ok(outcome)
 }
 
 pub fn drain_groups<R>(
-	store: &mut dyn IdentityReclaim,
+	store: &mut dyn IdentityForgetPass,
 	groups: &[GroupId],
-	reaper: &mut R,
+	forgetter: &mut R,
 	budget: usize,
 ) -> Result<DrainOutcome, ValueError>
 where
-	R: Reaper,
+	R: Forgetter,
 {
 	let ordered = sweep_order(groups);
 	let sweep = store.group_sweep(&ordered, budget, KeyspaceMask::data())?;
@@ -292,7 +298,7 @@ where
 		reifydb_assertions! {
 			assert!(
 				!group.is_root(),
-				"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
+				"group id 0 is the root group; forgetting it would delete the forget pass queue, the expiry indexes and the seal ledger"
 			);
 		}
 		if group.is_root() {
@@ -305,12 +311,12 @@ where
 
 	if !doomed.is_empty() {
 		store.remove_root_siblings(&doomed)?;
-		reaper.reap(store, &doomed)?;
+		forgetter.forget(store, &doomed)?;
 	}
 
 	let mut spent = 0usize;
 	let mut still_queued: Vec<GroupId> = Vec::new();
-	let mut reclaiming: Vec<GroupId> = Vec::new();
+	let mut forgetting: Vec<GroupId> = Vec::new();
 	let mut finished: Vec<GroupStateKey> = Vec::new();
 	for (group, freed) in planned {
 		if group.is_root() {
@@ -327,14 +333,14 @@ where
 			);
 		}
 		spent += freed;
-		reclaiming.push(group);
+		forgetting.push(group);
 	}
 	let available = budget.saturating_sub(spent);
 	if available == 0 {
-		still_queued.extend(reclaiming);
-	} else if !reclaiming.is_empty() {
-		let outcomes = store.reclaim_identities(&reclaiming, available)?;
-		for (group, outcome) in reclaiming.into_iter().zip(outcomes) {
+		still_queued.extend(forgetting);
+	} else if !forgetting.is_empty() {
+		let outcomes = store.forget_identities(&forgetting, available)?;
+		for (group, outcome) in forgetting.into_iter().zip(outcomes) {
 			spent += outcome.removed.as_u64() as usize;
 			match outcome.more {
 				true => still_queued.push(group),
@@ -349,7 +355,7 @@ where
 	if let Some(group) = cut_group {
 		match spent {
 			0 => {
-				let outcome = drain_group_scanning(store, group, reaper, budget)?;
+				let outcome = drain_group_scanning(store, group, forgetter, budget)?;
 				spent += outcome.freed;
 				if outcome.still_queued {
 					still_queued.push(group);
@@ -366,19 +372,19 @@ where
 	})
 }
 
-pub fn reap_group<R>(
+pub fn forget_group<R>(
 	store: &mut dyn StateStore,
 	group: GroupId,
-	reaper: &mut R,
+	forgetter: &mut R,
 	budget: usize,
 ) -> Result<usize, ValueError>
 where
-	R: Reaper,
+	R: Forgetter,
 {
 	reifydb_assertions! {
 		assert!(
 			!group.is_root(),
-			"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
+			"group id 0 is the root group; forgetting it would delete the forget pass queue, the expiry indexes and the seal ledger"
 		);
 	}
 	if group.is_root() {
@@ -386,6 +392,6 @@ where
 	}
 	let doomed = store.group_sweep(&[group], budget, KeyspaceMask::data())?.rows;
 	store.remove_root_siblings(&doomed)?;
-	reaper.reap(store, &doomed)?;
+	forgetter.forget(store, &doomed)?;
 	Ok(doomed.len())
 }

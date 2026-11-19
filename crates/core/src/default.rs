@@ -205,11 +205,11 @@ pub mod metrics {
 pub mod queue {
 	use reifydb_value::value::duration::Duration;
 
-	pub const LEASE_REAP_INTERVAL: Duration = Duration::from_seconds_const(5);
-	pub const LEASE_REAP_INTERVAL_TESTING: Duration = Duration::from_seconds_const(5);
+	pub const LEASE_TIMEOUT_INTERVAL: Duration = Duration::from_seconds_const(5);
+	pub const LEASE_TIMEOUT_INTERVAL_TESTING: Duration = Duration::from_seconds_const(5);
 
-	pub const LEASE_REAP_BATCH_SIZE: u64 = 1024;
-	pub const LEASE_REAP_BATCH_SIZE_TESTING: u64 = 16;
+	pub const LEASE_TIMEOUT_BATCH_SIZE: u64 = 1024;
+	pub const LEASE_TIMEOUT_BATCH_SIZE_TESTING: u64 = 16;
 
 	pub const EXPIRE_INTERVAL: Duration = Duration::from_seconds_const(60);
 	pub const EXPIRE_INTERVAL_TESTING: Duration = Duration::from_seconds_const(60);

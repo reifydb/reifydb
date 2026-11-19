@@ -17,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_flow_async::{
 	operator::state::{
-		reaper::{drain, drain_groups, enqueue, enqueue_retired},
+		forget_pass::{drain, drain_groups, enqueue, enqueue_forgotten},
 		seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	},
 	window::{
@@ -57,7 +57,7 @@ use crate::{
 	},
 };
 
-const FORGET_BATCH: usize = 256;
+const FORGET_PASS_BATCH: usize = 256;
 
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 type Buckets<A, K, V> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Vec<(K, V)>>;
@@ -78,7 +78,7 @@ where
 {
 	aggregator: A,
 	engine: Engine<A, K, V>,
-	reap_queue_empty: bool,
+	forget_pass_queue_empty: bool,
 	seal_span: Option<SealSpan<A>>,
 	settings: WindowSettings<A::Coord>,
 }
@@ -164,7 +164,7 @@ where
 	#[allow(clippy::too_many_arguments)]
 	fn expire_through<C: GuestContext>(
 		engine: &mut Engine<A, K, V>,
-		reap_queue_empty: &mut bool,
+		forget_pass_queue_empty: &mut bool,
 		store: &mut GuestAsHost<'_, C>,
 		operator_watermark: A::Coord,
 		seal_span: SealSpan<A>,
@@ -173,26 +173,26 @@ where
 		if horizon <= <A::Coord as Coord>::from_order(0) {
 			return Ok(());
 		}
-		let store_queue_empty = *reap_queue_empty;
+		let store_queue_empty = *forget_pass_queue_empty;
 		let closing = engine.expire(store, horizon.to_order().saturating_sub(1))?;
 		let expired: Vec<GroupId> = closing.iter().map(|window| window.group_id).collect();
-		if StateStore::state_retires_groups(store) {
-			enqueue_retired(store, &expired)?;
+		if StateStore::state_forgets_groups(store) {
+			enqueue_forgotten(store, &expired)?;
 			engine.expire_meta(store, horizon.to_order())?;
-			*reap_queue_empty = true;
+			*forget_pass_queue_empty = true;
 			return Ok(());
 		}
 		enqueue(store, &expired)?;
 		if !expired.is_empty() {
-			*reap_queue_empty = false;
+			*forget_pass_queue_empty = false;
 		}
 		engine.expire_meta(store, horizon.to_order())?;
-		if *reap_queue_empty {
+		if *forget_pass_queue_empty {
 			reifydb_assertions! {
-				let pending = reifydb_flow_async::operator::state::reaper::queued(store, 1)?;
+				let pending = reifydb_flow_async::operator::state::forget_pass::queued(store, 1)?;
 				assert!(
 					pending.groups.is_empty(),
-					"the reap queue still holds {:?} while the driver believes it drained the \
+					"the forget pass queue still holds {:?} while the driver believes it drained the \
 					 queue; skipping the drain here leaves that group's state behind for good",
 					pending.groups
 				);
@@ -200,11 +200,11 @@ where
 			return Ok(());
 		}
 		let drained = match store_queue_empty {
-			true => drain_groups(store, &expired, engine, FORGET_BATCH)?,
-			false => drain(store, engine, FORGET_BATCH)?,
+			true => drain_groups(store, &expired, engine, FORGET_PASS_BATCH)?,
+			false => drain(store, engine, FORGET_PASS_BATCH)?,
 		};
-		*reap_queue_empty = drained.queue_is_empty();
-		if !*reap_queue_empty {
+		*forget_pass_queue_empty = drained.queue_is_empty();
+		if !*forget_pass_queue_empty {
 			observe_batch(store, operator_watermark, seal_span)?;
 		}
 		Ok(())
@@ -213,7 +213,7 @@ where
 	fn apply_tumbling<C: GuestContext>(
 		aggregator: &A,
 		engine: &mut Engine<A, K, V>,
-		reap_queue_empty: &mut bool,
+		forget_pass_queue_empty: &mut bool,
 		seal_span: Option<SealSpan<A>>,
 		ctx: &mut C,
 		routing: Buckets<A, K, V>,
@@ -241,7 +241,13 @@ where
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
 			order.retain(|key| buckets.contains_key(key));
-			Self::expire_through(engine, reap_queue_empty, &mut store, operator_watermark, seal_span)?;
+			Self::expire_through(
+				engine,
+				forget_pass_queue_empty,
+				&mut store,
+				operator_watermark,
+				seal_span,
+			)?;
 			if buckets.is_empty() {
 				return Ok(emitted);
 			}
@@ -376,7 +382,7 @@ where
 		Ok(Self {
 			aggregator,
 			engine: EntryMapTumblingEngine::new(window_engine_config(params)),
-			reap_queue_empty: false,
+			forget_pass_queue_empty: false,
 			seal_span,
 			settings,
 		})
@@ -388,14 +394,14 @@ where
 		};
 		let Self {
 			engine,
-			reap_queue_empty,
+			forget_pass_queue_empty,
 			..
 		} = &mut *self;
 		let mut store = GuestAsHost(ctx);
 		let Some(operator_watermark) = timer_operator_watermark::<A::Coord>(&mut store, timer)? else {
 			return Ok(());
 		};
-		Self::expire_through(engine, reap_queue_empty, &mut store, operator_watermark, seal_span)
+		Self::expire_through(engine, forget_pass_queue_empty, &mut store, operator_watermark, seal_span)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<(), SdkError> {
@@ -407,11 +413,11 @@ where
 			let Self {
 				aggregator,
 				engine,
-				reap_queue_empty,
+				forget_pass_queue_empty,
 				seal_span,
 				..
 			} = &mut *self;
-			Self::apply_tumbling(aggregator, engine, reap_queue_empty, *seal_span, ctx, buckets)?
+			Self::apply_tumbling(aggregator, engine, forget_pass_queue_empty, *seal_span, ctx, buckets)?
 		};
 		self.emit_batches(ctx, &inserts, &updates, &removes)
 	}

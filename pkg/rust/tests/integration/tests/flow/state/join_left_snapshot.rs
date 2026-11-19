@@ -188,12 +188,12 @@ fn withdrawing_a_left_row_retracts_what_it_published_not_what_the_right_side_hol
 	assert_eq!(
 		db.row_count("FROM app::j"),
 		0,
-		"the retired version must let the withdrawal match the row that was published, leaving nothing behind"
+		"the stashed version must let the withdrawal match the row that was published, leaving nothing behind"
 	);
 	assert_eq!(
 		await_state_keys(&db, PIN, 0, TIMEOUT),
 		0,
-		"and the last reference must take the retired copy with it; surface now: {:?}",
+		"and the last reference must take the stashed copy with it; surface now: {:?}",
 		db.query(SURFACE)
 	);
 	assert_eq!(state_keys(&db, PUBLISHED), 0, "along with the ledger entry naming it");

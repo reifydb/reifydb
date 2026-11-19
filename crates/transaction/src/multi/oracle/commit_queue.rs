@@ -97,7 +97,7 @@ impl CommitRequest {
 fn complete_request(request: *mut CommitRequest, result: Result<CreateCommitResult, ValueError>) {
 	// SAFETY: the enqueuing thread keeps the request alive and does not touch its payload
 	// until it observes the DONE stored below; the waiter handle is cloned out before DONE
-	// is published, after which the request memory may be reclaimed at any moment.
+	// is published, after which the request memory may be dropped at any moment.
 	let payload = unsafe { &mut *(*request).payload.get() };
 	payload.result = Some(result);
 	let waiter = unsafe { (*request).waiter.clone() };

@@ -55,16 +55,16 @@ use crate::{
 	error::FlowAsyncError,
 	operator::state::{
 		expiry::{expiry_drop, expiry_get, expiry_set, managed_due_key, managed_latest_key},
-		reaper::IdentityReclaim,
-		reclaim::ReclaimOutcome,
+		forget_pass::IdentityForgetPass,
+		forget_pass_outcome::ForgetPassOutcome,
 		seal::rule::SEAL_GATE_STEP,
 	},
 	timer::{Timer, extension::TimerExtension},
 	transaction::{
 		FlowTransaction, LookupAt,
 		dictionary::DictionaryExtension,
+		forget_pass::ForgetPassExtension,
 		join_expiry::{DueStart, JoinDueEntry, JoinDuePage, JoinRowExpiryExtension},
-		reclaim::ReclaimExtension,
 		row_number::RowNumberExtension,
 		state::{StateExtension, StateRange},
 	},
@@ -120,11 +120,11 @@ pub trait HostContext: WindowStore + Resolve {
 		Ok(())
 	}
 
-	fn reclaim_group_identities(
+	fn forget_group_identities(
 		&mut self,
 		groups: &[GroupId],
 		limit: usize,
-	) -> Result<Vec<ReclaimOutcome>, ValueError>;
+	) -> Result<Vec<ForgetPassOutcome>, ValueError>;
 
 	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>, ValueError>;
 
@@ -209,13 +209,13 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 		}
 	}
 
-	fn arm_reclaim(&mut self, group: GroupId) -> Result<(), ValueError> {
+	fn arm_forget_pass(&mut self, group: GroupId) -> Result<(), ValueError> {
 		let Some(retention) = self.retention else {
 			return internal_err!("operator {} wrote managed state but has no retention", self.operator);
 		};
 		let latest = managed_latest_key(group);
 		let previous = expiry_get::<DateTime>(self, &latest)?;
-		let due = reclaim_due(self.batch_time, retention);
+		let due = forget_pass_due(self.batch_time, retention);
 		let due = previous.map_or(due, |previous| previous.max(due));
 		if let Some(previous) = previous.filter(|previous| *previous != due) {
 			expiry_drop(self, &managed_due_key(previous, group))?;
@@ -242,7 +242,7 @@ fn managed_group(key: &GroupStateKey) -> Option<GroupId> {
 
 const NANOS_PER_SECOND: i64 = 1_000_000_000;
 
-fn reclaim_due(batch_time: DateTime, retention: Duration) -> DateTime {
+fn forget_pass_due(batch_time: DateTime, retention: Duration) -> DateTime {
 	let free = batch_time.saturating_add(retention).saturating_add(SEAL_GATE_STEP);
 	let nanos = free.to_nanos();
 	let ceil = nanos.div_euclid(NANOS_PER_SECOND) + i64::from(nanos.rem_euclid(NANOS_PER_SECOND) != 0);
@@ -282,8 +282,8 @@ impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {
 }
 
 impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
-	fn state_retires_groups(&self) -> bool {
-		self.txn.operator_store().persistent().retires_groups()
+	fn state_forgets_groups(&self) -> bool {
+		self.txn.operator_store().persistent().forgets_groups()
 	}
 
 	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>, ValueError> {
@@ -306,7 +306,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		let groups: BTreeSet<GroupId> = rows.iter().filter_map(|(key, _)| managed_group(key)).collect();
 		self.txn.state_set(self.operator, rows)?;
 		for group in groups {
-			self.arm_reclaim(group)?;
+			self.arm_forget_pass(group)?;
 		}
 		Ok(())
 	}
@@ -318,7 +318,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 			.collect();
 		self.txn.state_write_batch(self.operator, batch)?;
 		for group in groups {
-			self.arm_reclaim(group)?;
+			self.arm_forget_pass(group)?;
 		}
 		Ok(())
 	}
@@ -416,9 +416,13 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	}
 }
 
-impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
-	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>, ValueError> {
-		self.txn.reclaim_group_identities(self.operator, groups, limit)
+impl<T: FlowTransaction> IdentityForgetPass for TxnHostContext<'_, T> {
+	fn forget_identities(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+	) -> Result<Vec<ForgetPassOutcome>, ValueError> {
+		self.txn.forget_group_identities(self.operator, groups, limit)
 	}
 }
 
@@ -647,12 +651,12 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		Ok(())
 	}
 
-	fn reclaim_group_identities(
+	fn forget_group_identities(
 		&mut self,
 		groups: &[GroupId],
 		limit: usize,
-	) -> Result<Vec<ReclaimOutcome>, ValueError> {
-		self.txn.reclaim_group_identities(self.operator, groups, limit)
+	) -> Result<Vec<ForgetPassOutcome>, ValueError> {
+		self.txn.forget_group_identities(self.operator, groups, limit)
 	}
 
 	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>, ValueError> {

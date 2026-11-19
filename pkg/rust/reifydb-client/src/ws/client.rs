@@ -841,7 +841,7 @@ impl WsClient {
 		let response = match self.send_request_json(request).await {
 			Ok(r) => r,
 			Err(e) => {
-				self.forget(&cids, &req_id).await;
+				self.unregister(&cids, &req_id).await;
 				return Err(e);
 			}
 		};
@@ -856,7 +856,7 @@ impl WsClient {
 				})
 				.collect()),
 			ResponsePayload::Subscribed(ack) => {
-				self.forget(&cids, &req_id).await;
+				self.unregister(&cids, &req_id).await;
 				Err(ClientError::UnexpectedResponse(format!(
 					"Subscribed acknowledged {} of {} subscriptions",
 					ack.subscriptions.len(),
@@ -865,11 +865,11 @@ impl WsClient {
 				.into())
 			}
 			ResponsePayload::Err(err) => {
-				self.forget(&cids, &req_id).await;
+				self.unregister(&cids, &req_id).await;
 				Err(ValueError(Box::new(err.diagnostic)))
 			}
 			_ => {
-				self.forget(&cids, &req_id).await;
+				self.unregister(&cids, &req_id).await;
 				Err(ClientError::UnexpectedResponse(
 					"Unexpected response type for Subscribe".to_string(),
 				)
@@ -878,7 +878,7 @@ impl WsClient {
 		}
 	}
 
-	async fn forget(&self, cids: &[u64], req_id: &str) {
+	async fn unregister(&self, cids: &[u64], req_id: &str) {
 		self.shared.pending_sub_acks.lock().await.remove(req_id);
 		let removed: Vec<SubEntry> = {
 			let mut active = self.shared.active_subs.lock().await;

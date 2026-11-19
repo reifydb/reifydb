@@ -51,8 +51,8 @@ mod lifecycle_coverage;
 mod lower_aggregate;
 #[path = "lower_join_key.rs"]
 mod lower_join_key;
-#[path = "managed_reclaim.rs"]
-mod managed_reclaim;
+#[path = "managed_forget_pass.rs"]
+mod managed_forget_pass;
 #[path = "operator_with_requirements.rs"]
 mod operator_with_requirements;
 #[path = "output_watermark_propagation.rs"]

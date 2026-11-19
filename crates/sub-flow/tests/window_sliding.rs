@@ -172,7 +172,7 @@ fn a_time_sliding_row_leaves_no_row_index_once_its_windows_seal() {
 	assert_eq!(
 		await_value(0, TIMEOUT, || keyspace_keys(&db, "ACCUMULATOR")),
 		0,
-		"every window covering the row sealed, so their accumulators must be reaped"
+		"every window covering the row sealed, so their accumulators must be forgotten"
 	);
 	assert_eq!(keyspace_keys(&db, "ROW_INDEX"), 0, "a sealed row must not keep an index row");
 }

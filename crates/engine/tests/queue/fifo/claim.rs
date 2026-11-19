@@ -172,7 +172,7 @@ fn test_a_claim_leases_every_due_item_and_never_hands_it_out_twice() {
 
 #[test]
 fn test_a_claim_records_the_lease_on_the_item_state() {
-	// The state record is what the reaper and every later transition read. An attempt that stays
+	// The state record is what the lease timeout task and every later transition read. An attempt that stays
 	// at 0 would give the retry budget infinite lives; a missing deadline would make the lease
 	// immortal and the item unrecoverable after a worker dies.
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");

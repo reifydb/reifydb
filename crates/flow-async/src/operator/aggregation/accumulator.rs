@@ -923,7 +923,7 @@ mod tests {
 
 	#[test]
 	fn window_slot_key_order_key_survives_storage_and_ignores_seq() {
-		// A stored key that orders differently from the writer makes the sweep reclaim live groups.
+		// A stored key that orders differently from the writer makes the sweep forget live groups.
 		let key = WindowSlotKey {
 			coord: ByDateTime(DateTime::from_nanos(1_700_000_000_123_456_789)),
 			seq: 7,

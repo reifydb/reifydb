@@ -9,7 +9,7 @@ use reifydb_value::error::ValueError;
 
 use crate::{
 	operator::state::{
-		reaper::{DrainOutcome, drain, enqueue, enqueue_retired},
+		forget_pass::{DrainOutcome, drain, enqueue, enqueue_forgotten},
 		seal::{
 			domain::SealDomain,
 			ledger::{FiredAt, SealLedger},
@@ -27,7 +27,7 @@ pub fn close_through<G, C, A>(
 	operator_watermark: C,
 	seal_span: C::SealSpan,
 	budget: usize,
-	may_retire: bool,
+	may_forget: bool,
 ) -> Result<bool, ValueError>
 where
 	G: Clone + Eq + Ord + Hash + Debug + StateCodec,
@@ -40,8 +40,8 @@ where
 	}
 	let expired = engine.expire_within(store, horizon.to_order().saturating_sub(1), budget)?;
 	let groups: Vec<GroupId> = expired.iter().map(|window| window.group_id).collect();
-	if may_retire && store.state_retires_groups() {
-		enqueue_retired(store, &groups)?;
+	if may_forget && store.state_forgets_groups() {
+		enqueue_forgotten(store, &groups)?;
 		return Ok(false);
 	}
 	enqueue(store, &groups)?;
@@ -54,7 +54,7 @@ pub fn seal<G, C, A>(
 	fired: FiredAt,
 	seal_span: C::SealSpan,
 	budget: usize,
-	may_retire: bool,
+	may_forget: bool,
 ) -> Result<(), ValueError>
 where
 	G: Clone + Eq + Ord + Hash + Debug + StateCodec,
@@ -66,14 +66,14 @@ where
 	if C::horizon(operator_watermark, seal_span) <= C::from_order(0) {
 		return Ok(());
 	}
-	if close_through(engine, store, operator_watermark, seal_span, budget, may_retire)? {
-		C::arm_reap(store, fired.at(), seal_span)?;
+	if close_through(engine, store, operator_watermark, seal_span, budget, may_forget)? {
+		C::arm_forget_pass(store, fired.at(), seal_span)?;
 	}
 	let earliest = engine.earliest_expiry(store)?;
 	C::rearm_seal(store, seal_span, None, earliest)
 }
 
-pub fn reap<G, C, A>(
+pub fn forget_pass<G, C, A>(
 	engine: &mut TumblingEngine<G, C, A>,
 	store: &mut dyn WindowStore,
 	fired: FiredAt,
@@ -87,7 +87,7 @@ where
 {
 	let drained = drain(store, engine, budget)?;
 	if !drained.queue_is_empty() {
-		C::arm_reap(store, fired.at(), seal_span)?;
+		C::arm_forget_pass(store, fired.at(), seal_span)?;
 	}
 	Ok(drained)
 }

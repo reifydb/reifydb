@@ -71,7 +71,7 @@ impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 		}
 	}
 
-	fn forget_set(&mut self, dimension: D) -> bool {
+	fn discard_set(&mut self, dimension: D) -> bool {
 		let Some(set) = self.sets.remove(&dimension) else {
 			return false;
 		};
@@ -82,7 +82,7 @@ impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 	pub fn enforce_limits(&mut self, dimension: D, max_intervals: usize, max_bytes: u64) -> bool {
 		let mut retracted = false;
 		if self.sets.get(&dimension).is_some_and(|set| set.len() > max_intervals) {
-			self.forget_set(dimension);
+			self.discard_set(dimension);
 			retracted = true;
 		}
 		if self.sets_bytes > max_bytes {
@@ -94,7 +94,7 @@ impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 				if self.sets_bytes <= target {
 					break;
 				}
-				if self.forget_set(coldest) {
+				if self.discard_set(coldest) {
 					retracted = true;
 				}
 			}
@@ -115,7 +115,7 @@ impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 	}
 
 	pub fn remove(&mut self, dimension: D) {
-		self.forget_set(dimension);
+		self.discard_set(dimension);
 		self.heads.remove(&dimension);
 	}
 
@@ -166,7 +166,7 @@ impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 		let after = set.bytes();
 		self.sets_bytes = self.sets_bytes + after - before;
 		if set.is_empty() {
-			self.forget_set(dimension);
+			self.discard_set(dimension);
 		}
 	}
 }

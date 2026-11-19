@@ -649,7 +649,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_third_write_forgets_the_oldest_of_the_three() {
+	fn a_third_write_drops_the_oldest_of_the_three() {
 		// The chain is two deep by design, so the oldest must fall off rather than grow the row without bound.
 		let mut resident = row(1, "first");
 		MultiPointDomain::supersede(&mut resident, row(2, "second"));
@@ -659,7 +659,7 @@ mod tests {
 		let (version, displaced) =
 			resident.previous.as_deref().expect("the chain must still hold one displaced value");
 		assert_eq!(*version, CommitVersion(2), "the chain kept the wrong version");
-		assert_eq!(body(displaced), "second", "a two-deep chain must forget the oldest, not the newest");
+		assert_eq!(body(displaced), "second", "a two-deep chain must drop the oldest, not the newest");
 	}
 
 	#[test]

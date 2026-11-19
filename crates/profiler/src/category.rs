@@ -370,7 +370,10 @@ mod tests {
 		// from the profiler with no error anywhere. The negative cases pin that the match is on
 		// the full "queue::" separator, not a bare "queue" substring.
 		assert_eq!(ProfilerCategory::from_span_name("queue::claim"), Some(ProfilerCategory::Queue));
-		assert_eq!(ProfilerCategory::from_span_name("queue::reap::slice"), Some(ProfilerCategory::Queue));
+		assert_eq!(
+			ProfilerCategory::from_span_name("queue::lease_timeout::slice"),
+			Some(ProfilerCategory::Queue)
+		);
 		assert_eq!(
 			ProfilerCategory::from_span_name("queue::interceptor::enqueue"),
 			Some(ProfilerCategory::Queue)

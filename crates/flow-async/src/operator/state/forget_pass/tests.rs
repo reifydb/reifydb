@@ -33,14 +33,14 @@ fn present(store: &mut MockStore, key: &GroupStateKey) -> bool {
 }
 
 #[test]
-fn reaps_the_data_phase_and_spares_the_identity_phase_of_the_same_group() {
+fn forgets_the_data_phase_and_spares_the_identity_phase_of_the_same_group() {
 	let mut store = MockStore::default();
 	let accumulator = key(doomed_group(), KeyspaceId::ACCUMULATOR, 1);
 	let mapping = key(doomed_group(), KeyspaceId::GUEST_ROW_MAPPING, 1);
 	seed(&mut store, &accumulator);
 	seed(&mut store, &mapping);
 
-	let freed = reap_group(&mut store, doomed_group(), &mut StoreReaper, 256).unwrap();
+	let freed = forget_group(&mut store, doomed_group(), &mut StoreForgetter, 256).unwrap();
 
 	assert_eq!(freed, 1, "only the data-phase key counts as freed");
 	assert!(!present(&mut store, &accumulator), "the accumulator is data phase and must be gone");
@@ -48,18 +48,18 @@ fn reaps_the_data_phase_and_spares_the_identity_phase_of_the_same_group() {
 }
 
 #[test]
-fn reaps_nothing_outside_the_named_group() {
+fn forgets_nothing_outside_the_named_group() {
 	let mut store = MockStore::default();
 	let doomed = key(doomed_group(), KeyspaceId::ACCUMULATOR, 1);
 	let bystander = key(bystander_group(), KeyspaceId::ACCUMULATOR, 1);
 	seed(&mut store, &doomed);
 	seed(&mut store, &bystander);
 
-	let freed = reap_group(&mut store, doomed_group(), &mut StoreReaper, 256).unwrap();
+	let freed = forget_group(&mut store, doomed_group(), &mut StoreForgetter, 256).unwrap();
 
 	assert_eq!(freed, 1);
 	assert!(!present(&mut store, &doomed));
-	assert!(present(&mut store, &bystander), "a neighbouring group's state must outlive the reap");
+	assert!(present(&mut store, &bystander), "a neighbouring group's state must outlive the forget pass");
 }
 
 #[test]
@@ -70,9 +70,9 @@ fn spares_the_root_group_so_the_expiry_index_drains_on_its_own() {
 	seed(&mut store, &doomed);
 	seed(&mut store, &index);
 
-	reap_group(&mut store, doomed_group(), &mut StoreReaper, 256).unwrap();
+	forget_group(&mut store, doomed_group(), &mut StoreForgetter, 256).unwrap();
 
-	assert!(present(&mut store, &index), "the root-resident expiry index must survive a group reap");
+	assert!(present(&mut store, &index), "the root-resident expiry index must survive a group forget pass");
 }
 
 #[test]
@@ -98,7 +98,7 @@ fn draining_frees_a_queued_group_and_clears_its_queue_entry() {
 	seed(&mut store, &accumulator);
 	enqueue(&mut store, &[doomed_group()]).unwrap();
 
-	let freed = drain(&mut store, &mut StoreReaper, 256).unwrap().freed;
+	let freed = drain(&mut store, &mut StoreForgetter, 256).unwrap().freed;
 
 	assert_eq!(freed, 1);
 	assert!(!present(&mut store, &accumulator), "the queued group's data must be gone");
@@ -115,7 +115,7 @@ fn draining_named_groups_never_consults_the_queue() {
 	enqueue(&mut store, &[doomed_group()]).unwrap();
 	enqueue(&mut store, &[bystander_group()]).unwrap();
 
-	let drained = drain_groups(&mut store, &[doomed_group()], &mut StoreReaper, 256).unwrap();
+	let drained = drain_groups(&mut store, &[doomed_group()], &mut StoreForgetter, 256).unwrap();
 
 	assert_eq!(drained.freed, 1);
 	assert!(drained.queue_is_empty(), "a named drain has no scan cut, so it must not report leftovers");
@@ -136,16 +136,16 @@ fn a_group_that_hits_the_budget_stays_queued_for_the_next_tick() {
 	}
 	enqueue(&mut store, &[doomed_group()]).unwrap();
 
-	let freed = drain(&mut store, &mut StoreReaper, 2).unwrap().freed;
+	let freed = drain(&mut store, &mut StoreForgetter, 2).unwrap().freed;
 
 	assert_eq!(freed, 2, "the drain stops at the budget");
 	assert_eq!(
 		queued(&mut store, 256).unwrap().groups,
 		vec![doomed_group()],
-		"a partly reaped group must stay queued"
+		"a partly forgotten group must stay queued"
 	);
 
-	let rest = drain(&mut store, &mut StoreReaper, 256).unwrap().freed;
+	let rest = drain(&mut store, &mut StoreForgetter, 256).unwrap().freed;
 
 	assert_eq!(rest, 3, "the next tick takes what the budget deferred");
 	assert!(queued(&mut store, 256).unwrap().groups.is_empty(), "the group leaves the queue once it is drained");
@@ -160,7 +160,7 @@ fn draining_frees_the_identity_phase_once_the_data_phase_is_gone() {
 	seed(&mut store, &mapping);
 	enqueue(&mut store, &[doomed_group()]).unwrap();
 
-	let freed = drain(&mut store, &mut StoreReaper, 256).unwrap().freed;
+	let freed = drain(&mut store, &mut StoreForgetter, 256).unwrap().freed;
 
 	assert_eq!(freed, 2, "both phases spend from the same budget");
 	assert!(!present(&mut store, &accumulator), "the data phase goes first");
@@ -178,13 +178,13 @@ fn a_budget_spent_on_the_data_phase_defers_identity_to_the_next_tick() {
 	seed(&mut store, &mapping);
 	enqueue(&mut store, &[doomed_group()]).unwrap();
 
-	let freed = drain(&mut store, &mut StoreReaper, 2).unwrap().freed;
+	let freed = drain(&mut store, &mut StoreForgetter, 2).unwrap().freed;
 
 	assert_eq!(freed, 2, "the budget is spent entirely on data");
 	assert!(present(&mut store, &mapping), "identity must survive a tick that could not finish the data");
 	assert_eq!(queued(&mut store, 256).unwrap().groups, vec![doomed_group()], "so the group stays queued");
 
-	drain(&mut store, &mut StoreReaper, 256).unwrap();
+	drain(&mut store, &mut StoreForgetter, 256).unwrap();
 
 	assert!(!present(&mut store, &mapping), "the next tick finds no data left and takes the identity");
 }
@@ -197,15 +197,15 @@ fn stops_at_the_budget_and_reports_only_what_it_freed() {
 		seed(&mut store, k);
 	}
 
-	let freed = reap_group(&mut store, doomed_group(), &mut StoreReaper, 2).unwrap();
+	let freed = forget_group(&mut store, doomed_group(), &mut StoreForgetter, 2).unwrap();
 
-	assert_eq!(freed, 2, "the reap stops at the budget");
+	assert_eq!(freed, 2, "the forget pass stops at the budget");
 	let survivors = keys.iter().filter(|k| present(&mut store, k)).count();
 	assert_eq!(survivors, 3, "the keys past the budget are left for the next tick");
 }
 
 #[test]
-fn reaping_takes_both_ends_of_the_data_range_and_spares_both_ends_of_the_identity_range() {
+fn forgetting_takes_both_ends_of_the_data_range_and_spares_both_ends_of_the_identity_range() {
 	let mut store = MockStore::default();
 	let lowest_data = key(doomed_group(), KeyspaceId(0x00), 1);
 	let highest_data = key(doomed_group(), KeyspaceId(KeyspaceId::HIGHEST_DATA), 1);
@@ -215,7 +215,7 @@ fn reaping_takes_both_ends_of_the_data_range_and_spares_both_ends_of_the_identit
 		seed(&mut store, k);
 	}
 
-	let freed = reap_group(&mut store, doomed_group(), &mut StoreReaper, 256).unwrap();
+	let freed = forget_group(&mut store, doomed_group(), &mut StoreForgetter, 256).unwrap();
 
 	assert_eq!(freed, 2, "exactly the two data-phase keys are freed");
 	assert!(!present(&mut store, &lowest_data), "keyspace 0x00 is data and must go");
@@ -236,7 +236,7 @@ fn a_group_larger_than_the_budget_still_drains_the_queue_to_empty() {
 
 	let mut rounds = 0;
 	loop {
-		let outcome = drain(&mut store, &mut StoreReaper, 2).unwrap();
+		let outcome = drain(&mut store, &mut StoreForgetter, 2).unwrap();
 		rounds += 1;
 		assert!(rounds <= 32, "the drain must converge, not spin on a group it cannot shrink");
 		if outcome.queue_is_empty() {
@@ -249,7 +249,7 @@ fn a_group_larger_than_the_budget_still_drains_the_queue_to_empty() {
 }
 
 #[test]
-fn the_reap_scan_never_fetches_an_identity_key() {
+fn the_forget_pass_scan_never_fetches_an_identity_key() {
 	let mut store = MockStore::default();
 	for i in 0..3 {
 		seed(&mut store, &key(doomed_group(), KeyspaceId::ACCUMULATOR, i));
@@ -260,9 +260,9 @@ fn the_reap_scan_never_fetches_an_identity_key() {
 	}
 	let before = store.rows_visited();
 
-	let freed = reap_group(&mut store, doomed_group(), &mut StoreReaper, 256).unwrap();
+	let freed = forget_group(&mut store, doomed_group(), &mut StoreForgetter, 256).unwrap();
 
-	assert_eq!(freed, 3, "only the three data keys are reapable");
+	assert_eq!(freed, 3, "only the three data keys are forgettable");
 	assert_eq!(
 		store.rows_visited() - before,
 		3,
@@ -271,16 +271,16 @@ fn the_reap_scan_never_fetches_an_identity_key() {
 }
 
 #[test]
-fn the_reap_scan_stops_fetching_at_the_budget() {
+fn the_forget_pass_scan_stops_fetching_at_the_budget() {
 	let mut store = MockStore::default();
 	for i in 0..12 {
 		seed(&mut store, &key(doomed_group(), KeyspaceId::ACCUMULATOR, i));
 	}
 	let before = store.rows_visited();
 
-	let freed = reap_group(&mut store, doomed_group(), &mut StoreReaper, 3).unwrap();
+	let freed = forget_group(&mut store, doomed_group(), &mut StoreForgetter, 3).unwrap();
 
-	assert_eq!(freed, 3, "the reap stops at the budget");
+	assert_eq!(freed, 3, "the forget pass stops at the budget");
 	assert_eq!(
 		store.rows_visited() - before,
 		4,
@@ -289,7 +289,7 @@ fn the_reap_scan_stops_fetching_at_the_budget() {
 }
 
 #[test]
-fn one_drain_reaps_data_and_reclaims_identity_and_dequeues_the_group() {
+fn one_drain_forgets_data_and_identity_and_dequeues_the_group() {
 	let mut store = MockStore::default();
 	let accumulator = key(doomed_group(), KeyspaceId::ACCUMULATOR, 1);
 	let mapping = key(doomed_group(), KeyspaceId::GUEST_ROW_MAPPING, 1);
@@ -297,11 +297,11 @@ fn one_drain_reaps_data_and_reclaims_identity_and_dequeues_the_group() {
 	seed(&mut store, &mapping);
 	seed(&mut store, &queue_key(doomed_group()));
 
-	let outcome = drain_group(&mut store, doomed_group(), &mut StoreReaper, 256).unwrap();
+	let outcome = drain_group(&mut store, doomed_group(), &mut StoreForgetter, 256).unwrap();
 
 	assert!(!outcome.still_queued, "a fully drained group must not stay queued");
-	assert!(!present(&mut store, &accumulator), "the data key must be reaped");
-	assert!(!present(&mut store, &mapping), "the identity key must be reclaimed in the same pass");
+	assert!(!present(&mut store, &accumulator), "the data key must be forgotten");
+	assert!(!present(&mut store, &mapping), "the identity key must be forgotten in the same pass");
 	assert!(!present(&mut store, &queue_key(doomed_group())), "the queue entry must be removed");
 }
 
@@ -317,7 +317,7 @@ fn the_drain_partitions_by_keyspace_not_by_scan_order() {
 	}
 	seed(&mut store, &queue_key(doomed_group()));
 
-	let outcome = drain_group(&mut store, doomed_group(), &mut StoreReaper, 256).unwrap();
+	let outcome = drain_group(&mut store, doomed_group(), &mut StoreForgetter, 256).unwrap();
 
 	assert_eq!(outcome.freed, 4, "both data keys and both identity keys are accounted as freed");
 	for k in [&lowest_data, &highest_data, &lowest_identity, &highest_identity] {
@@ -336,7 +336,7 @@ fn the_drain_leaves_a_neighbouring_group_untouched() {
 	}
 	seed(&mut store, &queue_key(doomed_group()));
 
-	drain_group(&mut store, doomed_group(), &mut StoreReaper, 256).unwrap();
+	drain_group(&mut store, doomed_group(), &mut StoreForgetter, 256).unwrap();
 
 	assert!(!present(&mut store, &doomed_data), "the doomed group's data must go");
 	assert!(present(&mut store, &neighbour_data), "the neighbour's data must survive");
@@ -354,13 +354,13 @@ fn a_group_too_large_for_the_budget_falls_back_and_keeps_its_identity() {
 	seed(&mut store, &mapping);
 	seed(&mut store, &queue_key(doomed_group()));
 
-	let outcome = drain_group(&mut store, doomed_group(), &mut StoreReaper, 2).unwrap();
+	let outcome = drain_group(&mut store, doomed_group(), &mut StoreForgetter, 2).unwrap();
 
 	assert!(outcome.still_queued, "a group that did not fit the budget must stay queued");
 	assert!(present(&mut store, &mapping), "identity must survive while data is still pending");
 	assert!(present(&mut store, &queue_key(doomed_group())), "the queue entry must survive too");
 	let survivors = data.iter().filter(|k| present(&mut store, k)).count();
-	assert_eq!(survivors, 3, "the budget bounds how much data one pass reaps");
+	assert_eq!(survivors, 3, "the budget bounds how much data one pass forgets");
 }
 
 #[test]
@@ -375,19 +375,19 @@ fn a_group_whose_identity_alone_exceeds_the_budget_still_makes_progress() {
 	seed(&mut store, &data);
 	seed(&mut store, &queue_key(doomed_group()));
 
-	let outcome = drain_group(&mut store, doomed_group(), &mut StoreReaper, 2).unwrap();
+	let outcome = drain_group(&mut store, doomed_group(), &mut StoreForgetter, 2).unwrap();
 
-	assert!(!present(&mut store, &data), "the fall-back reaps data first even when identity crowds the scan");
+	assert!(!present(&mut store, &data), "the fall-back forgets data first even when identity crowds the scan");
 	assert!(outcome.freed > 0, "a pass that frees nothing would spin on this group forever");
 }
 
 #[derive(Default)]
-struct RecordingReaper {
+struct RecordingForgetter {
 	seen: Vec<GroupStateKey>,
 }
 
-impl Reaper for RecordingReaper {
-	fn reap(
+impl Forgetter for RecordingForgetter {
+	fn forget(
 		&mut self,
 		store: &mut dyn StateStore,
 		rows: &[(GroupStateKey, EncodedPodRow)],
@@ -399,18 +399,18 @@ impl Reaper for RecordingReaper {
 }
 
 #[test]
-fn the_reaper_is_handed_the_data_keys_and_never_an_identity_key() {
+fn the_forgetter_is_handed_the_data_keys_and_never_an_identity_key() {
 	let mut store = MockStore::default();
 	let data = key(doomed_group(), KeyspaceId::ACCUMULATOR, 1);
 	let mapping = key(doomed_group(), KeyspaceId::GUEST_ROW_MAPPING, 1);
 	seed(&mut store, &data);
 	seed(&mut store, &mapping);
 	seed(&mut store, &queue_key(doomed_group()));
-	let mut reaper = RecordingReaper::default();
+	let mut forgetter = RecordingForgetter::default();
 
-	drain_group(&mut store, doomed_group(), &mut reaper, 256).unwrap();
+	drain_group(&mut store, doomed_group(), &mut forgetter, 256).unwrap();
 
-	assert_eq!(reaper.seen, vec![data], "the reaper must receive the data key and nothing else");
+	assert_eq!(forgetter.seen, vec![data], "the forgetter must receive the data key and nothing else");
 }
 
 #[test]
@@ -423,11 +423,11 @@ fn a_drainable_group_reads_only_its_data_rows_and_still_frees_its_identity() {
 	seed(&mut store, &queue_key(doomed_group()));
 	let before = store.rows_visited();
 
-	let outcome = drain_group(&mut store, doomed_group(), &mut StoreReaper, 256).unwrap();
+	let outcome = drain_group(&mut store, doomed_group(), &mut StoreForgetter, 256).unwrap();
 
 	assert_eq!(store.rows_visited() - before, 1, "the sweep must read the one data row and never the identity row");
 	assert!(!outcome.still_queued, "a group whose rows all fit one budget must not stay queued");
-	assert!(!present(&mut store, &mapping), "the band reclaim must free the identity row the sweep never read");
+	assert!(!present(&mut store, &mapping), "the band forget pass must free the identity row the sweep never read");
 }
 
 fn third_group() -> GroupId {
@@ -444,7 +444,7 @@ fn the_batched_sweep_visits_groups_in_the_same_order_the_queue_hands_them_over()
 
 	let queue = queued(&mut store, 256).unwrap().groups;
 
-	assert_eq!(queue, sweep_order(&queue), "the reap queue must already be in sweep order");
+	assert_eq!(queue, sweep_order(&queue), "the forget pass queue must already be in sweep order");
 }
 
 #[test]
@@ -455,7 +455,7 @@ fn a_batch_that_drains_every_queued_group_empties_the_queue_in_one_tick() {
 		enqueue(&mut store, &[group]).unwrap();
 	}
 
-	let outcome = drain(&mut store, &mut StoreReaper, 256).unwrap();
+	let outcome = drain(&mut store, &mut StoreForgetter, 256).unwrap();
 
 	assert_eq!(outcome.freed, 3, "one row from each of the three groups");
 	assert!(outcome.still_queued.is_empty(), "nothing may be deferred when the budget covers the whole batch");
@@ -463,7 +463,7 @@ fn a_batch_that_drains_every_queued_group_empties_the_queue_in_one_tick() {
 }
 
 #[test]
-fn a_batch_cut_by_the_budget_leaves_the_cut_group_wholly_unreaped_and_still_queued() {
+fn a_batch_cut_by_the_budget_leaves_the_cut_group_wholly_unforgotten_and_still_queued() {
 	let mut store = MockStore::default();
 	let survivors: Vec<GroupStateKey> =
 		(0..3).map(|i| key(bystander_group(), KeyspaceId::ACCUMULATOR, i)).collect();
@@ -474,11 +474,11 @@ fn a_batch_cut_by_the_budget_leaves_the_cut_group_wholly_unreaped_and_still_queu
 	enqueue(&mut store, &[third_group()]).unwrap();
 	enqueue(&mut store, &[bystander_group()]).unwrap();
 
-	let outcome = drain(&mut store, &mut StoreReaper, 2).unwrap();
+	let outcome = drain(&mut store, &mut StoreForgetter, 2).unwrap();
 
-	assert_eq!(outcome.freed, 1, "only the group that fits entirely inside the page is reaped");
+	assert_eq!(outcome.freed, 1, "only the group that fits entirely inside the page is forgotten");
 	assert_eq!(outcome.still_queued, vec![bystander_group()], "the cut group must stay queued");
-	assert!(survivors.iter().all(|k| present(&mut store, k)), "not one row of the cut group may be reaped");
+	assert!(survivors.iter().all(|k| present(&mut store, k)), "not one row of the cut group may be forgotten");
 }
 
 #[test]
@@ -488,7 +488,7 @@ fn a_queued_group_holding_no_rows_still_leaves_the_queue_in_a_batched_drain() {
 	enqueue(&mut store, &[third_group()]).unwrap();
 	enqueue(&mut store, &[doomed_group()]).unwrap();
 
-	drain(&mut store, &mut StoreReaper, 256).unwrap();
+	drain(&mut store, &mut StoreForgetter, 256).unwrap();
 
 	assert!(queued(&mut store, 256).unwrap().groups.is_empty(), "the rowless group must be dequeued too");
 }
@@ -504,10 +504,10 @@ fn enqueueing_the_root_group_panics() {
 #[test]
 #[cfg(reifydb_assertions)]
 #[should_panic(expected = "group id 0 is the root group")]
-fn reaping_the_root_group_panics() {
+fn forgetting_the_root_group_panics() {
 	let mut store = MockStore::default();
 	seed(&mut store, &key(GroupId::ROOT, KeyspaceId::ROLLING_EXPIRY, 1));
-	reap_group(&mut store, GroupId::ROOT, &mut StoreReaper, 256).unwrap();
+	forget_group(&mut store, GroupId::ROOT, &mut StoreForgetter, 256).unwrap();
 }
 
 #[test]
@@ -517,5 +517,5 @@ fn draining_a_root_group_written_straight_into_the_queue_panics() {
 	let mut store = MockStore::default();
 	seed(&mut store, &key(GroupId::ROOT, KeyspaceId::ROLLING_EXPIRY, 1));
 	seed(&mut store, &queue_key(GroupId::ROOT));
-	drain(&mut store, &mut StoreReaper, 256).unwrap();
+	drain(&mut store, &mut StoreForgetter, 256).unwrap();
 }

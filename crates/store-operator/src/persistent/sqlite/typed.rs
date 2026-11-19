@@ -634,18 +634,18 @@ pub fn clear<K: Keyspace>(txn: &Transaction, operator: OperatorId) {
 		.expect("operator state drop failed");
 }
 
-pub fn retire_group<K: Keyspace>(txn: &Transaction, operator: OperatorId, group: GroupId) -> (u64, u64) {
+pub fn forget_group<K: Keyspace>(txn: &Transaction, operator: OperatorId, group: GroupId) -> (u64, u64) {
 	let statement = format!(
 		r#"DELETE FROM "{}" WHERE "{}" = ?1 RETURNING LENGTH("bytes")"#,
 		table_of(K::NAME, operator),
 		group_column::<K>().name
 	);
-	let mut statement = txn.prepare_cached(&statement).expect("operator state group retire could not be prepared");
+	let mut statement = txn.prepare_cached(&statement).expect("operator state group forget could not be prepared");
 	let mut rows = statement
 		.query(params_from_iter(bind_groups::<K>(from_ref(&group))))
-		.expect("operator state group retire failed");
+		.expect("operator state group forget failed");
 	let (mut keys, mut value_bytes) = (0u64, 0u64);
-	while let Some(row) = rows.next().expect("operator state group retire failed") {
+	while let Some(row) = rows.next().expect("operator state group forget failed") {
 		let length: i64 = row.get(0).expect("operator state payload size could not be read");
 		keys += 1;
 		value_bytes += length as u64;

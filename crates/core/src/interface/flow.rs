@@ -181,15 +181,16 @@ mod tests {
 	}
 
 	#[test]
-	fn expire_does_not_claim_the_retired_reclaim_bit() {
-		// Expire must never take the retired Reclaim bit, or a stale guest still setting it reads as opted in.
+	fn expire_does_not_claim_the_removed_capability_bit() {
+		// Expire must never take the removed capability bit 1 << 4, or a stale guest setting it reads as opted
+		// in.
 		assert_ne!(OperatorCapability::Expire.bit(), 1 << 4);
 		assert!(!from_bitmask(1 << 4).contains(&OperatorCapability::Expire));
 	}
 
 	#[test]
 	fn an_unknown_descriptor_bit_is_dropped_rather_than_misread() {
-		// Guests built against an older ABI may still set retired bits (the removed Reclaim
+		// Guests built against an older ABI may still set removed bits (the removed
 		// capability was 1 << 4); from_bitmask must ignore them instead of aliasing them onto a
 		// live capability.
 		let stale = to_bitmask(OperatorCapability::STANDARD) | (1 << 4);

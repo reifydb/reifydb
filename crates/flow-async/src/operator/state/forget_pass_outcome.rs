@@ -4,12 +4,12 @@
 use reifydb_value::count::Count;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ReclaimOutcome {
+pub struct ForgetPassOutcome {
 	pub removed: Count,
 	pub more: bool,
 }
 
-impl ReclaimOutcome {
+impl ForgetPassOutcome {
 	pub const NOTHING: Self = Self {
 		removed: Count::ZERO,
 		more: false,

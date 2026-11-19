@@ -62,7 +62,7 @@ pub trait StateStore {
 
 	fn state_classify(&mut self, _key: &GroupStateKey, _pre: Option<ByteSize>) {}
 
-	fn state_retires_groups(&self) -> bool {
+	fn state_forgets_groups(&self) -> bool {
 		false
 	}
 

@@ -407,7 +407,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	assert!(fired > 0, "the insert must have armed a seal timer that the flow watermark then passes");
 	assert!(
 		h.snapshot_state().len() < before,
-		"a fired seal timer must reclaim the meta of groups that stopped reporting, but the \
+		"a fired seal timer must forget the meta of groups that stopped reporting, but the \
 		 store went from {before} rows to {}",
 		h.snapshot_state().len()
 	);

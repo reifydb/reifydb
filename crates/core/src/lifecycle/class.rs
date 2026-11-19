@@ -113,7 +113,7 @@ pub enum LifecycleClass {
 
 	PersistentFlush,
 
-	QueueLeaseReap,
+	QueueLeaseTimeout,
 
 	QueueDoneTtl,
 
@@ -128,7 +128,7 @@ impl LifecycleClass {
 			Self::RowTtl,
 			Self::BufferHistoricalGc,
 			Self::PersistentFlush,
-			Self::QueueLeaseReap,
+			Self::QueueLeaseTimeout,
 			Self::QueueDoneTtl,
 			Self::EpochLog,
 			Self::CommitMerge,
@@ -140,7 +140,7 @@ impl LifecycleClass {
 			Self::RowTtl => "row-ttl-silent",
 			Self::BufferHistoricalGc => "buffer-historical-gc",
 			Self::PersistentFlush => "persistent-flush",
-			Self::QueueLeaseReap => "queue-lease-reap",
+			Self::QueueLeaseTimeout => "queue-lease-timeout",
 			Self::QueueDoneTtl => "queue-done-ttl",
 			Self::EpochLog => "epoch-log",
 			Self::CommitMerge => "commit-merge",
@@ -154,7 +154,7 @@ impl LifecycleClass {
 			| Self::PersistentFlush
 			| Self::EpochLog
 			| Self::QueueDoneTtl => true,
-			Self::QueueLeaseReap | Self::CommitMerge => false,
+			Self::QueueLeaseTimeout | Self::CommitMerge => false,
 		}
 	}
 
@@ -167,7 +167,7 @@ impl LifecycleClass {
 			Self::PersistentFlush => {
 				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::ConsumerPosition]
 			}
-			Self::QueueLeaseReap | Self::CommitMerge => &[],
+			Self::QueueLeaseTimeout | Self::CommitMerge => &[],
 			Self::QueueDoneTtl => &[FloorTerm::RowExpiry],
 			Self::EpochLog => &[FloorTerm::Horizon],
 		}

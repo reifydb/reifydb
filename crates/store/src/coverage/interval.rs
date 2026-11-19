@@ -455,7 +455,7 @@ mod tests {
 	}
 
 	#[test]
-	fn repeated_evict_and_reclaim_cycles_do_not_grow_the_interval_count() {
+	fn repeated_evict_and_claim_cycles_do_not_grow_the_interval_count() {
 		// The leak shape: 3.07M intervals against 11k partitions. Cycling a middle span must
 		// return to a bounded count, never accumulate one interval per eviction.
 		let mut set = CoverageSet::new();
@@ -463,7 +463,7 @@ mod tests {
 			set.extend(e("a"), Edge::of("z"));
 			set.drop_overlapping(&e("d"), &Edge::of("m"));
 		}
-		assert!(set.len() <= 1, "coverage grew to {} intervals across 64 evict/reclaim cycles", set.len());
+		assert!(set.len() <= 1, "coverage grew to {} intervals across 64 evict/claim cycles", set.len());
 	}
 
 	#[test]

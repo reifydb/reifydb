@@ -453,7 +453,7 @@ impl<K: Keyspace> StandardBucket<K> {
 		(1, freed)
 	}
 
-	pub fn retire_group(&mut self, group: GroupId) -> (usize, usize, ByteSize) {
+	pub fn forget_group(&mut self, group: GroupId) -> (usize, usize, ByteSize) {
 		if self.dirty_groups.contains_key(&group) {
 			return (0, 0, ByteSize::ZERO);
 		}
@@ -664,8 +664,8 @@ impl<K: Keyspace> Bucket for StandardBucket<K> {
 		StandardBucket::freeze(self)
 	}
 
-	fn retire_group(&mut self, group: GroupId) -> (usize, usize, ByteSize) {
-		StandardBucket::retire_group(self, group)
+	fn forget_group(&mut self, group: GroupId) -> (usize, usize, ByteSize) {
+		StandardBucket::forget_group(self, group)
 	}
 
 	#[cfg(test)]

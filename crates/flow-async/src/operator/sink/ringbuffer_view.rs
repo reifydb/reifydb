@@ -1369,7 +1369,7 @@ mod tests {
 	#[test]
 	fn every_ringbuffer_state_key_lives_in_the_root_group_in_its_own_keyspace() {
 		// A hand-rolled leading byte aliases a group-id varint, so only the root group is exempt from both
-		// reclaim phases' range deletes. Partitioned keys must also land in their own keyspace: sharing one
+		// forget pass phases' range deletes. Partitioned keys must also land in their own keyspace: sharing one
 		// with the unpartitioned keys puts them under a prefix scan that reads the partition bytes as a row
 		// number, so an unpartitioned scan would sweep every partition's rows.
 		let op = build_op(true, None);
@@ -1386,7 +1386,7 @@ mod tests {
 		] {
 			let (group, keyspace, _) = OperatorStateKey::decode_inner(key.as_bytes())
 				.expect("a ringbuffer state key must decode as a structured operator-state key");
-			assert_eq!(group, GroupId::ROOT, "ringbuffer state must not live inside a reclaimable group");
+			assert_eq!(group, GroupId::ROOT, "ringbuffer state must not live inside a forgettable group");
 			assert_eq!(keyspace, expected);
 		}
 	}
@@ -1426,7 +1426,7 @@ mod tests {
 
 		let out = fire(&engine, &mut op, &base("us"), AFTER);
 		assert!(out.is_none(), "a ttl-less ring buffer must never evict on a timer");
-		assert_eq!(row_entry_count(&engine, &op, &base("us")), 2, "no row-entry state may be reclaimed");
+		assert_eq!(row_entry_count(&engine, &op, &base("us")), 2, "no row-entry state may be forgotten");
 		assert_eq!(metadata(&engine, &base("us")).unwrap().count, 2);
 	}
 
@@ -1449,8 +1449,8 @@ mod tests {
 	}
 
 	#[test]
-	fn expired_partition_state_is_fully_reclaimed_and_active_partition_survives() {
-		// A quiet partition's whole per-partition state must be reclaimed rather than stranded,
+	fn expired_partition_state_is_fully_forgotten_and_active_partition_survives() {
+		// A quiet partition's whole per-partition state must be forgotten rather than stranded,
 		// while a partition that received fresher rows is left untouched.
 		let engine = TestEngine::new();
 		let mut op = build_op(true, Some(hour_ttl()));
@@ -1461,7 +1461,7 @@ mod tests {
 		let out = fire(&engine, &mut op, &base("us"), AFTER);
 		assert!(
 			out.is_some(),
-			"an eviction that reclaims real rows must still advance the operator's output watermark"
+			"an eviction that forgets real rows must still advance the operator's output watermark"
 		);
 
 		assert!(
@@ -1477,7 +1477,7 @@ mod tests {
 	}
 
 	#[test]
-	fn ttl_expiry_reclaims_state_but_never_announces_downstream() {
+	fn ttl_expiry_forgets_state_but_never_announces_downstream() {
 		// Unlike capacity eviction, ttl expiry must never be visible to downstream views.
 		let engine = TestEngine::new();
 		let mut op = build_op(true, Some(hour_ttl()));
@@ -1517,7 +1517,7 @@ mod tests {
 		let emitted = txn.emitted;
 		commit_flow_pending(&engine, &mut txn);
 
-		assert!(out.is_some(), "reclaiming real rows must still advance the operator's output watermark");
+		assert!(out.is_some(), "forgetting real rows must still advance the operator's output watermark");
 		assert!(!emitted, "ttl expiry must never mark the transaction as having emitted output");
 		assert!(!row_writes.is_empty(), "ttl expiry must remove the expired rows");
 		assert!(
@@ -1529,7 +1529,7 @@ mod tests {
 			)),
 			"ttl expiry must remove rows unobserved so no downstream view sees them: {row_writes:?}"
 		);
-		assert!(metadata(&engine, &base("us")).is_none(), "the expired partition's state is still reclaimed");
+		assert!(metadata(&engine, &base("us")).is_none(), "the expired partition's state is still forgotten");
 	}
 
 	#[test]
@@ -1553,7 +1553,7 @@ mod tests {
 	}
 
 	#[test]
-	fn non_partitioned_eviction_reclaims_state() {
+	fn non_partitioned_eviction_forgets_state() {
 		let engine = TestEngine::new();
 		let mut op = build_op(false, Some(hour_ttl()));
 
@@ -1588,7 +1588,7 @@ mod tests {
 
 		fire(&engine, &mut op, &base("us"), AFTER + HOUR + 1_000_000_000);
 
-		assert!(metadata(&engine, &base("us")).is_none(), "once the head expires both rows are reclaimed");
+		assert!(metadata(&engine, &base("us")).is_none(), "once the head expires both rows are forgotten");
 		assert_eq!(row_entry_count(&engine, &op, &base("us")), 0);
 	}
 

@@ -189,7 +189,7 @@ mod tests {
 
 	#[test]
 	fn an_entry_beyond_the_flow_watermark_is_withheld_but_kept() {
-		// withholding must never mean forgetting, otherwise the later round that could fire it never looks
+		// withholding must never mean dropping, otherwise the later round that could fire it never looks
 		let mut registry = TimerRegistry::default();
 
 		assert!(due_before(&mut registry, vec![armed(1, 9_000)], flow(1), 5_000).is_empty());

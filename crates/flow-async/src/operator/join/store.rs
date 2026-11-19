@@ -373,7 +373,7 @@ mod tests {
 
 	#[test]
 	fn a_read_probe_writes_nothing() {
-		// a probe that wrote would mint an activity-index row and a reclaim obligation per absent key
+		// a probe that wrote would mint an activity-index row and a forget pass obligation per absent key
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(51);
@@ -491,7 +491,7 @@ mod tests {
 	#[test]
 	fn removing_an_absent_row_is_invisible_to_every_reader() {
 		// remove_row_in no longer reads before deleting, so it can be handed a row number that the
-		// lateness sweep already reclaimed, or one that was never stored under this group at all.
+		// forget pass already dropped, or one that was never stored under this group at all.
 		// The tombstone that produces must stay invisible: siblings under the key must still scan in
 		// order, the key must still report present, and the absent row must still read as absent.
 		let engine = TestEngine::new();

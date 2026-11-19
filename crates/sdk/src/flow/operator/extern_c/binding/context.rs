@@ -16,7 +16,7 @@ use reifydb_core::{
 		timer::{TimerKind, TimerMove},
 	},
 };
-use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
+use reifydb_flow_async::operator::state::forget_pass_outcome::ForgetPassOutcome;
 use reifydb_value::value::{
 	Value,
 	datetime::DateTime,
@@ -38,11 +38,10 @@ use crate::{
 				dictionary::{raw_find, raw_intern},
 				sink::ExternCRowSink,
 				state::{
-					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
-					get_or_create_row_numbers_for_groups, get_row_numbers,
-					get_row_numbers_for_groups, mint_row_numbers, rearm_timers,
-					reclaim_group_identities, remove_row_number, remove_row_number_for_group,
-					set_row_numbers_for_groups,
+					arm_timer, disarm_timer, flow_watermark, forget_group_identities,
+					get_or_create_row_numbers, get_or_create_row_numbers_for_groups,
+					get_row_numbers, get_row_numbers_for_groups, mint_row_numbers, rearm_timers,
+					remove_row_number, remove_row_number_for_group, set_row_numbers_for_groups,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -208,12 +207,12 @@ impl ExternCContext {
 		set_row_numbers_for_groups(self, rows)
 	}
 
-	pub fn reclaim_group_identities(
+	pub fn forget_group_identities(
 		&mut self,
 		groups: &[GroupId],
 		limit: usize,
-	) -> Result<Vec<ReclaimOutcome>, SdkError> {
-		reclaim_group_identities(self, groups, limit)
+	) -> Result<Vec<ForgetPassOutcome>, SdkError> {
+		forget_group_identities(self, groups, limit)
 	}
 
 	pub fn builder(&mut self) -> ColumnsBuilder<'_> {
@@ -493,14 +492,14 @@ impl<C> GuestContext<C> for ExternCContext {
 			class: C::CLASS,
 		}
 	}
-	fn reclaim_group_identities(
+	fn forget_group_identities(
 		&mut self,
 		groups: &[GroupId],
 		limit: usize,
-	) -> Result<Vec<ReclaimOutcome>, SdkError>
+	) -> Result<Vec<ForgetPassOutcome>, SdkError>
 	where
 		C: WindowClass,
 	{
-		ExternCContext::reclaim_group_identities(self, groups, limit)
+		ExternCContext::forget_group_identities(self, groups, limit)
 	}
 }

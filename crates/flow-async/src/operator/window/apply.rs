@@ -17,7 +17,7 @@ use crate::{
 	timer::Timer,
 	window::{
 		coord::ByDateTime,
-		driver::{seal::reap, session::route_session},
+		driver::{seal::forget_pass, session::route_session},
 		engine::tumbling::TumblingEngine,
 	},
 };
@@ -90,17 +90,19 @@ pub fn forget_sealed_groups(
 	fired: FiredAt,
 ) -> Result<(), ValueError> {
 	if let Some(mut runner) = operator.runner.take() {
-		let reaped =
+		let forgotten =
 			with_engine(operator, |engine| runner.on_timer(engine, host, TimerKind::Maintenance, fired));
 		operator.runner = Some(runner);
-		return reaped;
+		return forgotten;
 	}
 	let Some(size) = operator.size_duration() else {
 		return Ok(());
 	};
 	let rule = SealRule::tumbling(size, operator.lateness().unwrap_or_else(Duration::zero));
 	let budget = operator.engine_config().expire_batch();
-	with_engine(operator, |engine| reap(engine, host, fired, rule.seal_span().duration(), budget).map(|_| ()))
+	with_engine(operator, |engine| {
+		forget_pass(engine, host, fired, rule.seal_span().duration(), budget).map(|_| ())
+	})
 }
 
 pub fn seal_session_engines(
@@ -196,7 +198,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod reap_tests {
+mod forget_pass_tests {
 	use std::sync::Arc;
 
 	use reifydb_codec::key::encoded::EncodedKey;
@@ -218,7 +220,7 @@ mod reap_tests {
 	use crate::{
 		operator::{
 			host::TxnHostContext,
-			state::{reaper::enqueue, test_utils::test::whole_keyspace},
+			state::{forget_pass::enqueue, test_utils::test::whole_keyspace},
 			window::operator::{WindowConfig, WindowOperator},
 		},
 		timer::Timer,
@@ -274,7 +276,7 @@ mod reap_tests {
 		})
 	}
 
-	fn reap_with_queued(groups: u128) -> usize {
+	fn forget_pass_with_queued(groups: u128) -> usize {
 		let engine = TestEngine::new();
 		let mut operator = window(1);
 		let id = operator.core.operator;
@@ -290,21 +292,25 @@ mod reap_tests {
 	}
 
 	#[test]
-	fn a_reap_backlog_larger_than_one_budget_arms_another_maintenance_pass() {
+	fn a_forget_pass_backlog_larger_than_one_budget_arms_another_maintenance_pass() {
 		// one maintenance pass drains at most expire_batch groups; if the pass does not re-arm
-		// itself the remainder is never revisited and the reap queue grows without bound
+		// itself the remainder is never revisited and the forget pass queue grows without bound
 		let budget = window(1).engine_config().expire_batch() as u128;
 
 		assert!(
-			reap_with_queued(budget + 5) > 0,
+			forget_pass_with_queued(budget + 5) > 0,
 			"a queue deeper than one budget must leave a maintenance timer armed to finish it"
 		);
 	}
 
 	#[test]
-	fn a_reap_queue_that_empties_in_one_pass_arms_nothing_further() {
+	fn a_forget_pass_queue_that_empties_in_one_pass_arms_nothing_further() {
 		// re-arming unconditionally would spin the maintenance timer forever on an empty queue
-		assert_eq!(reap_with_queued(2), 0, "a queue the pass drained to empty must not schedule another pass");
+		assert_eq!(
+			forget_pass_with_queued(2),
+			0,
+			"a queue the pass drained to empty must not schedule another pass"
+		);
 	}
 }
 
@@ -319,7 +325,7 @@ mod seal_arm_tests {
 		key::{
 			any::TaggedKey,
 			operator::{
-				keyspace::{expiry::RETIRED_AT_FLUSH, timer::TimerWheelKey},
+				keyspace::{expiry::FORGOTTEN_AT_FLUSH, timer::TimerWheelKey},
 				state::{GroupId, KeyspaceId},
 			},
 		},
@@ -468,7 +474,7 @@ mod seal_arm_tests {
 	fn queued_bodies(txn: &mut DeferredTransaction, operator: OperatorId) -> Vec<Vec<u8>> {
 		txn.state_range(
 			operator,
-			StateRange::forward(whole_keyspace(GroupId::ROOT, KeyspaceId::REAP_QUEUE), "test"),
+			StateRange::forward(whole_keyspace(GroupId::ROOT, KeyspaceId::FORGET_PASS_QUEUE), "test"),
 		)
 		.unwrap()
 		.items
@@ -519,14 +525,14 @@ mod seal_arm_tests {
 
 		assert_eq!(
 			queued_bodies(&mut txn, id),
-			vec![RETIRED_AT_FLUSH.to_vec(), RETIRED_AT_FLUSH.to_vec()],
+			vec![FORGOTTEN_AT_FLUSH.to_vec(), FORGOTTEN_AT_FLUSH.to_vec()],
 			"every closed window must carry the marker, or the flush never deletes it"
 		);
 		assert_eq!(maintenance_timers(&mut txn, id), 0);
 	}
 
 	#[test]
-	fn a_closed_session_still_reaps_inline_because_the_flush_cannot_reach_its_root_rows() {
+	fn a_closed_session_still_forgets_inline_because_the_flush_cannot_reach_its_root_rows() {
 		// a session member has a sibling in the root group; deleting by group alone would leak that row for
 		// good
 		let engine = TestEngine::new();
@@ -543,7 +549,7 @@ mod seal_arm_tests {
 		let bodies = queued_bodies(&mut txn, id);
 		assert_eq!(bodies.len(), 2, "precondition: both sessions must have closed");
 		assert!(bodies.iter().all(|body| body.is_empty()), "a session must never carry the flush marker");
-		assert_eq!(maintenance_timers(&mut txn, id), 1, "the inline reap needs its timer");
+		assert_eq!(maintenance_timers(&mut txn, id), 1, "the inline forget pass needs its timer");
 	}
 
 	#[test]
@@ -585,7 +591,7 @@ mod seal_arm_tests {
 
 	#[test]
 	fn a_window_that_nets_to_empty_in_one_batch_is_still_forgotten_once_it_seals() {
-		// a window that publishes nothing must still be indexed, otherwise its accumulator is never reaped
+		// a window that publishes nothing must still be indexed, otherwise its accumulator is never forgotten
 		let engine = TestEngine::new();
 		let mut operator = window();
 		let id = operator.core.operator;

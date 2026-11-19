@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::{
-		keyspace::{KEYSPACES, columns_width, expiry::RETIRED_AT_FLUSH},
+		keyspace::{KEYSPACES, columns_width, expiry::FORGOTTEN_AT_FLUSH},
 		state::{KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, OperatorStateKey},
 	},
 };
@@ -18,7 +18,7 @@ use crate::{
 	error::StoreOperatorError,
 	persistent::{Enumerate, PersistentTier},
 	store::{OperatorStore, StandardOperatorStore},
-	types::{LayeredPre, OperatorStateCensus, OperatorWrite, RetiredRows},
+	types::{ForgottenRows, LayeredPre, OperatorStateCensus, OperatorWrite},
 };
 
 #[derive(Debug)]
@@ -87,7 +87,7 @@ impl OperatorCensus {
 			let Some((_, keyspace, _)) = OperatorStateKey::decode_inner(key.as_slice()) else {
 				continue;
 			};
-			if is_retire_marker(keyspace, write) {
+			if is_forget_pass_marker(keyspace, write) {
 				continue;
 			}
 			match write {
@@ -137,9 +137,9 @@ impl OperatorCensus {
 		}
 	}
 
-	pub(crate) fn retire(&self, retired: &[RetiredRows]) {
+	pub(crate) fn forget(&self, forgotten: &[ForgottenRows]) {
 		let mut buckets = self.buckets.lock();
-		for rows in retired {
+		for rows in forgotten {
 			let stored = (rows.operator, rows.keyspace);
 			let Some(bucket) = buckets.get_mut(&stored) else {
 				continue;
@@ -152,7 +152,7 @@ impl OperatorCensus {
 		}
 	}
 
-	pub(crate) fn forget(&self, operator: OperatorId) {
+	pub(crate) fn unregister(&self, operator: OperatorId) {
 		self.buckets.lock().retain(|(candidate, _), _| *candidate != operator);
 	}
 
@@ -188,8 +188,8 @@ impl OperatorCensus {
 	}
 }
 
-fn is_retire_marker(keyspace: KeyspaceId, write: &OperatorWrite) -> bool {
-	if keyspace != KeyspaceId::REAP_QUEUE {
+fn is_forget_pass_marker(keyspace: KeyspaceId, write: &OperatorWrite) -> bool {
+	if keyspace != KeyspaceId::FORGET_PASS_QUEUE {
 		return false;
 	}
 	match write {
@@ -200,7 +200,7 @@ fn is_retire_marker(keyspace: KeyspaceId, write: &OperatorWrite) -> bool {
 		| OperatorWrite::Replace {
 			post,
 			..
-		} => post.body() == RETIRED_AT_FLUSH,
+		} => post.body() == FORGOTTEN_AT_FLUSH,
 		OperatorWrite::Remove {
 			..
 		} => false,

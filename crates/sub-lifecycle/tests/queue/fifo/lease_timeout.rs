@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The lease reaper is the only clock that invalidates a lease. Everything here is about what a
+//! The lease timeout task is the only clock that invalidates a lease. Everything here is about what a
 //! worker that never comes back costs: the item must come back, exactly one loss must be recorded
 //! for it, that loss must count against the retry budget, and a lease that is still alive - or was
 //! extended, or was already acked - must survive the sweep untouched.
@@ -30,7 +30,7 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
-use reifydb_sub_lifecycle::{plane::LifecyclePlane, queue::reap::QueueLeaseReapTask};
+use reifydb_sub_lifecycle::{plane::LifecyclePlane, queue::lease_timeout::QueueLeaseTimeoutTask};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::{Value, frame::frame::Frame, identity::IdentityId, row_number::RowNumber};
@@ -48,9 +48,9 @@ fn engine_with_queue(declaration: &str) -> TestEngine {
 	t
 }
 
-fn reaper(t: &TestEngine) -> QueueLeaseReapTask {
+fn lease_timeout(t: &TestEngine) -> QueueLeaseTimeoutTask {
 	let engine: &StandardEngine = t.inner();
-	QueueLeaseReapTask::new(
+	QueueLeaseTimeoutTask::new(
 		engine.clone(),
 		LifecyclePlane::for_engine(engine, LifecycleMetrics::new()),
 		engine.clock().clone(),
@@ -140,8 +140,8 @@ fn plant_attempt(t: &TestEngine, queue: QueueId, row: u64, attempt: u32, record:
 
 #[test]
 fn test_an_expired_lease_comes_back_with_exactly_one_lost_attempt() {
-	// A worker that dies mid-task is the failure the whole reaper exists for. The item must return
-	// to the ready set, and the loss must be on the record: without it the next reap could not tell
+	// A worker that dies mid-task is the failure the whole lease timeout exists for. The item must return
+	// to the ready set, and the loss must be on the record: without it the next timeout could not tell
 	// a first loss from a repeat, and the retry budget would never be charged for the dead worker.
 	let t = engine_with_queue(ONE_PARTITION);
 	t.mock_clock().set_millis(0);
@@ -150,7 +150,7 @@ fn test_an_expired_lease_comes_back_with_exactly_one_lost_attempt() {
 	claim_one(&t, "doomed", 30);
 
 	t.mock_clock().set_millis(31_000);
-	assert_eq!(reaper(&t).run_slice(), Progress::Exhausted);
+	assert_eq!(lease_timeout(&t).run_slice(), Progress::Exhausted);
 
 	let state = state_of(&t, queue);
 	assert_eq!(state.status, QueueItemStatus::Ready, "an expired lease must return the item");
@@ -167,9 +167,9 @@ fn test_an_expired_lease_comes_back_with_exactly_one_lost_attempt() {
 }
 
 #[test]
-fn test_a_reaped_item_waits_out_its_backoff_before_redelivery() {
+fn test_a_timed_out_item_waits_out_its_backoff_before_redelivery() {
 	// Redelivering instantly would let a task that kills its worker take the next worker down at
-	// full speed. The reaper's requeue goes through the same backoff curve an err-ack does.
+	// full speed. The lease timeout's requeue goes through the same backoff curve an err-ack does.
 	let t = engine_with_queue(ONE_PARTITION);
 	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
@@ -177,12 +177,12 @@ fn test_a_reaped_item_waits_out_its_backoff_before_redelivery() {
 	claim_one(&t, "doomed", 30);
 
 	t.mock_clock().set_millis(31_000);
-	reaper(&t).run_slice();
+	lease_timeout(&t).run_slice();
 
 	assert_eq!(
 		state_of(&t, queue).backoff_until.map(|b| b.to_nanos()),
 		Some(41_000_000_000),
-		"the default 10s backoff runs from the reap, not from the original claim"
+		"the default 10s backoff runs from the timeout, not from the original claim"
 	);
 	assert_eq!(claimable(&t), 0, "the item is ready but not yet due");
 
@@ -202,13 +202,13 @@ fn test_lost_attempts_spend_the_retry_budget() {
 
 	claim_one(&t, "doomed-1", 30);
 	t.mock_clock().set_millis(31_000);
-	reaper(&t).run_slice();
+	lease_timeout(&t).run_slice();
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Ready, "attempt 1 of 2 is recoverable");
 
 	t.mock_clock().set_millis(41_000);
 	claim_one(&t, "doomed-2", 30);
 	t.mock_clock().set_millis(72_000);
-	reaper(&t).run_slice();
+	lease_timeout(&t).run_slice();
 
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Dead, "two lost attempts spend a budget of 2");
 	assert_eq!(attempts(&t, queue).len(), 2);
@@ -218,7 +218,7 @@ fn test_lost_attempts_spend_the_retry_budget() {
 
 #[test]
 fn test_a_live_lease_is_left_alone() {
-	// The reaper scans every item state, not just expired ones. Reaping on the wrong side of the
+	// The lease timeout scans every item state, not just expired ones. Timing out on the wrong side of the
 	// deadline comparison would hand a working worker's item to a second worker.
 	let t = engine_with_queue(ONE_PARTITION);
 	t.mock_clock().set_millis(0);
@@ -227,7 +227,7 @@ fn test_a_live_lease_is_left_alone() {
 	claim_one(&t, "alive", 30);
 
 	t.mock_clock().set_millis(29_999);
-	assert_eq!(reaper(&t).run_slice(), Progress::Exhausted);
+	assert_eq!(lease_timeout(&t).run_slice(), Progress::Exhausted);
 
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Leased, "a lease is live right up to its deadline");
 	assert_eq!(attempts(&t, queue).len(), 0, "no loss may be recorded for a lease that never expired");
@@ -236,8 +236,8 @@ fn test_a_live_lease_is_left_alone() {
 
 #[test]
 fn test_an_extended_lease_survives_a_concurrent_sweep() {
-	// The reaper's scan is advisory and unlocked, so a worker can extend between the scan and the
-	// compare-and-set. Guarding only on (leased, attempt) would let the reaper steal an item from a
+	// The lease timeout's scan is advisory and unlocked, so a worker can extend between the scan and the
+	// compare-and-set. Guarding only on (leased, attempt) would let the lease timeout steal an item from a
 	// worker that is demonstrably alive - the exact race queue::extend exists to prevent.
 	let t = engine_with_queue(ONE_PARTITION);
 	t.mock_clock().set_millis(0);
@@ -247,7 +247,7 @@ fn test_an_extended_lease_survives_a_concurrent_sweep() {
 
 	t.mock_clock().set_millis(31_000);
 	t.command(&format!(r#"CALL queue::extend("{token}", duration::seconds(60))"#));
-	assert_eq!(reaper(&t).run_slice(), Progress::Exhausted);
+	assert_eq!(lease_timeout(&t).run_slice(), Progress::Exhausted);
 
 	let state = state_of(&t, queue);
 	assert_eq!(state.status, QueueItemStatus::Leased, "the extended lease must survive the sweep");
@@ -258,7 +258,7 @@ fn test_an_extended_lease_survives_a_concurrent_sweep() {
 #[test]
 fn test_an_already_acked_item_is_healed_rather_than_marked_lost() {
 	// The crash window between a durable ack and its state transition. The outcome the worker
-	// reported is on disk, so the reaper must finish that ack's job. Recording a loss instead would
+	// reported is on disk, so the lease timeout must finish that ack's job. Recording a loss instead would
 	// re-run work the worker already completed - the one thing an at-least-once queue must not do
 	// when it has the evidence in hand.
 	let t = engine_with_queue(ONE_PARTITION);
@@ -283,17 +283,17 @@ fn test_an_already_acked_item_is_healed_rather_than_marked_lost() {
 	);
 
 	t.mock_clock().set_millis(31_000);
-	reaper(&t).run_slice();
+	lease_timeout(&t).run_slice();
 
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Done, "the recorded ok outcome decides the transition");
 	let recorded = attempts(&t, queue);
-	assert_eq!(recorded.len(), 1, "the reaper must not add a loss on top of a real outcome");
+	assert_eq!(recorded.len(), 1, "the lease timeout must not add a loss on top of a real outcome");
 	assert!(!recorded[0].1.lost);
 	assert_eq!(claimable(&t), 0);
 }
 
 #[test]
-fn test_a_recorded_err_outcome_is_completed_by_the_reaper() {
+fn test_a_recorded_err_outcome_is_completed_by_the_lease_timeout() {
 	// Same crash window, failing outcome. The item must follow the err path (retry or dead), not be
 	// double-charged with a second lost record for the same attempt.
 	let t = engine_with_queue(ONE_PARTITION);
@@ -318,14 +318,14 @@ fn test_a_recorded_err_outcome_is_completed_by_the_reaper() {
 	);
 
 	t.mock_clock().set_millis(31_000);
-	reaper(&t).run_slice();
+	lease_timeout(&t).run_slice();
 
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Ready, "attempt 1 of 2 still has budget");
 	assert_eq!(attempts(&t, queue).len(), 1, "the existing outcome is authoritative; no loss is added");
 }
 
 #[test]
-fn test_a_reap_that_crashed_after_recording_finishes_on_the_next_slice() {
+fn test_a_lease_timeout_that_crashed_after_recording_finishes_on_the_next_slice() {
 	// Ordering is fixed: the lost record is written before the compare-and-set, so a crash in
 	// between leaves a lost record on a still-leased item. The next slice must complete the
 	// transition without writing a second record, or every crash would inflate the attempt history
@@ -352,7 +352,7 @@ fn test_a_reap_that_crashed_after_recording_finishes_on_the_next_slice() {
 	);
 
 	t.mock_clock().set_millis(31_000);
-	reaper(&t).run_slice();
+	lease_timeout(&t).run_slice();
 
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Ready);
 	assert_eq!(attempts(&t, queue).len(), 1, "the planted loss must not be duplicated");
@@ -369,10 +369,10 @@ fn test_a_second_slice_over_the_same_state_changes_nothing() {
 	claim_one(&t, "doomed", 30);
 
 	t.mock_clock().set_millis(31_000);
-	reaper(&t).run_slice();
+	lease_timeout(&t).run_slice();
 	let after_first = (state_of(&t, queue), counters(&t, queue), attempts(&t, queue).len());
 
-	reaper(&t).run_slice();
+	lease_timeout(&t).run_slice();
 
 	assert_eq!(state_of(&t, queue), after_first.0);
 	assert_eq!(counters(&t, queue), after_first.1);
@@ -381,7 +381,7 @@ fn test_a_second_slice_over_the_same_state_changes_nothing() {
 
 #[test]
 fn test_a_backlog_deeper_than_the_budget_drains_across_slices() {
-	// The reaper shares one actor lane with every other lifecycle task, and its scan covers ready
+	// The lease timeout shares one actor lane with every other lifecycle task, and its scan covers ready
 	// items too. Without the cursor a budget smaller than the backlog would rescan the same head
 	// every slice and never reach the tail, so a queue could hold expired leases indefinitely while
 	// the task reported progress.
@@ -394,10 +394,10 @@ fn test_a_backlog_deeper_than_the_budget_drains_across_slices() {
 	for worker in 1..=6 {
 		claim_one(&t, &format!("doomed-{worker}"), 30);
 	}
-	t.set_config(ConfigKey::QueueLeaseReapBatchSize, Value::Uint8(2));
+	t.set_config(ConfigKey::QueueLeaseTimeoutBatchSize, Value::Uint8(2));
 
 	t.mock_clock().set_millis(31_000);
-	let mut task = reaper(&t);
+	let mut task = lease_timeout(&t);
 	assert_eq!(task.run_slice(), Progress::Yielded, "a budget of 2 cannot cover 6 records in one slice");
 
 	let mut slices = 1;
@@ -409,15 +409,15 @@ fn test_a_backlog_deeper_than_the_budget_drains_across_slices() {
 	assert_eq!(
 		states(&t, queue).iter().filter(|s| s.status == QueueItemStatus::Ready).count(),
 		6,
-		"every expired lease is reaped once the slices drain"
+		"every expired lease is timed out once the slices drain"
 	);
 	assert_eq!(attempts(&t, queue).len(), 6, "one loss per item, no duplicates across slices");
 	assert_eq!(counters(&t, queue).in_flight, 0);
 }
 
 #[test]
-fn test_the_reaper_reaches_an_expired_lease_in_every_partition() {
-	// Partitions have no fixed range, so a reaper that missed one would strand its leases forever.
+fn test_the_lease_timeout_reaches_an_expired_lease_in_every_partition() {
+	// Partitions have no fixed range, so a lease timeout that missed one would strand its leases forever.
 	let t = engine_with_queue(
 		"CREATE QUEUE test::jobs { id: int4, region: utf8 } WITH { partition: { by: { region } }, fifo: {}, retry: { attempts: 2 } }",
 	);
@@ -428,9 +428,9 @@ fn test_the_reaper_reaches_an_expired_lease_in_every_partition() {
 	assert!(states(&t, queue).iter().all(|state| state.status == QueueItemStatus::Leased));
 
 	t.mock_clock().set_millis(31_000);
-	assert_eq!(reaper(&t).run_slice(), Progress::Exhausted);
+	assert_eq!(lease_timeout(&t).run_slice(), Progress::Exhausted);
 
 	let states = states(&t, queue);
 	assert_eq!(states.len(), 3);
-	assert!(states.iter().all(|state| state.status == QueueItemStatus::Ready), "every partition must be reaped");
+	assert!(states.iter().all(|state| state.status == QueueItemStatus::Ready), "every partition must be timed out");
 }

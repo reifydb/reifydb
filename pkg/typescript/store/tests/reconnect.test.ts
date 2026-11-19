@@ -358,7 +358,7 @@ describe('unsubscribing while offline', () => {
         expect(second.unsubscribed()).toEqual(['server-2']);
     });
 
-    it('forgets a subscription whose unsubscribe the drop cut off', async () => {
+    it('unregisters a subscription whose unsubscribe the drop cut off', async () => {
         // The drop ended the server subscription too, so the cut-off unsubscribe must neither fail nor revive it.
         const onBackgroundError = vi.fn();
         const store = new Store(await connect(), {onBackgroundError});

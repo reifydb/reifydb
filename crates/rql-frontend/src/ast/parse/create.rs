@@ -5078,7 +5078,7 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	fn the_retired_ts_key_is_no_longer_accepted() {
+	fn the_removed_ts_key_is_no_longer_accepted() {
 		// `ts:` was the separate populator key. Leaving it parseable would let an old definition keep
 		// declaring event time through a path that no longer resolves one.
 		rejected(r#"create table ns::t { a: int4 } with { ts: block_time }"#);
@@ -5166,7 +5166,7 @@ mod time_declaration_tests {
 		let message = format!("{:?}", err.diagnostic());
 
 		assert!(message.contains("time"), "the diagnostic must offer `time`: {message}");
-		assert!(!message.contains("'ts'"), "the diagnostic must not still offer the retired `ts`: {message}");
+		assert!(!message.contains("'ts'"), "the diagnostic must not still offer the removed `ts`: {message}");
 	}
 }
 

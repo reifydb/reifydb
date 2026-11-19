@@ -22,7 +22,7 @@ use crate::operator::{
 	host::HostContext,
 	join::{
 		Identity,
-		published::{PublishedJoinContext, current_published_slot, publish_slot, retire_slot, withdraw_slot},
+		published::{PublishedJoinContext, current_published_slot, publish_slot, stash_slot, withdraw_slot},
 		state::JoinSide,
 	},
 };
@@ -123,7 +123,7 @@ impl LatestInnerHashJoin {
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			retire_slot(host, &published_ctx, key_hash)?;
+			stash_slot(host, &published_ctx, key_hash)?;
 			write_right_rows(host, &ctx.state.right, key_hash, ctx.rows, indices, ctx.operator.pick())?;
 			return Ok(Vec::new());
 		}
@@ -223,7 +223,7 @@ impl LatestInnerHashJoin {
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			retire_slot(host, &published_ctx, key_hash)?;
+			stash_slot(host, &published_ctx, key_hash)?;
 			remove_right_rows(host, &ctx.state.right, key_hash, &numbers)?;
 			return Ok(Vec::new());
 		}

@@ -97,8 +97,8 @@ pub enum ConfigKey {
 	MetricsSampleInterval,
 	MetricsSnapshotInterval,
 	MetricsSnapshotTtl,
-	QueueLeaseReapInterval,
-	QueueLeaseReapBatchSize,
+	QueueLeaseTimeoutInterval,
+	QueueLeaseTimeoutBatchSize,
 	QueueExpireInterval,
 	QueueExpireBatchSize,
 	CommitMergeInterval,
@@ -156,8 +156,8 @@ impl ConfigKey {
 			Self::MetricsSampleInterval,
 			Self::MetricsSnapshotInterval,
 			Self::MetricsSnapshotTtl,
-			Self::QueueLeaseReapInterval,
-			Self::QueueLeaseReapBatchSize,
+			Self::QueueLeaseTimeoutInterval,
+			Self::QueueLeaseTimeoutBatchSize,
 			Self::QueueExpireInterval,
 			Self::QueueExpireBatchSize,
 			Self::CommitMergeInterval,
@@ -241,8 +241,8 @@ impl ConfigKey {
 			Self::MetricsSampleInterval => Value::Duration(default::metrics::SAMPLE_INTERVAL),
 			Self::MetricsSnapshotInterval => Self::duration_or_none(default::metrics::SNAPSHOT_INTERVAL),
 			Self::MetricsSnapshotTtl => Value::Duration(default::metrics::SNAPSHOT_TTL),
-			Self::QueueLeaseReapInterval => Value::Duration(default::queue::LEASE_REAP_INTERVAL),
-			Self::QueueLeaseReapBatchSize => Value::Uint8(default::queue::LEASE_REAP_BATCH_SIZE),
+			Self::QueueLeaseTimeoutInterval => Value::Duration(default::queue::LEASE_TIMEOUT_INTERVAL),
+			Self::QueueLeaseTimeoutBatchSize => Value::Uint8(default::queue::LEASE_TIMEOUT_BATCH_SIZE),
 			Self::QueueExpireInterval => Value::Duration(default::queue::EXPIRE_INTERVAL),
 			Self::QueueExpireBatchSize => Value::Uint8(default::queue::EXPIRE_BATCH_SIZE),
 			Self::CommitMergeInterval => Value::Duration(default::store::COMMIT_MERGE_INTERVAL),
@@ -328,8 +328,12 @@ impl ConfigKey {
 				Self::duration_or_none(default::metrics::SNAPSHOT_INTERVAL_TESTING)
 			}
 			Self::MetricsSnapshotTtl => Value::Duration(default::metrics::SNAPSHOT_TTL_TESTING),
-			Self::QueueLeaseReapInterval => Value::Duration(default::queue::LEASE_REAP_INTERVAL_TESTING),
-			Self::QueueLeaseReapBatchSize => Value::Uint8(default::queue::LEASE_REAP_BATCH_SIZE_TESTING),
+			Self::QueueLeaseTimeoutInterval => {
+				Value::Duration(default::queue::LEASE_TIMEOUT_INTERVAL_TESTING)
+			}
+			Self::QueueLeaseTimeoutBatchSize => {
+				Value::Uint8(default::queue::LEASE_TIMEOUT_BATCH_SIZE_TESTING)
+			}
 			Self::QueueExpireInterval => Value::Duration(default::queue::EXPIRE_INTERVAL_TESTING),
 			Self::QueueExpireBatchSize => Value::Uint8(default::queue::EXPIRE_BATCH_SIZE_TESTING),
 			Self::CommitMergeInterval => Value::Duration(default::store::COMMIT_MERGE_INTERVAL_TESTING),
@@ -570,11 +574,11 @@ impl ConfigKey {
 				"How long a row stays in every system::metric ::snapshots series before the expire task \
 				 drops it. Must be > 0. Applied to each snapshots series at boot; changing it requires a restart."
 			}
-			Self::QueueLeaseReapInterval => {
-				"How often the queue reaper scans for leases whose deadline has passed. A dead worker's item cannot be redelivered sooner than this, so it should stay well below any declared lease ttl."
+			Self::QueueLeaseTimeoutInterval => {
+				"How often the queue lease timeout task scans for leases whose deadline has passed. A dead worker's item cannot be redelivered sooner than this, so it should stay well below any declared lease ttl."
 			}
-			Self::QueueLeaseReapBatchSize => {
-				"Max queue item-state records one reap slice may scan. Bounds the slice on a deep backlog; the scan resumes from its cursor on the next slice."
+			Self::QueueLeaseTimeoutBatchSize => {
+				"Max queue item-state records one lease timeout slice may scan. Bounds the slice on a deep backlog; the scan resumes from its cursor on the next slice."
 			}
 			Self::CommitMergeInterval => {
 				"How often the commit-merge task merges closed commit-buffer maps off the commit path. Commits merge inline only when the mergeable backlog outgrows the commit store's merge backlog."
@@ -639,8 +643,8 @@ impl ConfigKey {
 			Self::MetricsSampleInterval => true,
 			Self::MetricsSnapshotInterval => true,
 			Self::MetricsSnapshotTtl => true,
-			Self::QueueLeaseReapInterval => false,
-			Self::QueueLeaseReapBatchSize => false,
+			Self::QueueLeaseTimeoutInterval => false,
+			Self::QueueLeaseTimeoutBatchSize => false,
 			Self::QueueExpireInterval => false,
 			Self::QueueExpireBatchSize => false,
 			Self::CommitMergeInterval => true,
@@ -698,8 +702,8 @@ impl ConfigKey {
 			Self::MetricsSampleInterval => &[ValueType::Duration],
 			Self::MetricsSnapshotInterval => &[ValueType::Duration],
 			Self::MetricsSnapshotTtl => &[ValueType::Duration],
-			Self::QueueLeaseReapInterval => &[ValueType::Duration],
-			Self::QueueLeaseReapBatchSize => &[ValueType::Uint8],
+			Self::QueueLeaseTimeoutInterval => &[ValueType::Duration],
+			Self::QueueLeaseTimeoutBatchSize => &[ValueType::Uint8],
 			Self::QueueExpireInterval => &[ValueType::Duration],
 			Self::QueueExpireBatchSize => &[ValueType::Uint8],
 			Self::CommitMergeInterval => &[ValueType::Duration],
@@ -757,8 +761,8 @@ impl ConfigKey {
 			Self::MetricsSampleInterval => false,
 			Self::MetricsSnapshotInterval => true,
 			Self::MetricsSnapshotTtl => false,
-			Self::QueueLeaseReapInterval => false,
-			Self::QueueLeaseReapBatchSize => false,
+			Self::QueueLeaseTimeoutInterval => false,
+			Self::QueueLeaseTimeoutBatchSize => false,
 			Self::QueueExpireInterval => false,
 			Self::QueueExpireBatchSize => false,
 			Self::CommitMergeInterval => false,
@@ -1127,8 +1131,8 @@ impl fmt::Display for ConfigKey {
 			Self::MetricsSampleInterval => write!(f, "METRICS_SAMPLE_INTERVAL"),
 			Self::MetricsSnapshotInterval => write!(f, "METRICS_SNAPSHOT_INTERVAL"),
 			Self::MetricsSnapshotTtl => write!(f, "METRICS_SNAPSHOT_TTL"),
-			Self::QueueLeaseReapInterval => write!(f, "QUEUE_LEASE_REAP_INTERVAL"),
-			Self::QueueLeaseReapBatchSize => write!(f, "QUEUE_LEASE_REAP_BATCH_SIZE"),
+			Self::QueueLeaseTimeoutInterval => write!(f, "QUEUE_LEASE_TIMEOUT_INTERVAL"),
+			Self::QueueLeaseTimeoutBatchSize => write!(f, "QUEUE_LEASE_TIMEOUT_BATCH_SIZE"),
 			Self::QueueExpireInterval => write!(f, "QUEUE_EXPIRE_INTERVAL"),
 			Self::QueueExpireBatchSize => write!(f, "QUEUE_EXPIRE_BATCH_SIZE"),
 			Self::CommitMergeInterval => write!(f, "COMMIT_MERGE_INTERVAL"),
@@ -1190,8 +1194,8 @@ impl FromStr for ConfigKey {
 			"METRICS_SAMPLE_INTERVAL" => Ok(Self::MetricsSampleInterval),
 			"METRICS_SNAPSHOT_INTERVAL" => Ok(Self::MetricsSnapshotInterval),
 			"METRICS_SNAPSHOT_TTL" => Ok(Self::MetricsSnapshotTtl),
-			"QUEUE_LEASE_REAP_INTERVAL" => Ok(Self::QueueLeaseReapInterval),
-			"QUEUE_LEASE_REAP_BATCH_SIZE" => Ok(Self::QueueLeaseReapBatchSize),
+			"QUEUE_LEASE_TIMEOUT_INTERVAL" => Ok(Self::QueueLeaseTimeoutInterval),
+			"QUEUE_LEASE_TIMEOUT_BATCH_SIZE" => Ok(Self::QueueLeaseTimeoutBatchSize),
 			"QUEUE_EXPIRE_INTERVAL" => Ok(Self::QueueExpireInterval),
 			"QUEUE_EXPIRE_BATCH_SIZE" => Ok(Self::QueueExpireBatchSize),
 			"COMMIT_MERGE_INTERVAL" => Ok(Self::CommitMergeInterval),
@@ -1409,8 +1413,8 @@ mod tests {
 		assert!(all.contains(&ConfigKey::FlowSampleInterval));
 		assert!(all.contains(&ConfigKey::MetricsSampleInterval));
 		assert!(all.contains(&ConfigKey::MetricsSnapshotInterval));
-		assert!(all.contains(&ConfigKey::QueueLeaseReapInterval));
-		assert!(all.contains(&ConfigKey::QueueLeaseReapBatchSize));
+		assert!(all.contains(&ConfigKey::QueueLeaseTimeoutInterval));
+		assert!(all.contains(&ConfigKey::QueueLeaseTimeoutBatchSize));
 		assert!(all.contains(&ConfigKey::QueueExpireInterval));
 		assert!(all.contains(&ConfigKey::QueueExpireBatchSize));
 		assert!(all.contains(&ConfigKey::CommitMergeInterval));

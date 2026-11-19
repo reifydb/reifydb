@@ -1325,7 +1325,7 @@ chaos_test!(distinct_regrouping_chaos, |seed| {
 
 chaos_test!(distinct_wide_keys_chaos, |seed| {
 	// The opposite end: keys outnumber the live rows, so most keys hold exactly one row and the
-	// suite is about minting and retiring keys rather than about contention inside one.
+	// suite is about minting and forgetting keys rather than about contention inside one.
 	operators::distinct::drive(
 		seed,
 		operators::distinct::Params {

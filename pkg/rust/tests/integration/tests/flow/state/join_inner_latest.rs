@@ -146,7 +146,7 @@ fn the_losing_right_row_is_dropped_on_arrival_and_the_winner_still_seals() {
 	assert_eq!(
 		await_state_keys(&db, RIGHT, 0, TIMEOUT),
 		0,
-		"and the winner's own right lateness must free it, or the held row is never reclaimed; surface now: {:?}",
+		"and the winner's own right lateness must free it, or the held row is never forgotten; surface now: {:?}",
 		db.query(SURFACE)
 	);
 }
@@ -233,7 +233,7 @@ fn the_right_rows_arriving_first_reach_the_same_single_row() {
 
 #[test]
 fn a_sealed_left_row_frees_its_own_state_and_spares_the_unsealed_slot() {
-	// Latest rejects a right seal, so the reaper must take the left side alone and leave the slot addressable.
+	// Latest rejects a right seal, so the forget pass must take the left side alone and leave the slot addressable.
 	let db = setup();
 	latest_inner_join(&db);
 	insert_left(&db);

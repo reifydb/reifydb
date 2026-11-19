@@ -29,7 +29,7 @@ use reifydb_value::{
 
 use crate::{
 	operator::{
-		state::{reaper::enqueue_retired, seal::rule::is_sealed},
+		state::{forget_pass::enqueue_forgotten, seal::rule::is_sealed},
 		state_access::{batch, set},
 	},
 	window::{
@@ -191,8 +191,8 @@ where
 			}
 			Ok(MetaFate::Survives(earliest))
 		})?;
-		if store.state_retires_groups() {
-			enqueue_retired(store, &groups)?;
+		if store.state_forgets_groups() {
+			enqueue_forgotten(store, &groups)?;
 		} else {
 			if !doomed.is_empty() {
 				store.state_remove(&doomed)?;
@@ -539,7 +539,7 @@ mod tests {
 	use reifydb_codec::row::{operator::state::decode, pod::EncodedPodRow};
 	use reifydb_core::{
 		key::operator::{
-			keyspace::expiry::RETIRED_AT_FLUSH,
+			keyspace::expiry::FORGOTTEN_AT_FLUSH,
 			state::{GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask, OperatorStateKey},
 		},
 		state::{
@@ -571,7 +571,7 @@ mod tests {
 		data: HashMap<Vec<u8>, EncodedPodRow>,
 		rows: HashMap<(GroupId, Vec<u8>), RowNumber>,
 		next_row: u64,
-		retires: bool,
+		forgets: bool,
 	}
 
 	impl CountingStore {
@@ -595,7 +595,7 @@ mod tests {
 
 		fn row_mapping_count(&self) -> usize {
 			// One mapping is minted per (group, window), so this is what proves a sealed window
-			// reclaims its own.
+			// forgets its own.
 			self.rows.len()
 		}
 
@@ -651,8 +651,8 @@ mod tests {
 	}
 
 	impl StateStore for CountingStore {
-		fn state_retires_groups(&self) -> bool {
-			self.retires
+		fn state_forgets_groups(&self) -> bool {
+			self.forgets
 		}
 
 		fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>, ValueError> {
@@ -843,7 +843,7 @@ mod tests {
 	}
 
 	#[test]
-	fn immutable_seals_old_windows_and_reclaims_accumulator_rows() {
+	fn immutable_seals_old_windows_and_forgets_accumulator_rows() {
 		// With a 2-window immutable horizon, older windows must seal to the O(1) carry scalar and
 		// drop their accumulator row, so the live row count stays bounded by the horizon rather
 		// than growing with the number of windows seen.
@@ -854,15 +854,15 @@ mod tests {
 		}
 		assert!(
 			store.accumulator_count() <= 4,
-			"sealed windows must reclaim their accumulator rows; found {} live rows after 60 windows",
+			"sealed windows must forget their accumulator rows; found {} live rows after 60 windows",
 			store.accumulator_count()
 		);
 	}
 
 	#[test]
-	fn immutable_seals_old_windows_and_reclaims_row_number_mappings() {
+	fn immutable_seals_old_windows_and_forgets_row_number_mappings() {
 		// The per-(group, window) mapping is keyed by row_key, not row_number, so accumulator
-		// eviction does not reclaim it. Sealing past the immutable limit must drop it alongside the
+		// eviction does not forget it. Sealing past the immutable limit must drop it alongside the
 		// accumulator or the mapping keyspace grows per window forever.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(Some(millis(2 * WINDOW))));
@@ -871,13 +871,13 @@ mod tests {
 		}
 		assert!(
 			store.row_mapping_count() <= 4,
-			"sealed windows must reclaim their row-number mappings; found {} live mappings after 60 windows",
+			"sealed windows must forget their row-number mappings; found {} live mappings after 60 windows",
 			store.row_mapping_count()
 		);
 	}
 
 	#[test]
-	fn a_window_whose_state_was_reclaimed_updates_its_row_rather_than_inserting_a_second() {
+	fn a_window_whose_state_was_forgotten_updates_its_row_rather_than_inserting_a_second() {
 		// The data phase takes the accumulator; the root-held meta keeps the window entry and its row, so a
 		// second insert would duplicate a live row.
 		let mut store = CountingStore::default();
@@ -1121,10 +1121,11 @@ mod tests {
 	}
 
 	#[test]
-	fn a_retiring_store_gets_one_marker_per_closed_window_and_keeps_the_rows_for_the_flush() {
-		// deleting inline as well would put the cost back on the hot path that retiring exists to clear
+	fn a_forgetting_store_gets_one_marker_per_closed_window_and_keeps_the_rows_for_the_flush() {
+		// deleting inline as well would put the cost back on the hot path that forgetting at flush exists to
+		// clear
 		let mut store = CountingStore {
-			retires: true,
+			forgets: true,
 			..CountingStore::default()
 		};
 		let mut engine = Engine::new(carry_config(None));
@@ -1134,12 +1135,12 @@ mod tests {
 
 		engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
 
-		assert_eq!(store.keyspace_count(KeyspaceId::REAP_QUEUE), 5, "every closed window must be named");
+		assert_eq!(store.keyspace_count(KeyspaceId::FORGET_PASS_QUEUE), 5, "every closed window must be named");
 		assert!(
 			store.data.iter().all(|(key, row)| {
 				!OperatorStateKey::decode_inner(key)
-					.is_some_and(|(_, keyspace, _)| keyspace == KeyspaceId::REAP_QUEUE)
-					|| row.body() == RETIRED_AT_FLUSH
+					.is_some_and(|(_, keyspace, _)| keyspace == KeyspaceId::FORGET_PASS_QUEUE)
+					|| row.body() == FORGOTTEN_AT_FLUSH
 			}),
 			"a queue row without the marker would be drained inline instead"
 		);
@@ -1149,8 +1150,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_store_that_cannot_retire_deletes_inline_and_writes_no_marker() {
-		// a marker on a tier without a retiring flush is never acted on, so the window would leak for good
+	fn a_store_that_cannot_forget_at_flush_deletes_inline_and_writes_no_marker() {
+		// a marker on a tier without a forgetting flush is never acted on, so the window would leak for good
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		for i in 0..10u64 {
@@ -1159,15 +1160,15 @@ mod tests {
 
 		engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
 
-		assert_eq!(store.keyspace_count(KeyspaceId::REAP_QUEUE), 0);
+		assert_eq!(store.keyspace_count(KeyspaceId::FORGET_PASS_QUEUE), 0);
 		assert_eq!(store.accumulator_count(), 5);
 	}
 
 	#[test]
-	fn a_late_event_after_a_retire_cannot_bring_the_closed_window_back() {
+	fn a_late_event_after_a_forget_cannot_bring_the_closed_window_back() {
 		// a row written after the flush deleted its group would never be deleted again
 		let mut store = CountingStore {
-			retires: true,
+			forgets: true,
 			..CountingStore::default()
 		};
 		let mut engine = Engine::new(carry_config(None));
@@ -1399,7 +1400,7 @@ mod tests {
 
 	#[test]
 	fn carry_meta_projects_its_high_water_independently_of_its_window_map() {
-		// The meta sweep reclaims on this projection alone, so window entries must never skew it.
+		// The meta sweep forgets on this projection alone, so window entries must never skew it.
 		let mut meta: CarryMeta<ByDateTime, i64, i64> = CarryMeta::default();
 		let empty_bytes = meta.encode_state().unwrap();
 		assert_eq!(

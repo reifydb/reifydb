@@ -118,7 +118,7 @@ pub fn classify_slice(slice: &OperatorSlice, sizes: &[Option<ByteSize>]) -> Vec<
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RetiredRows {
+pub struct ForgottenRows {
 	pub operator: OperatorId,
 	pub keyspace: KeyspaceId,
 	pub keys: u64,
@@ -129,7 +129,7 @@ pub struct RetiredRows {
 pub struct Applied {
 	pub rows: usize,
 	pub bytes: ByteSize,
-	pub retired: Vec<RetiredRows>,
+	pub forgotten: Vec<ForgottenRows>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,7 +154,7 @@ pub struct FlushBatch {
 	pub writes: Vec<(OperatorId, GroupStateKey, StagedWrite)>,
 	pub checkpoints: BTreeMap<FlowId, Option<FlowCheckpoint>>,
 	pub drops: Vec<DropMarker>,
-	pub retired: Vec<(OperatorId, GroupId)>,
+	pub forgotten: Vec<(OperatorId, GroupId)>,
 	pub bytes: ByteSize,
 	pub through: Option<Lsn>,
 }
@@ -164,6 +164,6 @@ impl FlushBatch {
 		self.writes.is_empty()
 			&& self.checkpoints.is_empty()
 			&& self.drops.is_empty()
-			&& self.retired.is_empty()
+			&& self.forgotten.is_empty()
 	}
 }

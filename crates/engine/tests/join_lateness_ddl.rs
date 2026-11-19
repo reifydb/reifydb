@@ -29,7 +29,7 @@ fn a_right_lateness_on_a_latest_join_is_accepted() {
 
 #[test]
 fn a_right_lateness_on_a_snapshot_join_is_accepted() {
-	// A sealed right row retires its bytes into the pin first, so the pairs it published survive without it.
+	// A sealed right row stashes its bytes into the pin first, so the pairs it published survive without it.
 	let engine = engine_with_sources("event(at)");
 
 	engine.admin(&join_view("retention: { right: 1h }, emit: false"));

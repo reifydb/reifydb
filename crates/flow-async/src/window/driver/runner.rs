@@ -16,7 +16,7 @@ use crate::{
 	operator::{
 		drops::DropCounter,
 		state::{
-			reaper::{drain, drain_groups},
+			forget_pass::{drain, drain_groups},
 			seal::{domain::SealDomain, ledger::FiredAt, rule::is_sealed},
 		},
 	},
@@ -26,9 +26,9 @@ use crate::{
 			hooks::WindowHooks,
 			route::{Routed, route_sliding, route_tumbling},
 			rows::WindowRows,
-			seal::{close_through, reap, seal},
+			seal::{close_through, forget_pass, seal},
 			session::{
-				SessionOp, SessionPass, SessionRows, finish_session, gate_sessions, retire_trackers,
+				SessionOp, SessionPass, SessionRows, finish_session, forget_trackers, gate_sessions,
 				tracker_hash, tracker_moves,
 			},
 			store::WindowStore,
@@ -53,7 +53,7 @@ pub struct WindowRunner<C: SealDomain> {
 	gap: Option<C::Span>,
 	sealed_drops: DropCounter,
 	refused: DropCounter,
-	reap_pending: bool,
+	forget_pass_pending: bool,
 }
 
 impl<C> WindowRunner<C>
@@ -75,7 +75,7 @@ where
 			gap: None,
 			sealed_drops: DropCounter::new(operator, "mutations targeting sealed windows"),
 			refused: DropCounter::new(operator, "session rows refused by assignment"),
-			reap_pending: true,
+			forget_pass_pending: true,
 		}
 	}
 
@@ -160,10 +160,10 @@ where
 		A: WindowAccumulator,
 	{
 		if close_through(engine, store, operator_watermark, seal_span, usize::MAX, true)? {
-			self.reap_pending = true;
+			self.forget_pass_pending = true;
 		}
-		if self.reap_pending {
-			self.reap_pending = !drain(store, engine, self.expire_batch)?.queue_is_empty();
+		if self.forget_pass_pending {
+			self.forget_pass_pending = !drain(store, engine, self.expire_batch)?.queue_is_empty();
 		}
 		Ok(())
 	}
@@ -184,7 +184,9 @@ where
 		};
 		match kind {
 			TimerKind::Seal => seal(engine, store, fired, seal_span, self.expire_batch, true),
-			TimerKind::Maintenance => reap(engine, store, fired, seal_span, self.expire_batch).map(|_| ()),
+			TimerKind::Maintenance => {
+				forget_pass(engine, store, fired, seal_span, self.expire_batch).map(|_| ())
+			}
 			other => internal_err!("a window runner fired a {:?} timer it never arms", other),
 		}
 	}
@@ -354,7 +356,7 @@ where
 			return Ok(());
 		}
 		let horizon = C::horizon(C::from_order(fired.at().to_order()), seal_span);
-		let moves = retire_trackers::<C>(store, &hashes, horizon, gap)?;
+		let moves = forget_trackers::<C>(store, &hashes, horizon, gap)?;
 		store.rearm_timers(TimerKind::Seal, &tracker_moves::<C>(seal_span, moves))
 	}
 }

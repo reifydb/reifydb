@@ -30,7 +30,7 @@ impl OperatorSampleRegistry {
 		self.inner.lock().insert(operator, sample);
 	}
 
-	pub fn forget(&self, operator: OperatorId) {
+	pub fn unregister(&self, operator: OperatorId) {
 		self.inner.lock().remove(&operator);
 	}
 
@@ -131,11 +131,11 @@ mod tests {
 	}
 
 	#[test]
-	fn forget_removes_a_stopped_operators_sample() {
+	fn unregister_removes_a_stopped_operators_sample() {
 		let registry = OperatorSampleRegistry::new();
 		registry.record(OperatorId(1), memory_sample(3, 300));
 		registry.record(OperatorId(2), memory_sample(7, 700));
-		registry.forget(OperatorId(2));
+		registry.unregister(OperatorId(2));
 
 		assert_eq!(
 			registry.snapshot(),

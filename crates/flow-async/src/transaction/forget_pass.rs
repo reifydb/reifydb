@@ -11,65 +11,65 @@ use reifydb_core::{
 use reifydb_value::{count::Count, error::ValueError, reifydb_assertions};
 
 use crate::{
-	operator::state::reclaim::ReclaimOutcome,
+	operator::state::forget_pass_outcome::ForgetPassOutcome,
 	transaction::state::{StateExtension, StateRange},
 };
 
-pub trait ReclaimExtension: StateExtension {
-	fn reclaim_group_identities(
+pub trait ForgetPassExtension: StateExtension {
+	fn forget_group_identities(
 		&mut self,
 		operator: OperatorId,
 		groups: &[GroupId],
 		limit: usize,
-	) -> Result<Vec<ReclaimOutcome>, ValueError> {
+	) -> Result<Vec<ForgetPassOutcome>, ValueError> {
 		let mut left = limit;
 		let mut outcomes = Vec::with_capacity(groups.len());
 		for group in groups {
 			if left == 0 {
-				outcomes.push(ReclaimOutcome {
+				outcomes.push(ForgetPassOutcome {
 					removed: Count::ZERO,
 					more: true,
 				});
 				continue;
 			}
-			let outcome = self.reclaim_group_identity(operator, *group, left)?;
+			let outcome = self.forget_group_identity(operator, *group, left)?;
 			left = left.saturating_sub(outcome.removed.as_u64() as usize);
 			outcomes.push(outcome);
 		}
 		Ok(outcomes)
 	}
 
-	fn reclaim_group_identity(
+	fn forget_group_identity(
 		&mut self,
 		operator: OperatorId,
 		group: GroupId,
 		limit: usize,
-	) -> Result<ReclaimOutcome, ValueError> {
+	) -> Result<ForgetPassOutcome, ValueError> {
 		reifydb_assertions! {
 			assert!(
 				!group.is_root(),
-				"group id 0 is the root group; reclaiming its identity would delete the timer wheel, the expiry index and the reap queue"
+				"group id 0 is the root group; forgetting its identity would delete the timer wheel, the expiry index and the forget pass queue"
 			);
 		}
 		if group.is_root() {
-			return Ok(ReclaimOutcome::NOTHING);
+			return Ok(ForgetPassOutcome::NOTHING);
 		}
-		let outcome = self.reclaim_identity_keyspaces(operator, group, limit)?;
+		let outcome = self.forget_identity_keyspaces(operator, group, limit)?;
 		self.operator_store().invalidate_group(operator, group)?;
 		Ok(outcome)
 	}
 
-	fn reclaim_identity_keyspaces(
+	fn forget_identity_keyspaces(
 		&mut self,
 		operator: OperatorId,
 		group: GroupId,
 		limit: usize,
-	) -> Result<ReclaimOutcome, ValueError> {
+	) -> Result<ForgetPassOutcome, ValueError> {
 		if limit == 0 {
-			return Ok(ReclaimOutcome::NOTHING);
+			return Ok(ForgetPassOutcome::NOTHING);
 		}
-		let query =
-			StateRange::forward(GroupStateRange::GroupIdentity(group), "reclaim::keyspace").limit(limit);
+		let query = StateRange::forward(GroupStateRange::GroupIdentity(group), "forget_pass::keyspace")
+			.limit(limit);
 		let batch = self.state_range(operator, query)?;
 		let keys: Vec<GroupStateKey> = batch
 			.items
@@ -83,11 +83,11 @@ pub trait ReclaimExtension: StateExtension {
 			})
 			.collect();
 		self.state_remove(operator, &keys)?;
-		Ok(ReclaimOutcome {
+		Ok(ForgetPassOutcome {
 			removed: Count::new(keys.len() as u64),
 			more: batch.has_more,
 		})
 	}
 }
 
-impl<T: StateExtension> ReclaimExtension for T {}
+impl<T: StateExtension> ForgetPassExtension for T {}

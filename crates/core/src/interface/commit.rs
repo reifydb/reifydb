@@ -343,7 +343,7 @@ mod exclusion_tests {
 			KeyTag::SortedViewRow => {}
 			KeyTag::PartitionedSortedViewRow => {}
 			KeyTag::Relationship => {} /* When adding a new variant, add it here.
-			                            * The compiler will error if you forget.
+			                            * The compiler will error if you miss one.
 			                            * Then add a test and update is_commit_excluded() if
 			                            * needed. */
 		}

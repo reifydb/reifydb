@@ -184,13 +184,12 @@ mod tests {
 	#[test]
 	fn a_debug_formatted_dimension_loses_its_quotes() {
 		// Fields recorded with ?value arrive through record_debug wrapped in quotes. Leaving them
-		// would render the row as site@"reclaim::range" and split one logical dimension into two
+		// would render the row as site@"forget_pass::range" and split one logical dimension into two
 		// labels depending on how the call site happened to record it.
 		let captured = capture(|| {
-			let _span =
-				debug_span!("flow::state::range_limited", site = ?"reclaim::range", operator_id = 1u64);
+			let _span = debug_span!("flow::state::range_limited", site = ?"forget_pass::range", operator_id = 1u64);
 		});
-		assert_eq!(captured.dims()[0], "reclaim::range");
+		assert_eq!(captured.dims()[0], "forget_pass::range");
 	}
 
 	#[test]
@@ -200,7 +199,7 @@ mod tests {
 		let captured = capture(|| {
 			let _span = debug_span!(
 				"flow::state::range_limited",
-				site = "reclaim::range",
+				site = "forget_pass::range",
 				operator_id = 1u64,
 				rows_fetched = 5u64,
 				rows_tombstoned = 0u64,

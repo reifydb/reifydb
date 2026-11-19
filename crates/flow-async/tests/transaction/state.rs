@@ -595,7 +595,7 @@ fn grouped_key(group: GroupId, name: &str) -> GroupStateKey {
 #[test]
 fn a_group_range_answers_exactly_what_the_per_group_ranges_answer() {
 	// This read replaces one state_range per group with one call for the whole set. If the two disagree
-	// on rows or on order the reaper spends its budget on a different set than it used to, and a group
+	// on rows or on order the forget pass spends its budget on a different set than it used to, and a group
 	// it believes it finished can still hold state.
 	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(deferred_params(
@@ -636,7 +636,7 @@ fn a_group_range_answers_exactly_what_the_per_group_ranges_answer() {
 #[test]
 fn a_group_range_honours_a_pending_write_that_storage_has_never_seen() {
 	// The batched read merges pending over one storage page instead of per group. A pending remove that
-	// the merge drops would resurrect a reaped row, and a pending insert it misses would be orphaned.
+	// the merge drops would resurrect a forgotten row, and a pending insert it misses would be orphaned.
 	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,

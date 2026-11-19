@@ -22,7 +22,7 @@ use reifydb_core::{
 	key::{
 		bound::TaggedKeyBoundRange,
 		operator::{
-			keyspace::expiry::{RETIRED_AT_FLUSH, ReapQueue, ReapQueueKey},
+			keyspace::expiry::{FORGOTTEN_AT_FLUSH, ForgetPassQueue, ForgetPassQueueKey},
 			state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, group_range, keyspace_range},
 		},
 		typed::direction::Desc,
@@ -468,7 +468,7 @@ fn a_checkpoint_merge_without_an_interlock_is_unaffected() {
 		Some(CommitVersion(10)),
 		"the floor must hold at the durable version of a flow whose delete is still buffered, because a \
 		 crash loses the buffer and sends that flow back to 10; raising the floor to 20 would let gc \
-		 reap the versions the restart needs"
+		 collect the versions the restart needs"
 	);
 }
 
@@ -664,21 +664,21 @@ fn checkpoint_at(version: u64) -> FlowCheckpoint {
 	}
 }
 
-fn retire_marker(group: GroupId) -> OperatorWrite {
+fn forget_pass_marker(group: GroupId) -> OperatorWrite {
 	OperatorWrite::Insert {
 		operator: OP,
-		key: typed_key::<ReapQueue>(
+		key: typed_key::<ForgetPassQueue>(
 			GroupId::ROOT,
-			&ReapQueueKey {
+			&ForgetPassQueueKey {
 				group: Desc(group),
 			},
 		),
-		post: EncodedPodRow::new(RETIRED_AT_FLUSH),
+		post: EncodedPodRow::new(FORGOTTEN_AT_FLUSH),
 	}
 }
 
 #[test]
-fn a_retired_group_leaves_the_census_as_if_it_was_never_written() {
+fn a_forgotten_group_leaves_the_census_as_if_it_was_never_written() {
 	let survivor = sweep_group(1);
 	let doomed = sweep_group(2);
 	let (expected, _guard) = store_fixture();
@@ -688,7 +688,7 @@ fn a_retired_group_leaves_the_census_as_if_it_was_never_written() {
 	let (store, _store_guard) = store_fixture();
 	seed_groups(&store, &[survivor, doomed]);
 	flush(&store);
-	store.apply_batch_with_checkpoints(&[retire_marker(doomed)], &[], &[], Some(next_lsn())).unwrap();
+	store.apply_batch_with_checkpoints(&[forget_pass_marker(doomed)], &[], &[], Some(next_lsn())).unwrap();
 	flush(&store);
 
 	assert_eq!(store.census.snapshot(), expected.census.snapshot());
@@ -696,20 +696,20 @@ fn a_retired_group_leaves_the_census_as_if_it_was_never_written() {
 }
 
 #[test]
-fn a_retire_marker_is_never_counted_as_a_row() {
+fn a_forget_pass_marker_is_never_counted_as_a_row() {
 	let census = OperatorCensus::default();
 
-	census.record(&[retire_marker(sweep_group(2))]);
+	census.record(&[forget_pass_marker(sweep_group(2))]);
 
 	assert!(census.snapshot().is_empty());
 }
 
 #[test]
-fn a_census_seeded_after_a_retire_agrees_with_the_one_that_watched_it() {
+fn a_census_seeded_after_a_forget_pass_agrees_with_the_one_that_watched_it() {
 	let (store, _guard) = store_fixture();
 	seed_groups(&store, &[sweep_group(1), sweep_group(2)]);
 	flush(&store);
-	store.apply_batch_with_checkpoints(&[retire_marker(sweep_group(2))], &[], &[], Some(next_lsn())).unwrap();
+	store.apply_batch_with_checkpoints(&[forget_pass_marker(sweep_group(2))], &[], &[], Some(next_lsn())).unwrap();
 	flush(&store);
 
 	let seeded = OperatorCensus::seeded(&store.persistent).unwrap();

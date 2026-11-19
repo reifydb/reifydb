@@ -262,7 +262,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.withdraw(dimension, key);
 	}
 
-	pub fn forget(&self, dimension: D::Dimension, partition: D::Partition) {
+	pub fn release_partition(&self, dimension: D::Dimension, partition: D::Partition) {
 		let index = self.shard_index(&partition);
 		let claimed = {
 			let coverage = self.coverage().read();
@@ -1199,7 +1199,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_retract_the_tier_cannot_prove_forgets_the_removal_instead_of_keeping_it() {
+	fn a_retract_the_tier_cannot_prove_drops_the_removal_instead_of_keeping_it() {
 		// Deleted is never evictable and only a retract clears one. Refusing that retract for want of
 		// a claim makes the tombstone immortal, so the tier fills with entries eviction can never
 		// reclaim and can never free the bytes a materialize needs to prove the span again.

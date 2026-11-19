@@ -4,7 +4,7 @@
 use reifydb_core::interface::change::Change;
 use reifydb_value::error::ValueError;
 
-use crate::operator::reclaim::StateFootprint;
+use crate::operator::forget_pass::StateFootprint;
 
 pub trait Subject {
 	fn apply(&mut self, change: Change) -> Result<Change, ValueError>;

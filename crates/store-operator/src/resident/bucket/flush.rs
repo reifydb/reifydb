@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::{
-			keyspace::expiry::{ReapQueue, ReapQueueKey},
+			keyspace::expiry::{ForgetPassQueue, ForgetPassQueueKey},
 			state::{GroupId, KeyspaceId},
 			traits::Keyspace,
 		},
@@ -56,25 +56,25 @@ impl BucketMap {
 		mem::take(&mut self.evicted)
 	}
 
-	pub fn retire_groups(&mut self, operator: OperatorId, groups: &[GroupId]) -> (usize, usize, ByteSize) {
+	pub fn forget_groups(&mut self, operator: OperatorId, groups: &[GroupId]) -> (usize, usize, ByteSize) {
 		let (mut entries, mut tombstones, mut freed) = (0usize, 0usize, ByteSize::ZERO);
 		for bucket in self.buckets.values_mut() {
 			for group in groups {
-				let (e, t, f) = bucket.retire_group(*group);
+				let (e, t, f) = bucket.forget_group(*group);
 				entries += e;
 				tombstones += t;
 				freed = freed.saturating_add(f);
 			}
 		}
-		if let Some(queue) = self.buckets.get_mut(&(operator, ReapQueue::ID)) {
+		if let Some(queue) = self.buckets.get_mut(&(operator, ForgetPassQueue::ID)) {
 			let queue = queue
 				.as_any_mut()
-				.downcast_mut::<StandardBucket<ReapQueue>>()
+				.downcast_mut::<StandardBucket<ForgetPassQueue>>()
 				.expect("a keyspace id must map to exactly one key type");
 			for group in groups {
 				let (e, f) = queue.forget_clean_row(
 					GroupId::ROOT,
-					&ReapQueueKey {
+					&ForgetPassQueueKey {
 						group: Desc(*group),
 					},
 				);

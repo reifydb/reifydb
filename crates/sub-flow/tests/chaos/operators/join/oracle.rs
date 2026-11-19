@@ -88,7 +88,7 @@ pub struct HashOracle {
 
 	/// The newest event position ever written to each (join key, side), live or since removed. Each
 	/// side of an interned group ages on its own ttl, so one number per key would leave a quiet right
-	/// row constrained by busy left traffic - and per-row would be wrong the other way, keys retire whole.
+	/// row constrained by busy left traffic - and per-row would be wrong the other way, keys are forgotten whole.
 	key_high: BTreeMap<(i32, Side), u64>,
 
 	/// The furthest back the mapping phase has reported reaching. A withdrawal resolves the pair's
@@ -98,7 +98,7 @@ pub struct HashOracle {
 
 	/// Output keys the claim has stopped constraining because one of the two rows behind them was
 	/// exposed. Monotone: the operator withdraws by reading its own stored row, so a pair stranded once
-	/// stays stranded even if the left row is written back, and forgetting would require impossible rows.
+	/// stays stranded even if the left row is written back, and clearing it would require impossible rows.
 	unconstrained: BTreeSet<OutputKey>,
 }
 
@@ -198,7 +198,7 @@ impl Model<JoinRow> for HashOracle {
 	fn advance_ledger(&mut self, _at_ms: u64) {}
 
 	fn step_complete(&mut self) {
-		// Folded here rather than in `reclaimed`: a key can form after the sweep that stranded one of
+		// Folded at step end rather than per sweep: a key can form after the sweep that stranded one of
 		// its rows, and a key must be recorded before the row carrying it is removed, since that
 		// removal is when the stranding becomes visible.
 		if self.exposed.is_empty() && self.mapping_cutoff == 0 {

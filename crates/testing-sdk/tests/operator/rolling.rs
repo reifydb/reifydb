@@ -41,7 +41,7 @@ fn window_with() -> ApplyWith {
 	}
 }
 
-fn reaping_with() -> ApplyWith {
+fn forgetting_with() -> ApplyWith {
 	ApplyWith {
 		lateness: None,
 		..window_with()
@@ -80,7 +80,7 @@ fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.run()
 }
 
-fn run_reaping(seed: u64) -> ChaosOutcome {
+fn run_forgetting(seed: u64) -> ChaosOutcome {
 	ChaosHarness::<PlainDriver<RollingSum>>::builder()
 		.with_input_shape(common::rolling_shape())
 		.with_output_shape(common::rolling_out_shape())
@@ -91,9 +91,9 @@ fn run_reaping(seed: u64) -> ChaosOutcome {
 		.with_column("ts", samplers::u64_range(0..100))
 		.with_column("value", value_sampler(false))
 		.with_scenario(common::baseline(20, SupportedOps::insert_only()))
-		.with(reaping_with())
+		.with(forgetting_with())
 		.with_oracle(move |ctx, batches| {
-			rolling_accumulator_oracle(&RollingSum, &reaping_with(), ctx, batches, &group_key())
+			rolling_accumulator_oracle(&RollingSum, &forgetting_with(), ctx, batches, &group_key())
 		})
 		.seed(seed)
 		.build()
@@ -141,12 +141,12 @@ fn rolling_sum_empty_stream_is_empty() {
 }
 
 #[test]
-fn rolling_sum_reaps_idle_groups_at_the_drain() {
-	// Without the drain reap the oracle keeps groups the operator removed; the no-drain replay must be larger on
-	// some seed.
-	let mut reaped = false;
+fn rolling_sum_forgets_idle_groups_at_the_drain() {
+	// Without the drain forget pass the oracle keeps groups the operator removed; the no-drain replay must be
+	// larger on some seed.
+	let mut forgot = false;
 	for &seed in &common::SEEDS {
-		let outcome = run_reaping(seed);
+		let outcome = run_forgetting(seed);
 		outcome.assert_matches();
 		let undrained = ChaosContext {
 			drain_at_ms: 0,
@@ -154,12 +154,12 @@ fn rolling_sum_reaps_idle_groups_at_the_drain() {
 		};
 		let kept = rolling_accumulator_oracle(
 			&RollingSum,
-			&reaping_with(),
+			&forgetting_with(),
 			&undrained,
 			&outcome.batches,
 			&group_key(),
 		);
-		reaped |= kept.len() > outcome.oracle_table.len();
+		forgot |= kept.len() > outcome.oracle_table.len();
 	}
-	assert!(reaped, "no seed left a group idle past the drain cutoff");
+	assert!(forgot, "no seed left a group idle past the drain cutoff");
 }

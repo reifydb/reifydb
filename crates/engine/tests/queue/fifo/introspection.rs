@@ -72,7 +72,7 @@ fn tokens(frames: &[Frame]) -> Vec<String> {
 fn test_depth_and_in_flight_follow_every_transition() {
 	// depth and in_flight are not derived, they are incrementally maintained by three separate
 	// writers: the enqueue interceptor, queue::claim, and the ack interceptor. A transition that
-	// forgets its delta corrupts them silently forever, because nothing recomputes them outside
+	// skips its delta corrupts them silently forever, because nothing recomputes them outside
 	// startup hydration. Walking insert -> claim -> ack is the only way to catch a writer that
 	// moves an item without moving the counter with it.
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
@@ -151,7 +151,7 @@ fn test_partition_rows_sum_to_the_queue_row_and_cover_every_partition() {
 #[test]
 fn test_oldest_due_at_reports_the_earliest_instant_not_the_latest() {
 	// The due index is stored bitwise-inverted, so a forward scan returns the LATEST entry first.
-	// A peek that forgets to scan in reverse reports the furthest-future item as "oldest", which
+	// A peek that fails to scan in reverse reports the furthest-future item as "oldest", which
 	// makes the column read exactly backwards and would tell an operator a starving queue is
 	// healthy. Claiming the currently-due item must then advance the column to the next instant.
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");

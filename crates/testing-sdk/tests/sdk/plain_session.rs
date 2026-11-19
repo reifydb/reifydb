@@ -135,7 +135,7 @@ fn a_session_arms_its_seal_at_last_plus_gap_plus_one_millisecond() {
 
 #[test]
 fn a_session_is_open_at_last_plus_gap_and_sealed_one_millisecond_later() {
-	// a gate on anything but the last row either extends a reaped session or refuses a row into a live one
+	// a gate on anything but the last row either extends a forgotten session or refuses a row into a live one
 	let feed = || {
 		TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 100, 1.0))
@@ -159,7 +159,7 @@ fn a_session_is_open_at_last_plus_gap_and_sealed_one_millisecond_later() {
 
 #[test]
 fn a_session_seals_by_its_last_row_not_its_start() {
-	// expiry anchored at the start would reap a session whose last row is still inside the gap
+	// expiry anchored at the start would forget a session whose last row is still inside the gap
 	let mut h = harness!(SumTumblingOnly, session(10, None)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 	h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 105, 2.0)).build()).expect("apply");

@@ -483,7 +483,7 @@ fn a_rolling_top_k_time_window_arms_a_seal_timer() {
 
 #[test]
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
-	// A group that stops reporting must still be reclaimed, or a high-cardinality group key grows without bound.
+	// A group that stops reporting must still be forgotten, or a high-cardinality group key grows without bound.
 	let mut h = harness!(TopVolume, rolling(3, Some(1), 117)).expect("harness");
 	h.apply(TestChangeBuilder::new()
 		.insert(input_row(1, "BTC", 0, 7, 10.0))
@@ -497,7 +497,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	assert!(fired > 0, "the insert must have armed a seal timer that the flow watermark then passes");
 	assert!(
 		h.snapshot_state().len() < before,
-		"a fired seal timer must reclaim the meta of groups that stopped reporting, but the store went from {before} rows to {}",
+		"a fired seal timer must forget the meta of groups that stopped reporting, but the store went from {before} rows to {}",
 		h.snapshot_state().len()
 	);
 }

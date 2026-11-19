@@ -869,7 +869,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_materialize_that_reclaims_the_span_stops_the_rows_being_dropped() {
+	fn a_materialize_that_claims_the_span_again_stops_the_rows_being_dropped() {
 		// A materialize racing the drop must keep its rows, or its fresh claim stands over nothing.
 		let k = key(KeyspaceId::ACCUMULATOR, b"a");
 		let rows = vec![(k.clone(), Entry::row(row("v")))];

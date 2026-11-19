@@ -207,7 +207,7 @@ fn dual_write_is_live_before_the_first_slice_is_ever_fetched() {
 }
 
 #[test]
-fn a_rebuild_reclaims_the_space_held_by_deleted_keys() {
+fn a_rebuild_frees_the_space_held_by_deleted_keys() {
 	// The reason the whole driver exists: a bloom cannot delete, so removed keys stay as permanent
 	// false positives. After a rebuild over the shrunken source the removed keys must overwhelmingly
 	// answer absent. A handful can still collide into the live keys' bits, so the assertion is on the
@@ -237,7 +237,7 @@ fn a_rebuild_reclaims_the_space_held_by_deleted_keys() {
 	run_to_commit(&mut driver);
 
 	for hash in &live {
-		assert!(filter.may_contain(*hash), "live key {} was lost by the reclaiming rebuild", hash);
+		assert!(filter.may_contain(*hash), "live key {} was lost by the space-freeing rebuild", hash);
 	}
 	let still_present = removed.iter().filter(|hash| filter.may_contain(**hash)).count();
 	let fraction = still_present as f64 / removed.len() as f64;

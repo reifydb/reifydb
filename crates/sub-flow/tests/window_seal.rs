@@ -382,7 +382,7 @@ fn sealed_window_source(db: &TestDb) {
 
 #[test]
 fn a_delete_of_a_row_in_a_sealed_window_keeps_its_published_total() {
-	// A sealed window's state is reaped, so applying the remove would publish a total built from nothing.
+	// A sealed window's state is forgotten, so applying the remove would publish a total built from nothing.
 	let db = setup();
 	sealed_window_source(&db);
 
@@ -522,7 +522,7 @@ fn tumbling_view(db: &TestDb) {
 
 #[test]
 fn a_tumbling_window_emptied_by_retraction_frees_its_accumulator_once_it_seals() {
-	// a window emptied by retraction must stay on the seal schedule, otherwise its accumulator is never reaped.
+	// a window emptied by retraction must stay on the seal schedule, otherwise its accumulator is never forgotten.
 	let db = setup_with_metrics();
 	tumbling_view(&db);
 
@@ -541,7 +541,7 @@ fn a_tumbling_window_emptied_by_retraction_frees_its_accumulator_once_it_seals()
 	assert_eq!(
 		await_value(0, TIMEOUT, || keyspace_keys(&db, "ACCUMULATOR")),
 		0,
-		"the emptied window sealed, so its accumulator must be reaped"
+		"the emptied window sealed, so its accumulator must be forgotten"
 	);
 }
 
@@ -563,7 +563,7 @@ fn a_tumbling_window_keeps_no_group_meta() {
 
 #[test]
 fn a_session_emptied_by_retraction_frees_its_accumulator_once_it_seals() {
-	// a session emptied by retraction must stay on the seal schedule, otherwise its accumulator is never reaped.
+	// a session emptied by retraction must stay on the seal schedule, otherwise its accumulator is never forgotten.
 	let db = setup_with_metrics();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
@@ -589,13 +589,13 @@ fn a_session_emptied_by_retraction_frees_its_accumulator_once_it_seals() {
 	assert_eq!(
 		await_value(0, TIMEOUT, || keyspace_keys(&db, "ACCUMULATOR")),
 		0,
-		"the emptied session sealed, so its accumulator must be reaped"
+		"the emptied session sealed, so its accumulator must be forgotten"
 	);
 }
 
 #[test]
 fn a_zero_gap_session_frees_its_accumulator_once_it_seals() {
-	// a zero gap session must still seal once the flow watermark passes it, otherwise it is never reaped.
+	// a zero gap session must still seal once the flow watermark passes it, otherwise it is never forgotten.
 	let db = setup_with_metrics();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
@@ -619,7 +619,7 @@ fn a_zero_gap_session_frees_its_accumulator_once_it_seals() {
 	assert_eq!(
 		await_value(0, TIMEOUT, || keyspace_keys(&db, "ACCUMULATOR")),
 		0,
-		"the zero gap session sealed, so its accumulator must be reaped"
+		"the zero gap session sealed, so its accumulator must be forgotten"
 	);
 }
 

@@ -21,7 +21,7 @@ use crate::{
 		typed,
 	},
 	resident::bucket::{Bucket, BucketMap, write::StandardBucket},
-	types::{DropMarker, FlushBatch, RetiredRows, StagedWrite},
+	types::{DropMarker, FlushBatch, ForgottenRows, StagedWrite},
 };
 
 impl SqlitePersistent {
@@ -30,7 +30,7 @@ impl SqlitePersistent {
 		state_count = batch.writes.len(),
 		checkpoint_count = batch.checkpoints.len()
 	))]
-	pub fn flush_batch(&self, batch: &FlushBatch) -> Vec<RetiredRows> {
+	pub fn flush_batch(&self, batch: &FlushBatch) -> Vec<ForgottenRows> {
 		if !batch.writes.is_empty() {
 			self.mark_state_written();
 		}
@@ -48,15 +48,15 @@ impl SqlitePersistent {
 
 		let created = write_state(&state_of(batch), &transaction, &self.inner.tables);
 
-		let mut retired = Vec::new();
-		for (operator, group) in &batch.retired {
+		let mut forgotten = Vec::new();
+		for (operator, group) in &batch.forgotten {
 			let mut mask = self.inner.tables.mask(*operator).held();
 			for (made, keyspace) in &created {
 				if made == operator && !mask.contains(keyspace) {
 					mask.push(*keyspace);
 				}
 			}
-			route::retire_group(&transaction, *operator, *group, &mask, &mut retired);
+			route::forget_group(&transaction, *operator, *group, &mask, &mut forgotten);
 		}
 
 		for (flow, entry) in &batch.checkpoints {
@@ -90,7 +90,7 @@ impl SqlitePersistent {
 
 		transaction.commit().expect("operator state flush could not commit");
 		self.inner.tables.add(&created);
-		retired
+		forgotten
 	}
 }
 
@@ -279,9 +279,9 @@ mod tests {
 	}
 
 	#[test]
-	fn a_retire_deletes_the_group_from_every_keyspace_and_nothing_else() {
-		// a retire that misses a keyspace leaks rows nothing can reach again; one that overreaches loses live
-		// state
+	fn a_forget_pass_deletes_the_group_from_every_keyspace_and_nothing_else() {
+		// a forget pass that misses a keyspace leaks rows nothing can reach again; one that overreaches loses
+		// live state
 		let store = open();
 		let neighbour = OperatorId(2);
 		let left = JoinLeft::join(group(7), suffix(1));
@@ -293,7 +293,7 @@ mod tests {
 		set_one::<JoinLeft>(&store, neighbour, &left, b"keep");
 
 		let mut batch = FlushBatch::default();
-		batch.retired.push((OP, group(7)));
+		batch.forgotten.push((OP, group(7)));
 		store.flush_batch(&batch);
 
 		assert!(get::<JoinLeft>(&store, OP, &left).is_none());
@@ -303,13 +303,13 @@ mod tests {
 	}
 
 	#[test]
-	fn a_row_written_in_the_same_flush_as_its_retire_does_not_survive() {
+	fn a_row_written_in_the_same_flush_as_its_forget_pass_does_not_survive() {
 		// the write lands first, so the delete must run after it and must see a table this flush created
 		let store = open();
 		let key = JoinLeft::join(group(7), suffix(1));
 		let mut batch = FlushBatch::default();
 		batch.writes.push((OP, encode::<JoinLeft>(&key), StagedWrite::Set(row("late"))));
-		batch.retired.push((OP, group(7)));
+		batch.forgotten.push((OP, group(7)));
 
 		store.flush_batch(&batch);
 
@@ -317,11 +317,11 @@ mod tests {
 	}
 
 	#[test]
-	fn a_retire_of_a_group_with_no_table_is_harmless() {
+	fn a_forget_pass_of_a_group_with_no_table_is_harmless() {
 		// a window can close having written nothing to a keyspace, which must not fail the whole flush
 		let store = open();
 		let mut batch = FlushBatch::default();
-		batch.retired.push((OP, group(7)));
+		batch.forgotten.push((OP, group(7)));
 
 		store.flush_batch(&batch);
 
@@ -329,7 +329,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_crash_inside_the_flush_rolls_back_the_writes_and_the_retire_together() {
+	fn a_crash_inside_the_flush_rolls_back_the_writes_and_the_forget_pass_together() {
 		// the index removal and the group delete must land as one; a half flush would strand the group forever
 		let store = open();
 		let doomed = JoinLeft::join(group(7), suffix(1));
@@ -344,7 +344,7 @@ mod tests {
 		});
 		let mut batch = FlushBatch::default();
 		batch.writes.push((OP, encode::<JoinLeft>(&written_late), StagedWrite::Set(row("new"))));
-		batch.retired.push((OP, group(7)));
+		batch.forgotten.push((OP, group(7)));
 
 		let crashed = catch_unwind(AssertUnwindSafe(|| store.flush_batch(&batch)));
 
@@ -352,7 +352,7 @@ mod tests {
 		assert!(get::<JoinLeft>(&store, OP, &doomed).is_some(), "the group must be back after the rollback");
 		assert!(
 			get::<JoinLeft>(&store, OP, &written_late).is_none(),
-			"the write must not land without the retire"
+			"the write must not land without the forget pass"
 		);
 	}
 }

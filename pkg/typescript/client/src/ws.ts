@@ -430,7 +430,7 @@ export class WsClient {
         intent.subscriptions.forEach((subscription, index) => {
             const id = subscriptionIds[index];
             const state = id === undefined ? undefined : this.subscriptions.get(id);
-            if (!this.retire(subscription)) {
+            if (!this.drop(subscription)) {
                 if (state) released.push(state);
             } else if (state) {
                 this.notifyResubscribed(state);
@@ -454,14 +454,14 @@ export class WsClient {
             intent.caller.reject(error);
             return;
         }
-        intent.subscriptions.filter(subscription => this.retire(subscription)).forEach(subscription => reportSubscriptionError(subscription, error));
+        intent.subscriptions.filter(subscription => this.drop(subscription)).forEach(subscription => reportSubscriptionError(subscription, error));
     }
 
     private held(subscription: SubscribeItem): boolean {
         return this.resubscribing.get((subscription as SubscriptionState).subscriptionId) === subscription;
     }
 
-    private retire(subscription: SubscribeItem): boolean {
+    private drop(subscription: SubscribeItem): boolean {
         return this.held(subscription) && this.resubscribing.delete((subscription as SubscriptionState).subscriptionId);
     }
 
@@ -479,7 +479,7 @@ export class WsClient {
             .catch(error => states.forEach(state => reportSubscriptionError(state, error)));
     }
 
-    private forget(subscriptionId: string): void {
+    private unregister(subscriptionId: string): void {
         this.subscriptions.delete(subscriptionId);
     }
 
@@ -488,7 +488,7 @@ export class WsClient {
         subscriptionIds.filter(id => !this.subscriptions.has(id)).forEach(id => this.resubscribing.delete(id));
         if (held.length === 0) return;
         if (this.socket.readyState !== 1) {
-            held.forEach(id => this.forget(id));
+            held.forEach(id => this.unregister(id));
             return;
         }
 
@@ -507,14 +507,14 @@ export class WsClient {
                     if (response.type === "Err") {
                         reject(new ReifyError(response));
                     } else if (response.type === "Unsubscribed") {
-                        held.forEach(subscriptionId => this.forget(subscriptionId));
+                        held.forEach(subscriptionId => this.unregister(subscriptionId));
                         resolve();
                     } else {
                         reject(new Error("Unexpected response type"));
                     }
                 },
                 onConnectionLost: () => {
-                    held.forEach(subscriptionId => this.forget(subscriptionId));
+                    held.forEach(subscriptionId => this.unregister(subscriptionId));
                     resolve();
                 }
             });
@@ -985,7 +985,7 @@ export class WsClient {
     private handleSubscriptionClosed(msg: SubscriptionClosedMessage): void {
         const state = this.subscriptions.get(msg.payload.subscriptionId);
         if (!state) return;
-        this.forget(state.subscriptionId);
+        this.unregister(state.subscriptionId);
         try {
             state.callbacks.onClosed?.(msg.payload.reason);
         } catch (error) {

@@ -12,7 +12,7 @@ use reifydb_core::{
 		timer::{TimerKind, TimerMove},
 	},
 };
-use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
+use reifydb_flow_async::operator::state::forget_pass_outcome::ForgetPassOutcome;
 use reifydb_value::{
 	count::Count,
 	util::cowvec::CowVec,
@@ -544,11 +544,11 @@ pub(crate) fn rearm_timers(ctx: &mut ExternCContext, kind: TimerKind, moves: &[T
 	Ok(())
 }
 
-pub(crate) fn reclaim_group_identities(
+pub(crate) fn forget_group_identities(
 	ctx: &mut ExternCContext,
 	groups: &[GroupId],
 	limit: usize,
-) -> Result<Vec<ReclaimOutcome>, SdkError> {
+) -> Result<Vec<ForgetPassOutcome>, SdkError> {
 	if groups.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -560,7 +560,7 @@ pub(crate) fn reclaim_group_identities(
 	// and aligned for the whole guest call; group_ids, removed and more are live arrays of exactly
 	// groups.len() elements, the first only read and the other two only written by the callback.
 	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.reclaim_group_identities)(
+		let result = ((*ctx.ctx).callbacks.state.forget_group_identities)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
 			group_ids.as_ptr(),
@@ -571,7 +571,7 @@ pub(crate) fn reclaim_group_identities(
 		);
 		if result != EXTERN_C_OK {
 			return Err(SdkError::Other(format!(
-				"host_reclaim_group_identities failed with code {}",
+				"host_forget_group_identities failed with code {}",
 				result
 			)));
 		}
@@ -580,7 +580,7 @@ pub(crate) fn reclaim_group_identities(
 	Ok(removed
 		.into_iter()
 		.zip(more)
-		.map(|(removed, more)| ReclaimOutcome {
+		.map(|(removed, more)| ForgetPassOutcome {
 			removed: Count::new(removed as u64),
 			more: more != 0,
 		})

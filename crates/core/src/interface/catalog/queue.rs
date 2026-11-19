@@ -444,7 +444,7 @@ mod tests {
 		// A freshly admitted item has neither a lease nor a backoff, and an immediately due
 		// item has no not_before either. All three must decode back as none rather than as
 		// epoch: an epoch lease_deadline would read as a lease that expired in 1970, so the
-		// reaper would treat every ready item as abandoned work.
+		// lease timeout task would treat every ready item as abandoned work.
 		let state = QueueItemState::ready(None);
 
 		let decoded = decode_queue_item_state(&encode_queue_item_state(&state)).unwrap();
@@ -756,7 +756,7 @@ mod tests {
 	#[test]
 	fn test_on_failure_retries_inside_budget_and_buries_at_the_limit() {
 		// The two branches of the whole failure policy, asserted through the one entry point that
-		// the ack path and the reaper both call, so they can never drift apart.
+		// the ack path and the lease timeout task both call, so they can never drift apart.
 		let policy = retry_policy(2, Duration::from_seconds_const(10));
 		let now = DateTime::from_nanos(1_000_000_000);
 

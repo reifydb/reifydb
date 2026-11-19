@@ -125,7 +125,7 @@ impl RowMap {
 					continue;
 				};
 				self.bytes = self.bytes.saturating_sub(entry_bytes_with(key_heap, &value));
-				Self::forget(&mut self.versions, *version);
+				Self::release(&mut self.versions, *version);
 				removed.push(Removed {
 					key: key.clone(),
 					version: *version,
@@ -139,7 +139,7 @@ impl RowMap {
 		removed
 	}
 
-	fn forget(versions: &mut BTreeMap<CommitVersion, u32>, version: CommitVersion) {
+	fn release(versions: &mut BTreeMap<CommitVersion, u32>, version: CommitVersion) {
 		let count = versions.get_mut(&version).expect("every stored version is counted");
 		*count -= 1;
 		if *count == 0 {

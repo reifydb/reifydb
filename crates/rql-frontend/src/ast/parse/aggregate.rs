@@ -292,7 +292,7 @@ pub mod tests {
 	#[test]
 	fn an_aggregate_without_a_with_clause_declares_no_ttl() {
 		// Absence has to stay distinguishable from a zero: no claim resolves to a perpetual horizon and a
-		// named entry in the lifecycle report, never to a default span that silently reclaims accumulators.
+		// named entry in the lifecycle report, never to a default span that silently forgets accumulators.
 		let bump = Bump::new();
 		let source = "AGGREGATE { count(value) } BY { slot }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();

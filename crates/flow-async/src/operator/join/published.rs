@@ -68,7 +68,7 @@ pub(crate) struct Published {
 struct Pin {
 	refs: u64,
 
-	retired: Option<Vec<u8>>,
+	stashed: Option<Vec<u8>>,
 }
 
 #[operator_state]
@@ -361,7 +361,7 @@ impl PublishedLedger {
 		self.unpin(host, group, right, version)
 	}
 
-	pub(crate) fn retire(
+	pub(crate) fn stash(
 		&self,
 		host: &mut dyn HostContext,
 		group: GroupId,
@@ -373,10 +373,10 @@ impl PublishedLedger {
 		let Some(mut pin) = cached(host, &self.pins, &key, decode_pin)? else {
 			return Ok(());
 		};
-		if pin.retired.is_some() {
+		if pin.stashed.is_some() {
 			return Ok(());
 		}
-		pin.retired = Some(content.0.to_vec());
+		pin.stashed = Some(content.0.to_vec());
 		self.hold(&self.pins, key, Some(pin));
 		Ok(())
 	}
@@ -391,7 +391,7 @@ impl PublishedLedger {
 		let key = self.pin_key(group, right, version);
 		let mut pin = cached(host, &self.pins, &key, decode_pin)?.unwrap_or(Pin {
 			refs: 0,
-			retired: None,
+			stashed: None,
 		});
 		pin.refs += 1;
 		self.hold(&self.pins, key, Some(pin));
@@ -409,12 +409,12 @@ impl PublishedLedger {
 		let Some(mut pin) = cached(host, &self.pins, &key, decode_pin)?.filter(|pin| pin.refs > 0) else {
 			return internal_err!(
 				"an unpin of right row {} found no live reference; every published pair holds one, so the \
-				 count has drifted and the retired bytes a later withdraw needs are gone",
+				 count has drifted and the stashed bytes a later withdraw needs are gone",
 				right.0
 			);
 		};
 		pin.refs -= 1;
-		let content = pin.retired.clone().map(|bytes| EncodedBytes(CowVec::new(bytes)));
+		let content = pin.stashed.clone().map(|bytes| EncodedBytes(CowVec::new(bytes)));
 		match pin.refs {
 			0 => self.hold(&self.pins, key, None),
 			_ => self.hold(&self.pins, key, Some(pin)),
@@ -569,12 +569,12 @@ pub(crate) fn withdraw_joined(
 		};
 		let released = ctx.ledger.release(host, group, left_number, right_number)?;
 		let content = match released {
-			Some(retired) => Some(retired),
+			Some(stashed) => Some(stashed),
 			None => ctx.right_store.get_row_in(host, group, right_number)?,
 		};
 		let Some(content) = content else {
 			return internal_err!(
-				"left row {} published right row {} but neither its retired bytes nor the stored row \
+				"left row {} published right row {} but neither its stashed bytes nor the stored row \
 				 exist, so the published row can never be withdrawn",
 				left_number.0,
 				right_number.0
@@ -691,7 +691,7 @@ pub(crate) fn withdraw_slot(
 		};
 		let released = ctx.ledger.release(host, group, left_number, right_number)?;
 		let content = match released {
-			Some(retired) => Some(retired),
+			Some(stashed) => Some(stashed),
 			None => match winning_right_row(host, ctx.right_store, group)? {
 				Some((held, content, _)) if held == right_number => Some(content),
 				_ => None,
@@ -699,7 +699,7 @@ pub(crate) fn withdraw_slot(
 		};
 		let Some(content) = content else {
 			return internal_err!(
-				"left row {} published right row {} but neither its retired bytes nor the winning slot \
+				"left row {} published right row {} but neither its stashed bytes nor the winning slot \
 				 hold it, so the published row can never be withdrawn",
 				left_number.0,
 				right_number.0
@@ -737,7 +737,7 @@ pub(crate) fn current_published_slot(
 	Ok(Some((slot, entry.row_number)))
 }
 
-pub(crate) fn retire_slot(
+pub(crate) fn stash_slot(
 	host: &mut dyn HostContext,
 	ctx: &PublishedJoinContext,
 	key_hash: &Hash128,
@@ -745,14 +745,14 @@ pub(crate) fn retire_slot(
 	let group = ctx.right_store.group_of(key_hash);
 	match winning_right_row(host, ctx.right_store, group)? {
 		Some((number, content, _)) => {
-			ctx.ledger.retire(host, group, number, &content)?;
+			ctx.ledger.stash(host, group, number, &content)?;
 			ctx.ledger.flush(host)
 		}
 		None => Ok(()),
 	}
 }
 
-pub(crate) fn retire_right(
+pub(crate) fn stash_right(
 	host: &mut dyn HostContext,
 	ctx: &PublishedJoinContext,
 	key_hash: &Hash128,
@@ -762,7 +762,7 @@ pub(crate) fn retire_right(
 	let Some(content) = ctx.right_store.get_row_in(host, group, row_number)? else {
 		return Ok(());
 	};
-	ctx.ledger.retire(host, group, row_number, &content)?;
+	ctx.ledger.stash(host, group, row_number, &content)?;
 	ctx.ledger.flush(host)
 }
 
@@ -816,10 +816,10 @@ mod tests {
 		let published_against = encoded_bytes(b"v1");
 
 		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &published_against).unwrap();
-		ledger.retire(&mut b(&mut txn), group(), rn(7), &published_against).unwrap();
+		ledger.stash(&mut b(&mut txn), group(), rn(7), &published_against).unwrap();
 
 		let released = ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap();
-		assert_eq!(released, Some(published_against), "the retired version must come back verbatim");
+		assert_eq!(released, Some(published_against), "the stashed version must come back verbatim");
 	}
 
 	#[test]
@@ -835,12 +835,12 @@ mod tests {
 		assert_eq!(
 			ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap(),
 			None,
-			"an un-retired version must send the caller to the right side rather than duplicate it"
+			"an un-stashed version must send the caller to the right side rather than duplicate it"
 		);
 	}
 
 	#[test]
-	fn one_retired_version_serves_every_left_row_that_published_against_it() {
+	fn one_stashed_version_serves_every_left_row_that_published_against_it() {
 		// The pin is keyed on the version rather than the pair so a right row matched by many
 		// left rows is stored once, not once per match.
 		let engine = TestEngine::new();
@@ -851,7 +851,7 @@ mod tests {
 		for left in 1..=3u64 {
 			ledger.publish(&mut b(&mut txn), group(), rn(left), rn(7), &shared).unwrap();
 		}
-		ledger.retire(&mut b(&mut txn), group(), rn(7), &shared).unwrap();
+		ledger.stash(&mut b(&mut txn), group(), rn(7), &shared).unwrap();
 
 		for left in 1..=3u64 {
 			assert_eq!(
@@ -864,7 +864,7 @@ mod tests {
 
 	#[test]
 	fn a_pin_outlives_every_reference_and_no_longer() {
-		// A record that lingered past its last reference would leave one retired copy per right
+		// A record that lingered past its last reference would leave one stashed copy per right
 		// row the join ever changed, for the life of the operator.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
@@ -874,7 +874,7 @@ mod tests {
 
 		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &content).unwrap();
 		ledger.publish(&mut b(&mut txn), group(), rn(2), rn(7), &content).unwrap();
-		ledger.retire(&mut b(&mut txn), group(), rn(7), &content).unwrap();
+		ledger.stash(&mut b(&mut txn), group(), rn(7), &content).unwrap();
 
 		ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap();
 		ledger.flush(&mut b(&mut txn)).unwrap();
@@ -895,7 +895,7 @@ mod tests {
 	#[test]
 	fn two_versions_of_one_right_row_are_pinned_apart() {
 		// Different left rows can hold different versions of one right row, so a single slot per
-		// row would let the second retirement overwrite the first and a left row would withdraw
+		// row would let the second stash overwrite the first and a left row would withdraw
 		// content it never published.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
@@ -904,9 +904,9 @@ mod tests {
 		let second = encoded_bytes(b"v2");
 
 		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &first).unwrap();
-		ledger.retire(&mut b(&mut txn), group(), rn(7), &first).unwrap();
+		ledger.stash(&mut b(&mut txn), group(), rn(7), &first).unwrap();
 		ledger.publish(&mut b(&mut txn), group(), rn(2), rn(7), &second).unwrap();
-		ledger.retire(&mut b(&mut txn), group(), rn(7), &second).unwrap();
+		ledger.stash(&mut b(&mut txn), group(), rn(7), &second).unwrap();
 
 		assert_eq!(ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap(), Some(first));
 		assert_eq!(ledger.release(&mut b(&mut txn), group(), rn(2), rn(7)).unwrap(), Some(second));
@@ -973,8 +973,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_release_whose_pin_is_gone_fails_instead_of_answering_no_retired_bytes() {
-		// a drifted count read as "not retired" sends the withdraw to a right row that may hold other content.
+	fn a_release_whose_pin_is_gone_fails_instead_of_answering_no_stashed_bytes() {
+		// a drifted count read as "not stashed" sends the withdraw to a right row that may hold other content.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
@@ -999,7 +999,7 @@ mod tests {
 	}
 
 	#[test]
-	fn retiring_a_version_nothing_published_against_stores_nothing() {
+	fn stashing_a_version_nothing_published_against_stores_nothing() {
 		// On a busy right side rows change before any left row reads them; copying there would
 		// make the ledger cost track right-side churn instead of what was published.
 		let engine = TestEngine::new();
@@ -1007,7 +1007,7 @@ mod tests {
 		let ledger = ledger();
 		let content = encoded_bytes(b"v1");
 
-		ledger.retire(&mut b(&mut txn), group(), rn(7), &content).unwrap();
+		ledger.stash(&mut b(&mut txn), group(), rn(7), &content).unwrap();
 		ledger.flush(&mut b(&mut txn)).unwrap();
 
 		let key = ledger.pin_key(group(), rn(7), ContentVersion::of(&content));

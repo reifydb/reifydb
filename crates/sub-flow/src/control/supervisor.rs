@@ -120,7 +120,7 @@ pub enum FlowSupervisorMessage {
 		dropped: Vec<FlowId>,
 	},
 
-	Reap {
+	RemoveDropped {
 		dropped: Vec<DroppedView>,
 	},
 
@@ -315,14 +315,14 @@ impl FlowSupervisor {
 			to_spawn.push((flow, checkpoint));
 		}
 
-		if let Err(e) = reap_orphan_checkpoints(&operators, &known) {
+		if let Err(e) = remove_orphan_checkpoints(&operators, &known) {
 			panic!("flow supervisor cannot list flow checkpoints at bootstrap: {e}");
 		}
-		if let Err(e) = reap_orphan_operators(&operators, &owned) {
-			panic!("flow supervisor cannot reap orphan operator state at bootstrap: {e}");
+		if let Err(e) = remove_orphan_operators(&operators, &owned) {
+			panic!("flow supervisor cannot remove orphan operator state at bootstrap: {e}");
 		}
-		if let Err(e) = reap_orphan_view_keys(&self.engine) {
-			panic!("flow supervisor cannot reap leftover view keys at bootstrap: {e}");
+		if let Err(e) = remove_orphan_view_keys(&self.engine) {
+			panic!("flow supervisor cannot remove leftover view keys at bootstrap: {e}");
 		}
 
 		drop(query);
@@ -751,7 +751,7 @@ impl FlowSupervisor {
 		ctx: &Context<FlowSupervisorMessage>,
 	) {
 		let deleted = extract_deleted_flow_ids(items);
-		let gate = ReapGate::new(extract_dropped_views(items), ctx.self_ref().clone());
+		let gate = RemoveDroppedGate::new(extract_dropped_views(items), ctx.self_ref().clone());
 		let operators = self.engine.operator_state();
 		let mut changed = false;
 		let mut lineage_dirty = false;
@@ -960,13 +960,13 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn handle_reap(&self, dropped: Vec<DroppedView>) {
+	fn handle_remove_dropped(&self, dropped: Vec<DroppedView>) {
 		let ids: Vec<u64> = dropped.iter().map(|item| item.view.0).collect();
 		let mut txn = self.engine.begin_command(IdentityId::system()).unwrap_or_else(|e| {
 			panic!("flow supervisor cannot open a transaction to clean up dropped views {ids:?}: {e}")
 		});
 		for item in &dropped {
-			reap_view_keys(&mut txn, item.view, item.queue).unwrap_or_else(|e| {
+			remove_view_keys(&mut txn, item.view, item.queue).unwrap_or_else(|e| {
 				panic!("flow supervisor cannot clean up dropped view {}: {e}", item.view.0)
 			});
 		}
@@ -1458,13 +1458,13 @@ impl FlowSupervisor {
 	}
 }
 
-struct ReapGate {
+struct RemoveDroppedGate {
 	left: AtomicUsize,
 	dropped: Vec<DroppedView>,
 	supervisor: ActorRef<FlowSupervisorMessage>,
 }
 
-impl ReapGate {
+impl RemoveDroppedGate {
 	fn new(dropped: Vec<DroppedView>, supervisor: ActorRef<FlowSupervisorMessage>) -> Arc<Self> {
 		Arc::new(Self {
 			left: AtomicUsize::new(1),
@@ -1481,7 +1481,7 @@ impl ReapGate {
 
 	fn release(&self) {
 		if self.left.fetch_sub(1, Ordering::AcqRel) == 1 && !self.dropped.is_empty() {
-			let _ = self.supervisor.send(FlowSupervisorMessage::Reap {
+			let _ = self.supervisor.send(FlowSupervisorMessage::RemoveDropped {
 				dropped: self.dropped.clone(),
 			});
 		}
@@ -1582,7 +1582,7 @@ fn stored_checkpoint(operators: &OperatorStore, flow_id: FlowId) -> Option<FlowC
 	}
 }
 
-fn reap_view_keys(txn: &mut CommandTransaction, view: ViewId, queue: Option<QueueId>) -> Result<usize, ValueError> {
+fn remove_view_keys(txn: &mut CommandTransaction, view: ViewId, queue: Option<QueueId>) -> Result<usize, ValueError> {
 	let mut stream =
 		txn.range(RingBufferMetadataKey::full_scan_for_storage(StorageId::View(view)), RangeScope::All, 1024)?;
 	let mut ring_keys = Vec::new();
@@ -1646,7 +1646,7 @@ fn reap_view_keys(txn: &mut CommandTransaction, view: ViewId, queue: Option<Queu
 	Ok(removed)
 }
 
-fn reap_orphan_view_keys(engine: &StandardEngine) -> Result<(), ValueError> {
+fn remove_orphan_view_keys(engine: &StandardEngine) -> Result<(), ValueError> {
 	let mut txn = engine.begin_command(IdentityId::system())?;
 
 	let mut views: BTreeSet<ViewId> = BTreeSet::new();
@@ -1679,7 +1679,7 @@ fn reap_orphan_view_keys(engine: &StandardEngine) -> Result<(), ValueError> {
 	let mut removed = 0;
 	for view in views {
 		if txn.get(&[ViewKey::new(view).into()])?.pop().flatten().is_none() {
-			removed += reap_view_keys(&mut txn, view, None)?;
+			removed += remove_view_keys(&mut txn, view, None)?;
 		}
 	}
 	for queue in queues {
@@ -1711,7 +1711,7 @@ fn reap_orphan_view_keys(engine: &StandardEngine) -> Result<(), ValueError> {
 	Ok(())
 }
 
-fn reap_orphan_operators(operators: &OperatorStore, owned: &BTreeSet<OperatorId>) -> Result<(), StoreOperatorError> {
+fn remove_orphan_operators(operators: &OperatorStore, owned: &BTreeSet<OperatorId>) -> Result<(), StoreOperatorError> {
 	for operator in operators.stored_operators()? {
 		if owned.contains(&operator) {
 			continue;
@@ -1721,7 +1721,7 @@ fn reap_orphan_operators(operators: &OperatorStore, owned: &BTreeSet<OperatorId>
 	Ok(())
 }
 
-fn reap_orphan_checkpoints(operators: &OperatorStore, known: &BTreeSet<FlowId>) -> Result<(), StoreOperatorError> {
+fn remove_orphan_checkpoints(operators: &OperatorStore, known: &BTreeSet<FlowId>) -> Result<(), StoreOperatorError> {
 	for flow_id in operators.checkpoint_list()? {
 		if known.contains(&flow_id) {
 			continue;
@@ -1774,9 +1774,9 @@ impl Actor for FlowSupervisor {
 				head,
 				dropped,
 			} => self.handle_reform(state, head, dropped, ctx),
-			FlowSupervisorMessage::Reap {
+			FlowSupervisorMessage::RemoveDropped {
 				dropped,
-			} => self.handle_reap(dropped),
+			} => self.handle_remove_dropped(dropped),
 			FlowSupervisorMessage::Join {
 				head,
 				joiners,
@@ -1913,7 +1913,7 @@ mod tests {
 	use rustc_hash::{FxHashMap, FxHashSet};
 
 	use super::{
-		FLOOR_INTERLOCK, flow_lsn_floor, owned_queues_of, queues_at_spawn, reap_orphan_checkpoints,
+		FLOOR_INTERLOCK, flow_lsn_floor, owned_queues_of, queues_at_spawn, remove_orphan_checkpoints,
 		retire_flow, stored_checkpoint, wake_sets, wake_targets,
 	};
 	use crate::progress::tracker::FlowPositionTracker;
@@ -2045,37 +2045,37 @@ mod tests {
 	}
 
 	#[test]
-	fn an_unreadable_checkpoint_list_fails_the_reap_instead_of_reaping_nothing() {
-		// a list read as empty reaps nothing, so every orphan keeps pinning commit log gc forever
+	fn an_unreadable_checkpoint_list_fails_the_removal_instead_of_removing_nothing() {
+		// a list read as empty removes nothing, so every orphan keeps pinning commit log gc forever
 		let (store, _guard) = OperatorStore::testing_memory_with_persistent_sqlite();
 		store.checkpoint_set(FlowId(2), checkpoint_at(20)).unwrap();
 		store.shutdown().unwrap();
 
 		assert!(
-			reap_orphan_checkpoints(&store, &BTreeSet::from([FlowId(1)])).is_err(),
+			remove_orphan_checkpoints(&store, &BTreeSet::from([FlowId(1)])).is_err(),
 			"a closed store must surface as an error, never as an empty checkpoint table"
 		);
 	}
 
 	#[test]
-	fn bootstrap_reaps_a_checkpoint_whose_flow_the_catalog_no_longer_lists() {
+	fn bootstrap_removes_a_checkpoint_whose_flow_the_catalog_no_longer_lists() {
 		// the gc floor is the minimum over these rows, so one orphan pins commit log truncation forever
 		let store = OperatorStore::testing_memory();
 		store.checkpoint_set(FlowId(1), checkpoint_at(10)).unwrap();
 		store.checkpoint_set(FlowId(2), checkpoint_at(20)).unwrap();
 
-		reap_orphan_checkpoints(&store, &BTreeSet::from([FlowId(1)])).unwrap();
+		remove_orphan_checkpoints(&store, &BTreeSet::from([FlowId(1)])).unwrap();
 
 		assert_eq!(
 			store.checkpoint_get(FlowId(1)).unwrap(),
 			Some(checkpoint_at(10)),
-			"a live flow's checkpoint is its resume point; reaping it in the same pass replays every \
+			"a live flow's checkpoint is its resume point; removing it in the same pass replays every \
 			 slice the flow ever consumed and double-counts every aggregate"
 		);
 		assert!(
 			store.checkpoint_get(FlowId(2)).unwrap().is_none(),
 			"the orphan must be deleted, otherwise its version stays the floor and no commit log entry in the \
-			 database is ever reaped again"
+			 database is ever collected again"
 		);
 	}
 

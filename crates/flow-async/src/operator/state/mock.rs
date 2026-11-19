@@ -19,7 +19,9 @@ use reifydb_value::{
 };
 
 use crate::{
-	operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome, test_utils::test::inner_bytes},
+	operator::state::{
+		forget_pass::IdentityForgetPass, forget_pass_outcome::ForgetPassOutcome, test_utils::test::inner_bytes,
+	},
 	timer::Timer,
 };
 
@@ -108,12 +110,16 @@ impl MockStore {
 	}
 }
 
-impl IdentityReclaim for MockStore {
-	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>, ValueError> {
+impl IdentityForgetPass for MockStore {
+	fn forget_identities(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+	) -> Result<Vec<ForgetPassOutcome>, ValueError> {
 		let mut left = limit;
 		let mut outcomes = Vec::with_capacity(groups.len());
 		for group in groups {
-			let outcome = self.reclaim_one(*group, left);
+			let outcome = self.forget_one(*group, left);
 			left = left.saturating_sub(outcome.removed.as_u64() as usize);
 			outcomes.push(outcome);
 		}
@@ -122,7 +128,7 @@ impl IdentityReclaim for MockStore {
 }
 
 impl MockStore {
-	fn reclaim_one(&mut self, group: GroupId, limit: usize) -> ReclaimOutcome {
+	fn forget_one(&mut self, group: GroupId, limit: usize) -> ForgetPassOutcome {
 		let rows: Vec<Vec<u8>> =
 			self.rows.keys().filter(|(owner, _)| *owner == group).map(|(_, key)| key.clone()).collect();
 		let keys: Vec<Vec<u8>> = self
@@ -148,7 +154,7 @@ impl MockStore {
 		if !more {
 			self.groups.retain(|_, owner| *owner != group);
 		}
-		ReclaimOutcome {
+		ForgetPassOutcome {
 			removed: Count::new(removed as u64),
 			more,
 		}

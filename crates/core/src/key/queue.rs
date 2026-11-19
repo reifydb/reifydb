@@ -209,7 +209,7 @@ mod queue_item_state_key_tests {
 	#[test]
 	fn test_attempt_zero_roundtrips() {
 		// Attempt 0 never reaches storage today (claim leases at attempt 1), but the codec
-		// must not treat it as an absent component; step 5's reaper writes lost attempts and
+		// must not treat it as an absent component; step 5's lease timeout task writes lost attempts and
 		// a zero-eliding encoding would collide with the item's own prefix.
 		let key = QueueAttemptKey {
 			queue: QueueId(0),

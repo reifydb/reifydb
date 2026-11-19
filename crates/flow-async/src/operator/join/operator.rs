@@ -75,7 +75,7 @@ use crate::{
 		join::{Emitted, Identity, expiry::JoinExpiryIndex},
 		row_times,
 		state::{
-			reaper::{StoreReaper, drain, drain_group, enqueue, queue_key, queued},
+			forget_pass::{StoreForgetter, drain, drain_group, enqueue, queue_key, queued},
 			seal::{domain::SealDomain, ledger::FiredAt, rule::SealRule},
 		},
 		time_at_or_after,
@@ -91,7 +91,7 @@ const JOIN_MAPPING_TAG: u8 = b'L';
 
 const UNMATCHED_RIGHT: u64 = 0;
 
-const FORGET_BATCH: usize = 256;
+const FORGET_PASS_BATCH: usize = 256;
 
 const QUEUE_SWEEP_EVERY: u64 = 1024;
 
@@ -190,7 +190,7 @@ pub struct JoinOperator {
 	left_lateness: Option<Duration>,
 	right_lateness: Option<Duration>,
 	ctx: Arc<FlowContext>,
-	forget_fires: Counter,
+	forget_pass_fires: Counter,
 	expiry: JoinExpiryIndex,
 	columns: JoinedColumnsCache,
 }
@@ -257,7 +257,10 @@ impl JoinOperator {
 			left_lateness: left_lateness.filter(|span| !span.is_zero()),
 			right_lateness: right_lateness.filter(|span| !span.is_zero()),
 			ctx,
-			forget_fires: Counter::new("flow.operator.join.seal_fires_total", "Join seal timer fires"),
+			forget_pass_fires: Counter::new(
+				"flow.operator.join.forget_pass_fires_total",
+				"Join forget pass timer fires",
+			),
 			expiry: JoinExpiryIndex::default(),
 			output_sumtypes,
 		})
@@ -484,7 +487,7 @@ impl JoinOperator {
 			&& let Some(content) = state.right.get_row_in(host, group, row_number)?
 		{
 			let ledger = self.published_ledger();
-			ledger.retire(host, group, row_number, &content)?;
+			ledger.stash(host, group, row_number, &content)?;
 			ledger.flush(host)?;
 		}
 		let composites: Vec<JoinRowMappingKey> = match self.strategy {
@@ -504,12 +507,12 @@ impl JoinOperator {
 		};
 		let retry = fired.at().saturating_add(span);
 
-		self.forget_fires.inc();
+		self.forget_pass_fires.inc();
 		let mut stalled = false;
-		if (self.forget_fires.get() as u64).is_multiple_of(QUEUE_SWEEP_EVERY) {
-			let drained = drain(host, &mut StoreReaper, FORGET_BATCH)?;
+		if (self.forget_pass_fires.get() as u64).is_multiple_of(QUEUE_SWEEP_EVERY) {
+			let drained = drain(host, &mut StoreForgetter, FORGET_PASS_BATCH)?;
 			stalled = if drained.more {
-				!queued(host, FORGET_BATCH)?.groups.is_empty()
+				!queued(host, FORGET_PASS_BATCH)?.groups.is_empty()
 			} else {
 				!drained.still_queued.is_empty()
 			};
@@ -523,7 +526,7 @@ impl JoinOperator {
 			None => DueStart::Bottom,
 		};
 		let earliest = loop {
-			let page = host.join_due_page(fired.at(), FORGET_BATCH, &start)?;
+			let page = host.join_due_page(fired.at(), FORGET_PASS_BATCH, &start)?;
 			if page.due.is_empty() {
 				break page.next;
 			}
@@ -571,7 +574,7 @@ impl JoinOperator {
 				continue;
 			}
 			enqueue(host, &[group])?;
-			let drained = drain_group(host, group, &mut StoreReaper, FORGET_BATCH)?;
+			let drained = drain_group(host, group, &mut StoreForgetter, FORGET_PASS_BATCH)?;
 			stalled |= drained.still_queued;
 		}
 
@@ -2074,7 +2077,7 @@ mod seal_tests {
 
 	#[test]
 	fn an_expired_row_frees_its_state_its_join_expiry_and_its_output_mapping_without_emitting() {
-		// An expired row is frozen downstream, so it must emit nothing while its mapping is reclaimed.
+		// An expired row is frozen downstream, so it must emit nothing while its mapping is forgotten.
 		let engine = TestEngine::new();
 		let mut op = join(8, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -2096,7 +2099,7 @@ mod seal_tests {
 
 	#[test]
 	fn a_key_whose_last_row_expired_loses_the_group_that_carried_it() {
-		// a group's rows only leave through the reaper, so freeing the last row must queue it
+		// a group's rows only leave through the forget pass, so freeing the last row must queue it
 		let engine = TestEngine::new();
 		let mut op = join(9, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -2112,8 +2115,8 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_group_is_only_reaped_once_both_sides_hold_nothing() {
-		// Both sides share one group, so queueing on the first empty side reaps rows the other still reads.
+	fn a_group_is_only_forgotten_once_both_sides_hold_nothing() {
+		// Both sides share one group, so queueing on the first empty side forgets rows the other still reads.
 		let engine = TestEngine::new();
 		let mut op = join(10, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -2262,7 +2265,7 @@ mod seal_tests {
 
 	#[test]
 	fn a_snapshot_join_expires_both_sides_on_their_own_lateness() {
-		// A sealed right row retires its bytes into the pin, so pinning it no longer means it may never expire.
+		// A sealed right row stashes its bytes into the pin, so pinning it no longer means it may never expire.
 		let engine = TestEngine::new();
 		let mut op = join_with(13, Emit::Off, None, Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
@@ -2287,7 +2290,7 @@ mod seal_tests {
 
 	#[test]
 	fn an_expired_left_row_releases_the_published_ledger_it_held() {
-		// A pin is refcounted, so a left row that expires without releasing holds its retired copy forever.
+		// A pin is refcounted, so a left row that expires without releasing holds its stashed copy forever.
 		let engine = TestEngine::new();
 		let mut op = join_with(14, Emit::Off, None, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);

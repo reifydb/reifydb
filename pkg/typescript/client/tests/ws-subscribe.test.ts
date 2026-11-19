@@ -149,7 +149,7 @@ describe('pushes are routed per subscription', () => {
         expect(b.callbacks.onInsert).toHaveBeenCalledWith([{id: 2}]);
     });
 
-    it('closes only the named subscription and forgets it', async () => {
+    it('closes only the named subscription and unregisters it', async () => {
         // A closed subscription left in the registry would keep receiving changes and send a stale release.
         await connect();
         const a = item('a', {onInsert: vi.fn(), onClosed: vi.fn()});

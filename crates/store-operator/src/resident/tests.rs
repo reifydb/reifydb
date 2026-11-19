@@ -19,7 +19,7 @@ use reifydb_core::{
 		operator::{
 			keyspace::{
 				columns_width,
-				expiry::{RETIRED_AT_FLUSH, ReapQueue, ReapQueueKey},
+				expiry::{FORGOTTEN_AT_FLUSH, ForgetPassQueue, ForgetPassQueueKey},
 				join::{JoinLeft, JoinRight},
 			},
 			state::{GroupId, GroupStateKey, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, KeyspaceMask},
@@ -1422,17 +1422,17 @@ fn a_remove_during_the_swap_is_never_lost_to_the_filter_gap() {
 }
 
 fn queue_key_of(group: u128) -> EncodedKey {
-	typed_key::<ReapQueue>(
+	typed_key::<ForgetPassQueue>(
 		GroupId::ROOT,
-		&ReapQueueKey {
+		&ForgetPassQueueKey {
 			group: Desc(GroupId::hashed(Hash128(group))),
 		},
 	)
 	.into_encoded()
 }
 
-fn retire(buffer: &Resident, operator: OperatorId, group: u128) {
-	set(buffer, operator, queue_key_of(group), EncodedPodRow::new(RETIRED_AT_FLUSH));
+fn forget(buffer: &Resident, operator: OperatorId, group: u128) {
+	set(buffer, operator, queue_key_of(group), EncodedPodRow::new(FORGOTTEN_AT_FLUSH));
 }
 
 fn flushing_buffer() -> Resident {
@@ -1446,29 +1446,32 @@ fn flushing_buffer() -> Resident {
 }
 
 #[test]
-fn a_retire_marker_names_its_group_in_the_batch_and_is_never_written_as_a_row() {
+fn a_forget_pass_marker_names_its_group_in_the_batch_and_is_never_written_as_a_row() {
 	let buffer = Resident::new();
-	retire(&buffer, OP_A, 7);
+	forget(&buffer, OP_A, 7);
 
 	let batch = buffer.take_for_flush().expect("the marker makes a batch");
 
-	assert_eq!(batch.retired, vec![(OP_A, GroupId::hashed(Hash128(7)))]);
+	assert_eq!(batch.forgotten, vec![(OP_A, GroupId::hashed(Hash128(7)))]);
 	assert!(written(&batch, OP_A, &queue_key_of(7)).is_none(), "a marker is an instruction, not stored state");
 }
 
 #[test]
-fn a_queue_row_without_the_marker_is_written_and_retires_nothing() {
+fn a_queue_row_without_the_marker_is_written_and_forgets_nothing() {
 	let buffer = Resident::new();
 	set(&buffer, OP_A, queue_key_of(7), EncodedPodRow::new(&[]));
 
 	let batch = buffer.take_for_flush().expect("the queue row makes a batch");
 
-	assert!(batch.retired.is_empty(), "only the marker may retire a group");
-	assert!(written(&batch, OP_A, &queue_key_of(7)).is_some(), "an inline reap needs its queue row to survive");
+	assert!(batch.forgotten.is_empty(), "only the marker may forget a group");
+	assert!(
+		written(&batch, OP_A, &queue_key_of(7)).is_some(),
+		"an inline forget pass needs its queue row to survive"
+	);
 }
 
 #[test]
-fn a_retired_group_leaves_no_row_no_marker_and_no_byte_in_memory() {
+fn a_forgotten_group_leaves_no_row_no_marker_and_no_byte_in_memory() {
 	let survivor_only = flushing_buffer();
 	set(&survivor_only, OP_A, key_in(9, "s"), row("keep"));
 	survivor_only.flush_once();
@@ -1479,7 +1482,7 @@ fn a_retired_group_leaves_no_row_no_marker_and_no_byte_in_memory() {
 	set(&buffer, OP_A, right_key_in(7, "b"), row("gone"));
 	buffer.flush_once();
 
-	retire(&buffer, OP_A, 7);
+	forget(&buffer, OP_A, 7);
 	buffer.flush_once();
 
 	assert!(!matches!(buffer.lookup_state(OP_A, &key_in(7, "a")), BufferedState::Row(_)), "the left row must go");
@@ -1492,17 +1495,17 @@ fn a_retired_group_leaves_no_row_no_marker_and_no_byte_in_memory() {
 		"the marker has done its work once the flush lands and must not stay behind"
 	);
 	assert!(matches!(buffer.lookup_state(OP_A, &key_in(9, "s")), BufferedState::Row(_)), "a neighbour must stay");
-	assert_eq!(resident_bytes(&buffer), resident_bytes(&survivor_only), "every retired byte must be released");
+	assert_eq!(resident_bytes(&buffer), resident_bytes(&survivor_only), "every forgotten byte must be released");
 }
 
 #[test]
-fn a_retire_leaves_the_same_group_of_another_operator_alone() {
+fn a_forget_pass_leaves_the_same_group_of_another_operator_alone() {
 	let buffer = flushing_buffer();
 	set(&buffer, OP_A, key_in(7, "a"), row("gone"));
 	set(&buffer, OP_B, key_in(7, "a"), row("keep"));
 	buffer.flush_once();
 
-	retire(&buffer, OP_A, 7);
+	forget(&buffer, OP_A, 7);
 	buffer.flush_once();
 
 	assert!(!matches!(buffer.lookup_state(OP_A, &key_in(7, "a")), BufferedState::Row(_)));
@@ -1510,19 +1513,19 @@ fn a_retire_leaves_the_same_group_of_another_operator_alone() {
 }
 
 #[test]
-fn a_row_written_during_the_retiring_flush_stays_readable_and_reaches_the_next_flush() {
+fn a_row_written_during_the_forgetting_flush_stays_readable_and_reaches_the_next_flush() {
 	let buffer = flushing_buffer();
 	set(&buffer, OP_A, key_in(7, "a"), row("old"));
 	buffer.flush_once();
 
-	retire(&buffer, OP_A, 7);
+	forget(&buffer, OP_A, 7);
 	let writer = buffer.clone();
 	buffer.set_persist_interlock(Box::new(move || set(&writer, OP_A, key_in(7, "late"), row("new"))));
 	buffer.flush_once();
 
 	assert!(
 		matches!(buffer.lookup_state(OP_A, &key_in(7, "late")), BufferedState::Row(_)),
-		"a dirty row must survive the retire"
+		"a dirty row must survive the forget pass"
 	);
 	assert_eq!(buffer.dirty_entries(), 1, "the dirty row still has to be written");
 }
@@ -1538,7 +1541,7 @@ fn a_crash_before_the_flush_keeps_the_index_row_and_the_group_on_the_device() {
 	buffer.flush_once();
 
 	remove(&buffer, OP_A, index.clone());
-	retire(&buffer, OP_A, 7);
+	forget(&buffer, OP_A, 7);
 	drop(buffer);
 
 	let stored = |key: &EncodedKey| {

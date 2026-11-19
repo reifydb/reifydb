@@ -45,7 +45,7 @@ use crate::{
 	},
 };
 
-const DROP_REASON: &str = "removes whose distinct entry was reclaimed";
+const DROP_REASON: &str = "removes whose distinct entry was forgotten";
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 

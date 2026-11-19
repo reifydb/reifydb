@@ -200,7 +200,7 @@ fn a_managed_operator_builds_with_a_duration_lateness() {
 
 #[test]
 fn a_managed_operator_builds_with_a_retention_alone() {
-	// Retention is the bound the reclaim reads, so it must satisfy the managed check without any lateness.
+	// Retention is the bound the forget pass reads, so it must satisfy the managed check without any lateness.
 	InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new()
 		.with(retention_of(60))
 		.build()
@@ -222,7 +222,7 @@ fn a_managed_operator_refuses_a_retention_below_its_lateness() {
 
 #[test]
 fn an_unmanaged_operator_refuses_a_retention() {
-	// Nothing reclaims unmanaged state, so an accepted retention is a bound the author believes holds.
+	// Nothing forgets unmanaged state, so an accepted retention is a bound the author believes holds.
 	let Err(err) =
 		InProcessOperatorHarnessBuilder::<UnmanagedMount<UnmanagedProbe>>::new().with(retention_of(60)).build()
 	else {

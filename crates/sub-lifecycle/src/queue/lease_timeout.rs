@@ -27,7 +27,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::{clock::Clock, transaction::TransactionContext};
 use reifydb_transaction::{
 	change::QueueAckTransition,
-	queue::scheduling::{ExpiredLease, apply_reap_transitions, queue_partition_counters},
+	queue::scheduling::{ExpiredLease, apply_timeout_transitions, queue_partition_counters},
 	transaction::Transaction,
 };
 use reifydb_value::{
@@ -50,7 +50,7 @@ fn releases_work(queue: &Queue, transition: &QueueAckTransition, now: DateTime) 
 	}
 }
 
-struct ReapCursor {
+struct TimeoutCursor {
 	queue: QueueId,
 	partition: Partition,
 	last: EncodedKey,
@@ -62,15 +62,15 @@ struct Candidate {
 	state: QueueItemState,
 }
 
-pub struct QueueLeaseReapTask {
+pub struct QueueLeaseTimeoutTask {
 	engine: StandardEngine,
 	plane: LifecyclePlane,
 	clock: Clock,
 	config: Arc<dyn GetConfig>,
-	cursor: Option<ReapCursor>,
+	cursor: Option<TimeoutCursor>,
 }
 
-impl QueueLeaseReapTask {
+impl QueueLeaseTimeoutTask {
 	pub fn new(engine: StandardEngine, plane: LifecyclePlane, clock: Clock, config: Arc<dyn GetConfig>) -> Self {
 		Self {
 			engine,
@@ -96,7 +96,9 @@ impl QueueLeaseReapTask {
 			queue,
 		) {
 			Ok(counters) => counters.into_iter().map(|(partition, _)| partition).collect(),
-			Err(e) => panic!("queue reaper failed to list the partitions of queue {}: {}", queue.0, e),
+			Err(e) => {
+				panic!("queue lease timeout failed to list the partitions of queue {}: {}", queue.0, e)
+			}
 		}
 	}
 
@@ -213,13 +215,13 @@ impl QueueLeaseReapTask {
 	}
 
 	#[instrument(
-		name = "queue::reap::batch",
+		name = "queue::lease_timeout::batch",
 		level = "trace",
 		skip_all,
 		fields(queue = queue.id.0, partition = partition.0, candidates = candidates.len())
 	)]
-	fn reap(&self, queue: &Queue, partition: Partition, candidates: &[Candidate], now: DateTime) -> u64 {
-		let mut reaps = Vec::new();
+	fn time_out(&self, queue: &Queue, partition: Partition, candidates: &[Candidate], now: DateTime) -> u64 {
+		let mut timeouts = Vec::new();
 		for candidate in candidates {
 			let Some(lease_deadline) = candidate.state.lease_deadline else {
 				continue;
@@ -228,7 +230,7 @@ impl QueueLeaseReapTask {
 				continue;
 			}
 			match self.decide(queue, candidate, now) {
-				Ok(transition) => reaps.push((
+				Ok(transition) => timeouts.push((
 					ExpiredLease {
 						row: candidate.row,
 						attempt: candidate.state.attempt,
@@ -241,36 +243,36 @@ impl QueueLeaseReapTask {
 					transition,
 				)),
 				Err(e) => {
-					warn!(queue = queue.id.0, partition = partition.0, item = candidate.row.0, error = %e, "queue reaper failed to transition an expired lease")
+					warn!(queue = queue.id.0, partition = partition.0, item = candidate.row.0, error = %e, "queue lease timeout failed to transition an expired lease")
 				}
 			}
 		}
 
-		let applied = match apply_reap_transitions(
+		let applied = match apply_timeout_transitions(
 			&Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			&self.engine.single_owned(),
 			queue.id,
 			partition,
-			&reaps,
+			&timeouts,
 			now,
 		) {
 			Ok(applied) => applied,
 			Err(e) => {
-				warn!(queue = queue.id.0, partition = partition.0, leases = reaps.len(), error = %e, "queue reaper failed to transition expired leases");
+				warn!(queue = queue.id.0, partition = partition.0, leases = timeouts.len(), error = %e, "queue lease timeout failed to transition expired leases");
 				return 0;
 			}
 		};
 
-		let mut reaped = 0;
-		for ((_, transition), applied) in reaps.iter().zip(applied) {
+		let mut timed_out = 0;
+		for ((_, transition), applied) in timeouts.iter().zip(applied) {
 			if applied {
-				reaped += 1;
+				timed_out += 1;
 				if releases_work(queue, transition, now) {
 					self.engine.queue_wake().nudge(queue.id, 1);
 				}
 			}
 		}
-		reaped
+		timed_out
 	}
 
 	fn is_expired(state: &QueueItemState, now: DateTime) -> bool {
@@ -278,29 +280,29 @@ impl QueueLeaseReapTask {
 	}
 }
 
-impl LifecycleTask for QueueLeaseReapTask {
+impl LifecycleTask for QueueLeaseTimeoutTask {
 	fn name(&self) -> &'static str {
-		"queue-lease-reap"
+		"queue-lease-timeout"
 	}
 
 	fn interval(&self) -> Duration {
-		self.config.get_config_duration(ConfigKey::QueueLeaseReapInterval)
+		self.config.get_config_duration(ConfigKey::QueueLeaseTimeoutInterval)
 	}
 
 	fn classes(&self) -> &'static [LifecycleClass] {
-		&[LifecycleClass::QueueLeaseReap]
+		&[LifecycleClass::QueueLeaseTimeout]
 	}
 
-	#[instrument(name = "queue::reap::slice", level = "debug", skip_all, fields(scanned = Empty, reaped = Empty))]
+	#[instrument(name = "queue::lease_timeout::slice", level = "debug", skip_all, fields(scanned = Empty, timed_out = Empty))]
 	fn run_slice(&mut self) -> Progress {
 		let now = self.clock.now();
-		let budget = (self.config.get_config_uint8(ConfigKey::QueueLeaseReapBatchSize) as usize).max(1);
+		let budget = (self.config.get_config_uint8(ConfigKey::QueueLeaseTimeoutBatchSize) as usize).max(1);
 
 		let queues = match self.queues() {
 			Ok(queues) => queues,
 			Err(e) => {
-				warn!(error = %e, "queue reaper failed to list queues");
-				self.plane.record_reclamation(LifecycleClass::QueueLeaseReap, None, 0, 0);
+				warn!(error = %e, "queue lease timeout failed to list queues");
+				self.plane.record_reclamation(LifecycleClass::QueueLeaseTimeout, None, 0, 0);
 				return Progress::Exhausted;
 			}
 		};
@@ -312,8 +314,8 @@ impl LifecycleTask for QueueLeaseReapTask {
 		};
 
 		let mut scanned = 0usize;
-		let mut reaped = 0u64;
-		let mut parked: Option<ReapCursor> = None;
+		let mut timed_out = 0u64;
+		let mut parked: Option<TimeoutCursor> = None;
 
 		'queues: for queue in &queues[start.min(queues.len())..] {
 			let resume_here = resume.as_ref().filter(|cursor| cursor.queue == queue.id);
@@ -333,7 +335,7 @@ impl LifecycleTask for QueueLeaseReapTask {
 					let remaining = budget.saturating_sub(scanned);
 					if remaining == 0 {
 						if let Some(last) = after {
-							parked = Some(ReapCursor {
+							parked = Some(TimeoutCursor {
 								queue: queue.id,
 								partition,
 								last,
@@ -346,7 +348,7 @@ impl LifecycleTask for QueueLeaseReapTask {
 					{
 						Ok(candidates) => candidates,
 						Err(e) => {
-							warn!(queue = queue.id.0, partition = partition.0, error = %e, "queue reaper failed to scan item state");
+							warn!(queue = queue.id.0, partition = partition.0, error = %e, "queue lease timeout failed to scan item state");
 							break;
 						}
 					};
@@ -358,7 +360,7 @@ impl LifecycleTask for QueueLeaseReapTask {
 					after = candidates.last().map(|candidate| candidate.key.clone());
 					let drained = candidates.len() < remaining;
 
-					reaped += self.reap(queue, partition, &candidates, now);
+					timed_out += self.time_out(queue, partition, &candidates, now);
 
 					if drained {
 						break;
@@ -369,15 +371,15 @@ impl LifecycleTask for QueueLeaseReapTask {
 
 		let span = Span::current();
 		span.record("scanned", scanned);
-		span.record("reaped", reaped);
+		span.record("timed_out", timed_out);
 
 		let backlog = u64::from(parked.is_some());
 		self.cursor = parked;
-		self.plane.record_reclamation(LifecycleClass::QueueLeaseReap, None, reaped, backlog);
+		self.plane.record_reclamation(LifecycleClass::QueueLeaseTimeout, None, timed_out, backlog);
 
 		if self.cursor.is_some() {
-			debug!(scanned, reaped, "queue reaper yielded with a backlog");
-			self.plane.record_budget_exhausted(LifecycleClass::QueueLeaseReap);
+			debug!(scanned, timed_out, "queue lease timeout yielded with a backlog");
+			self.plane.record_budget_exhausted(LifecycleClass::QueueLeaseTimeout);
 			Progress::Yielded
 		} else {
 			Progress::Exhausted

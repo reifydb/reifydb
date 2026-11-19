@@ -71,7 +71,7 @@ total_bytes: 253
 # Phase 5: Remove key a. Nothing is erased: the live v7 row migrates into historical and the
 # tombstone takes over a's slot in current, so historical gains one entry and current keeps its
 # count. total_bytes is unchanged because the row's bytes moved between buckets rather than
-# being freed; reclaiming them is the reaper's job, not the commit's.
+# being freed; reclaiming them is gc's job, not the commit's.
 remove_silent a version=10
 ---
 ok

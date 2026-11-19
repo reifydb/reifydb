@@ -363,7 +363,7 @@ mod tests {
 
 	#[test]
 	fn an_externally_pinned_floor_is_still_reported_as_pinned() {
-		// Splitting the alarm by binding must not retire the case it exists for: a lease, a query or a
+		// Splitting the alarm by binding must not drop the case it exists for: a lease, a query or a
 		// consumer holding the floor down is a real pin, diagnosed by naming the party responsible.
 		let metrics = LifecycleMetrics::new();
 		let class = LifecycleClass::BufferHistoricalGc;

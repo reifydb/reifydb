@@ -22,7 +22,9 @@ use crate::{
 		operator::{
 			keyspace::{
 				distinct::{DistinctEntry, DistinctLayout},
-				expiry::{CustomManagedDue, CustomManagedLatest, Expiry, ReapQueue, TumblingExpiry},
+				expiry::{
+					CustomManagedDue, CustomManagedLatest, Expiry, ForgetPassQueue, TumblingExpiry,
+				},
 				join::{
 					JoinExpiryDue, JoinLeft, JoinPin, JoinPublished, JoinRight, JoinRowExpiry,
 					JoinRowExpiryState, JoinRowExpirySuffix, JoinRowMapping, JoinSchema,
@@ -189,7 +191,7 @@ catalogue!(
 	TimerIndex,
 	Expiry,
 	TumblingExpiry,
-	ReapQueue,
+	ForgetPassQueue,
 	DistinctEntry,
 	DistinctLayout,
 	SourceWatermark,
@@ -242,7 +244,7 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		| KeyspaceId::DISTINCT_LAYOUT
 		| KeyspaceId::ROLLING_EXPIRY
 		| KeyspaceId::TUMBLING_EXPIRY
-		| KeyspaceId::REAP_QUEUE
+		| KeyspaceId::FORGET_PASS_QUEUE
 		| KeyspaceId::SOURCE_WATERMARK
 		| KeyspaceId::SEAL_LEDGER
 		| KeyspaceId::NODE_COUNTER
@@ -443,15 +445,15 @@ mod tests {
 		assert_eq!(
 			derived,
 			vec!["JOIN_ROW_EXPIRY"],
-			"only a keyspace whose ROOT key is a function of its own key and row may be reaped by \
+			"only a keyspace whose ROOT key is a function of its own key and row may be forgotten by \
 			 construction; any other name here claims a derivation it does not have"
 		);
 	}
 
 	#[test]
 	fn a_session_member_derives_the_row_index_entry_of_its_partition() {
-		// a member must derive exactly its row's partition index key, otherwise reaping leaks it or deletes a
-		// live one
+		// a member must derive exactly its row's partition index key, otherwise forgetting leaks it or deletes
+		// a live one
 		let suffix = Asc(RowNumber(9)).to_suffix_bytes();
 		let derived = root_sibling(
 			GroupId::window(Hash128(7), 5),
@@ -496,7 +498,7 @@ mod tests {
 	fn a_group_survives_join_and_split_for_every_keyspace() {
 		// the group is the only thing separating one operator group's rows from another's; a keyspace that
 		// declares the column but hardcodes GroupId::ROOT in split collapses them all onto one primary key,
-		// so a sweep of group A reaps rows belonging to B and the rows A really holds are never named. The
+		// so a sweep of group A forgets rows belonging to B and the rows A really holds are never named. The
 		// converse half holds ROOT-only keyspaces to ROOT, so a writer cannot pass a group the key drops
 		every_keyspace_carries_its_group();
 	}
@@ -521,7 +523,7 @@ mod tests {
 		// A declared id with no keyspace has no typed key, so its writers fall back to raw suffix bytes
 		// nothing round-trips and the range tier rebuilds a key it cannot decode. There is no reflection
 		// over associated constants, so counting the declarations in the source is the only way to notice
-		// an id nobody gave a keyspace; 0xFE was the last one and S10 retired it.
+		// an id nobody gave a keyspace; 0xFE was the last one and S10 removed it.
 		let source = include_str!("../state.rs");
 		let body = source
 			.split("impl KeyspaceId {")

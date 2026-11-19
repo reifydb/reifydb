@@ -90,7 +90,7 @@ impl KeyspaceOccupancy {
 		self.masks.lock().get(&operator).map(|entry| entry.mask).unwrap_or_default().held()
 	}
 
-	pub fn forget(&self, operator: OperatorId) {
+	pub fn unregister(&self, operator: OperatorId) {
 		self.masks.lock().remove(&operator);
 	}
 }

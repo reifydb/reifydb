@@ -94,7 +94,7 @@ fn take_after_hydration_keeps_the_newest_rows() {
 
 #[test]
 fn take_after_hydration_evicts_oldest_first_not_newest_first() {
-	// Retiring 6, 5, 4 instead of 2, 3, 4 is a cursor walking backwards that holes the tail and pins the head.
+	// Evicting 6, 5, 4 instead of 2, 3, 4 is a cursor walking backwards that holes the tail and pins the head.
 	let rql = "from app::t | take 5";
 	let batches = run_path_hydrate_then_live(rql, &seq_rows(1..=6), &seq_rows(7..=9));
 

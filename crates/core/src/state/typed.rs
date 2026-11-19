@@ -251,7 +251,7 @@ mod tests {
 	#[cfg(reifydb_assertions)]
 	#[should_panic(expected = "is not group-scoped but was written at group")]
 	fn a_root_only_keyspace_written_at_a_real_group_is_refused() {
-		// a keyspace with no group column reads every row back stamped ROOT, so one group's sweep reaps
+		// a keyspace with no group column reads every row back stamped ROOT, so one group's sweep forgets
 		// another's rows and the rows it really holds are never named; nothing statically bounds which
 		// groups a writer passes, so the refusal has to happen at the write itself
 		typed_key::<Expiry>(

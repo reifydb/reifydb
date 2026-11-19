@@ -64,11 +64,11 @@ fn expected_in_scan_order(keep: impl Fn(KeyspaceId) -> bool) -> Vec<EncodedKey> 
 #[test]
 fn a_guest_group_sweep_returns_what_a_single_scan_over_the_group_would() {
 	// A guest can no longer ask for a whole group in one range, so GuestAsHost sweeps keyspace by
-	// keyspace and concatenates. The reaper resumes on the order this returns, so the concatenation
+	// keyspace and concatenates. The forget pass resumes on the order this returns, so the concatenation
 	// must equal the byte order the single group range used to produce. Keyspace bytes are stored
 	// complemented, so that order is DESCENDING by keyspace id: a sweep that walked the catalogue in
-	// ascending id order would return the same set in the wrong order and only surface as a reaper
-	// that reaps the same keys twice and misses others.
+	// ascending id order would return the same set in the wrong order and only surface as a forget pass
+	// that forgets the same keys twice and misses others.
 	let mut txn = seeded_transaction(seeded_state());
 	let mut host = TxnHostContext::new(&mut txn, OPERATOR);
 	let mut ctx = InProcessContext::new(&mut host, OPERATOR);
@@ -81,7 +81,7 @@ fn a_guest_group_sweep_returns_what_a_single_scan_over_the_group_would() {
 
 #[test]
 fn a_data_only_guest_group_sweep_leaves_the_identity_keyspaces_alone() {
-	// data_only is what separates reaping a group's rows from reclaiming its identity; a sweep that
+	// data_only is what separates forgetting a group's rows from forgetting its identity; a sweep that
 	// ignored the flag would delete the row number mappings the group is still addressed by.
 	let mut txn = seeded_transaction(seeded_state());
 	let mut host = TxnHostContext::new(&mut txn, OPERATOR);
@@ -102,7 +102,7 @@ fn a_data_only_guest_group_sweep_leaves_the_identity_keyspaces_alone() {
 fn a_guest_group_sweep_spends_one_budget_across_every_keyspace() {
 	// The single scan took one limit; the sweep splits it across keyspaces, so the budget has to be
 	// decremented as it goes. A per-keyspace limit would return up to limit * keyspaces keys and blow
-	// the reaper's budget, and the reaper's "is there more" probe asks for exactly budget + 1.
+	// the forget pass's budget, and the forget pass's "is there more" probe asks for exactly budget + 1.
 	let mut txn = seeded_transaction(seeded_state());
 	let mut host = TxnHostContext::new(&mut txn, OPERATOR);
 	let mut ctx = InProcessContext::new(&mut host, OPERATOR);

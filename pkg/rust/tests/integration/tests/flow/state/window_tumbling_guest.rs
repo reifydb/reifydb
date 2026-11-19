@@ -195,14 +195,14 @@ fn fill_first_window(db: &TestDb) {
 	await_state_keys(db, ACCUMULATORS, 2, TIMEOUT);
 }
 
-fn advance_past_the_reap(db: &TestDb) {
+fn advance_past_the_forget_pass(db: &TestDb) {
 	db.admin("call storage::advance(app::t, cast('2026-01-01T00:01:00Z', datetime))");
 	db.await_all_flows(TIMEOUT);
 }
 
 #[test]
 fn a_live_guest_window_reports_the_accumulator_holding_its_aggregate() {
-	// Without a surface that sees live guest state, no later assertion about reaping can mean anything.
+	// Without a surface that sees live guest state, no later assertion about forgetting can mean anything.
 	let db = setup();
 	guest_window(&db);
 	fill_first_window(&db);
@@ -218,8 +218,8 @@ fn a_live_guest_window_reports_the_accumulator_holding_its_aggregate() {
 }
 
 #[test]
-fn a_guest_window_that_is_still_open_keeps_its_accumulator_through_a_reap() {
-	// Reaping an unsealed window would drop an aggregate that is still accepting contributions.
+fn a_guest_window_that_is_still_open_keeps_its_accumulator_through_a_forget_pass() {
+	// Forgetting an unsealed window would drop an aggregate that is still accepting contributions.
 	let db = setup();
 	guest_window(&db);
 	fill_first_window(&db);
@@ -236,13 +236,13 @@ fn a_guest_window_that_is_still_open_keeps_its_accumulator_through_a_reap() {
 }
 
 #[test]
-fn the_sealed_guest_windows_published_rows_survive_the_forget() {
+fn the_sealed_guest_windows_published_rows_survive_the_forget_pass() {
 	// Reclamation must be silent, so freeing state must never retract what the view published.
 	let db = setup();
 	guest_window(&db);
 	fill_first_window(&db);
 
-	advance_past_the_reap(&db);
+	advance_past_the_forget_pass(&db);
 
 	assert_eq!(
 		db.row_count("FROM app::w FILTER { total == 5 }"),
@@ -254,7 +254,7 @@ fn the_sealed_guest_windows_published_rows_survive_the_forget() {
 
 #[test]
 fn a_sealed_guest_window_has_both_its_data_and_its_identity_forgotten() {
-	// A guest operator that seals without reaping keeps every window it ever opened, growing without bound.
+	// A guest operator that seals without forgetting keeps every window it ever opened, growing without bound.
 	let db = setup();
 	guest_window(&db);
 	fill_first_window(&db);
@@ -266,13 +266,13 @@ fn a_sealed_guest_window_has_both_its_data_and_its_identity_forgotten() {
 		db.query(SURFACE)
 	);
 
-	advance_past_the_reap(&db);
+	advance_past_the_forget_pass(&db);
 
-	let reaped = await_state_keys(&db, ACCUMULATORS, 0, TIMEOUT);
+	let remaining = await_state_keys(&db, ACCUMULATORS, 0, TIMEOUT);
 	assert_eq!(
-		reaped,
+		remaining,
 		0,
-		"a sealed guest window's accumulator must not outlive the reap; surface now: {:?}",
+		"a sealed guest window's accumulator must not outlive the forget pass; surface now: {:?}",
 		db.query(SURFACE)
 	);
 

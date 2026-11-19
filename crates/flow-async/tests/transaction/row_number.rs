@@ -307,7 +307,7 @@ fn nodes_are_isolated() {
 }
 
 #[test]
-fn dropping_one_left_reclaims_every_join_mapping_under_it() {
+fn dropping_one_left_forgets_every_join_mapping_under_it() {
 	// Dropping a left row must take every join it produced and nothing that merely sorts beside it.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
@@ -322,7 +322,7 @@ fn dropping_one_left_reclaims_every_join_mapping_under_it() {
 	assert_eq!(
 		txn.get_join_row_numbers(NODE, &[doomed]).unwrap().remove(0),
 		None,
-		"the dropped left's mapping is reclaimed"
+		"the dropped left's mapping is forgotten"
 	);
 	assert_eq!(
 		txn.get_join_row_numbers(NODE, &[kept]).unwrap().remove(0),
@@ -332,7 +332,7 @@ fn dropping_one_left_reclaims_every_join_mapping_under_it() {
 }
 
 #[test]
-fn dropping_one_left_reclaims_joins_that_span_more_than_one_scan_page() {
+fn dropping_one_left_forgets_joins_that_span_more_than_one_scan_page() {
 	// Same paging contract for the left sweep, and the page boundary must not become a second
 	// stopping condition that spares part of the left's joins while a neighbouring left stays untouched.
 	let engine = TestEngine::new();
@@ -346,7 +346,7 @@ fn dropping_one_left_reclaims_joins_that_span_more_than_one_scan_page() {
 	txn.remove_join_row_numbers_for_left(NODE, TAG, 1).unwrap();
 
 	let gone = txn.get_join_row_numbers(NODE, &doomed).unwrap();
-	assert!(gone.iter().all(Option::is_none), "every join under the left is reclaimed, not just one page of them");
+	assert!(gone.iter().all(Option::is_none), "every join under the left is forgotten, not just one page of them");
 	assert_eq!(
 		txn.get_join_row_numbers(NODE, &[kept]).unwrap().remove(0),
 		Some(kept_rn),

@@ -236,7 +236,7 @@ fn managed_state_is_freed_once_the_operator_watermark_passes_its_write_plus_late
 }
 
 #[test]
-fn a_capped_reclaim_fire_finishes_the_rest_on_its_retry() {
+fn a_capped_forget_pass_fire_finishes_the_rest_on_its_retry() {
 	// Without the retry the groups past the batch stay until some unrelated write arms a new timer.
 	let db = memory();
 	managed_view(&db);
@@ -255,8 +255,8 @@ fn a_capped_reclaim_fire_finishes_the_rest_on_its_retry() {
 
 #[test]
 fn a_due_entry_armed_before_a_restart_still_frees_its_group_after_it() {
-	// Due entries and the reclaim timer must be stored state, otherwise a restart leaks every armed group.
-	let path = TempDbPath::new("managed_reclaim_restart");
+	// Due entries and the forget pass timer must be stored state, otherwise a restart leaks every armed group.
+	let path = TempDbPath::new("managed_forget_pass_restart");
 	{
 		let mut db = sqlite(&path);
 		managed_view(&db);
@@ -275,7 +275,7 @@ fn a_due_entry_armed_before_a_restart_still_frees_its_group_after_it() {
 
 #[test]
 fn a_retention_above_the_lateness_frees_later_than_the_lateness_would() {
-	// Reclaim by the lateness would free the group at 2s, a second before the declared retention allows.
+	// A forget pass by the lateness would free the group at 2s, a second before the declared retention allows.
 	let db = memory();
 	managed_view_with(&db, "lateness: 1s, retention: 2s");
 

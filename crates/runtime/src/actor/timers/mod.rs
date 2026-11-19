@@ -104,9 +104,9 @@ mod tests {
 	#[test]
 	fn a_full_mailbox_drops_the_tick_but_keeps_the_timer_armed() {
 		// The defect this pins: every repeating timer collapsed send() into `.is_ok()`, so one
-		// transient full mailbox retired the timer for the life of the process with no log line.
-		// Six of the nine lifecycle maintenance tasks were dead this way, the tombstone reaper
-		// among them, which is how operator state came to be 80% unreaped tombstones.
+		// transient full mailbox cancelled the timer for the life of the process with no log line.
+		// Six of the nine lifecycle maintenance tasks were dead this way, tombstone gc
+		// among them, which is how operator state came to be 80% uncollected tombstones.
 		let (actor, _mailbox) = create_mailbox::<u8>(Some(1));
 		assert_eq!(Repeat::after_send(actor.send(1)), Repeat::Keep, "precondition: the first send fits");
 
@@ -115,11 +115,11 @@ mod tests {
 			matches!(full, Err(SendError::Full(_))),
 			"precondition: capacity 1 must reject the second send"
 		);
-		assert_eq!(Repeat::after_send(full), Repeat::Keep, "backpressure must not retire a repeating timer");
+		assert_eq!(Repeat::after_send(full), Repeat::Keep, "backpressure must not cancel a repeating timer");
 	}
 
 	#[test]
-	fn a_closed_mailbox_retires_the_timer() {
+	fn a_closed_mailbox_cancels_the_timer() {
 		// The one case that must still cancel. Without it a timer fires forever into a dead
 		// channel, and nothing else ever removes it from the heap.
 		let (actor, mailbox) = create_mailbox::<u8>(Some(1));
@@ -130,6 +130,6 @@ mod tests {
 			matches!(closed, Err(SendError::Closed(_))),
 			"precondition: a dropped mailbox closes the channel"
 		);
-		assert_eq!(Repeat::after_send(closed), Repeat::Cancel, "a dead actor must retire its timer");
+		assert_eq!(Repeat::after_send(closed), Repeat::Cancel, "a dead actor must cancel its timer");
 	}
 }

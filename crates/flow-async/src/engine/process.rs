@@ -839,7 +839,7 @@ mod tests {
 	}
 
 	#[test]
-	fn dropping_a_lookup_flow_forgets_its_flow_watermark_source() {
+	fn dropping_a_lookup_flow_unregisters_its_flow_watermark_source() {
 		// A stale registration would keep folding a removed flow's operator into a reused flow id.
 		let engine = TestEngine::new();
 		let mut inner = lookup_engine(&engine);

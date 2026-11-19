@@ -66,7 +66,11 @@ pub trait SealDomain: Coord {
 		after: Option<u64>,
 	) -> Option<TimerMove>;
 
-	fn arm_reap(store: &mut dyn WindowStore, fired: DateTime, seal_span: Self::SealSpan) -> Result<(), ValueError>;
+	fn arm_forget_pass(
+		store: &mut dyn WindowStore,
+		fired: DateTime,
+		seal_span: Self::SealSpan,
+	) -> Result<(), ValueError>;
 
 	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Self::Span>, ValueError> {
 		with.reject_retention()?;
@@ -179,7 +183,11 @@ impl SealDomain for ByDateTime {
 		Some(seal_move(SealRule::of(seal_span), key, before, after))
 	}
 
-	fn arm_reap(store: &mut dyn WindowStore, fired: DateTime, seal_span: Duration) -> Result<(), ValueError> {
+	fn arm_forget_pass(
+		store: &mut dyn WindowStore,
+		fired: DateTime,
+		seal_span: Duration,
+	) -> Result<(), ValueError> {
 		store.arm_timer(fired.saturating_add(seal_span), TimerKind::Maintenance, &EncodedKey::new(Vec::new()))
 	}
 }

@@ -279,7 +279,7 @@ fn test_replay_keeps_every_attempt_record_of_the_previous_life() {
 #[test]
 fn test_replay_leaves_no_trace_of_the_previous_life_in_the_scheduling_state() {
 	// lease_deadline and backoff_until both describe a life that has ended. Neither is load-bearing
-	// once the status is ready - the reaper only looks at leased items and the next backoff is
+	// once the status is ready - the lease timeout task only looks at leased items and the next backoff is
 	// computed from the attempt count - but a revived item that still advertises a lease deadline
 	// and a backoff instant misreports itself to every introspection path, and the stale backoff
 	// would be what the due entry is placed at.

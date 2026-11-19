@@ -2,5 +2,5 @@
 // Copyright (c) 2026 ReifyDB
 
 mod expire;
-mod reap;
+mod lease_timeout;
 mod view_expire;

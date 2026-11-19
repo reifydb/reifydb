@@ -417,7 +417,7 @@ mod tests {
 
 	#[test]
 	fn retention_parses_as_a_duration() {
-		// A retention read as a count would bound managed state by rows, which the reclaim cannot measure.
+		// A retention read as a count would bound managed state by rows, which the forget pass cannot measure.
 		assert_eq!(
 			apply_with("apply op { } with { lateness: 30s, retention: 1h }").unwrap(),
 			ApplyWith {
@@ -435,7 +435,7 @@ mod tests {
 
 	#[test]
 	fn a_count_retention_is_rejected() {
-		// A bare number has no unit the reclaim can add to a write time.
+		// A bare number has no unit the forget pass can add to a write time.
 		assert!(apply_with("apply op { } with { retention: 150 }").is_err());
 	}
 

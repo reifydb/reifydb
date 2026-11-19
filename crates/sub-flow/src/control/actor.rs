@@ -1405,7 +1405,7 @@ impl FlowActor {
 		let Some((delete_checkpoint, reply)) = state.pending_stop.take() else {
 			return Directive::Continue;
 		};
-		state.flow_engine.forget_operator_samples();
+		state.flow_engine.unregister_operator_samples();
 		self.on_stop(delete_checkpoint);
 		self.health.clear(self.flow_id);
 		(reply)();

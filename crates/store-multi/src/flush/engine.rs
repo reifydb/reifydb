@@ -1487,7 +1487,7 @@ mod tests {
 			unswept == 0,
 			"{unswept} of the {KINDS} kinds still hold a write at version {FIRST_VERSION} after {ROUNDS} \
 			 slices, so they were never swept once; that kind pins durable through at the first \
-			 write, which clamps the tombstone reap cutoff to zero and leaves every tombstone in the \
+			 write, which clamps the tombstone gc cutoff to zero and leaves every tombstone in the \
 			 persistent tier undeletable"
 		);
 	}

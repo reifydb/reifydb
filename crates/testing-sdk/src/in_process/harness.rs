@@ -96,7 +96,7 @@ fn check_output<C: OperatorMetadata>(change: &Change) -> Result<(), SdkError> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ReclaimedGroups {
+pub struct ForgottenGroups {
 	pub groups: Count,
 	pub keys: Count,
 }
@@ -218,23 +218,23 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 			 wheel too")
 	}
 
-	pub fn reclaim_groups(&mut self, groups: &[GroupId]) -> ReclaimedGroups {
+	pub fn forget_groups(&mut self, groups: &[GroupId]) -> ForgottenGroups {
 		let removed = self.erase_group_state(groups, |_| true);
-		Self::reclaimed(groups, removed)
+		Self::forgotten(groups, removed)
 	}
 
-	pub fn reclaim_group_data(&mut self, groups: &[GroupId]) -> ReclaimedGroups {
+	pub fn forget_group_data(&mut self, groups: &[GroupId]) -> ForgottenGroups {
 		let removed = self.erase_group_state(groups, |keyspace| keyspace.is_data());
-		Self::reclaimed(groups, removed)
+		Self::forgotten(groups, removed)
 	}
 
-	pub fn reclaim_group_identity(&mut self, groups: &[GroupId]) -> ReclaimedGroups {
+	pub fn forget_group_identity(&mut self, groups: &[GroupId]) -> ForgottenGroups {
 		let removed = self.erase_group_state(groups, |keyspace| keyspace.is_identity());
-		Self::reclaimed(groups, removed)
+		Self::forgotten(groups, removed)
 	}
 
-	fn reclaimed(groups: &[GroupId], removed: usize) -> ReclaimedGroups {
-		ReclaimedGroups {
+	fn forgotten(groups: &[GroupId], removed: usize) -> ForgottenGroups {
+		ForgottenGroups {
 			groups: Count::new(groups.len() as u64),
 			keys: Count::new(removed as u64),
 		}

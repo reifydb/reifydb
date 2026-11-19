@@ -668,7 +668,7 @@ fn every_create_time_refusal_leaves_no_flow_and_no_poison() {
 
 #[test]
 fn a_retention_alone_creates_a_managed_apply() {
-	// Retention is the bound the managed reclaim reads, so it must satisfy the create without any lateness.
+	// Retention is the bound the managed forget pass reads, so it must satisfy the create without any lateness.
 	let db = memory();
 	event_time_source(&db);
 

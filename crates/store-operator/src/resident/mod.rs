@@ -31,7 +31,7 @@ use reifydb_core::{
 		store::WalFloorCheckpoint,
 	},
 	key::operator::{
-		keyspace::expiry::{RETIRED_AT_FLUSH, ReapQueueKey},
+		keyspace::expiry::{FORGOTTEN_AT_FLUSH, ForgetPassQueueKey},
 		state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey},
 	},
 	state::typed::SuffixBytes,
@@ -151,7 +151,7 @@ impl GlobalInner {
 	}
 }
 
-const RETIRE_CHUNK_GROUPS: usize = 64;
+const FORGET_CHUNK_GROUPS: usize = 64;
 
 struct FrozenSet {
 	rows: Vec<(OperatorId, KeyspaceId, Box<dyn bucket::FrozenRows>)>,
@@ -870,22 +870,22 @@ impl Resident {
 			.persist(&batch)
 			.expect("operator state flush must persist; a dropped batch loses buffered rows");
 		if let Some(census) = self.shared.census.get() {
-			census.retire(&applied.retired);
+			census.forget(&applied.forgotten);
 		}
 		{
 			let _staging = self.flush_guard();
 			self.settle(&batch);
 		}
-		self.retire_resident(&batch);
+		self.forget_resident(&batch);
 		true
 	}
 
-	fn retire_resident(&self, batch: &FlushBatch) {
-		if batch.retired.is_empty() {
+	fn forget_resident(&self, batch: &FlushBatch) {
+		if batch.forgotten.is_empty() {
 			return;
 		}
 		let mut by_operator: BTreeMap<OperatorId, Vec<GroupId>> = BTreeMap::new();
-		for (operator, group) in &batch.retired {
+		for (operator, group) in &batch.forgotten {
 			by_operator.entry(*operator).or_default().push(*group);
 		}
 		for (operator, groups) in by_operator {
@@ -897,10 +897,10 @@ impl Resident {
 			let Some(slot) = self.shared.slot(operator) else {
 				continue;
 			};
-			for chunk in groups.chunks(RETIRE_CHUNK_GROUPS) {
+			for chunk in groups.chunks(FORGET_CHUNK_GROUPS) {
 				let _accounting = self.shared.accounting.read();
 				let mut inner = slot.inner.lock();
-				let (entries, tombstones, freed) = inner.buckets.retire_groups(operator, chunk);
+				let (entries, tombstones, freed) = inner.buckets.forget_groups(operator, chunk);
 				drop(inner);
 				self.shared.budget.release(freed);
 				self.shared.release_entries(entries);
@@ -1025,16 +1025,16 @@ impl Resident {
 			through,
 		} = frozen;
 		let mut writes = Vec::new();
-		let mut retired = Vec::new();
+		let mut forgotten = Vec::new();
 		let mut hashes: Vec<u64> = Vec::new();
 		for (operator, keyspace, frozen) in &rows {
 			frozen.for_each(&mut |group, suffix, post| {
-				if *keyspace == KeyspaceId::REAP_QUEUE
-					&& post.as_ref().is_some_and(|row| row.body() == RETIRED_AT_FLUSH)
+				if *keyspace == KeyspaceId::FORGET_PASS_QUEUE
+					&& post.as_ref().is_some_and(|row| row.body() == FORGOTTEN_AT_FLUSH)
 				{
-					let key = <ReapQueueKey as SuffixBytes>::from_suffix_bytes(suffix)
-						.expect("a reap queue row carries a reap queue key");
-					retired.push((*operator, key.group.0));
+					let key = <ForgetPassQueueKey as SuffixBytes>::from_suffix_bytes(suffix)
+						.expect("a forget pass queue row carries a forget pass queue key");
+					forgotten.push((*operator, key.group.0));
 					return;
 				}
 				writes.push((
@@ -1050,7 +1050,7 @@ impl Resident {
 			writes,
 			checkpoints,
 			drops,
-			retired,
+			forgotten,
 			bytes,
 			through,
 		})

@@ -17,7 +17,7 @@ use reifydb_core::{
 		timer::{TimerKind, TimerMove},
 	},
 };
-use reifydb_flow_async::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
+use reifydb_flow_async::operator::{host::HostContext, state::forget_pass_outcome::ForgetPassOutcome};
 use reifydb_value::{
 	error::ValueError,
 	value::{
@@ -435,10 +435,10 @@ impl GuestEmitContext for InProcessContext<'_> {
 }
 
 impl<C> GuestContext<C> for InProcessContext<'_> {
-	fn state_retires_groups(&self) -> bool {
+	fn state_forgets_groups(&self) -> bool {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from, and &self keeps that borrow
 		// live for this read.
-		unsafe { (*self.host).state_retires_groups() }
+		unsafe { (*self.host).state_forgets_groups() }
 	}
 
 	fn state(&mut self) -> impl ClassState<C> + '_
@@ -461,17 +461,17 @@ impl<C> GuestContext<C> for InProcessContext<'_> {
 			_marker: PhantomData,
 		}
 	}
-	fn reclaim_group_identities(
+	fn forget_group_identities(
 		&mut self,
 		groups: &[GroupId],
 		limit: usize,
-	) -> Result<Vec<ReclaimOutcome>, SdkError>
+	) -> Result<Vec<ForgetPassOutcome>, SdkError>
 	where
 		C: WindowClass,
 	{
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).reclaim_group_identities(groups, limit) }.map_err(to_sdk_err)
+		unsafe { (*self.host).forget_group_identities(groups, limit) }.map_err(to_sdk_err)
 	}
 }
 

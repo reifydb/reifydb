@@ -195,7 +195,7 @@ fn concurrent_rebuild_panics() {
 }
 
 #[test]
-fn rebuild_reclaims_space_taken_by_deleted_keys() {
+fn rebuild_frees_space_taken_by_deleted_keys() {
 	// The reason rebuilding exists: a bloom cannot delete, so removed keys stay as permanent false
 	// positives until the filter is rebuilt from the live key set only.
 	let filter = AdaptiveKeyFilter::new();
@@ -217,7 +217,7 @@ fn rebuild_reclaims_space_taken_by_deleted_keys() {
 	let after = filter.metrics();
 	assert!(
 		after.fill_ratio < saturated.fill_ratio,
-		"rebuild did not reclaim stale keys: {} -> {}",
+		"rebuild did not free stale keys: {} -> {}",
 		saturated.fill_ratio,
 		after.fill_ratio
 	);

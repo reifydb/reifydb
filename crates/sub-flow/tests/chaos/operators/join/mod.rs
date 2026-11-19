@@ -174,11 +174,11 @@ pub struct Params {
 	pub remove_pct: u32,
 	pub update_pct: u32,
 
-	/// The span rows draw their event position from. Only the reclaiming entry points care: a join has
+	/// The span rows draw their event position from. Only the forgetting entry points care: a join has
 	/// no window, so this decides how far apart on the activity grid the corpus lands and nothing else.
 	pub coord_span_ms: u64,
 
-	/// What makes a join reclaimable at all: the longer of the two sizes the activity grid, and each
+	/// What makes a join forgettable at all: the longer of the two sizes the activity grid, and each
 	/// side's keyspace then ages on its own. None on both keeps forever.
 	pub left_ttl: Option<Duration>,
 	pub right_ttl: Option<Duration>,

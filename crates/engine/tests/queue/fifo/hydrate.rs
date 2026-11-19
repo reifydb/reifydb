@@ -138,7 +138,7 @@ fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 	}
 }
 
-fn forget_item(t: &TestEngine, queue: &Queue, row: RowNumber) {
+fn lose_item(t: &TestEngine, queue: &Queue, row: RowNumber) {
 	let (partition, _) = states(t, queue)[&row];
 	let due = dues(t, queue)[&row].clone();
 	let mut counters = counters(t, queue, partition);
@@ -208,7 +208,7 @@ fn test_hydration_admits_only_the_items_that_are_missing() {
 
 	let queue = find_queue(&t, "jobs");
 	let lost = *states(&t, &queue).keys().next().unwrap();
-	forget_item(&t, &queue, lost);
+	lose_item(&t, &queue, lost);
 	assert_eq!(total_depth(&t, &queue), 2);
 
 	assert_eq!(hydrate_queues(t.inner()).unwrap(), 1, "only the forgotten item may be admitted");

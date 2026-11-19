@@ -150,7 +150,7 @@ fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 	}
 }
 
-fn forget_items(t: &TestEngine, queue: &Queue, rows: &[u64], blocked_delta: u64) {
+fn lose_items(t: &TestEngine, queue: &Queue, rows: &[u64], blocked_delta: u64) {
 	let doomed: Vec<TaggedKey> =
 		keys_in(t, QueueItemStateKey::partition_scan(queue.id, Queue::UNPARTITIONED).encode())
 			.into_iter()
@@ -209,7 +209,7 @@ fn test_hydration_parks_recovered_items_behind_an_occupied_key() {
 	let queue = find_queue(&t, "jobs");
 
 	t.command(r#"INSERT test::jobs [{ id: 3, tenant: "a" }, { id: 4, tenant: "c" }]"#);
-	forget_items(&t, &queue, &[3, 4], 1);
+	lose_items(&t, &queue, &[3, 4], 1);
 
 	assert_eq!(hydrate_queues(t.inner()).unwrap(), 2, "only the two forgotten items are re-admitted");
 

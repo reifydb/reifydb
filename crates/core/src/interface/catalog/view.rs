@@ -238,7 +238,7 @@ mod tests {
 
 	#[test]
 	fn a_queue_view_stores_its_rows_under_its_queue_and_every_other_view_under_itself() {
-		// Claim, reap and expiry read the queue's row keys, so a queue view scanning its own id reads
+		// Claim, lease timeout and expiry read the queue's row keys, so a queue view scanning its own id reads
 		// nothing.
 		let queue_view = View::Queue(QueueView {
 			id: ViewId(1),

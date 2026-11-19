@@ -40,7 +40,7 @@ pub struct TumblingExpirySuffix {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct ReapQueueKey {
+pub struct ForgetPassQueueKey {
 	pub group: Desc<GroupId>,
 }
 
@@ -108,17 +108,17 @@ impl Keyspace for TumblingExpiry {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ReapQueue;
+pub struct ForgetPassQueue;
 
-pub const RETIRED_AT_FLUSH: &[u8] = &[1];
+pub const FORGOTTEN_AT_FLUSH: &[u8] = &[1];
 
-impl Keyspace for ReapQueue {
-	const ID: KeyspaceId = KeyspaceId::REAP_QUEUE;
-	const NAME: &'static str = "REAP_QUEUE";
+impl Keyspace for ForgetPassQueue {
+	const ID: KeyspaceId = KeyspaceId::FORGET_PASS_QUEUE;
+	const NAME: &'static str = "FORGET_PASS_QUEUE";
 	const RANGE_CACHED: bool = true;
 
-	type GroupedKey = ReapQueueKey;
-	type Suffix = ReapQueueKey;
+	type GroupedKey = ForgetPassQueueKey;
+	type Suffix = ForgetPassQueueKey;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)

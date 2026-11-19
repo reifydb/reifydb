@@ -80,14 +80,14 @@ fn fill_first_window(db: &TestDb) {
 	await_state_keys(db, ACCUMULATORS, 2, TIMEOUT);
 }
 
-fn advance_past_the_reap(db: &TestDb) {
+fn advance_past_the_forget_pass(db: &TestDb) {
 	db.admin("call storage::advance(app::t, cast('2026-01-01T00:01:00Z', datetime))");
 	db.await_all_flows(TIMEOUT);
 }
 
 #[test]
 fn a_live_window_reports_the_accumulator_holding_its_aggregate() {
-	// Without a surface that sees live state, no later assertion about reaping can mean anything.
+	// Without a surface that sees live state, no later assertion about forgetting can mean anything.
 	let db = setup();
 	tumbling_window(&db);
 	fill_first_window(&db);
@@ -111,13 +111,13 @@ fn a_sealed_window_has_both_its_data_and_its_identity_forgotten() {
 		db.query(SURFACE)
 	);
 
-	advance_past_the_reap(&db);
+	advance_past_the_forget_pass(&db);
 
-	let reaped = await_state_keys(&db, ACCUMULATORS, 0, TIMEOUT);
+	let remaining = await_state_keys(&db, ACCUMULATORS, 0, TIMEOUT);
 	assert_eq!(
-		reaped,
+		remaining,
 		0,
-		"a sealed window's accumulator must not outlive the reap; surface now: {:?}",
+		"a sealed window's accumulator must not outlive the forget pass; surface now: {:?}",
 		db.query(SURFACE)
 	);
 
@@ -132,26 +132,26 @@ fn a_sealed_window_has_both_its_data_and_its_identity_forgotten() {
 }
 
 #[test]
-fn the_sealed_windows_published_rows_survive_the_forget() {
+fn the_sealed_windows_published_rows_survive_the_forget_pass() {
 	// Reclamation must be silent, so freeing state must never retract what the view published.
 	let db = setup();
 	tumbling_window(&db);
 	fill_first_window(&db);
 
-	advance_past_the_reap(&db);
+	advance_past_the_forget_pass(&db);
 	await_state_keys(&db, ACCUMULATORS, 0, TIMEOUT);
 
 	assert_eq!(
 		db.row_count("FROM app::w FILTER { total == 5 }"),
 		1,
-		"reaping the state behind a sealed window must not remove the row it published"
+		"forgetting the state behind a sealed window must not remove the row it published"
 	);
 	assert_eq!(db.row_count("FROM app::w FILTER { total == 7 }"), 1);
 }
 
 #[test]
-fn a_window_that_is_still_open_keeps_its_accumulator_through_a_reap() {
-	// A reaper that collected on seal order rather than per group would take live state with it.
+fn a_window_that_is_still_open_keeps_its_accumulator_through_a_forget_pass() {
+	// A forget pass that ran on seal order rather than per group would take live state with it.
 	let db = setup();
 	tumbling_window(&db);
 	fill_first_window(&db);
@@ -163,7 +163,7 @@ fn a_window_that_is_still_open_keeps_its_accumulator_through_a_reap() {
 	assert_eq!(
 		survivors,
 		1,
-		"the two sealed groups must be reaped and the open one spared; surface now: {:?}",
+		"the two sealed groups must be forgotten and the open one spared; surface now: {:?}",
 		db.query(SURFACE)
 	);
 }

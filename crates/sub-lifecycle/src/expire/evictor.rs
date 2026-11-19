@@ -79,7 +79,7 @@ pub struct EvictorState {
 }
 
 impl EvictorState {
-	fn forget(&mut self, storage: StorageId) {
+	fn clear_cursors(&mut self, storage: StorageId) {
 		self.cursors.retain(|key, _| key.0 != storage);
 		self.expiry_cursors.retain(|key, _| key.0 != storage);
 	}
@@ -87,7 +87,7 @@ impl EvictorState {
 	fn record_failure(&mut self, storage: StorageId, error: &ValueError, budget: &mut u64, tally: &mut ClassTally) {
 		if is_conflict(error) {
 			debug!(?storage, "expire conflicted; retrying next tick");
-			self.forget(storage);
+			self.clear_cursors(storage);
 			*budget = budget.saturating_sub(1);
 			tally.backlog += 1;
 			return;
@@ -98,7 +98,7 @@ impl EvictorState {
 			panic!("expire failed {failures} consecutive times for storage {storage:?}: {error}");
 		}
 		warn!(?storage, failures = *failures, error = %error, "expire failed; resetting cursors, retrying next tick");
-		self.forget(storage);
+		self.clear_cursors(storage);
 		*budget = budget.saturating_sub(1);
 	}
 }
@@ -343,7 +343,7 @@ impl Evictor {
 		txn.rollback()?;
 
 		let Some(view) = view else {
-			state.forget(storage);
+			state.clear_cursors(storage);
 			return Ok(());
 		};
 
@@ -371,7 +371,7 @@ impl Evictor {
 				stats,
 			),
 			ViewStorageKind::RingBuffer | ViewStorageKind::Queue => {
-				state.forget(storage);
+				state.clear_cursors(storage);
 				Ok(())
 			}
 		}
@@ -490,7 +490,7 @@ impl Evictor {
 
 		if !self.row_owner_exists(&mut txn, storage)? {
 			txn.rollback()?;
-			state.forget(storage);
+			state.clear_cursors(storage);
 			return Ok((0, true));
 		}
 
@@ -527,7 +527,7 @@ impl Evictor {
 		match hand_off(&self.engine, view, keys, visibility) {
 			HandOff::Sent => Ok((rows, drained)),
 			HandOff::Skipped => {
-				state.forget(storage);
+				state.clear_cursors(storage);
 				stats.handoffs_skipped += 1;
 				Ok((0, true))
 			}
@@ -611,7 +611,7 @@ impl Evictor {
 
 		let Some(ringbuffer) = catalog.find_ringbuffer(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
-			state.forget(storage);
+			state.clear_cursors(storage);
 			return Ok((0, true));
 		};
 
@@ -708,7 +708,7 @@ impl Evictor {
 
 		let Some(series) = catalog.find_series(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
-			state.forget(storage);
+			state.clear_cursors(storage);
 			return Ok((0, true));
 		};
 		let partitioned = !series.partition_by.is_empty();
@@ -1570,7 +1570,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_conflict_reports_backlog_spends_budget_and_forgets_cursors() {
+	fn a_conflict_reports_backlog_spends_budget_and_clears_cursors() {
 		// Without the backlog a starving ring reads as idle; a kept cursor would skip rows the rollback left
 		// behind.
 		let mut state = EvictorState::default();
@@ -1717,7 +1717,7 @@ mod tests {
 
 	#[test]
 	fn ring_buffer_backed_views_are_skipped_they_are_owned_by_the_sink_operator() {
-		// The sink operator owns a ring-buffer-backed view's per-partition state, so a second reaper must never
+		// The sink operator owns a ring-buffer-backed view's per-partition state, so the expire task must never
 		// touch it, while a standalone ring buffer stays evictor-owned.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
@@ -2343,7 +2343,7 @@ mod tests {
 
 	#[test]
 	fn a_skipped_view_is_scanned_from_its_first_row_again() {
-		// Without forgetting the cursor a skip strands the rows it scanned past until the next full pass.
+		// Without clearing the cursor a skip strands the rows it scanned past until the next full pass.
 		let (test, bytes) = view_test();
 		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(1));
 		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(10));

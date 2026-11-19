@@ -3,8 +3,8 @@
 
 use reifydb_core::state::timer::TimerStore;
 
-use crate::operator::state::reaper::IdentityReclaim;
+use crate::operator::state::forget_pass::IdentityForgetPass;
 
-pub trait WindowStore: IdentityReclaim + TimerStore {}
+pub trait WindowStore: IdentityForgetPass + TimerStore {}
 
-impl<T: IdentityReclaim + TimerStore + ?Sized> WindowStore for T {}
+impl<T: IdentityForgetPass + TimerStore + ?Sized> WindowStore for T {}

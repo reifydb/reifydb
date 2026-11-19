@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow_async::transaction::{
-	DeferredParams, FlowTransaction, deferred::DeferredTransaction, reclaim::ReclaimExtension,
+	DeferredParams, FlowTransaction, deferred::DeferredTransaction, forget_pass::ForgetPassExtension,
 	state::StateExtension, substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::{
@@ -96,14 +96,14 @@ fn count(txn: &mut DeferredTransaction, group: GroupId) -> usize {
 }
 
 #[test]
-fn the_identity_reclaim_erases_the_whole_range() {
+fn the_identity_forget_pass_erases_the_whole_range() {
 	// the append operator erases a removed source row's identity inline, so a surviving mapping row would strand it
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let id = GroupId::of(&EncodedKey::new(b"a-group"));
 	seed_identity(&mut txn, id);
 
-	let outcome = txn.reclaim_group_identity(NODE, id, 100).unwrap();
+	let outcome = txn.forget_group_identity(NODE, id, 100).unwrap();
 
 	assert_eq!(outcome.removed, Count::new(2), "both seeded mapping rows");
 	assert!(!outcome.more);
@@ -111,7 +111,7 @@ fn the_identity_reclaim_erases_the_whole_range() {
 }
 
 #[test]
-fn a_bounded_identity_reclaim_reports_that_rows_remain() {
+fn a_bounded_identity_forget_pass_reports_that_rows_remain() {
 	// the append remove path runs with a small fixed limit, so a caller told "drained" too early strands the rest
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
@@ -120,11 +120,11 @@ fn a_bounded_identity_reclaim_reports_that_rows_remain() {
 		write(&mut txn, id, KeyspaceId::GUEST_ROW_MAPPING, suffix);
 	}
 
-	let partial = txn.reclaim_group_identity(NODE, id, 2).unwrap();
+	let partial = txn.forget_group_identity(NODE, id, 2).unwrap();
 	assert_eq!(partial.removed, Count::new(2));
 	assert!(partial.more, "the caller must learn the group is not drained");
 
-	let rest = txn.reclaim_group_identity(NODE, id, 100).unwrap();
+	let rest = txn.forget_group_identity(NODE, id, 100).unwrap();
 	assert_eq!(rest.removed, Count::new(2));
 	assert!(!rest.more);
 	assert_eq!(count(&mut txn, id), 0);
@@ -141,12 +141,12 @@ fn a_budget_stopping_between_keyspaces_resumes_where_it_left_off() {
 	write(&mut txn, id, KeyspaceId::TIMER_WHEEL, 1);
 	write(&mut txn, id, KeyspaceId::TIMER_WHEEL, 2);
 
-	let partial = txn.reclaim_group_identity(NODE, id, 3).unwrap();
+	let partial = txn.forget_group_identity(NODE, id, 3).unwrap();
 
 	assert_eq!(partial.removed, Count::new(3));
 	assert!(partial.more, "the fourth row must still be pending");
 
-	let rest = txn.reclaim_group_identity(NODE, id, 100).unwrap();
+	let rest = txn.forget_group_identity(NODE, id, 100).unwrap();
 
 	assert_eq!(rest.removed, Count::new(1), "exactly the row the budget could not reach");
 	assert!(!rest.more);
@@ -154,7 +154,7 @@ fn a_budget_stopping_between_keyspaces_resumes_where_it_left_off() {
 }
 
 #[test]
-fn reclaiming_one_groups_identity_leaves_its_neighbour_untouched() {
+fn forgetting_one_groups_identity_leaves_its_neighbour_untouched() {
 	// the ids are deliberately adjacent because that is exactly where a bad upper bound bleeds across
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
@@ -163,21 +163,21 @@ fn reclaiming_one_groups_identity_leaves_its_neighbour_untouched() {
 	seed_identity(&mut txn, id);
 	seed_identity(&mut txn, neighbour);
 
-	txn.reclaim_group_identity(NODE, id, 100).unwrap();
+	txn.forget_group_identity(NODE, id, 100).unwrap();
 
 	assert_eq!(count(&mut txn, id), 0);
 	assert_eq!(count(&mut txn, neighbour), 2, "the neighbour must be whole");
 }
 
 #[test]
-fn a_reclaimed_group_reborn_reuses_its_id() {
+fn a_forgotten_group_reborn_reuses_its_id() {
 	// the id is a function of the key alone, so a reborn key must land back in the scope it was erased from
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let bytes = EncodedKey::new(b"reborn");
 	let id = GroupId::of(&bytes);
 	seed_identity(&mut txn, id);
-	txn.reclaim_group_identity(NODE, id, 100).unwrap();
+	txn.forget_group_identity(NODE, id, 100).unwrap();
 
 	assert_eq!(GroupId::of(&bytes), id);
 	assert_eq!(count(&mut txn, id), 0, "and the reborn scope must start empty");

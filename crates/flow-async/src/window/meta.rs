@@ -345,7 +345,7 @@ mod tests {
 	}
 
 	#[test]
-	fn partition_scoped_meta_lands_inside_the_group_the_substrate_reclaims() {
+	fn partition_scoped_meta_lands_inside_the_group_the_substrate_forgets() {
 		// landing this in the root group would leave no group range able to reach it, stranding one row per
 		// partition forever, so it lives in the partition group's data range instead
 		let range = group_data_inner_range(group_id());
@@ -356,7 +356,7 @@ mod tests {
 			let (group, keyspace, _) =
 				OperatorStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
 			assert_eq!(group, group_id(), "partition-scoped meta escaped its group");
-			assert!(keyspace.is_data(), "{keyspace:?} must be a data keyspace to be reclaimed by phase 1");
+			assert!(keyspace.is_data(), "{keyspace:?} must be a data keyspace to be forgotten by phase 1");
 			assert!(contains(&range, key.as_bytes()), "{keyspace:?} landed outside the group data range");
 		}
 	}

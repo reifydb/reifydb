@@ -223,7 +223,7 @@ mod tests {
 
 	#[test]
 	fn a_dylib_read_of_an_absent_group_writes_nothing() {
-		// a probe that wrote would resurrect groups the reaper had already erased
+		// a probe that wrote would resurrect groups the forget pass had already erased
 		let mut txn = TestFlowTransaction::new(CommitVersion(7), Clock::Mock(MockClock::new(0)));
 		txn.set_batch_time(Some(DateTime::from_millis(0)));
 		let mut host = TxnHostContext::new(&mut txn, NODE);
@@ -284,8 +284,8 @@ mod tests {
 	}
 
 	#[test]
-	fn an_in_process_guest_cannot_arm_or_disarm_the_reclaim_timer() {
-		// A guest that arms the engine's reclaim kind would free managed state on its own schedule.
+	fn an_in_process_guest_cannot_arm_or_disarm_the_forget_pass_timer() {
+		// A guest that arms the engine's forget pass kind would free managed state on its own schedule.
 		let mut txn = TestFlowTransaction::new(CommitVersion(7), Clock::Mock(MockClock::new(0)));
 		txn.set_batch_time(Some(DateTime::from_millis(0)));
 		let mut host = TxnHostContext::new(&mut txn, NODE);

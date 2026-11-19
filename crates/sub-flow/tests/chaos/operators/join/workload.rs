@@ -163,7 +163,7 @@ pub struct JoinWorkload {
 	pub rekey_pct: u32,
 
 	/// The span rows draw their event position from. A join has no window, so this only decides how
-	/// widely the corpus spreads across the activity grid, which is what lets one side group retire
+	/// widely the corpus spreads across the activity grid, which is what lets one side group be forgotten
 	/// while another stays live.
 	pub coord_span_ms: u64,
 

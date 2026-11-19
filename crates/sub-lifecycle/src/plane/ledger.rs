@@ -176,7 +176,7 @@ mod tests {
 		// The lifecycle alarm splits on is_clock_driven: a term classified that way can never be
 		// reported as pinned, because `now - ttl` is arithmetic no other party contributes to. A
 		// version floor is somebody else's progress - a reader, a lease, a consumer, an unflushed
-		// write - and classifying one of those as clock-driven would silently retire the only alarm
+		// write - and classifying one of those as clock-driven would silently disable the only alarm
 		// that catches it being held down. This ties the classification to what the ledger actually
 		// returns, so the two cannot drift apart.
 		let ledger = ledger();
@@ -192,7 +192,7 @@ mod tests {
 				Some(Floor::Version(_)) => assert!(
 					!term.is_clock_driven(),
 					"{term} resolves to a version derived from another party's progress, so \
-					 classifying it clock-driven retires the alarm that catches it wedged"
+					 classifying it clock-driven disables the alarm that catches it wedged"
 				),
 				None => panic!("{term} resolved no floor; the fixture must place every term"),
 			}

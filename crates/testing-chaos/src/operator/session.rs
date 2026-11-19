@@ -4,7 +4,7 @@
 use reifydb_core::interface::change::Change;
 use reifydb_value::{error::ValueError, value::Value};
 
-use crate::operator::{reclaim::StateFootprint, subject::Subject, view::MaterializedView};
+use crate::operator::{forget_pass::StateFootprint, subject::Subject, view::MaterializedView};
 
 pub struct Session<'a, S: Subject> {
 	subject: &'a mut S,

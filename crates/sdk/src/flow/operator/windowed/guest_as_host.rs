@@ -11,7 +11,7 @@ use reifydb_core::{
 		timer::{GroupSweep, StateStore, TimerKind, TimerMove, TimerStore, sweep_order},
 	},
 };
-use reifydb_flow_async::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
+use reifydb_flow_async::operator::state::{forget_pass::IdentityForgetPass, forget_pass_outcome::ForgetPassOutcome};
 use reifydb_value::{
 	error::ValueError,
 	util::hash::xxh3_128,
@@ -65,9 +65,13 @@ impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
 	}
 }
 
-impl<C: GuestContext> IdentityReclaim for GuestAsHost<'_, C> {
-	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>, ValueError> {
-		Ok(self.0.reclaim_group_identities(groups, limit)?)
+impl<C: GuestContext> IdentityForgetPass for GuestAsHost<'_, C> {
+	fn forget_identities(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+	) -> Result<Vec<ForgetPassOutcome>, ValueError> {
+		Ok(self.0.forget_group_identities(groups, limit)?)
 	}
 }
 
@@ -81,8 +85,8 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(keys.iter().map(|key| found.get(key).cloned()).collect())
 	}
 
-	fn state_retires_groups(&self) -> bool {
-		self.0.state_retires_groups()
+	fn state_forgets_groups(&self) -> bool {
+		self.0.state_forgets_groups()
 	}
 
 	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<(), ValueError> {

@@ -188,7 +188,7 @@ mod tests {
 		assert_eq!(horizon.0, at_millis(283_261), "ledger - (size + lateness) - 1");
 		assert!(
 			horizon.0 < ledger,
-			"an operator watermark at or past the ledger reclaims windows that have not sealed"
+			"an operator watermark at or past the ledger forgets windows that have not sealed"
 		);
 		assert_eq!(
 			rule.seal_instant(horizon.0).at(),

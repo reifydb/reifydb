@@ -203,14 +203,14 @@ fn the_forgotten_pairs_published_row_survives() {
 	assert_eq!(
 		db.row_count("FROM app::j FILTER { rv == 7 }"),
 		1,
-		"reaping the state behind a sealed pair must not remove the row it published"
+		"forgetting the state behind a sealed pair must not remove the row it published"
 	);
 	assert_eq!(db.row_count("FROM app::j"), 1, "and the view holds exactly what the seal left it");
 }
 
 #[test]
-fn a_row_still_inside_its_lateness_keeps_its_state_through_a_forget() {
-	// A reaper that collected on arrival order rather than due time would take live rows with it.
+fn a_row_still_inside_its_lateness_keeps_its_state_through_a_forget_pass() {
+	// A forget pass that ran on arrival order rather than due time would take live rows with it.
 	let db = setup();
 	sealing_left_join(&db);
 	fill_one_pair(&db);
@@ -222,14 +222,14 @@ fn a_row_still_inside_its_lateness_keeps_its_state_through_a_forget() {
 	assert_eq!(
 		survivors,
 		1,
-		"the two sealed rows must be reaped and the newest one spared; surface now: {:?}",
+		"the two sealed rows must be forgotten and the newest one spared; surface now: {:?}",
 		db.query(SURFACE)
 	);
 }
 
 #[test]
 fn an_updated_left_row_pushes_its_seal_out_and_outlives_the_tick_that_sealed_its_partner() {
-	// The anchor must follow the row's newest event time, or an actively updated row is reaped mid-life.
+	// The anchor must follow the row's newest event time, or an actively updated row is forgotten mid-life.
 	let db = setup();
 	aggregate_fed_left_join(&db);
 	fill_one_aggregate_pair(&db);
@@ -302,7 +302,7 @@ fn a_delete_after_the_seal_cannot_withdraw_the_published_row() {
 
 #[test]
 fn a_delete_after_the_seal_frees_no_further_state() {
-	// A delete that resolved anything after the seal would be reclaiming state the reaper already took.
+	// A delete that resolved anything after the seal would be forgetting state the forget pass already took.
 	let db = setup();
 	sealing_left_join(&db);
 	fill_one_pair(&db);
@@ -342,7 +342,7 @@ fn a_row_inserted_after_the_seal_arms_its_own_state_and_publishes_its_own_row() 
 
 #[test]
 fn removing_a_source_row_before_its_seal_takes_its_state_and_its_published_row() {
-	// The remove path reclaims inline, so the anchor must come down with the row or it outlives it.
+	// The remove path forgets inline, so the anchor must come down with the row or it outlives it.
 	let db = setup();
 	sealing_left_join(&db);
 	fill_one_pair(&db);
@@ -395,7 +395,7 @@ fn a_right_side_match_never_extends_the_left_rows_anchor() {
 
 #[test]
 fn an_unmatched_left_row_publishes_none_on_the_right_and_seals_like_any_other() {
-	// A left join's unmatched row is a published row like any other, so it must arm and reap the same way.
+	// A left join's unmatched row is a published row like any other, so it must arm and forget the same way.
 	let db = setup();
 	sealing_left_join(&db);
 	db.command(r#"INSERT app::lhs [{ id: 1, k: 1, lv: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);
@@ -414,10 +414,14 @@ fn an_unmatched_left_row_publishes_none_on_the_right_and_seals_like_any_other() 
 	assert_eq!(
 		await_state_keys(&db, &per_key_state_of(operator), 0, TIMEOUT),
 		0,
-		"an unmatched left row must reap exactly like a matched one; surface now: {:?}",
+		"an unmatched left row must be forgotten exactly like a matched one; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
-	assert_eq!(db.row_count("FROM app::j FILTER { lv == 5 }"), 1, "and the row it published must survive the reap");
+	assert_eq!(
+		db.row_count("FROM app::j FILTER { lv == 5 }"),
+		1,
+		"and the row it published must survive the forget pass"
+	);
 	assert_only_bounded_bookkeeping_survives(&db, operator, 1);
 }
 
@@ -445,7 +449,7 @@ fn a_right_row_arriving_after_the_left_seal_cannot_fill_in_the_published_none() 
 
 #[test]
 fn a_left_join_without_a_seal_keeps_every_row_addressable_forever() {
-	// Arming unconditionally would reap joins that never asked to seal, silently freezing their rows.
+	// Arming unconditionally would forget joins that never asked to seal, silently freezing their rows.
 	let db = setup();
 	unsealed_left_join(&db);
 	db.command(r#"INSERT keep::lhs [{ id: 1, k: 1, lv: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);

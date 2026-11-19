@@ -157,7 +157,7 @@ fn apply_persists_only_mutated_entries() {
 }
 
 #[test]
-fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_holds() {
+fn a_value_whose_entry_was_forgotten_republishes_over_the_row_the_sink_still_holds() {
 	let engine = TestEngine::new();
 	let mut op = make_op(6, &engine);
 	let operator = op.plan.operator;

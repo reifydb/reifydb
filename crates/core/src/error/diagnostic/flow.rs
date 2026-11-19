@@ -224,7 +224,7 @@ pub fn flow_state_key_unframed(operator: OperatorId, key: &EncodedKey) -> Diagno
 		"FLOW_090",
 		format!("operator {} holds a state key with no valid frame", operator.0),
 		"Every stored operator state key must carry a group, a known keyspace and its suffix, otherwise a range \
-		 read would skip the row and the reaper would never free it.",
+		 read would skip the row and the forget pass would never free it.",
 	);
 	diagnostic.notes = vec![format!("key: {}", hex(key))];
 	diagnostic

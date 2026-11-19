@@ -319,13 +319,13 @@ mod tests {
 
 	#[test]
 	fn a_visibility_key_lives_in_the_root_group_in_its_own_keyspace() {
-		// b'G' (0x47) aliases a two-byte group-id varint, so the root group is what keeps a group reclaim from
-		// deleting this key.
+		// b'G' (0x47) aliases a two-byte group-id varint, so the root group is what keeps a group forget pass
+		// from deleting this key.
 		let key = (&VisibilityKey(RowNumber(42))).into_group_state_key();
 
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())
 			.expect("a visibility marker must decode as a structured operator-state key");
-		assert_eq!(group, GroupId::ROOT, "gate visibility must not live inside a reclaimable group");
+		assert_eq!(group, GroupId::ROOT, "gate visibility must not live inside a forgettable group");
 		assert_eq!(keyspace, KeyspaceId::GATE_VISIBILITY);
 		assert_eq!(suffix, 42u64.to_be_bytes().to_vec());
 	}
@@ -345,8 +345,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_visibility_key_sits_outside_every_reclaimable_groups_range() {
-		// A marker caught inside any group's range dies when that group is reclaimed, so no hash may yield a
+	fn a_visibility_key_sits_outside_every_forgettable_groups_range() {
+		// A marker caught inside any group's range dies when that group is forgotten, so no hash may yield a
 		// range that swallows it.
 		let key = (&VisibilityKey(RowNumber(42))).into_group_state_key();
 

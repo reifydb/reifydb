@@ -918,7 +918,7 @@ pub(super) extern "C" fn host_rearm_timers(
 	}
 }
 
-pub(super) extern "C" fn host_reclaim_group_identities(
+pub(super) extern "C" fn host_forget_group_identities(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
 	groups: *const ExternCGroupId,
@@ -940,7 +940,7 @@ pub(super) extern "C" fn host_reclaim_group_identities(
 	unsafe {
 		let host = get_host_mut(&mut *ctx);
 		let group_ids: Vec<GroupId> = (0..groups_len).map(|index| host_group(*groups.add(index))).collect();
-		match host.reclaim_group_identities(&group_ids, limit) {
+		match host.forget_group_identities(&group_ids, limit) {
 			Ok(outcomes) => {
 				for (index, outcome) in outcomes.iter().enumerate() {
 					*removed_out.add(index) = outcome.removed.as_u64() as usize;
@@ -1085,7 +1085,7 @@ mod join_row_expiry_guard_tests {
 	use reifydb_flow_async::{
 		operator::{
 			host::HostContext,
-			state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
+			state::{forget_pass::IdentityForgetPass, forget_pass_outcome::ForgetPassOutcome},
 		},
 		transaction::{
 			LookupAt,
@@ -1243,13 +1243,13 @@ mod join_row_expiry_guard_tests {
 		}
 	}
 
-	impl IdentityReclaim for RecordingHost {
-		fn reclaim_identities(
+	impl IdentityForgetPass for RecordingHost {
+		fn forget_identities(
 			&mut self,
 			groups: &[GroupId],
 			_limit: usize,
-		) -> Result<Vec<ReclaimOutcome>, ValueError> {
-			Ok(vec![ReclaimOutcome::NOTHING; groups.len()])
+		) -> Result<Vec<ForgetPassOutcome>, ValueError> {
+			Ok(vec![ForgetPassOutcome::NOTHING; groups.len()])
 		}
 	}
 
@@ -1343,12 +1343,12 @@ mod join_row_expiry_guard_tests {
 			Ok(Vec::new())
 		}
 
-		fn reclaim_group_identities(
+		fn forget_group_identities(
 			&mut self,
 			groups: &[GroupId],
 			_limit: usize,
-		) -> Result<Vec<ReclaimOutcome>, ValueError> {
-			Ok(vec![ReclaimOutcome::NOTHING; groups.len()])
+		) -> Result<Vec<ForgetPassOutcome>, ValueError> {
+			Ok(vec![ForgetPassOutcome::NOTHING; groups.len()])
 		}
 
 		fn get_join_row_numbers(
@@ -1651,17 +1651,17 @@ mod join_row_expiry_guard_tests {
 	}
 
 	#[test]
-	fn a_guest_cannot_arm_or_disarm_the_reclaim_timer() {
-		// A guest that arms the engine's reclaim kind would free managed state on its own schedule.
+	fn a_guest_cannot_arm_or_disarm_the_forget_pass_timer() {
+		// A guest that arms the engine's forget pass kind would free managed state on its own schedule.
 		let key = [7u8; 4];
-		let reclaim = TimerKind::Reclaim as u8;
+		let forget_pass = TimerKind::Reclaim as u8;
 
 		let (armed, arm_reached) =
-			with_context(|ctx| host_arm_timer(1, ctx, 0, reclaim, key.as_ptr(), key.len()));
+			with_context(|ctx| host_arm_timer(1, ctx, 0, forget_pass, key.as_ptr(), key.len()));
 		let (disarmed, disarm_reached) =
-			with_context(|ctx| host_disarm_timer(1, ctx, 0, reclaim, key.as_ptr(), key.len()));
+			with_context(|ctx| host_disarm_timer(1, ctx, 0, forget_pass, key.as_ptr(), key.len()));
 
-		assert_eq!(armed, EXTERN_C_ERROR_INTERNAL, "a guest must not arm the reclaim kind");
+		assert_eq!(armed, EXTERN_C_ERROR_INTERNAL, "a guest must not arm the forget pass kind");
 		assert_eq!(disarmed, EXTERN_C_ERROR_INTERNAL, "nor disarm it");
 		assert!(!arm_reached, "and the refusal must land before the host is touched");
 		assert!(!disarm_reached);

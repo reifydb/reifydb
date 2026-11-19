@@ -188,8 +188,8 @@ mod tests {
 
 	#[test]
 	fn no_window_group_can_ever_be_the_root_group() {
-		// Root owns the timer wheel, the expiry index and the reap queue, so a window landing on it would let
-		// the reaper delete the operator's own scheduling state.
+		// Root owns the timer wheel, the expiry index and the forget pass queue, so a window landing on it
+		// would let the forget pass delete the operator's own scheduling state.
 		for window_id in [0u64, 1, u64::MAX - 1] {
 			for partition in [Hash128(0), Hash128(1), Hash128(u128::MAX)] {
 				assert_ne!(GroupId::window(partition, window_id), GroupId::ROOT);
@@ -199,8 +199,8 @@ mod tests {
 
 	#[test]
 	fn a_window_id_orders_its_groups_ahead_of_every_later_window() {
-		// The reaper sweeps a window as one contiguous wire span, so all of window n must sort before any of
-		// window n+1 whatever the partition hash.
+		// The forget pass sweeps a window as one contiguous wire span, so all of window n must sort before any
+		// of window n+1 whatever the partition hash.
 		let earlier = GroupId::window(Hash128(u128::MAX), 7);
 		let later = GroupId::window(Hash128(0), 8);
 		assert!(earlier > later, "on the wire the raw order is inverted, so the older window sorts first");

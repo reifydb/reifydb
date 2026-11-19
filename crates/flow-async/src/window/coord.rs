@@ -202,7 +202,11 @@ impl SealDomain for ByU8 {
 		None
 	}
 
-	fn arm_reap(_store: &mut dyn WindowStore, _fired: DateTime, _seal_span: RowSpan) -> Result<(), ValueError> {
+	fn arm_forget_pass(
+		_store: &mut dyn WindowStore,
+		_fired: DateTime,
+		_seal_span: RowSpan,
+	) -> Result<(), ValueError> {
 		Ok(())
 	}
 }

@@ -36,7 +36,7 @@ use crate::{
 		historical::actor::HistoricalGcTask,
 	},
 	plane::{LifecyclePlane, horizon::history_horizon, measured::Measured},
-	queue::{expire::QueueExpireTask, reap::QueueLeaseReapTask},
+	queue::{expire::QueueExpireTask, lease_timeout::QueueLeaseTimeoutTask},
 	store::{checkpoint::CommitLogCheckpointTask, merge::CommitMergeTask},
 	subsystem::LifecycleSubsystem,
 };
@@ -126,7 +126,12 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 		}
 
 		registry.register(Box::new(Measured::new(
-			QueueLeaseReapTask::new(engine.clone(), plane.clone(), engine.clock().clone(), config.clone()),
+			QueueLeaseTimeoutTask::new(
+				engine.clone(),
+				plane.clone(),
+				engine.clock().clone(),
+				config.clone(),
+			),
 			plane.clone(),
 		)));
 

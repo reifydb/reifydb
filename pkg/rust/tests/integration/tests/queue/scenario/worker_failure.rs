@@ -17,10 +17,10 @@ const ORDERED: &str = r#"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH
 }"#;
 
 fn built_db() -> TestDb {
-	// the reap interval must be set before boot: the lifecycle actor reads it once to schedule its timer.
+	// the lease timeout interval must be set before boot: the lifecycle actor reads it once to schedule its timer.
 	TestDb::from(
 		embedded::memory()
-			.with_config(ConfigKey::QueueLeaseReapInterval, Value::duration_milliseconds(50))
+			.with_config(ConfigKey::QueueLeaseTimeoutInterval, Value::duration_milliseconds(50))
 			.build()
 			.unwrap(),
 	)
@@ -114,9 +114,9 @@ fn a_late_ack_after_lease_expiry_and_reassignment_is_rejected_as_stale() {
 	let stale_token = utf8(&first, "token");
 	assert_eq!(uint4(&first, "attempt"), 1);
 
-	// the reaper (sped up above) must return the expired lease to the ready set on its own.
+	// the lease timeout task (sped up above) must return the expired lease to the ready set on its own.
 	let second = poll_until(|| try_claim(&db, "worker-b", 30_000), Duration::from_seconds_const(5))
-		.expect("the reaper must return the expired lease within the timeout");
+		.expect("the lease timeout task must return the expired lease within the timeout");
 	assert_eq!(uint4(&second, "attempt"), 2, "reassignment must be recorded as a fresh attempt");
 
 	// worker-a's ack finally arrives, addressed to the attempt it no longer holds.
@@ -138,15 +138,16 @@ fn a_late_ack_after_lease_expiry_and_reassignment_is_rejected_as_stale() {
 fn repeated_crashes_exhaust_the_retry_budget_and_an_operator_replays_the_dead_item() {
 	let db = seeded_db(2);
 
-	// attempt 1 crashes; the reaper must redeliver it as attempt 2, spending one unit of budget.
+	// attempt 1 crashes; the lease timeout task must redeliver it as attempt 2, spending one unit of budget.
 	let first = try_claim(&db, "doomed-1", 100).expect("must claim the only item");
 	let item = uint8(&first, "item");
 	assert_eq!(uint4(&first, "attempt"), 1);
 	let second = poll_until(|| try_claim(&db, "doomed-2", 100), Duration::from_seconds_const(5))
-		.expect("the first crash must be reaped and redelivered");
+		.expect("the first crash must time out and be redelivered");
 	assert_eq!(uint4(&second, "attempt"), 2);
 
-	// attempt 2 crashes too - the budget of 2 is spent, so the reaper must bury the item, not retry again.
+	// attempt 2 crashes too - the budget of 2 is spent, so the lease timeout task must bury the item, not retry
+	// again.
 	assert!(
 		poll_until(|| (depth_and_in_flight(&db) == (0, 0)).then_some(()), Duration::from_seconds_const(5))
 			.is_some(),
@@ -166,7 +167,7 @@ fn repeated_crashes_exhaust_the_retry_budget_and_an_operator_replays_the_dead_it
 }
 
 #[test]
-fn a_worker_that_extends_before_the_deadline_survives_the_reaper_sweep() {
+fn a_worker_that_extends_before_the_deadline_survives_the_lease_timeout_sweep() {
 	let db = seeded_db(5);
 
 	// worker-a is alive but slow: it renews its lease well before the original deadline arrives.
@@ -174,9 +175,9 @@ fn a_worker_that_extends_before_the_deadline_survives_the_reaper_sweep() {
 	let token = utf8(&claimed, "token");
 	extend(&db, &token, 5_000);
 
-	// several reap sweeps must cross the ORIGINAL deadline without touching the extended lease.
+	// several lease timeout sweeps must cross the ORIGINAL deadline without touching the extended lease.
 	sleep(Duration::from_milliseconds_const(400).to_std());
-	assert!(try_claim(&db, "worker-b", 30_000).is_none(), "an extended lease must never be reclaimed early");
+	assert!(try_claim(&db, "worker-b", 30_000).is_none(), "an extended lease must never be claimed again early");
 
 	// worker-a finishes normally, proving the lease and its attempt count survived untouched.
 	assert_eq!(ack(&db, &token), "ok", "the original attempt must still be live after the extension");
@@ -184,11 +185,11 @@ fn a_worker_that_extends_before_the_deadline_survives_the_reaper_sweep() {
 }
 
 #[test]
-fn several_workers_racing_a_reclaimed_lease_receive_it_exactly_once() {
+fn several_workers_racing_a_timed_out_lease_receive_it_exactly_once() {
 	const RACERS: usize = 8;
 	let db = seeded_db(5);
 
-	// worker-a claims the only item and crashes; the race starts once the reaper puts it back.
+	// worker-a claims the only item and crashes; the race starts once the lease timeout task puts it back.
 	let first = try_claim(&db, "worker-a", 100).expect("must claim the only item");
 	assert_eq!(uint4(&first, "attempt"), 1);
 
@@ -230,12 +231,12 @@ fn several_workers_racing_a_reclaimed_lease_receive_it_exactly_once() {
 	});
 
 	let winners = take(&mut *winners.lock());
-	assert_eq!(winners.len(), 1, "the reclaimed lease must go to exactly one racer, never zero and never many");
+	assert_eq!(winners.len(), 1, "the timed-out lease must go to exactly one racer, never zero and never many");
 	assert_eq!(winners[0], 2, "the winning claim must be recorded as a fresh attempt");
 }
 
 #[test]
-fn a_crashed_worker_holding_the_head_of_a_key_keeps_its_sibling_parked_until_reaped() {
+fn a_crashed_worker_holding_the_head_of_a_key_keeps_its_sibling_parked_until_timed_out() {
 	let db = seeded_ordered_db();
 
 	// worker-a claims the head of tenant "acme"; its sibling must stay parked behind a live lease.
@@ -244,9 +245,9 @@ fn a_crashed_worker_holding_the_head_of_a_key_keeps_its_sibling_parked_until_rea
 	assert_eq!(int4(&head, "id"), 1);
 	assert!(try_claim(&db, "worker-b", 30_000).is_none(), "a parked sibling must never bypass a live head lease");
 
-	// the reaper reclaims the crashed head - redelivery, not promotion, since the head never finished.
+	// the lease timeout task settles the crashed head - redelivery, not promotion, since the head never finished.
 	let redelivered = poll_until(|| try_claim(&db, "worker-c", 30_000), Duration::from_seconds_const(5))
-		.expect("the reaper must return the head's expired lease");
+		.expect("the lease timeout task must return the head's expired lease");
 	assert_eq!(uint4(&redelivered, "attempt"), 2, "redelivery of the head must be recorded as a fresh attempt");
 	assert_eq!(int4(&redelivered, "id"), 1, "the redelivered item must be the original head, never its sibling");
 

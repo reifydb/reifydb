@@ -809,7 +809,7 @@ where
 	hooks.emit(emits)
 }
 
-pub fn retire_trackers<C: Coord>(
+pub fn forget_trackers<C: Coord>(
 	store: &mut dyn StateStore,
 	hashes: &[Hash128],
 	horizon: C,

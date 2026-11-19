@@ -130,7 +130,7 @@ fn test_an_insert_creates_a_ready_state_a_due_entry_and_depth() {
 fn test_not_before_reaches_the_due_index_and_the_state_record() {
 	// A delayed item that lands at epoch would be delivered immediately, which is exactly the
 	// guarantee not_before exists to make. Both the index key and the record must carry it: the
-	// index decides when it is scanned, the record is what hydration and the reaper read back.
+	// index decides when it is scanned, the record is what hydration and the lease timeout task read back.
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command(r#"INSERT test::jobs [{ id: 1 }] WITH { not_before: datetime::from_epoch_millis(1700000000000) }"#);
 

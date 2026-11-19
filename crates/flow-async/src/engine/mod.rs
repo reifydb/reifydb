@@ -109,9 +109,9 @@ impl FlowEngineInner {
 		}
 	}
 
-	pub fn forget_operator_samples(&self) {
+	pub fn unregister_operator_samples(&self) {
 		for (_, operator) in self.operators.keys() {
-			self.operator_samples.forget(*operator);
+			self.operator_samples.unregister(*operator);
 		}
 	}
 

@@ -20,7 +20,7 @@ use crate::operator::{
 	host::HostContext,
 	join::{
 		Identity,
-		published::{PublishedJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
+		published::{PublishedJoinContext, publish_joined, resync_joined, stash_right, withdraw_joined},
 		state::JoinSide,
 	},
 };
@@ -286,7 +286,7 @@ impl LeftHashJoin {
 				right_store: &ctx.state.right,
 			};
 			for &idx in indices {
-				retire_right(host, &published_ctx, key_hash, require_row_numbers(pre)?[idx])?;
+				stash_right(host, &published_ctx, key_hash, require_row_numbers(pre)?[idx])?;
 			}
 		}
 
@@ -420,7 +420,7 @@ impl LeftHashJoin {
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			retire_right(host, &published_ctx, keys.pre, pre_row_number)?;
+			stash_right(host, &published_ctx, keys.pre, pre_row_number)?;
 		}
 
 		if !update_single_row_in_entry(host, &ctx.state.right, keys.pre, pre_row_number, ctx.rows, row_idx)? {

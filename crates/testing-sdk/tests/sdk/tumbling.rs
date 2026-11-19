@@ -701,8 +701,8 @@ fn min_update_replacing_minimum_raises_window_min() {
 
 #[test]
 fn sealing_forgets_window_state_in_the_store() {
-	// Sealing has to reclaim the window's accumulator state, not just gate its mutations;
-	// state left behind is only reaped by the wall-clock operator-state TTL backstop.
+	// Sealing has to forget the window's accumulator state, not just gate its mutations;
+	// state left behind is only expired by the wall-clock operator-state TTL backstop.
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
 		.with(sealed_with())
 		.build()
@@ -726,7 +726,7 @@ fn sealing_forgets_window_state_in_the_store() {
 	let after = h.snapshot_state();
 	assert!(
 		before.keys().all(|k| after.contains_key(k)),
-		"a window whose lateness has not passed must not reclaim any state"
+		"a window whose lateness has not passed must not forget any state"
 	);
 }
 

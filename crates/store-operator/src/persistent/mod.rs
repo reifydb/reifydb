@@ -445,7 +445,7 @@ fn written_bytes(batch: &FlushBatch) -> ByteSize {
 }
 
 impl PersistentTier {
-	pub fn retires_groups(&self) -> bool {
+	pub fn forgets_groups(&self) -> bool {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		if matches!(self, Self::Sqlite(_)) {
 			return true;
@@ -464,11 +464,11 @@ impl Apply for PersistentTier {
 			Self::Sqlite(storage) => {
 				let rows = batch.writes.len();
 				let bytes = written_bytes(batch);
-				let retired = storage.flush_batch(batch);
+				let forgotten = storage.flush_batch(batch);
 				Ok(Applied {
 					rows,
 					bytes,
-					retired,
+					forgotten,
 				})
 			}
 		}

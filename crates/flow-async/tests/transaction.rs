@@ -21,8 +21,8 @@ mod output_watermark;
 #[path = "transaction/group.rs"]
 mod group;
 
-#[path = "transaction/reclaim.rs"]
-mod reclaim;
+#[path = "transaction/forget_pass.rs"]
+mod forget_pass;
 
 #[path = "transaction/row_number.rs"]
 mod row_number;

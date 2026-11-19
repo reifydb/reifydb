@@ -120,8 +120,8 @@ fn source_removal_hides_the_key_at_or_above_its_version_only() {
 }
 
 #[test]
-fn source_removal_leaves_the_persisted_row_for_the_reaper_not_the_commit() {
-	// The commit writes a tombstone and stops; collecting the prior on-disk row is the reaper's job. A
+fn source_removal_leaves_the_persisted_row_for_gc_not_the_commit() {
+	// The commit writes a tombstone and stops; collecting the prior on-disk row is gc's job. A
 	// cheap commit is the reason the eviction path can keep up at all.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = table_row_key(1, 1);
@@ -195,8 +195,8 @@ fn partitioned_source_removal_hides_only_the_removed_partition_row() {
 #[test]
 fn memory_only_source_removal_keeps_every_version_below_the_tombstone() {
 	// A buffer-only store isolates the commit buffer's own version resolution: versions below the
-	// tombstone stay as history and only become invisible from v5 upward. Reclaiming them is the
-	// reaper's business, not the commit's.
+	// tombstone stay as history and only become invisible from v5 upward. Reclaiming them is
+	// gc's business, not the commit's.
 	let store = StandardMultiStore::testing_memory();
 	let storage = StorageId::Table(TableId(3));
 	let k = table_row_key(3, 1);

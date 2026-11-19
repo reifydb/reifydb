@@ -190,7 +190,10 @@ fn a_flush_of_a_key_committed_after_a_claim_leaves_it_in_ram() {
 		rescanned.contains_key(&key(MID_ROW)),
 		"the commit buffer must carry the key while it is uncommitted to disk"
 	);
-	assert!(complete_pages(&store) > 0, "the re-scan must reclaim the page, or the interleaving is not exercised");
+	assert!(
+		complete_pages(&store) > 0,
+		"the re-scan must claim the page again, or the interleaving is not exercised"
+	);
 
 	flush(&store, 20);
 
@@ -222,10 +225,13 @@ fn a_remove_of_a_key_inside_a_claimed_span_is_visible_at_the_remove_version() {
 	);
 
 	let rescanned = scan(&store, 20);
-	assert!(complete_pages(&store) > 0, "the re-scan must reclaim the page, or the interleaving is not exercised");
+	assert!(
+		complete_pages(&store) > 0,
+		"the re-scan must claim the page again, or the interleaving is not exercised"
+	);
 	assert!(
 		!rescanned.contains_key(&key(MID_EXISTING_ROW)),
-		"reclaiming the page must not resurrect the removed row"
+		"claiming the page again must not resurrect the removed row"
 	);
 
 	flush(&store, 20);

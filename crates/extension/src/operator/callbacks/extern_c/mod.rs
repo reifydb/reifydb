@@ -43,7 +43,7 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			disarm_timer: state::host_disarm_timer,
 			rearm_timers: state::host_rearm_timers,
 			flow_watermark: state::host_flow_watermark,
-			reclaim_group_identities: state::host_reclaim_group_identities,
+			forget_group_identities: state::host_forget_group_identities,
 		},
 		dictionary_get: dictionary::host_dictionary_get,
 		pass_through: pass_through::host_pass_through,

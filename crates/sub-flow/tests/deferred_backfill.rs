@@ -2065,7 +2065,7 @@ fn floor(db: &TestDb) -> Option<CommitVersion> {
 
 #[test]
 fn a_backfill_holds_the_checkpoint_floor_at_v_until_its_checkpoint_commits() {
-	// With no floor at V between the snapshot and the checkpoint, commit log gc can reap the changes after
+	// With no floor at V between the snapshot and the checkpoint, commit log gc can collect the changes after
 	// V.
 	let db = memory();
 	run(&db, &bulk("bf::src"));
@@ -2308,13 +2308,13 @@ fn backfilled_groups_are_freed_like_live_ones(batch: u16) {
 
 #[test]
 fn a_late_managed_view_frees_its_backfilled_groups_when_an_early_one_frees_them() {
-	// Each backfilled row must arm reclaim from its own event time, or its group outlives the lateness.
+	// Each backfilled row must arm the forget pass from its own event time, or its group outlives the lateness.
 	backfilled_groups_are_freed_like_live_ones(4);
 }
 
 #[test]
 fn a_late_managed_view_built_one_row_per_chunk_frees_its_backfilled_groups_when_an_early_one_frees_them() {
-	// Every chunk must arm reclaim for its own groups, not only the last chunk before the commit.
+	// Every chunk must arm the forget pass for its own groups, not only the last chunk before the commit.
 	backfilled_groups_are_freed_like_live_ones(1);
 }
 

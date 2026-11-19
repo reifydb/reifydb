@@ -12,7 +12,7 @@ use reifydb_value::value::{duration::Duration, identity::IdentityId};
 
 #[test]
 fn deferred_append_view_persists_no_operator_horizon() {
-	// Append is stateless, so it must reach the catalog carrying nothing a reaper could act on.
+	// Append is stateless, so it must reach the catalog carrying nothing a forget pass could act on.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE os_app_d");

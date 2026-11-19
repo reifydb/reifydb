@@ -24,7 +24,7 @@ fn durable_and_buffered(store: &StandardOperatorStore, durable: u64, buffered: u
 
 #[test]
 fn the_floor_is_the_lowest_of_the_pins_the_buffered_and_the_durable_checkpoints() {
-	// A floor that skips any one of the three lets gc reap versions that one still needs.
+	// A floor that skips any one of the three lets gc collect versions that one still needs.
 	for (durable, buffered, pinned, want) in [(100, 80, 50, 50), (100, 50, 80, 50), (50, 100, 80, 50)] {
 		let (standard, _guard) = store_fixture();
 		durable_and_buffered(&standard, durable, buffered);

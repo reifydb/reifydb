@@ -993,7 +993,7 @@ mod tests {
 
 	#[test]
 	fn the_term_guard_survives_a_reopen() {
-		// the guard reads the tail recovered at open, so a partition that forgets its term on
+		// the guard reads the tail recovered at open, so a partition that loses its term on
 		// the way back in accepts the first regression after every restart.
 		let (fs, mock, mut partition) = fixture();
 		partition.append(&in_term(500, 4)).unwrap();
@@ -1401,7 +1401,7 @@ mod tests {
 
 	#[test]
 	fn a_truncation_drops_every_segment_that_starts_at_or_above_the_cut() {
-		// a cut two segments down must unlink the whole segments above it, not just forget
+		// a cut two segments down must unlink the whole segments above it, not just drop
 		// them in memory, or a reopen would scan them back in and undo the truncation.
 		let (fs, _, mut partition) = rolled();
 

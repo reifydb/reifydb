@@ -420,12 +420,12 @@ fn a_stopped_rolling_group_gives_back_its_meta_once_the_flow_watermark_passes_it
 
 	h.advance_flow_watermark(DateTime::from_millis(10_000_000)).expect("flow watermark");
 
-	assert!(h.snapshot_state().len() <= before, "the seal must reclaim the dead group's meta, not add to state");
+	assert!(h.snapshot_state().len() <= before, "the seal must forget the dead group's meta, not add to state");
 }
 
 #[test]
 fn a_withdrawn_rolling_group_leaves_only_its_meta_behind() {
-	// Each withdrawn group may keep its group row and expiry entry for the seal to reclaim; a leaked row number
+	// Each withdrawn group may keep its group row and expiry entry for the seal to forget; a leaked row number
 	// mapping adds a third.
 	let state_after = |groups: u64| {
 		let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SumAnyKind>>::new()

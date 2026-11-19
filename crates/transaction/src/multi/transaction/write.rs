@@ -960,7 +960,7 @@ impl MultiWriteTransaction {
 		}))
 	}
 
-	fn forget_present_tags(&mut self) {
+	fn clear_present_tags(&mut self) {
 		for entry in &mut self.delta_log {
 			if let Delta::Set {
 				pre: pre @ SetPre::Present(_),
@@ -1028,7 +1028,7 @@ impl MultiWriteTransaction {
 				lsn: None,
 			});
 		}
-		self.forget_present_tags();
+		self.clear_present_tags();
 		self.resolve_removed_after_set()?;
 		let deltas = self.build_deltas();
 		let (commit_version, lsn, at, deltas) = self.commit_pending_unchecked(deltas)?;

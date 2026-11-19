@@ -29,7 +29,7 @@ use crate::operator::{
 	join::{
 		Identity,
 		operator::JoinOperator,
-		published::{PublishedJoinContext, publish_slot, retire_slot, withdraw_slot},
+		published::{PublishedJoinContext, publish_slot, stash_slot, withdraw_slot},
 		state::JoinSide,
 	},
 };
@@ -187,7 +187,7 @@ impl LatestLeftHashJoin {
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			retire_slot(host, &published_ctx, key_hash)?;
+			stash_slot(host, &published_ctx, key_hash)?;
 			write_right_rows(host, &ctx.state.right, key_hash, ctx.rows, indices, ctx.operator.pick())?;
 			return Ok(Vec::new());
 		}
@@ -342,7 +342,7 @@ impl LatestLeftHashJoin {
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			retire_slot(host, &published_ctx, key_hash)?;
+			stash_slot(host, &published_ctx, key_hash)?;
 			remove_right_rows(host, &ctx.state.right, key_hash, &numbers)?;
 			return Ok(Vec::new());
 		}

@@ -134,8 +134,8 @@ mod tests {
 
 	#[test]
 	fn an_empty_ledger_reads_as_none_rather_than_the_epoch() {
-		// none and "sealed through 1970" are different answers to reclaim: none means the operator has
-		// no seal clamp, the epoch would mean everything is sealed and let reclaim erase live state.
+		// none and "sealed through 1970" are different answers to the forget pass: none means the operator has
+		// no seal clamp, the epoch would mean everything is sealed and let the forget pass erase live state.
 		let mut store = MockStore::default();
 
 		assert!(SealLedger::read_order(&mut store).unwrap().is_none());
@@ -145,7 +145,7 @@ mod tests {
 	fn the_ledger_only_moves_forward() {
 		// Timers fire in (at, kind, key) order within a round, but a restart re-reads a cold wheel
 		// and a late round can present an earlier instant. Rewinding the ledger would unclamp
-		// reclaim and expose already-sealed windows to a second seal.
+		// the forget pass and expose already-sealed windows to a second seal.
 		let mut store = MockStore::default();
 
 		SealLedger::advance(&mut store, FiredAt::of(&timer(9_000))).unwrap();
@@ -157,8 +157,8 @@ mod tests {
 
 	#[test]
 	fn the_ledger_lives_in_the_root_group_and_carries_no_suffix() {
-		// the key must be derivable from the operator alone, since reclaim reads it without knowing which group
-		// wrote it
+		// the key must be derivable from the operator alone, since the forget pass reads it without knowing
+		// which group wrote it
 		let key = seal_ledger_key();
 		let (group, keyspace, suffix) =
 			OperatorStateKey::decode_inner(key.as_encoded().as_bytes()).expect("structured key");

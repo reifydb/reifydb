@@ -9,7 +9,7 @@ use crate::{as_key, as_values};
 #[test]
 fn test_oracle_committed_txns_cleanup() {
 	// Well past the internal cleanup threshold, on unique keys so nothing conflicts: the oracle
-	// must keep retiring committed windows instead of growing without bound.
+	// must keep dropping committed windows instead of growing without bound.
 	let engine = test_multi();
 
 	const NUM_TXNS: usize = 20_000;

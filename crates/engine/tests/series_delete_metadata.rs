@@ -131,7 +131,7 @@ fn an_insert_after_a_delete_in_one_transaction_keeps_its_row_number() {
 #[test]
 fn a_delete_after_an_insert_in_one_transaction_keeps_the_insert_row_number() {
 	// The delete read metadata the insert already changed; replaying the delete alone on the stored metadata
-	// would forget the insert.
+	// would lose the insert.
 	let t = engine();
 	let mut txn = open(&t, &["INSERT test::s [{ k: 8, v: 80 }]", "DELETE test::s FILTER { k == 2 }"]);
 

@@ -22,7 +22,7 @@ use crate::{
 	bound::{KeyspaceIds, parts, span, split_bound},
 	error::StoreOperatorError,
 	persistent::sqlite::{census::Census, registry::TableMask, typed},
-	types::{OperatorStateCensus, RetiredRows},
+	types::{ForgottenRows, OperatorStateCensus},
 };
 
 fn encode<K: Keyspace>(key: &K::GroupedKey) -> EncodedKey {
@@ -512,31 +512,31 @@ impl KeyspaceVisitor for Clear<'_> {
 	}
 }
 
-struct RetireGroup<'a> {
+struct ForgetGroup<'a> {
 	txn: &'a Transaction<'a>,
 	operator: OperatorId,
 	group: GroupId,
 }
 
-impl KeyspaceVisitor for RetireGroup<'_> {
+impl KeyspaceVisitor for ForgetGroup<'_> {
 	type Output = (u64, u64);
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
-		typed::retire_group::<K>(self.txn, self.operator, self.group)
+		typed::forget_group::<K>(self.txn, self.operator, self.group)
 	}
 }
 
-pub(super) fn retire_group(
+pub(super) fn forget_group(
 	txn: &Transaction,
 	operator: OperatorId,
 	group: GroupId,
 	keyspaces: &[KeyspaceId],
-	retired: &mut Vec<RetiredRows>,
+	forgotten: &mut Vec<ForgottenRows>,
 ) {
 	for keyspace in keyspaces {
 		let (keys, value_bytes) = dispatch(
 			*keyspace,
-			RetireGroup {
+			ForgetGroup {
 				txn,
 				operator,
 				group,
@@ -544,7 +544,7 @@ pub(super) fn retire_group(
 		)
 		.expect("every catalogue entry must dispatch to its own keyspace");
 		if keys > 0 {
-			retired.push(RetiredRows {
+			forgotten.push(ForgottenRows {
 				operator,
 				keyspace: *keyspace,
 				keys,
@@ -762,7 +762,8 @@ mod tests {
 
 	#[test]
 	fn a_group_set_sweep_answers_with_exactly_what_the_single_group_sweeps_answer_with() {
-		// a row the per group fan out finds but the set misses leaves the reaper deleting less than it swept
+		// a row the per group fan out finds but the set misses leaves the forget pass deleting less than it
+		// swept
 		let store = open();
 		let groups = [group(11), group(22), group(33)];
 		seed(&store, &groups);
@@ -793,8 +794,8 @@ mod tests {
 
 	#[test]
 	fn a_group_outside_the_set_is_never_answered_with() {
-		// the group predicate is the only thing keeping a neighbour out, and a wrong one hands the reaper rows
-		// of a group that is still live
+		// the group predicate is the only thing keeping a neighbour out, and a wrong one hands the forget pass
+		// rows of a group that is still live
 		let store = open();
 		let groups = [group(11), group(22), group(33)];
 		seed(&store, &groups);

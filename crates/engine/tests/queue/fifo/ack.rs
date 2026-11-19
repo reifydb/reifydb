@@ -187,7 +187,7 @@ fn test_a_fail_ack_records_what_the_worker_reported() {
 	assert_eq!(record.worker, "worker-a");
 	assert_eq!(record.outcome, AttemptOutcome::Err);
 	assert_eq!(record.response.as_deref(), Some("gateway timeout"));
-	assert!(!record.lost, "only the step-5 reaper writes lost attempts");
+	assert!(!record.lost, "only the step-5 lease timeout task writes lost attempts");
 	assert_eq!(record.anomaly, None);
 }
 
@@ -417,7 +417,7 @@ fn test_the_interceptor_refuses_an_ack_whose_attempt_no_longer_matches_the_lease
 
 #[test]
 fn test_the_interceptor_refuses_an_ack_against_an_item_that_is_no_longer_leased() {
-	// Same guard, other half: once the reaper or a prior ack moved the item out of Leased, a
+	// Same guard, other half: once the lease timeout task or a prior ack moved the item out of Leased, a
 	// second transition would double-decrement in_flight and drift the counters permanently.
 	let t = engine_with_queue(ONE_PARTITION);
 	t.command("INSERT test::jobs [{ id: 1 }]");

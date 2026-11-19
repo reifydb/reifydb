@@ -34,7 +34,7 @@ use crate::{
 		stamp_output_created,
 		state::{
 			expiry::{expiry_drop, expiry_due, managed_due_group, managed_latest_key},
-			reaper::{StoreReaper, drain, drain_group, enqueue},
+			forget_pass::{StoreForgetter, drain, drain_group, enqueue},
 			seal::rule::{SEAL_GATE_STEP, SealRule},
 		},
 	},
@@ -96,7 +96,7 @@ impl HostOperator for ApplyOperator {
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		if timer.kind == TimerKind::Reclaim {
-			reclaim(host, timer.due)?;
+			fire_forget_pass(host, timer.due)?;
 			return Ok(None);
 		}
 		let due = timer.due;
@@ -186,16 +186,16 @@ pub fn engine_retention(with: &ApplyWith) -> Option<Duration> {
 	}
 }
 
-const RECLAIM_BATCH: usize = 256;
+const FORGET_PASS_BATCH: usize = 256;
 
-fn reclaim(host: &mut dyn HostContext, fired: DateTime) -> Result<(), ValueError> {
-	let mut retry = !drain(host, &mut StoreReaper, RECLAIM_BATCH)?.queue_is_empty();
-	let due = expiry_due::<CustomManagedDue, Vec<u8>>(host, fired.to_order(), None, RECLAIM_BATCH)?;
-	retry |= due.len() == RECLAIM_BATCH;
+fn fire_forget_pass(host: &mut dyn HostContext, fired: DateTime) -> Result<(), ValueError> {
+	let mut retry = !drain(host, &mut StoreForgetter, FORGET_PASS_BATCH)?.queue_is_empty();
+	let due = expiry_due::<CustomManagedDue, Vec<u8>>(host, fired.to_order(), None, FORGET_PASS_BATCH)?;
+	retry |= due.len() == FORGET_PASS_BATCH;
 	for (key, _) in due {
 		let group = managed_due_group(&key)?;
 		enqueue(host, &[group])?;
-		retry |= drain_group(host, group, &mut StoreReaper, RECLAIM_BATCH)?.still_queued;
+		retry |= drain_group(host, group, &mut StoreForgetter, FORGET_PASS_BATCH)?.still_queued;
 		expiry_drop(host, &key)?;
 		expiry_drop(host, &managed_latest_key(group))?;
 	}
@@ -318,7 +318,7 @@ mod tests {
 	}
 
 	#[test]
-	fn retention_feeds_the_reclaim_and_never_the_hold() {
+	fn retention_feeds_the_forget_pass_and_never_the_hold() {
 		// A retention that also held the output would delay every downstream seal by the state bound.
 		let with = ApplyWith {
 			window: None,
@@ -347,7 +347,7 @@ mod tests {
 
 	#[test]
 	fn a_zero_lateness_alone_gives_a_zero_retention_and_no_hold() {
-		// Zero must stay a real bound for the reclaim while the hold reads it as none.
+		// Zero must stay a real bound for the forget pass while the hold reads it as none.
 		let with = ApplyWith {
 			window: None,
 			lateness: Some(WithSpan::Duration(Duration::zero())),
@@ -362,7 +362,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod reclaim_tests {
+mod forget_pass_tests {
 	use std::sync::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
@@ -470,7 +470,7 @@ mod reclaim_tests {
 		keys(txn, GroupId::ROOT, KeyspaceId::CUSTOM_MANAGED_LATEST)
 	}
 
-	fn reclaim_timers(txn: &mut DeferredTransaction) -> Vec<i64> {
+	fn forget_pass_timers(txn: &mut DeferredTransaction) -> Vec<i64> {
 		let mut dues: Vec<i64> = txn
 			.state_range(
 				OP,
@@ -520,7 +520,7 @@ mod reclaim_tests {
 		write_at(&mut txn, 9_999, span, &managed_key(group(1))).unwrap();
 		write_at(&mut txn, 10_000, span, &managed_key(group(2))).unwrap();
 
-		assert_eq!(reclaim_timers(&mut txn), vec![12_000, 13_000], "9.999s + 2s + 1ms is exactly 12s");
+		assert_eq!(forget_pass_timers(&mut txn), vec![12_000, 13_000], "9.999s + 2s + 1ms is exactly 12s");
 		assert_eq!(due_entries(&mut txn), 2);
 	}
 
@@ -535,7 +535,7 @@ mod reclaim_tests {
 		write_at(&mut txn, 10_900, span, &managed_key(group(1))).unwrap();
 		write_at(&mut txn, 10_500, span, &managed_key(group(2))).unwrap();
 
-		assert_eq!(reclaim_timers(&mut txn), vec![13_000]);
+		assert_eq!(forget_pass_timers(&mut txn), vec![13_000]);
 		assert_eq!(due_entries(&mut txn), 2, "one due entry per group per bucket");
 	}
 
@@ -573,7 +573,7 @@ mod reclaim_tests {
 	}
 
 	#[test]
-	fn a_late_write_never_moves_a_groups_reclaim_earlier() {
+	fn a_late_write_never_moves_a_groups_forget_pass_earlier() {
 		// A write stamped with an older row time must not free state a newer write still needs.
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
@@ -617,7 +617,7 @@ mod reclaim_tests {
 		write_at(&mut txn, 10_000, span, &managed_key(GroupId::ROOT)).unwrap();
 		write_at(&mut txn, 10_000, span, &unmanaged).unwrap();
 
-		assert!(reclaim_timers(&mut txn).is_empty());
+		assert!(forget_pass_timers(&mut txn).is_empty());
 		assert_eq!(due_entries(&mut txn), 0);
 	}
 
@@ -634,7 +634,7 @@ mod reclaim_tests {
 	}
 
 	#[test]
-	fn a_reclaim_fire_frees_the_groups_due_by_it_and_keeps_the_rest() {
+	fn a_forget_pass_fire_frees_the_groups_due_by_it_and_keeps_the_rest() {
 		// Freeing a later group drops state its lateness still protects.
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
@@ -647,16 +647,16 @@ mod reclaim_tests {
 
 		let emitted = fire(&mut operator, &mut txn, TimerKind::Reclaim, 13_000);
 
-		assert!(emitted.is_none(), "a reclaim fire emits nothing");
+		assert!(emitted.is_none(), "a forget pass fire emits nothing");
 		assert_eq!(keys(&mut txn, group(1), KeyspaceId::CUSTOM_MANAGED), 0, "group 1 was due at 13s");
 		assert_eq!(keys(&mut txn, group(2), KeyspaceId::CUSTOM_MANAGED), 1, "group 2 is due at 14s");
 		assert_eq!(keys(&mut txn, GroupId::ROOT, KeyspaceId::CUSTOM_MANAGED), 1, "ROOT is never freed");
 		assert_eq!(due_entries(&mut txn), 1, "only group 2's entry is left");
-		assert_eq!(guest_timers.load(Ordering::SeqCst), 0, "the guest never sees a reclaim fire");
+		assert_eq!(guest_timers.load(Ordering::SeqCst), 0, "the guest never sees a forget pass fire");
 	}
 
 	#[test]
-	fn a_capped_reclaim_fire_arms_a_retry_that_frees_the_rest() {
+	fn a_capped_forget_pass_fire_arms_a_retry_that_frees_the_rest() {
 		// A cap with no retry holds every group past the batch until some unrelated write arms again.
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
@@ -669,13 +669,17 @@ mod reclaim_tests {
 		fire(&mut operator, &mut txn, TimerKind::Reclaim, 13_000);
 
 		assert_eq!(due_entries(&mut txn), 1, "one fire frees at most 256 groups");
-		assert_eq!(reclaim_timers(&mut txn), vec![13_000, 13_001], "the capped fire arms its retry 1ms later");
+		assert_eq!(
+			forget_pass_timers(&mut txn),
+			vec![13_000, 13_001],
+			"the capped fire arms its retry 1ms later"
+		);
 
 		fire(&mut operator, &mut txn, TimerKind::Reclaim, 13_001);
 
 		assert_eq!(due_entries(&mut txn), 0);
 		assert_eq!((1..=257).map(|n| keys(&mut txn, group(n), KeyspaceId::CUSTOM_MANAGED)).sum::<usize>(), 0);
-		assert_eq!(reclaim_timers(&mut txn), vec![13_000, 13_001], "a fire that finishes arms no retry");
+		assert_eq!(forget_pass_timers(&mut txn), vec![13_000, 13_001], "a fire that finishes arms no retry");
 	}
 
 	#[test]

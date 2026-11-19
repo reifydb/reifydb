@@ -449,7 +449,7 @@ mod archived_projection_tests {
 
 	#[test]
 	fn a_group_that_never_advanced_projects_to_none_through_storage() {
-		// An accidental Some(0) compares below every threshold and reclaims meta for live groups.
+		// An accidental Some(0) compares below every threshold and forgets meta for live groups.
 		let empty: GroupMeta<ByDateTime> = GroupMeta {
 			high_water: None,
 		};
@@ -544,15 +544,15 @@ mod meta_sweep_tests {
 
 		// Driven to the end of the revolution rather than one page: which page holds the stale group
 		// is a property of the key order, and the guarantee under test is that a revolution reaches it.
-		let mut reclaimed = 0;
+		let mut forgotten = 0;
 		for _ in 0..2 {
-			reclaimed += sweep
+			forgotten += sweep
 				.sweep::<GroupMeta<ByDateTime>>(&mut store, event_coord_at_millis(150).to_order())
 				.unwrap();
 		}
 		assert_eq!(
-			reclaimed, 1,
-			"the group whose high water sits below the threshold is stale and must be reclaimed"
+			forgotten, 1,
+			"the group whose high water sits below the threshold is stale and must be forgotten"
 		);
 	}
 }

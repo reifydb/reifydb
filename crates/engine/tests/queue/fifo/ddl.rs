@@ -90,7 +90,7 @@ fn test_create_queue_rejects_unknown_ordered_by_column() {
 
 #[test]
 fn test_create_queue_rejects_degenerate_retry() {
-	// A budget below 1 kills an item before its first attempt; a zero backoff spins the reaper.
+	// A budget below 1 kills an item before its first attempt; a zero backoff spins the lease timeout task.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 

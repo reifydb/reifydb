@@ -78,7 +78,7 @@ const STORAGE_CONDITIONAL: &[LifecycleClass] = &[LifecycleClass::PersistentFlush
 #[test]
 fn every_lifecycle_class_a_memory_database_can_reclaim_has_an_owner() {
 	// The report's ERROR branch exists to make this claim: with flow on, anything unclaimed is
-	// either genuinely unreclaimed or a lane that forgot to declare itself. Scoping to what a
+	// either genuinely unreclaimed or a lane that failed to declare itself. Scoping to what a
 	// memory store can reclaim keeps that signal without asserting absent tiers into existence.
 	let coverage = coverage_of_a_flow_enabled_database();
 

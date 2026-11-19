@@ -57,7 +57,7 @@ fn lifecycle_current_names_each_class_so_a_row_can_be_attributed() {
 fn lifecycle_current_populates_without_per_domain_opt_in() {
 	// Sampling is always on: the old none-is-off contract let a domain go silently unsampled,
 	// which is the failure the sampler redesign removed. Only the cadence is configured here,
-	// to keep the poll inside TIMEOUT; there is no per-domain switch left to forget.
+	// to keep the poll inside TIMEOUT; there is no per-domain switch left to miss.
 	let db = TestDb::from(
 		db_embedded::memory()
 			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))

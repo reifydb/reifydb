@@ -35,7 +35,7 @@ use crate::{
 	operator::{
 		state::{
 			expiry::{ExpiryIndex, tumbling_expiry_key},
-			reaper::Reaper,
+			forget_pass::Forgetter,
 		},
 		state_access::batch,
 	},
@@ -97,12 +97,12 @@ pub struct TumblingIndexEntry<G, S> {
 	pub(crate) slot_key: Vec<u8>,
 }
 
-impl<G, S, Accumulator> Reaper for TumblingEngine<G, S, Accumulator>
+impl<G, S, Accumulator> Forgetter for TumblingEngine<G, S, Accumulator>
 where
 	S: WindowAnchor + Hash,
 	Accumulator: WindowAccumulator,
 {
-	fn reap(
+	fn forget(
 		&mut self,
 		store: &mut dyn StateStore,
 		rows: &[(GroupStateKey, EncodedPodRow)],
@@ -486,7 +486,7 @@ where
 				assert!(
 					!out.iter().any(|window| window.group_id == entry.group_id),
 					"the expiry index still holds a row for a group that is about to be queued for \
-					 reaping; a window group must own exactly one index row, or reaping it orphans \
+					 forgetting; a window group must own exactly one index row, or forgetting it orphans \
 					 the rows left behind under a group id nothing resolves again"
 				);
 			}
@@ -527,8 +527,8 @@ mod tests {
 	use crate::{
 		factory::coord::event_coord_at_millis,
 		operator::state::{
+			forget_pass::{Forgetter, drain_group, enqueue},
 			mock::MockStore,
-			reaper::{Reaper, drain_group, enqueue},
 			seal::coord::Coord,
 		},
 		window::{
@@ -660,7 +660,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_window_whose_accumulator_was_reclaimed_updates_its_row_rather_than_inserting_a_second() {
+	fn a_window_whose_accumulator_was_forgotten_updates_its_row_rather_than_inserting_a_second() {
 		// Phase-1 reclamation erases the accumulator and keeps the row-number mapping, so the
 		// published row stays addressable and a later batch must update it in place. A second
 		// insert lays a duplicate row over a live one, which a sink folding the stream cannot place.
@@ -668,8 +668,10 @@ mod tests {
 		let published = seed_window(&mut store, 0, 5);
 		let group = GroupId::of(&row_key(&1, event_coord_at_millis(0)));
 		let swept = store.group_sweep(&[group], usize::MAX, KeyspaceMask::data()).unwrap().rows;
-		assert!(!swept.is_empty(), "precondition: reclaim erased the accumulator");
-		TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config()).reap(&mut store, &swept).unwrap();
+		assert!(!swept.is_empty(), "precondition: the forget pass erased the accumulator");
+		TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config())
+			.forget(&mut store, &swept)
+			.unwrap();
 		assert!(
 			store.contains_row_mapping(group),
 			"precondition: the identity half must survive the data phase"
@@ -775,8 +777,9 @@ mod tests {
 	}
 
 	#[test]
-	fn a_fully_reaped_window_leaves_no_state_and_no_mapping_behind() {
-		// The reap moves the row into the identity half; phase two must then erase it, or it leaks forever.
+	fn a_fully_forgotten_window_leaves_no_state_and_no_mapping_behind() {
+		// The forget pass moves the row into the identity half; phase two must then erase it, or it leaks
+		// forever.
 		let mut store = MockStore::default();
 		seed_window(&mut store, 0, 5);
 		let group = GroupId::of(&row_key(&1, event_coord_at_millis(0)));
@@ -788,16 +791,16 @@ mod tests {
 		assert!(!drained.still_queued, "an unbounded drain finishes the group in one pass");
 		assert!(
 			store.group_sweep(&[group], usize::MAX, KeyspaceMask::data()).unwrap().rows.is_empty(),
-			"no data row of the reaped window may survive"
+			"no data row of the forgotten window may survive"
 		);
 		assert!(
 			!store.contains_row_mapping(group),
-			"the row moved out by the reap must be reclaimed with the group"
+			"the row moved out by the forget pass must be forgotten with the group"
 		);
 
 		let mut woken = TumblingEngine::<u32, ByDateTime, SumAccumulator>::new(test_config());
 		let out = apply_sums(&mut woken, &mut store, one_bucket(1, 0, 4)).expect("apply");
-		assert_eq!(out[0].kind, EmitKind::Insert, "a fully reclaimed window starts over as a new row");
+		assert_eq!(out[0].kind, EmitKind::Insert, "a fully forgotten window starts over as a new row");
 	}
 
 	#[test]

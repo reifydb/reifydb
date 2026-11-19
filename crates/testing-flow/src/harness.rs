@@ -54,7 +54,7 @@ use reifydb_sdk::flow::operator::mount::mount;
 use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
 use reifydb_store_operator::{store::OperatorStore, types::classify_slice};
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
+use reifydb_testing_chaos::operator::{forget_pass::StateFootprint, subject::Subject};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_testing_sdk::in_process::harness::ArmedTimer;
 use reifydb_transaction::{

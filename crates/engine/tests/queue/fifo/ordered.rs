@@ -21,7 +21,7 @@ use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	change::QueueAckTransition,
-	queue::scheduling::{ExpiredLease, apply_reap_transitions},
+	queue::scheduling::{ExpiredLease, apply_timeout_transitions},
 	transaction::Transaction,
 };
 use reifydb_value::value::{Value, frame::frame::Frame, partition::Partition, row_number::RowNumber};
@@ -159,7 +159,7 @@ fn replay(t: &TestEngine, row: u64) -> String {
 	}
 }
 
-fn reap(t: &TestEngine, queue: QueueId, row: u64, transition: QueueAckTransition) -> bool {
+fn time_out(t: &TestEngine, queue: QueueId, row: u64, transition: QueueAckTransition) -> bool {
 	let (_, state) = states(t, queue).into_iter().find(|(key, _)| key.row.0 == row).unwrap();
 	let now = t.mock_clock().now();
 
@@ -167,9 +167,9 @@ fn reap(t: &TestEngine, queue: QueueId, row: u64, transition: QueueAckTransition
 		row: RowNumber(row),
 		attempt: state.attempt,
 		key_hash: Some(state.key_hash),
-		lease_deadline: state.lease_deadline.expect("a reaped item must hold a lease"),
+		lease_deadline: state.lease_deadline.expect("a timed-out item must hold a lease"),
 	};
-	apply_reap_transitions(
+	apply_timeout_transitions(
 		&system_ctx(),
 		t.inner().single(),
 		queue,
@@ -224,7 +224,7 @@ fn test_a_retrying_head_keeps_blocking_across_its_backoff() {
 }
 
 #[test]
-fn test_a_reaped_head_keeps_blocking_its_younger_sibling() {
+fn test_a_timed_out_head_keeps_blocking_its_younger_sibling() {
 	let t = engine_with_queue(KEYED);
 	t.command(r#"INSERT test::jobs [{ id: 1, tenant: "a" }, { id: 2, tenant: "a" }]"#);
 	let queue = queue_id(&t, "jobs");
@@ -232,7 +232,7 @@ fn test_a_reaped_head_keeps_blocking_its_younger_sibling() {
 	claim_row(&t, "w1", 1);
 	t.mock_clock().advance_millis(60_000);
 
-	assert!(reap(
+	assert!(time_out(
 		&t,
 		queue,
 		1,
@@ -347,7 +347,7 @@ fn test_an_unkeyed_queue_writes_no_chain_entries_and_never_parks() {
 	assert!(claimed.is_empty(), "all three are already leased");
 
 	t.mock_clock().advance_millis(60_000);
-	assert!(reap(
+	assert!(time_out(
 		&t,
 		queue,
 		1,

@@ -259,7 +259,7 @@ impl KeyspaceId {
 
 	pub const RINGBUFFER_META: Self = Self(0x14);
 
-	pub const REAP_QUEUE: Self = Self(0x15);
+	pub const FORGET_PASS_QUEUE: Self = Self(0x15);
 
 	pub const JOIN_ROW_EXPIRY: Self = Self(0x16);
 
@@ -325,7 +325,7 @@ impl KeyspaceId {
 			Self::JOIN_PUBLISHED => "JOIN_PUBLISHED",
 			Self::JOIN_PIN => "JOIN_PIN",
 			Self::RINGBUFFER_META => "RINGBUFFER_META",
-			Self::REAP_QUEUE => "REAP_QUEUE",
+			Self::FORGET_PASS_QUEUE => "FORGET_PASS_QUEUE",
 			Self::JOIN_ROW_EXPIRY => "JOIN_ROW_EXPIRY",
 			Self::JOIN_EXPIRY_DUE => "JOIN_EXPIRY_DUE",
 			Self::GUEST_ACCUMULATOR => "GUEST_ACCUMULATOR",
@@ -372,7 +372,7 @@ const WINDOWED_KEYSPACES: [KeyspaceId; 15] = [
 	KeyspaceId::SEAL_LEDGER,
 	KeyspaceId::ROLLING_EXPIRY,
 	KeyspaceId::TUMBLING_EXPIRY,
-	KeyspaceId::REAP_QUEUE,
+	KeyspaceId::FORGET_PASS_QUEUE,
 	KeyspaceId::GUEST_MAP_ENTRY,
 	KeyspaceId::GUEST_ROW_MAPPING,
 	KeyspaceId::ROLLING_META,
@@ -1009,7 +1009,7 @@ mod tests {
 		("JOIN_PUBLISHED", KeyspaceId::JOIN_PUBLISHED, Phase::Data, true),
 		("JOIN_PIN", KeyspaceId::JOIN_PIN, Phase::Data, true),
 		("RINGBUFFER_META", KeyspaceId::RINGBUFFER_META, Phase::Data, true),
-		("REAP_QUEUE", KeyspaceId::REAP_QUEUE, Phase::Data, true),
+		("FORGET_PASS_QUEUE", KeyspaceId::FORGET_PASS_QUEUE, Phase::Data, true),
 		("JOIN_ROW_EXPIRY", KeyspaceId::JOIN_ROW_EXPIRY, Phase::Data, true),
 		("JOIN_EXPIRY_DUE", KeyspaceId::JOIN_EXPIRY_DUE, Phase::Data, true),
 		("GUEST_ACCUMULATOR", KeyspaceId::GUEST_ACCUMULATOR, Phase::Data, true),
@@ -1074,7 +1074,7 @@ mod tests {
 
 	#[test]
 	fn the_empty_key_is_framing_because_it_sorts_below_every_group() {
-		// an empty inner key must sort below every group's prefix, or a reclaim phase could reach it
+		// an empty inner key must sort below every group's prefix, or a forget pass phase could reach it
 		let empty: &[u8] = &[];
 		assert!(is_framed_inner(empty));
 
@@ -1177,7 +1177,8 @@ mod tests {
 
 	#[test]
 	fn a_group_range_contains_exactly_that_groups_keys() {
-		// a group range must contain exactly that operator+group's keys, or reclaim destroys or leaks state
+		// a group range must contain exactly that operator+group's keys, or a forget pass destroys or leaks
+		// state
 		let population = population();
 		for operator in NODES {
 			for group in GROUPS {
@@ -1201,7 +1202,7 @@ mod tests {
 
 	#[test]
 	fn variable_length_group_ids_cannot_prefix_one_another() {
-		// no group id's varint encoding may prefix another's, or reclaiming the shorter erases the longer's
+		// no group id's varint encoding may prefix another's, or forgetting the shorter erases the longer's
 		// keys
 		let encodings: Vec<Vec<u8>> = GROUPS
 			.iter()
@@ -1367,7 +1368,7 @@ mod tests {
 
 	#[test]
 	fn root_entries_sit_outside_every_group_range() {
-		// the root-scoped counter must sit outside every group range, or reclaiming a group erases it
+		// the root-scoped counter must sit outside every group range, or forgetting a group erases it
 		for operator in NODES {
 			let counter = OperatorStateKey::root(
 				OperatorId(operator),
@@ -1615,7 +1616,7 @@ mod tests {
 				KeyspaceId::ENGINE_META,
 				KeyspaceId::WINDOW_META,
 				KeyspaceId::SEAL_LEDGER,
-				KeyspaceId::REAP_QUEUE,
+				KeyspaceId::FORGET_PASS_QUEUE,
 				KeyspaceId::GUEST_ACCUMULATOR,
 				KeyspaceId::TUMBLING_EXPIRY,
 				KeyspaceId::GUEST_MAP_ENTRY,

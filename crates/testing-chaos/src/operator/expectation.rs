@@ -284,7 +284,7 @@ mod tests {
 
 	#[test]
 	fn a_second_row_for_one_window_is_caught_even_when_the_multiset_permits_its_value() {
-		// A key whose row-number mapping was reclaimed mints a fresh number, so its duplicate
+		// A key whose row-number mapping was forgotten mints a fresh number, so its duplicate
 		// folds in without colliding; both tuples are values the model permits for other windows
 		// of the group, so a positional multiset alone would let the duplicate through.
 		let duplicate = windowed(&[(1, 1, 5, 1_000), (2, 1, 9, 1_000)]);

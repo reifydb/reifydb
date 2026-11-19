@@ -83,8 +83,8 @@ impl StandardOperatorStore {
 	#[instrument(name = "store::operator::drop_operator", level = "debug", skip(self), fields(operator = operator.0))]
 	pub fn drop_operator(&self, operator: OperatorId) -> Result<(), StoreOperatorError> {
 		self.resident.record_drop(DropMarker::OperatorState(operator));
-		self.occupancy.forget(operator);
-		self.census.forget(operator);
+		self.occupancy.unregister(operator);
+		self.census.unregister(operator);
 		self.range.invalidate_operator(operator);
 		Ok(())
 	}

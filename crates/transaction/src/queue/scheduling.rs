@@ -246,15 +246,15 @@ pub struct ExpiredLease {
 	pub lease_deadline: DateTime,
 }
 
-pub fn apply_reap_transitions(
+pub fn apply_timeout_transitions(
 	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: QueueId,
 	partition: Partition,
-	reaps: &[(ExpiredLease, QueueAckTransition)],
+	timeouts: &[(ExpiredLease, QueueAckTransition)],
 	now: DateTime,
 ) -> Result<Vec<bool>, ValueError> {
-	if reaps.is_empty() {
+	if timeouts.is_empty() {
 		return Ok(Vec::new());
 	}
 
@@ -262,13 +262,13 @@ pub fn apply_reap_transitions(
 	let mut tx = single.begin_command_ranged(ctx, [&lock_key.encode()], partition_ranges(queue, partition))?;
 
 	let mut keys: Vec<_> =
-		reaps.iter().map(|(lease, _)| QueueItemStateKey::new(queue, partition, lease.row).into()).collect();
+		timeouts.iter().map(|(lease, _)| QueueItemStateKey::new(queue, partition, lease.row).into()).collect();
 	keys.push(lock_key.clone().into());
 	tx.get::<TaggedKey>(&keys)?;
 
 	let mut overlay = ChainOverlay::default();
-	let mut applied = Vec::with_capacity(reaps.len());
-	for (lease, transition) in reaps {
+	let mut applied = Vec::with_capacity(timeouts.len());
+	for (lease, transition) in timeouts {
 		let state_key = QueueItemStateKey::new(queue, partition, lease.row);
 		let Some(stored) = tx.get(from_ref(&state_key))?.remove(0) else {
 			applied.push(false);
@@ -289,7 +289,7 @@ pub fn apply_reap_transitions(
 				partition = partition.0,
 				item = lease.row.0,
 				attempt = lease.attempt,
-				"the lease moved between the reaper's scan and its compare-and-set"
+				"the lease moved between the lease timeout's scan and its compare-and-set"
 			);
 			applied.push(false);
 			continue;

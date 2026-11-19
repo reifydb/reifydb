@@ -34,7 +34,7 @@ use reifydb_value::{
 use crate::{
 	operator::state::{
 		expiry::{ExpiryIndex, expiry_drop, tumbling_expiry_key},
-		reaper::Reaper,
+		forget_pass::Forgetter,
 	},
 	window::{
 		accumulator::{AccumulatorEvents, AccumulatorOp},
@@ -124,12 +124,12 @@ impl<K: HeapSize, V: HeapSize> HeapSize for MapEntry<K, V> {
 	}
 }
 
-impl<G, S, K, V, O> Reaper for EntryMapTumblingEngine<G, S, K, V, O>
+impl<G, S, K, V, O> Forgetter for EntryMapTumblingEngine<G, S, K, V, O>
 where
 	S: WindowAnchor + Hash,
 	EntryMapHeader<O>: OperatorState,
 {
-	fn reap(
+	fn forget(
 		&mut self,
 		store: &mut dyn StateStore,
 		rows: &[(GroupStateKey, EncodedPodRow)],
@@ -678,7 +678,7 @@ where
 				assert!(
 					!out.iter().any(|window| window.group_id == entry.group_id),
 					"the expiry index still holds a row for a group that is about to be queued for \
-					 reaping; a window group must own exactly one index row, or reaping it orphans \
+					 forgetting; a window group must own exactly one index row, or forgetting it orphans \
 					 the rows left behind under a group id nothing resolves again"
 				);
 			}
@@ -708,8 +708,8 @@ mod tests {
 		factory::coord::event_coord_at_millis,
 		operator::{
 			state::{
+				forget_pass::{Forgetter, StoreForgetter, enqueue, forget_group},
 				mock::MockStore,
-				reaper::{Reaper, StoreReaper, enqueue, reap_group},
 				seal::coord::Coord,
 			},
 			state_access::get,
@@ -956,7 +956,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_reaped_entry_map_window_hands_its_row_to_its_mapping() {
+	fn a_forgotten_entry_map_window_hands_its_row_to_its_mapping() {
 		// Phase 1 erases the header that holds the row; without the move a window woken before phase 2 inserts
 		// a duplicate.
 		let mut store = MockStore::default();
@@ -979,18 +979,21 @@ mod tests {
 		assert_eq!(engine.expire(&mut store, 10).unwrap().len(), 1, "precondition: the window expires");
 
 		let swept = store.group_sweep(&[group], usize::MAX, KeyspaceMask::data()).unwrap().rows;
-		assert!(!swept.is_empty(), "precondition: the window holds data to reap");
-		Reaper::reap(&mut engine, &mut store, &swept).unwrap();
+		assert!(!swept.is_empty(), "precondition: the window holds data to forget");
+		Forgetter::forget(&mut engine, &mut store, &swept).unwrap();
 
-		assert!(store.contains_row_mapping(group), "the reap must move the header's row into the mapping");
+		assert!(
+			store.contains_row_mapping(group),
+			"the forget pass must move the header's row into the mapping"
+		);
 		let woken = apply(&mut engine, &mut store, vec![(AccumulatorOp::Add, (3, 30))]);
 		assert_eq!(kinds(&woken), vec![EmitKind::Update], "the sink still holds the row, so this is an update");
 		assert_eq!(woken[0].row_number, published[0].row_number, "the woken window keeps the row it published");
 	}
 
 	#[test]
-	fn entries_and_header_are_reaped_with_the_window() {
-		// Entries left behind after the reap leak one row per entry map key per closed window.
+	fn entries_and_header_are_forgotten_with_the_window() {
+		// Entries left behind after the forget pass leak one row per entry map key per closed window.
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
 		let out = apply(
@@ -1021,17 +1024,17 @@ mod tests {
 		let expired = engine.expire(&mut store, 10).unwrap();
 		assert_eq!(expired.len(), 1);
 		enqueue(&mut store, &[expired[0].group_id]).unwrap();
-		reap_group(&mut store, expired[0].group_id, &mut StoreReaper, 256).unwrap();
+		forget_group(&mut store, expired[0].group_id, &mut StoreForgetter, 256).unwrap();
 
 		assert_eq!(
-			stored(&engine, &mut store, (group, slot.clone())).expect("the reaped window reads"),
+			stored(&engine, &mut store, (group, slot.clone())).expect("the forgotten window reads"),
 			BTreeMap::new(),
-			"every entry is reaped"
+			"every entry is forgotten"
 		);
 		let header: Option<EntryMapHeader<Out>> =
 			get(&mut store, from_ref(&WindowStateKey::new(KeyspaceFamily::Guest, group, slot)))
 				.unwrap()
 				.remove(0);
-		assert!(header.is_none(), "the header is reaped");
+		assert!(header.is_none(), "the header is forgotten");
 	}
 }

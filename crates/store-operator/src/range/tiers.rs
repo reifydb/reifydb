@@ -186,7 +186,7 @@ impl<K: Keyspace> RangeTier for StandardRangeTier<K> {
 			operator,
 			group,
 		};
-		self.forget(partition, partition);
+		self.release_partition(partition, partition);
 	}
 
 	fn invalidate_operator(&self, operator: OperatorId) {

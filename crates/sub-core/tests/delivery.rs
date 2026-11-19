@@ -234,7 +234,7 @@ fn a_lingering_subscription_does_not_hold_back_its_neighbour() {
 
 #[test]
 fn promoting_queues_the_warming_changes_and_wakes_the_poller() {
-	// Sending at promote skips shaping; forgetting the wake strands the buffered changes until an unrelated poll.
+	// Sending at promote skips shaping; skipping the wake strands the buffered changes until an unrelated poll.
 	let f = Fixture::new();
 	let sink = RecordingSink::new();
 	let waker = Arc::new(Notify::new());
@@ -381,7 +381,7 @@ fn a_failed_entry_closes_only_its_own_subscription() {
 
 #[test]
 fn a_connection_lost_during_flush_keeps_its_ids_for_cleanup() {
-	// Forgetting the ids at flush leaves the engine side registered, since cleanup then finds nothing to drop.
+	// Unregistering the ids at flush leaves the engine side registered, since cleanup then finds nothing to drop.
 	let f = Fixture::new();
 	let sink = RecordingSink::closed();
 	let connection = f.connection();

@@ -20,7 +20,7 @@ use reifydb_core::{
 		timer::{TimerKind, TimerMove},
 	},
 };
-use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
+use reifydb_flow_async::operator::state::forget_pass_outcome::ForgetPassOutcome;
 use reifydb_value::value::{
 	Value,
 	datetime::DateTime,
@@ -422,7 +422,7 @@ pub trait GuestEmitContext {
 }
 
 pub trait GuestContext<C = Windowed>: GuestEmitContext {
-	fn state_retires_groups(&self) -> bool {
+	fn state_forgets_groups(&self) -> bool {
 		false
 	}
 
@@ -432,11 +432,11 @@ pub trait GuestContext<C = Windowed>: GuestEmitContext {
 	fn window_state(&mut self) -> impl GuestState + '_
 	where
 		C: WindowClass;
-	fn reclaim_group_identities(
+	fn forget_group_identities(
 		&mut self,
 		groups: &[GroupId],
 		limit: usize,
-	) -> Result<Vec<ReclaimOutcome>, SdkError>
+	) -> Result<Vec<ForgetPassOutcome>, SdkError>
 	where
 		C: WindowClass;
 }

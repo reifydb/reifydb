@@ -183,7 +183,7 @@ pub struct StateCallbacks {
 		present_out: *mut u8,
 	) -> i32,
 
-	pub reclaim_group_identities: extern "C" fn(
+	pub forget_group_identities: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
 		groups: *const ExternCGroupId,
