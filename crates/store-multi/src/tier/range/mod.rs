@@ -346,10 +346,6 @@ impl RangeDomain for MultiDomain {
 		StorageRowKey::owns(partition.kind).is_some() && partition.kind.caches_ranges()
 	}
 
-	fn cache_run_end(_partition: &Self::Partition) -> Edge<Self::Key> {
-		Edge::Top
-	}
-
 	fn supersedes(resident: &Self::Row, incoming: &Self::Row) -> bool {
 		incoming.version >= resident.version
 	}

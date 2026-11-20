@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Cow, sync::LazyLock};
+use std::borrow::Cow;
 
 use reifydb_codec::{
 	key::{decode_fixed, encode_u8, encoded::EncodedKey},
@@ -78,21 +78,6 @@ impl TestPartition {
 	}
 }
 
-static CACHE_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
-	let mut floor = [0u8; 256];
-	let mut lowest = 0u8;
-	for keyspace in 0..=u8::MAX {
-		if keyspace > 0
-			&& (keyspace == KeyspaceId::CUSTOM_UNMANAGED.0)
-				!= (keyspace - 1 == KeyspaceId::CUSTOM_UNMANAGED.0)
-		{
-			lowest = keyspace;
-		}
-		floor[keyspace as usize] = lowest;
-	}
-	floor
-});
-
 impl RangeDomain for TestDomain {
 	type Dimension = OperatorId;
 	type Partition = TestPartition;
@@ -128,19 +113,6 @@ impl RangeDomain for TestDomain {
 
 	fn caches_ranges(partition: &Self::Partition) -> bool {
 		partition.caches_ranges()
-	}
-
-	fn cache_run_end(partition: &Self::Partition) -> Edge<Self::Key> {
-		let floor = CACHE_RUN_FLOOR[partition.keyspace.0 as usize];
-		if floor == partition.keyspace.0 {
-			return partition.span().1;
-		}
-		TestPartition {
-			keyspace: KeyspaceId(floor),
-			..*partition
-		}
-		.span()
-		.1
 	}
 
 	fn partition_walk_end(partition: &Self::Partition) -> Edge<Self::Key> {
@@ -198,10 +170,6 @@ impl RangeDomain for AdmittingDomain {
 
 	fn caches_ranges(partition: &Self::Partition) -> bool {
 		TestDomain::caches_ranges(partition)
-	}
-
-	fn cache_run_end(partition: &Self::Partition) -> Edge<Self::Key> {
-		TestDomain::cache_run_end(partition)
 	}
 
 	fn admits_unproven_writes() -> bool {

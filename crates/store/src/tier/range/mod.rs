@@ -70,8 +70,6 @@ pub trait RangeDomain: Copy + Debug + 'static {
 
 	fn caches_ranges(partition: &Self::Partition) -> bool;
 
-	fn cache_run_end(partition: &Self::Partition) -> Edge<Self::Key>;
-
 	fn partition_walk_end(_partition: &Self::Partition) -> Edge<Self::Key> {
 		Edge::Top
 	}

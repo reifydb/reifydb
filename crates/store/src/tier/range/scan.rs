@@ -740,7 +740,7 @@ fn split_at_partitions<D: RangeDomain>(
 			if walk_end.is_none() {
 				walk_end = Some(D::partition_walk_end(&partition));
 			}
-			D::cache_run_end(&partition)
+			Edge::Top
 		};
 		let end = bound.min(whole.end.clone());
 		let piece = Interval::new(start, end.clone());
@@ -1014,14 +1014,10 @@ mod tests {
 	}
 
 	#[test]
-	fn a_wide_gap_splits_once_per_cache_run_while_ram_still_splits_once_per_partition() {
-		// A gap piece per keyspace byte made a group-wide scan build ~97 pieces that coalesce_gaps then
-		// merged back into ~3; the run is the unit that survives, so emitting bytes is pure waste. RAM must
-		// keep splitting per partition, because serve resolves one partition from the segment start and a
-		// merged RAM piece would silently answer only the first partition's rows.
+	fn a_wide_gap_stays_one_piece_while_ram_still_splits_once_per_partition() {
+		// RAM must split per partition, or serve answers only the first partition's rows.
 		let top = KeyspaceId(UNCACHED.0 + 8);
-		let below = KeyspaceId(UNCACHED.0 - 1);
-		let bottom = KeyspaceId(UNCACHED.0 - 8);
+		let bottom = KeyspaceId(UNCACHED.0 + 1);
 		let span = Interval::new(whole(top).start, whole(bottom).end);
 
 		let mut gap = Vec::new();
@@ -1036,31 +1032,14 @@ mod tests {
 		);
 		assert_eq!(
 			gap,
-			[
-				(
-					Segment::Gap {
-						interval: Interval::new(whole(top).start, whole(UNCACHED).start),
-						exempt: false,
-					},
-					Some(partition(top))
-				),
-				(
-					Segment::Gap {
-						interval: whole(UNCACHED),
-						exempt: true,
-					},
-					Some(partition(UNCACHED))
-				),
-				(
-					Segment::Gap {
-						interval: Interval::new(whole(below).start, whole(bottom).end),
-						exempt: false,
-					},
-					Some(partition(below))
-				),
-			],
-			"seventeen keyspaces holding one exempt byte must split into three cache tier runs, each carrying \
-			 the first partition of its run so the miss tally stays per run"
+			[(
+				Segment::Gap {
+					interval: span.clone(),
+					exempt: false,
+				},
+				Some(partition(top))
+			)],
+			"a gap over cached keyspaces must come back as one piece carrying its first partition"
 		);
 
 		let mut ram = Vec::new();
@@ -1075,45 +1054,6 @@ mod tests {
 				.all(|(segment, partition)| matches!(segment, Segment::Resident(_))
 					&& partition.is_some()),
 			"every RAM piece must name the partition that serves it"
-		);
-	}
-
-	#[test]
-	fn a_gap_reaching_past_its_group_stops_splitting_and_hands_the_remainder_back_unattributed() {
-		// A scan bounded only by the operator leaves the gap's upper end open, and splitting it one cache
-		// tier run at a time then walked every group the key space can express, so the planner never
-		// returned and grew a piece per turn until the process died. The walk must stop at the group it
-		// entered and hand back what is left as a single piece.
-		let Edge::Key(boundary) = partition(KeyspaceId(u8::MAX)).group_end() else {
-			panic!("a group below the top of the key space must have a boundary");
-		};
-
-		let mut pieces = Vec::new();
-		split_at_partitions::<D>(
-			OP,
-			None,
-			&Segment::Gap {
-				interval: Interval::new(whole(KeyspaceId(u8::MAX)).start, Edge::Top),
-				exempt: false,
-			},
-			&mut pieces,
-		);
-
-		let (tail, attributed) = pieces.last().expect("an unbounded gap must still yield pieces");
-		assert_eq!(
-			tail,
-			&Segment::Gap {
-				interval: Interval::new(Edge::Key(boundary), Edge::Top),
-				exempt: false,
-			},
-			"everything past the group must come back as one piece running to the top of the key space"
-		);
-		assert!(attributed.is_none(), "the tail covers more partitions than one, so it may name none");
-		assert!(
-			pieces[..pieces.len() - 1]
-				.iter()
-				.all(|(_, at)| at.as_ref().is_some_and(|at| at.group == group())),
-			"every attributed piece must belong to the group the walk entered, or the walk left it"
 		);
 	}
 

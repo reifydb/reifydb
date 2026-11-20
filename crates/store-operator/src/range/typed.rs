@@ -71,10 +71,6 @@ impl<K: Keyspace> RangeDomain for TypedDomain<K> {
 		K::RANGE_CACHED
 	}
 
-	fn cache_run_end(_partition: &Self::Partition) -> Edge<Self::Key> {
-		Edge::Top
-	}
-
 	fn pins_removals() -> bool {
 		false
 	}

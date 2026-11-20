@@ -401,7 +401,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				ids.iter()
 					.filter(|id| {
 						let (start, span_end) = D::span(id);
-						let end = span_end.min(D::cache_run_end(id));
+						let end = span_end;
 						start.lowest()
 							.and_then(|start| {
 								coverage.set(D::dimension(id))
