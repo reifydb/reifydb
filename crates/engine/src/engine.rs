@@ -42,7 +42,6 @@ use reifydb_core::{
 		},
 	},
 	internal,
-	lifecycle::floor::CheckpointFloor,
 	metrics::sample::MetricKind,
 	retry::RetryStrategy,
 	util::ioc::IocContainer,
@@ -679,10 +678,6 @@ impl StandardEngine {
 
 	pub fn operator_state(&self) -> OperatorStore {
 		self.operator_state.clone()
-	}
-
-	pub fn checkpoint_floor(&self) -> Arc<dyn CheckpointFloor> {
-		Arc::new(self.operator_state.clone())
 	}
 
 	#[inline]

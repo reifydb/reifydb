@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::error::ValueError;
-
 use crate::common::CommitVersion;
 
 pub trait FlushFloor: Send + Sync + 'static {
@@ -15,8 +13,4 @@ pub trait QueryFloor: Send + Sync + 'static {
 
 pub trait ConsumerPositions: Send + Sync + 'static {
 	fn min_position(&self) -> Option<CommitVersion>;
-}
-
-pub trait CheckpointFloor: Send + Sync + 'static {
-	fn floor(&self) -> Result<Option<CommitVersion>, ValueError>;
 }

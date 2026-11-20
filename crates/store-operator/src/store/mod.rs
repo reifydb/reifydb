@@ -18,11 +18,7 @@ use std::{ops::Deref, sync::Arc};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::default;
-use reifydb_core::{
-	common::CommitVersion,
-	lifecycle::floor::CheckpointFloor,
-	metrics::{collect::MetricsCollector, sample::MetricsSample},
-};
+use reifydb_core::metrics::{collect::MetricsCollector, sample::MetricsSample};
 use reifydb_filter::adaptive::FilterMetrics;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_filter::{
@@ -388,12 +384,6 @@ impl OperatorStore {
 		match self {
 			Self::Standard(store) => store.metrics_collectors(),
 		}
-	}
-}
-
-impl CheckpointFloor for OperatorStore {
-	fn floor(&self) -> Result<Option<CommitVersion>, ValueError> {
-		Ok(self.lowest_checkpoint()?)
 	}
 }
 

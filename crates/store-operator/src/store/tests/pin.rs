@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::CommitVersion, lifecycle::floor::CheckpointFloor};
+use reifydb_core::common::CommitVersion;
 use reifydb_runtime::sync::mutex::Mutex;
 
 use super::{FLOW_A, FLOW_B, flush, store_fixture};
 use crate::store::{OperatorStore, StandardOperatorStore};
 
 fn lowest_checkpoint(store: &OperatorStore) -> Option<CommitVersion> {
-	store.floor().unwrap()
+	store.lowest_checkpoint().unwrap()
 }
 
 fn durable_and_buffered(store: &StandardOperatorStore, durable: u64, buffered: u64) {
