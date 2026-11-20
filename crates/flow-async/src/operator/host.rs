@@ -25,7 +25,7 @@ use reifydb_core::{
 	key::{
 		any::TaggedKey,
 		operator::{
-			keyspace::join::JoinRowMappingKey,
+			keyspace::{due::CustomManagedDue, join::JoinRowMappingKey},
 			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask},
 		},
 		row::StoragePartitionedRowKey,
@@ -54,7 +54,7 @@ use reifydb_value::{
 use crate::{
 	error::FlowAsyncError,
 	operator::state::{
-		due::{due_drop, due_get, due_set, managed_due_key, managed_latest_key},
+		due::{due_drop, due_earliest, due_get, due_set, managed_due_key, managed_latest_key},
 		forget_pass::IdentityForgetPass,
 		forget_pass_outcome::ForgetPassOutcome,
 		seal::rule::SEAL_GATE_STEP,
@@ -221,12 +221,18 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 			due_drop(self, &managed_due_key(previous, group))?;
 		}
 		due_set(self, managed_due_key(due, group), Vec::<u8>::new())?;
-		due_set(self, latest, due)?;
+		due_set(self, latest, due)
+	}
+
+	fn arm_earliest_forget_pass(&mut self) -> Result<(), ValueError> {
+		let Some(order) = due_earliest::<CustomManagedDue>(self)? else {
+			return Ok(());
+		};
 		self.txn.arm_timer(
 			self.operator,
 			&Timer {
-				due,
-				kind: TimerKind::Reclaim,
+				due: DateTime::from_order(order),
+				kind: TimerKind::ForgetPass,
 				key: EncodedKey::new(Vec::new()),
 			},
 		)
@@ -305,8 +311,11 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), ValueError> {
 		let groups: BTreeSet<GroupId> = rows.iter().filter_map(|(key, _)| managed_group(key)).collect();
 		self.txn.state_set(self.operator, rows)?;
-		for group in groups {
-			self.arm_forget_pass(group)?;
+		for group in &groups {
+			self.arm_forget_pass(*group)?;
+		}
+		if !groups.is_empty() {
+			self.arm_earliest_forget_pass()?;
 		}
 		Ok(())
 	}
@@ -317,8 +326,11 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 			.filter_map(|slot| managed_group(batch.key(slot)))
 			.collect();
 		self.txn.state_write_batch(self.operator, batch)?;
-		for group in groups {
-			self.arm_forget_pass(group)?;
+		for group in &groups {
+			self.arm_forget_pass(*group)?;
+		}
+		if !groups.is_empty() {
+			self.arm_earliest_forget_pass()?;
 		}
 		Ok(())
 	}

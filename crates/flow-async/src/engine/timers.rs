@@ -453,10 +453,10 @@ mod tests {
 	}
 
 	#[test]
-	fn a_burst_of_maintenance_timers_all_fire_in_one_dispatch() {
-		// a maintenance key carries a second index row that take_due must remove with it, or the next arm
+	fn a_burst_of_forget_pass_timers_all_fire_in_one_dispatch() {
+		// a forget pass key carries a second index row that take_due must remove with it, or the next arm
 		for count in [64usize, 256, 1_024, 4_096, 8_192] {
-			dispatch_burst(count, TimerKind::Maintenance);
+			dispatch_burst(count, TimerKind::ForgetPass);
 		}
 	}
 
@@ -624,30 +624,30 @@ mod tests {
 	}
 
 	#[test]
-	fn a_maintenance_timer_between_seals_keeps_its_place_in_the_dispatch() {
-		// A seal batched past a maintenance timer forgets groups before their lateness runs out.
+	fn a_forget_pass_timer_between_seals_keeps_its_place_in_the_dispatch() {
+		// A seal batched past a forget pass timer forgets groups before their lateness runs out.
 		let fired = dispatch_recorded(&[
 			(OPERATOR, timer_at(5_000, TimerKind::Seal, "a")),
-			(OPERATOR, timer_at(5_500, TimerKind::Maintenance, "")),
+			(OPERATOR, timer_at(5_500, TimerKind::ForgetPass, "")),
 			(OPERATOR, timer_at(6_000, TimerKind::Seal, "b")),
 		]);
 
 		assert_eq!(
 			fired.iter().map(|(_, due, kind, _)| (*due, *kind)).collect::<Vec<_>>(),
-			vec![(5_000, TimerKind::Seal), (5_500, TimerKind::Maintenance), (6_000, TimerKind::Seal)],
-			"the maintenance timer must fire between the two seals"
+			vec![(5_000, TimerKind::Seal), (5_500, TimerKind::ForgetPass), (6_000, TimerKind::Seal)],
+			"the forget pass timer must fire between the two seals"
 		);
 	}
 
 	#[test]
 	fn a_batching_operator_gets_each_run_of_its_own_seals_and_nothing_else_in_one_call() {
-		// A run spanning another operator or a maintenance timer reorders outputs or forgets before lateness.
+		// A run spanning another operator or a forget pass timer reorders outputs or forgets before lateness.
 		let runs: Runs = Arc::default();
 		dispatch_with(
 			&[
 				(OPERATOR, timer_at(5_000, TimerKind::Seal, "a")),
 				(OPERATOR, timer_at(5_100, TimerKind::Seal, "b")),
-				(OPERATOR, timer_at(5_500, TimerKind::Maintenance, "")),
+				(OPERATOR, timer_at(5_500, TimerKind::ForgetPass, "")),
 				(OPERATOR, timer_at(6_000, TimerKind::Seal, "c")),
 				(OTHER, timer_at(6_000, TimerKind::Seal, "d")),
 				(OPERATOR, timer_at(7_000, TimerKind::Seal, "e")),
@@ -664,12 +664,12 @@ mod tests {
 			runs.lock().unwrap().clone(),
 			vec![
 				(true, vec![(OPERATOR, 5_000, TimerKind::Seal), (OPERATOR, 5_100, TimerKind::Seal)]),
-				(false, vec![(OPERATOR, 5_500, TimerKind::Maintenance)]),
+				(false, vec![(OPERATOR, 5_500, TimerKind::ForgetPass)]),
 				(true, vec![(OPERATOR, 6_000, TimerKind::Seal)]),
 				(true, vec![(OTHER, 6_000, TimerKind::Seal)]),
 				(true, vec![(OPERATOR, 7_000, TimerKind::Seal)]),
 			],
-			"only consecutive seals of one operator may share a batch, and maintenance must fire alone"
+			"only consecutive seals of one operator may share a batch, and a forget pass must fire alone"
 		);
 	}
 

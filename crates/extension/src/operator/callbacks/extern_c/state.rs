@@ -847,7 +847,7 @@ pub(super) extern "C" fn host_arm_timer(
 	if key_len > 0 && key.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
-	let Some(kind) = TimerKind::from_u8(kind).filter(|kind| *kind != TimerKind::Reclaim) else {
+	let Some(kind) = TimerKind::from_u8(kind).filter(|kind| *kind != TimerKind::ForgetPass) else {
 		return EXTERN_C_ERROR_INTERNAL;
 	};
 
@@ -881,7 +881,7 @@ pub(super) extern "C" fn host_rearm_timers(
 	if moves_len > 0 && moves.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
-	let Some(kind) = TimerKind::from_u8(kind).filter(|kind| *kind != TimerKind::Reclaim) else {
+	let Some(kind) = TimerKind::from_u8(kind).filter(|kind| !kind.is_unique()) else {
 		return EXTERN_C_ERROR_INTERNAL;
 	};
 
@@ -997,7 +997,7 @@ pub(super) extern "C" fn host_disarm_timer(
 	if key_len > 0 && key.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
-	let Some(kind) = TimerKind::from_u8(kind).filter(|kind| *kind != TimerKind::Reclaim) else {
+	let Some(kind) = TimerKind::from_u8(kind).filter(|kind| *kind != TimerKind::ForgetPass) else {
 		return EXTERN_C_ERROR_INTERNAL;
 	};
 
@@ -1654,7 +1654,7 @@ mod join_row_forget_guard_tests {
 	fn a_guest_cannot_arm_or_disarm_the_forget_pass_timer() {
 		// A guest that arms the engine's forget pass kind would free managed state on its own schedule.
 		let key = [7u8; 4];
-		let forget_pass = TimerKind::Reclaim as u8;
+		let forget_pass = TimerKind::ForgetPass as u8;
 
 		let (armed, arm_reached) =
 			with_context(|ctx| host_arm_timer(1, ctx, 0, forget_pass, key.as_ptr(), key.len()));
@@ -1665,6 +1665,18 @@ mod join_row_forget_guard_tests {
 		assert_eq!(disarmed, EXTERN_C_ERROR_INTERNAL, "nor disarm it");
 		assert!(!arm_reached, "and the refusal must land before the host is touched");
 		assert!(!disarm_reached);
+	}
+
+	#[test]
+	fn a_guest_cannot_rearm_a_unique_kind_in_a_batch() {
+		// A batched rearm skips the timer index a unique kind keeps, so the index and the wheel drift apart.
+		for kind in [TimerKind::Tick, TimerKind::ForgetPass] {
+			let (status, _) = with_context(|ctx| host_rearm_timers(1, ctx, kind as u8, ptr::null(), 0));
+
+			assert_eq!(status, EXTERN_C_ERROR_INTERNAL, "{kind:?}: a batched rearm must be refused");
+		}
+		let (status, _) = with_context(|ctx| host_rearm_timers(1, ctx, TimerKind::Seal as u8, ptr::null(), 0));
+		assert_eq!(status, EXTERN_C_OK, "a batched Seal rearm must still pass");
 	}
 
 	#[test]

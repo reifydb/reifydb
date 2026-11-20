@@ -18,6 +18,7 @@ use crate::{operator::state::seal::rule::SealedThrough, timer::Timer};
 #[derive(Clone, Default)]
 pub struct SealLedgerState {
 	pub sealed_through: u64,
+	pub forget_pass_armed: Option<u64>,
 }
 
 impl HeapSize for SealLedgerState {
@@ -47,36 +48,62 @@ pub struct SealLedger;
 
 impl SealLedger {
 	pub fn advance(store: &mut dyn StateStore, fired: FiredAt) -> Result<SealedThrough, ValueError> {
+		Self::advance_state(store, fired).map(|state| SealedThrough::from_order(state.sealed_through))
+	}
+
+	pub fn advance_state(store: &mut dyn StateStore, fired: FiredAt) -> Result<SealLedgerState, ValueError> {
 		let fired_order = fired.at().to_order();
-		let current = Self::read_order(store)?.unwrap_or(0);
-		if fired_order <= current {
-			return Ok(SealedThrough::from_order(current));
+		let mut state = Self::read(store)?.unwrap_or_default();
+		if fired_order <= state.sealed_through {
+			return Ok(state);
 		}
-		let state = SealLedgerState {
-			sealed_through: fired_order,
-		};
-		store.state_set(vec![(seal_ledger_key(), state.encode_state()?)])?;
-		Ok(SealedThrough::from_order(fired_order))
+		state.sealed_through = fired_order;
+		Self::write(store, &state)?;
+		Ok(state)
 	}
 
 	pub fn observe(store: &mut dyn StateStore, order: u64) -> Result<u64, ValueError> {
-		let current = Self::read_order(store)?.unwrap_or(0);
-		if order <= current {
-			return Ok(current);
+		let mut state = Self::read(store)?.unwrap_or_default();
+		if order <= state.sealed_through {
+			return Ok(state.sealed_through);
 		}
-		let state = SealLedgerState {
-			sealed_through: order,
-		};
-		store.state_set(vec![(seal_ledger_key(), state.encode_state()?)])?;
+		state.sealed_through = order;
+		Self::write(store, &state)?;
 		Ok(order)
 	}
 
 	pub fn read_order(store: &mut dyn StateStore) -> Result<Option<u64>, ValueError> {
+		Ok(Self::read(store)?.map(|state| state.sealed_through))
+	}
+
+	pub fn record_forget_pass(
+		store: &mut dyn StateStore,
+		mut state: SealLedgerState,
+		due: DateTime,
+	) -> Result<(), ValueError> {
+		state.forget_pass_armed = Some(due.to_order());
+		Self::write(store, &state)
+	}
+
+	pub fn set_forget_pass_armed(store: &mut dyn StateStore, due: Option<DateTime>) -> Result<(), ValueError> {
+		let mut state = Self::read(store)?.unwrap_or_default();
+		let armed = due.map(|due| due.to_order());
+		if state.forget_pass_armed == armed {
+			return Ok(());
+		}
+		state.forget_pass_armed = armed;
+		Self::write(store, &state)
+	}
+
+	fn read(store: &mut dyn StateStore) -> Result<Option<SealLedgerState>, ValueError> {
 		let Some(bytes) = store.state_get(from_ref(&seal_ledger_key()))?.pop().flatten() else {
 			return Ok(None);
 		};
-		let state: SealLedgerState = decode(&bytes)?;
-		Ok(Some(state.sealed_through))
+		Ok(Some(decode(&bytes)?))
+	}
+
+	fn write(store: &mut dyn StateStore, state: &SealLedgerState) -> Result<(), ValueError> {
+		store.state_set(vec![(seal_ledger_key(), state.encode_state()?)])
 	}
 }
 

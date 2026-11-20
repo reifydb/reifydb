@@ -760,7 +760,15 @@ pub fn flow_operator_timer_kind_reserved(kind: &str) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_074",
 		format!("timer kind '{kind}' is reserved for the engine"),
-		"Arm a Seal, Grace, RowTtl or Maintenance timer instead.",
+		"Arm a Seal, RowTtl or Tick timer instead.",
+	)
+}
+
+pub fn flow_operator_timer_kind_not_batched(kind: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_097",
+		format!("timer kind '{kind}' keeps one timer per key and cannot be rearmed in a batch"),
+		"Arm or disarm it one timer at a time.",
 	)
 }
 

@@ -10,15 +10,15 @@ use crate::error::{
 	CoreError,
 	diagnostic::flow::{
 		flow_operator_retention_required, flow_operator_rolling_carry_unsupported,
-		flow_operator_rolling_unbounded, flow_operator_timer_kind_reserved, flow_operator_with_count_span,
-		flow_operator_with_duration_span, flow_operator_with_immutable_not_below_lateness,
-		flow_operator_with_not_accepted, flow_operator_with_pane_missing,
-		flow_operator_with_retention_below_lateness, flow_operator_with_retention_not_supported,
-		flow_operator_with_session_immutable, flow_operator_with_session_zero_gap,
-		flow_operator_with_window_kind_unsupported, flow_operator_with_window_missing,
-		flow_operator_with_window_not_supported, flow_operator_with_window_size_count,
-		flow_operator_with_window_size_duration, flow_operator_with_window_slide_count,
-		flow_operator_with_window_slide_duration,
+		flow_operator_rolling_unbounded, flow_operator_timer_kind_not_batched,
+		flow_operator_timer_kind_reserved, flow_operator_with_count_span, flow_operator_with_duration_span,
+		flow_operator_with_immutable_not_below_lateness, flow_operator_with_not_accepted,
+		flow_operator_with_pane_missing, flow_operator_with_retention_below_lateness,
+		flow_operator_with_retention_not_supported, flow_operator_with_session_immutable,
+		flow_operator_with_session_zero_gap, flow_operator_with_window_kind_unsupported,
+		flow_operator_with_window_missing, flow_operator_with_window_not_supported,
+		flow_operator_with_window_size_count, flow_operator_with_window_size_duration,
+		flow_operator_with_window_slide_count, flow_operator_with_window_slide_duration,
 	},
 };
 
@@ -169,6 +169,10 @@ impl IntoDiagnostic for CoreError {
 			CoreError::OperatorTimerKindReserved {
 				kind,
 			} => flow_operator_timer_kind_reserved(kind),
+
+			CoreError::OperatorTimerKindNotBatched {
+				kind,
+			} => flow_operator_timer_kind_not_batched(kind),
 
 
 			CoreError::PrimaryKeyDigestColumn {

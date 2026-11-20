@@ -22,24 +22,31 @@ use crate::{
 #[repr(u8)]
 pub enum TimerKind {
 	Seal = 0,
-	Grace = 1,
-	RowTtl = 2,
-	Maintenance = 3,
-	Reclaim = 4,
+	RowTtl = 1,
+	Tick = 2,
+	ForgetPass = 3,
 }
 
 impl TimerKind {
-	pub fn is_maintenance(&self) -> bool {
-		matches!(self, Self::Maintenance)
+	pub fn is_unique(&self) -> bool {
+		matches!(self, Self::Tick | Self::ForgetPass)
+	}
+
+	pub fn name(&self) -> &'static str {
+		match self {
+			Self::Seal => "Seal",
+			Self::RowTtl => "RowTtl",
+			Self::Tick => "Tick",
+			Self::ForgetPass => "ForgetPass",
+		}
 	}
 
 	pub fn from_u8(value: u8) -> Option<Self> {
 		match value {
 			0 => Some(Self::Seal),
-			1 => Some(Self::Grace),
-			2 => Some(Self::RowTtl),
-			3 => Some(Self::Maintenance),
-			4 => Some(Self::Reclaim),
+			1 => Some(Self::RowTtl),
+			2 => Some(Self::Tick),
+			3 => Some(Self::ForgetPass),
 			_ => None,
 		}
 	}
@@ -156,6 +163,10 @@ pub trait TimerStore {
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError>;
 
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>, ValueError>;
+
+	fn forget_pass_kind(&self) -> TimerKind {
+		TimerKind::ForgetPass
+	}
 
 	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<(), ValueError> {
 		for timer in moves.iter().filter(|timer| timer.before != timer.after) {

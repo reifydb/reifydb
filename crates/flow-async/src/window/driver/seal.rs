@@ -61,13 +61,13 @@ where
 	C: SealDomain + WindowAnchor + Hash,
 	A: WindowAccumulator,
 {
-	SealLedger::advance(store, fired)?;
+	let ledger = SealLedger::advance_state(store, fired)?;
 	let operator_watermark = C::from_order(fired.at().to_order());
 	if C::first_admitted(operator_watermark, seal_span) <= C::from_order(0) {
 		return Ok(());
 	}
 	if close_through(engine, store, operator_watermark, seal_span, budget, may_forget)? {
-		C::arm_forget_pass(store, fired.at(), seal_span)?;
+		C::arm_forget_pass(store, ledger, fired.at(), seal_span)?;
 	}
 	let earliest = engine.earliest_seal(store)?;
 	C::rearm_seal(store, seal_span, None, earliest)
@@ -77,7 +77,6 @@ pub fn forget_pass<G, C, A>(
 	engine: &mut TumblingEngine<G, C, A>,
 	store: &mut dyn WindowStore,
 	fired: FiredAt,
-	seal_span: C::SealSpan,
 	budget: usize,
 ) -> Result<DrainOutcome, ValueError>
 where
@@ -85,9 +84,10 @@ where
 	C: SealDomain + WindowAnchor + Hash,
 	A: WindowAccumulator,
 {
+	SealLedger::set_forget_pass_armed(store, None)?;
 	let drained = drain(store, engine, budget)?;
 	if !drained.queue_is_empty() {
-		C::arm_forget_pass(store, fired.at(), seal_span)?;
+		C::retry_forget_pass(store, fired.at())?;
 	}
 	Ok(drained)
 }

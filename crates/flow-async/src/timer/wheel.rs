@@ -46,7 +46,7 @@ pub struct TimerWheel;
 
 impl TimerWheel {
 	pub fn arm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<(), ValueError> {
-		if !timer.kind.is_maintenance() {
+		if !timer.kind.is_unique() {
 			txn.state_set(
 				operator,
 				vec![(
@@ -86,7 +86,7 @@ impl TimerWheel {
 	}
 
 	pub fn disarm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<(), ValueError> {
-		if timer.kind.is_maintenance() {
+		if timer.kind.is_unique() {
 			let index = index_key(timer.kind, &timer.key);
 			if armed_at(operator, txn, &index)? == Some(timer.due) {
 				txn.state_remove(operator, from_ref(&index))?;
@@ -105,8 +105,8 @@ impl TimerWheel {
 		let moving: Vec<&TimerMove> = moves.iter().filter(|timer| timer.before != timer.after).collect();
 		reifydb_assertions! {
 			assert!(
-				!kind.is_maintenance(),
-				"a maintenance kind keeps a timer index that a batched rearm never updates, so the index \
+				!kind.is_unique(),
+				"a unique kind keeps a timer index that a batched rearm never updates, so the index \
 				 would name instants the wheel no longer holds (operator={}, kind={})",
 				operator.0,
 				kind as u8
@@ -149,8 +149,8 @@ impl TimerWheel {
 	) -> Result<(), ValueError> {
 		reifydb_assertions! {
 			assert!(
-				kind.is_maintenance(),
-				"a non-maintenance kind holds no timer index, so a disarm addressed by key alone cannot name \
+				kind.is_unique(),
+				"a backlog kind holds no timer index, so a disarm addressed by key alone cannot name \
 				 which of its instants to cancel and would leave every one of them armed \
 				 (operator={}, kind={})",
 				operator.0,
@@ -250,15 +250,15 @@ impl TimerWheel {
 			due.push(timer);
 		}
 
-		let maintenance_indices: Vec<GroupStateKey> = due
+		let unique_indices: Vec<GroupStateKey> = due
 			.iter()
-			.filter(|timer| timer.kind.is_maintenance())
+			.filter(|timer| timer.kind.is_unique())
 			.map(|timer| index_key(timer.kind, &timer.key))
 			.collect();
-		let armed: Vec<Option<DateTime>> = if maintenance_indices.is_empty() {
+		let armed: Vec<Option<DateTime>> = if unique_indices.is_empty() {
 			Vec::new()
 		} else {
-			txn.state_get(operator, &maintenance_indices)?
+			txn.state_get(operator, &unique_indices)?
 				.iter()
 				.map(|row| row.as_ref().map(decode_payload::<DateTime>).transpose())
 				.collect::<Result<_, ValueError>>()?
@@ -268,7 +268,7 @@ impl TimerWheel {
 		let mut doomed = Vec::with_capacity(due.len());
 		for timer in &due {
 			doomed.push(timer_key(timer.due, timer.kind, &timer.key));
-			if timer.kind.is_maintenance() {
+			if timer.kind.is_unique() {
 				let named = armed.next().flatten();
 				if named == Some(timer.due) {
 					doomed.push(index_key(timer.kind, &timer.key));

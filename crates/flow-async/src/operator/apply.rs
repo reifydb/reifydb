@@ -33,7 +33,7 @@ use crate::{
 		join::kept::dictionary_columns,
 		stamp_output_created,
 		state::{
-			due::{due_drop, due_entries, managed_due_group, managed_latest_key},
+			due::{due_drop, due_earliest, due_entries, managed_due_group, managed_latest_key},
 			forget_pass::{StoreForgetter, drain, drain_group, enqueue},
 			seal::rule::{SEAL_GATE_STEP, SealRule},
 		},
@@ -95,7 +95,7 @@ impl HostOperator for ApplyOperator {
 	}
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
-		if timer.kind == TimerKind::Reclaim {
+		if timer.kind == TimerKind::ForgetPass {
 			fire_forget_pass(host, timer.due)?;
 			return Ok(None);
 		}
@@ -199,8 +199,13 @@ fn fire_forget_pass(host: &mut dyn HostContext, fired: DateTime) -> Result<(), V
 		due_drop(host, &key)?;
 		due_drop(host, &managed_latest_key(group))?;
 	}
-	if retry {
-		host.arm_timer(fired.saturating_add(SEAL_GATE_STEP), TimerKind::Reclaim, &EncodedKey::new(Vec::new()))?;
+	let retry_at = fired.saturating_add(SEAL_GATE_STEP);
+	let next = match retry {
+		true => Some(retry_at),
+		false => due_earliest::<CustomManagedDue>(host)?.map(|order| DateTime::from_order(order).max(retry_at)),
+	};
+	if let Some(at) = next {
+		host.arm_timer(at, TimerKind::ForgetPass, &EncodedKey::new(Vec::new()))?;
 	}
 	Ok(())
 }
@@ -485,7 +490,7 @@ mod forget_pass_tests {
 				};
 				let suffix = TimerWheelKey::from_suffix_bytes(&decoded.suffix)
 					.expect("a wheel row must decode");
-				(suffix.kind.0 == TimerKind::Reclaim).then_some(suffix.due.0.to_millis())
+				(suffix.kind.0 == TimerKind::ForgetPass).then_some(suffix.due.0.to_millis())
 			})
 			.collect();
 		dues.sort();
@@ -515,13 +520,22 @@ mod forget_pass_tests {
 		// A due rounded down frees a group while a row inside its lateness can still arrive.
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
-		let span = Some(secs(2));
+		let (mut operator, _) = managed(2);
+		let span = operator.retention();
 
 		write_at(&mut txn, 9_999, span, &managed_key(group(1))).unwrap();
 		write_at(&mut txn, 10_000, span, &managed_key(group(2))).unwrap();
 
-		assert_eq!(forget_pass_timers(&mut txn), vec![12_000, 13_000], "9.999s + 2s + 1ms is exactly 12s");
+		assert_eq!(
+			forget_pass_timers(&mut txn),
+			vec![12_000],
+			"9.999s + 2s + 1ms is exactly 12s, the earliest due"
+		);
 		assert_eq!(due_entries(&mut txn), 2);
+
+		fire(&mut operator, &mut txn, TimerKind::ForgetPass, 12_000);
+
+		assert_eq!(forget_pass_timers(&mut txn), vec![13_000], "10s + 2s + 1ms rounds up to 13s, armed next");
 	}
 
 	#[test]
@@ -553,7 +567,7 @@ mod forget_pass_tests {
 		assert_eq!(due_entries(&mut txn), 1, "the rewrite replaces the first due entry instead of adding one");
 		assert_eq!(latest_entries(&mut txn), 1);
 
-		fire(&mut operator, &mut txn, TimerKind::Reclaim, 13_000);
+		fire(&mut operator, &mut txn, TimerKind::ForgetPass, 13_000);
 
 		assert_eq!(
 			keys(&mut txn, group(1), KeyspaceId::CUSTOM_MANAGED),
@@ -561,7 +575,7 @@ mod forget_pass_tests {
 			"the first write's due must not free the rewritten group"
 		);
 
-		fire(&mut operator, &mut txn, TimerKind::Reclaim, 15_000);
+		fire(&mut operator, &mut txn, TimerKind::ForgetPass, 15_000);
 
 		assert_eq!(
 			keys(&mut txn, group(1), KeyspaceId::CUSTOM_MANAGED),
@@ -586,7 +600,7 @@ mod forget_pass_tests {
 		assert_eq!(due_entries(&mut txn), 1, "the late write keeps one due entry for the group");
 		assert_eq!(latest_entries(&mut txn), 1);
 
-		fire(&mut operator, &mut txn, TimerKind::Reclaim, 13_000);
+		fire(&mut operator, &mut txn, TimerKind::ForgetPass, 13_000);
 
 		assert_eq!(
 			keys(&mut txn, group(1), KeyspaceId::CUSTOM_MANAGED),
@@ -594,7 +608,7 @@ mod forget_pass_tests {
 			"the late write's due must not free the group the newer write keeps"
 		);
 
-		fire(&mut operator, &mut txn, TimerKind::Reclaim, 15_000);
+		fire(&mut operator, &mut txn, TimerKind::ForgetPass, 15_000);
 
 		assert_eq!(
 			keys(&mut txn, group(1), KeyspaceId::CUSTOM_MANAGED),
@@ -645,7 +659,7 @@ mod forget_pass_tests {
 		write_at(&mut txn, 11_500, span, &managed_key(group(2))).unwrap();
 		write_at(&mut txn, 10_000, span, &managed_key(GroupId::ROOT)).unwrap();
 
-		let emitted = fire(&mut operator, &mut txn, TimerKind::Reclaim, 13_000);
+		let emitted = fire(&mut operator, &mut txn, TimerKind::ForgetPass, 13_000);
 
 		assert!(emitted.is_none(), "a forget pass fire emits nothing");
 		assert_eq!(keys(&mut txn, group(1), KeyspaceId::CUSTOM_MANAGED), 0, "group 1 was due at 13s");
@@ -666,20 +680,46 @@ mod forget_pass_tests {
 			write_at(&mut txn, 10_000, span, &managed_key(group(n))).unwrap();
 		}
 
-		fire(&mut operator, &mut txn, TimerKind::Reclaim, 13_000);
+		fire(&mut operator, &mut txn, TimerKind::ForgetPass, 13_000);
 
 		assert_eq!(due_entries(&mut txn), 1, "one fire frees at most 256 groups");
 		assert_eq!(
 			forget_pass_timers(&mut txn),
-			vec![13_000, 13_001],
-			"the capped fire arms its retry 1ms later"
+			vec![13_001],
+			"the capped fire moves its one timer to the retry 1ms later"
 		);
 
-		fire(&mut operator, &mut txn, TimerKind::Reclaim, 13_001);
+		fire(&mut operator, &mut txn, TimerKind::ForgetPass, 13_001);
 
 		assert_eq!(due_entries(&mut txn), 0);
 		assert_eq!((1..=257).map(|n| keys(&mut txn, group(n), KeyspaceId::CUSTOM_MANAGED)).sum::<usize>(), 0);
-		assert_eq!(forget_pass_timers(&mut txn), vec![13_000, 13_001], "a fire that finishes arms no retry");
+		assert_eq!(forget_pass_timers(&mut txn), vec![13_001], "a fire that finishes arms nothing new");
+	}
+
+	#[test]
+	fn each_group_is_forgotten_at_its_own_due_through_one_timer() {
+		// Arming only the latest due forgets the earlier group late; never re-arming after a fire forgets the
+		// later group never.
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine);
+		let (mut operator, _) = managed(2);
+		let span = operator.retention();
+
+		write_at(&mut txn, 10_000, span, &managed_key(group(1))).unwrap();
+		write_at(&mut txn, 12_500, span, &managed_key(group(2))).unwrap();
+
+		assert_eq!(forget_pass_timers(&mut txn), vec![13_000], "one timer, at the earliest due");
+
+		fire(&mut operator, &mut txn, TimerKind::ForgetPass, 13_000);
+
+		assert_eq!(keys(&mut txn, group(1), KeyspaceId::CUSTOM_MANAGED), 0, "group 1 was due at 13s");
+		assert_eq!(keys(&mut txn, group(2), KeyspaceId::CUSTOM_MANAGED), 1, "group 2 is due at 15s");
+		assert_eq!(forget_pass_timers(&mut txn), vec![15_000], "the fire re-arms the next earliest due");
+
+		fire(&mut operator, &mut txn, TimerKind::ForgetPass, 15_000);
+
+		assert_eq!(keys(&mut txn, group(2), KeyspaceId::CUSTOM_MANAGED), 0, "group 2 is forgotten at its due");
+		assert_eq!(due_entries(&mut txn), 0);
 	}
 
 	#[test]
@@ -690,7 +730,7 @@ mod forget_pass_tests {
 		let (mut operator, guest_timers) = managed(2);
 
 		fire(&mut operator, &mut txn, TimerKind::Seal, 13_000);
-		fire(&mut operator, &mut txn, TimerKind::Maintenance, 13_000);
+		fire(&mut operator, &mut txn, TimerKind::Tick, 13_000);
 
 		assert_eq!(guest_timers.load(Ordering::SeqCst), 2);
 	}

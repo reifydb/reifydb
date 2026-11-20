@@ -4,16 +4,12 @@ use reifydb_core::{
 	interface::change::{Change, Diff},
 	state::timer::TimerKind,
 };
-use reifydb_value::{error::ValueError, util::hash::Hash128, value::duration::Duration};
+use reifydb_value::{error::ValueError, util::hash::Hash128};
 use tracing::instrument;
 
 use super::{hooks::BuiltinHooks, operator::WindowOperator, rows::BuiltinRows};
 use crate::{
-	operator::{
-		aggregation::accumulator::RowAccumulator,
-		host::HostContext,
-		state::seal::{ledger::FiredAt, rule::SealRule},
-	},
+	operator::{aggregation::accumulator::RowAccumulator, host::HostContext, state::seal::ledger::FiredAt},
 	timer::Timer,
 	window::{
 		coord::ByDateTime,
@@ -91,18 +87,15 @@ pub fn forget_sealed_groups(
 ) -> Result<(), ValueError> {
 	if let Some(mut runner) = operator.runner.take() {
 		let forgotten =
-			with_engine(operator, |engine| runner.on_timer(engine, host, TimerKind::Maintenance, fired));
+			with_engine(operator, |engine| runner.on_timer(engine, host, TimerKind::ForgetPass, fired));
 		operator.runner = Some(runner);
 		return forgotten;
 	}
-	let Some(size) = operator.size_duration() else {
+	if operator.size_duration().is_none() {
 		return Ok(());
-	};
-	let rule = SealRule::tumbling(size, operator.lateness().unwrap_or_else(Duration::zero));
+	}
 	let budget = operator.engine_config().due_batch();
-	with_engine(operator, |engine| {
-		forget_pass(engine, host, fired, rule.seal_span().duration(), budget).map(|_| ())
-	})
+	with_engine(operator, |engine| forget_pass(engine, host, fired, budget).map(|_| ()))
 }
 
 pub fn seal_session_engines(
@@ -141,9 +134,8 @@ pub fn seal_engine_windows(
 mod tests {
 	use reifydb_value::{factory::time::at_millis, value::duration::Duration};
 
-	use super::SealRule;
 	use crate::{
-		operator::state::seal::rule::{is_sealed, output_watermark},
+		operator::state::seal::rule::{SealRule, is_sealed, output_watermark},
 		window::coord::ByDateTime,
 	};
 
@@ -271,7 +263,7 @@ mod forget_pass_tests {
 	fn fired() -> FiredAt {
 		FiredAt::of(&Timer {
 			due: at_millis(1_000),
-			kind: TimerKind::Maintenance,
+			kind: TimerKind::ForgetPass,
 			key: EncodedKey::new(Vec::new()),
 		})
 	}
@@ -292,20 +284,20 @@ mod forget_pass_tests {
 	}
 
 	#[test]
-	fn a_forget_pass_backlog_larger_than_one_budget_arms_another_maintenance_pass() {
-		// one maintenance pass drains at most due_batch groups; if the pass does not re-arm
+	fn a_forget_pass_backlog_larger_than_one_budget_arms_another_forget_pass() {
+		// one forget pass drains at most due_batch groups; if the pass does not re-arm
 		// itself the remainder is never revisited and the forget pass queue grows without bound
 		let budget = window(1).engine_config().due_batch() as u128;
 
 		assert!(
 			forget_pass_with_queued(budget + 5) > 0,
-			"a queue deeper than one budget must leave a maintenance timer armed to finish it"
+			"a queue deeper than one budget must leave a forget pass timer armed to finish it"
 		);
 	}
 
 	#[test]
 	fn a_forget_pass_queue_that_empties_in_one_pass_arms_nothing_further() {
-		// re-arming unconditionally would spin the maintenance timer forever on an empty queue
+		// re-arming unconditionally would spin the forget pass timer forever on an empty queue
 		assert_eq!(
 			forget_pass_with_queued(2),
 			0,
@@ -483,7 +475,7 @@ mod seal_arm_tests {
 		.collect()
 	}
 
-	fn maintenance_timers(txn: &mut DeferredTransaction, operator: OperatorId) -> usize {
+	fn forget_pass_timers(txn: &mut DeferredTransaction, operator: OperatorId) -> usize {
 		txn.state_range(
 			operator,
 			StateRange::forward(whole_keyspace(GroupId::ROOT, KeyspaceId::TIMER_WHEEL), "test"),
@@ -496,14 +488,14 @@ mod seal_arm_tests {
 				panic!("a wheel row must decode");
 			};
 			TimerWheelKey::from_suffix_bytes(&decoded.suffix).expect("a wheel row must decode").kind.0
-				== TimerKind::Maintenance
+				== TimerKind::ForgetPass
 		})
 		.count()
 	}
 
 	#[test]
-	fn a_closed_tumbling_window_is_left_for_the_flush_and_arms_no_maintenance() {
-		// a maintenance timer would drain the group inline, putting the cost back on the flow's hot path
+	fn a_closed_tumbling_window_is_left_for_the_flush_and_arms_no_forget_pass() {
+		// a forget pass timer would drain the group inline, putting the cost back on the flow's hot path
 		let engine = TestEngine::new();
 		let mut operator = window();
 		let id = operator.core.operator;
@@ -528,7 +520,7 @@ mod seal_arm_tests {
 			vec![FORGOTTEN_AT_FLUSH.to_vec(), FORGOTTEN_AT_FLUSH.to_vec()],
 			"every closed window must carry the marker, or the flush never deletes it"
 		);
-		assert_eq!(maintenance_timers(&mut txn, id), 0);
+		assert_eq!(forget_pass_timers(&mut txn, id), 0);
 	}
 
 	#[test]
@@ -549,7 +541,7 @@ mod seal_arm_tests {
 		let bodies = queued_bodies(&mut txn, id);
 		assert_eq!(bodies.len(), 2, "precondition: both sessions must have closed");
 		assert!(bodies.iter().all(|body| body.is_empty()), "a session must never carry the flush marker");
-		assert_eq!(maintenance_timers(&mut txn, id), 1, "the inline forget pass needs its timer");
+		assert_eq!(forget_pass_timers(&mut txn, id), 1, "the inline forget pass needs its timer");
 	}
 
 	#[test]

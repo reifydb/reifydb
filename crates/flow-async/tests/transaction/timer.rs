@@ -93,7 +93,7 @@ fn a_timer_is_due_exactly_when_the_flow_watermark_reaches_it() {
 
 #[test]
 fn rearming_a_unique_kind_moves_its_deadline_instead_of_minting_a_second_timer() {
-	// Maintenance is a sliding deadline that operators re-arm every batch as event time
+	// ForgetPass is a sliding deadline that operators re-arm every batch as event time
 	// advances. A wheel row is keyed by its instant, so without engine-owned identity each
 	// re-arm abandons the previous instant instead of moving it, and the wheel settles at one
 	// row per distinct arm across the whole horizon. Every due probe then scans that pile.
@@ -101,13 +101,13 @@ fn rearming_a_unique_kind_moves_its_deadline_instead_of_minting_a_second_timer()
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "m")).unwrap();
-	TimerWheel::arm(NODE, &mut txn, &timer(6_000, TimerKind::Maintenance, "m")).unwrap();
-	TimerWheel::arm(NODE, &mut txn, &timer(7_000, TimerKind::Maintenance, "m")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::ForgetPass, "m")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(6_000, TimerKind::ForgetPass, "m")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(7_000, TimerKind::ForgetPass, "m")).unwrap();
 
 	assert_eq!(
 		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
-		vec![timer(7_000, TimerKind::Maintenance, "m")],
+		vec![timer(7_000, TimerKind::ForgetPass, "m")],
 		"re-arming must move the one deadline, not leave the superseded instants armed"
 	);
 }
@@ -117,7 +117,7 @@ fn a_backlog_kind_still_holds_every_instant_it_was_armed_at() {
 	// Uniqueness has to be per kind, never universal. Seal timers are per bucket, so a flow
 	// catching up after an outage legitimately holds many outstanding seals on one key;
 	// collapsing those to the newest would silently drop every earlier bucket. This pins the
-	// contrast against the Maintenance case above so the policy cannot be widened by accident.
+	// contrast against the ForgetPass case above so the policy cannot be widened by accident.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
@@ -140,17 +140,17 @@ fn a_fired_unique_timer_can_be_armed_again_at_a_later_instant() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "m")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::ForgetPass, "m")).unwrap();
 	assert_eq!(
 		TimerWheel::take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT, None).unwrap().timers,
-		vec![timer(5_000, TimerKind::Maintenance, "m")]
+		vec![timer(5_000, TimerKind::ForgetPass, "m")]
 	);
 
-	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "m")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::ForgetPass, "m")).unwrap();
 
 	assert_eq!(
 		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
-		vec![timer(5_000, TimerKind::Maintenance, "m")],
+		vec![timer(5_000, TimerKind::ForgetPass, "m")],
 		"re-arming the instant that just fired must arm a live timer, not be skipped as a duplicate"
 	);
 }
@@ -164,8 +164,8 @@ fn due_timers_return_in_at_then_kind_then_id_order() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	TimerWheel::arm(NODE, &mut txn, &timer(7_000, TimerKind::Grace, "a")).unwrap();
-	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Grace, "a")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(7_000, TimerKind::RowTtl, "a")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::RowTtl, "a")).unwrap();
 	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "z")).unwrap();
 	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "a")).unwrap();
 
@@ -174,8 +174,8 @@ fn due_timers_return_in_at_then_kind_then_id_order() {
 		vec![
 			timer(5_000, TimerKind::Seal, "z"),
 			timer(5_000, TimerKind::Seal, "a"),
-			timer(5_000, TimerKind::Grace, "a"),
-			timer(7_000, TimerKind::Grace, "a"),
+			timer(5_000, TimerKind::RowTtl, "a"),
+			timer(7_000, TimerKind::RowTtl, "a"),
 		]
 	);
 }
@@ -189,9 +189,9 @@ fn arming_the_same_timer_twice_fires_once() {
 	let clock = MockClock::from_millis(0);
 	let mut txn = deferred_with_clock(&engine, clock.clone());
 
-	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Grace, "group")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::RowTtl, "group")).unwrap();
 	clock.advance_millis(250);
-	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Grace, "group")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::RowTtl, "group")).unwrap();
 
 	assert_eq!(TimerWheel::take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT, None).unwrap().timers.len(), 1);
 }
@@ -271,15 +271,15 @@ fn disarming_by_key_cancels_the_instant_the_index_names_and_spares_every_other_k
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "emptied")).unwrap();
-	TimerWheel::arm(NODE, &mut txn, &timer(8_000, TimerKind::Maintenance, "emptied")).unwrap();
-	TimerWheel::arm(NODE, &mut txn, &timer(6_000, TimerKind::Maintenance, "neighbour")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::ForgetPass, "emptied")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(8_000, TimerKind::ForgetPass, "emptied")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(6_000, TimerKind::ForgetPass, "neighbour")).unwrap();
 
-	TimerWheel::disarm_by_key(NODE, &mut txn, TimerKind::Maintenance, &EncodedKey::new(b"emptied")).unwrap();
+	TimerWheel::disarm_by_key(NODE, &mut txn, TimerKind::ForgetPass, &EncodedKey::new(b"emptied")).unwrap();
 
 	assert_eq!(
 		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
-		vec![timer(6_000, TimerKind::Maintenance, "neighbour")],
+		vec![timer(6_000, TimerKind::ForgetPass, "neighbour")],
 		"only the disarmed key's armed instant may go"
 	);
 }
@@ -291,13 +291,13 @@ fn a_key_disarmed_by_key_can_be_armed_again_at_the_very_instant_it_held() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "refilled")).unwrap();
-	TimerWheel::disarm_by_key(NODE, &mut txn, TimerKind::Maintenance, &EncodedKey::new(b"refilled")).unwrap();
-	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "refilled")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::ForgetPass, "refilled")).unwrap();
+	TimerWheel::disarm_by_key(NODE, &mut txn, TimerKind::ForgetPass, &EncodedKey::new(b"refilled")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::ForgetPass, "refilled")).unwrap();
 
 	assert_eq!(
 		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
-		vec![timer(5_000, TimerKind::Maintenance, "refilled")],
+		vec![timer(5_000, TimerKind::ForgetPass, "refilled")],
 		"a re-arm after a disarm by key must arm a live timer, not be swallowed as a duplicate"
 	);
 }
@@ -308,12 +308,12 @@ fn disarming_an_unarmed_key_leaves_the_wheel_untouched() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "armed")).unwrap();
-	TimerWheel::disarm_by_key(NODE, &mut txn, TimerKind::Maintenance, &EncodedKey::new(b"never-armed")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::ForgetPass, "armed")).unwrap();
+	TimerWheel::disarm_by_key(NODE, &mut txn, TimerKind::ForgetPass, &EncodedKey::new(b"never-armed")).unwrap();
 
 	assert_eq!(
 		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
-		vec![timer(5_000, TimerKind::Maintenance, "armed")]
+		vec![timer(5_000, TimerKind::ForgetPass, "armed")]
 	);
 }
 
@@ -323,8 +323,8 @@ fn a_restart_does_not_fire_a_timer_disarmed_by_key() {
 	let engine = TestEngine::new();
 
 	let mut txn = deferred(&engine);
-	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "emptied")).unwrap();
-	TimerWheel::disarm_by_key(NODE, &mut txn, TimerKind::Maintenance, &EncodedKey::new(b"emptied")).unwrap();
+	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::ForgetPass, "emptied")).unwrap();
+	TimerWheel::disarm_by_key(NODE, &mut txn, TimerKind::ForgetPass, &EncodedKey::new(b"emptied")).unwrap();
 	commit_pending(&engine, &mut txn);
 
 	let mut cold_txn = deferred(&engine);

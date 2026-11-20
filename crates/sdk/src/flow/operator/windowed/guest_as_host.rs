@@ -52,6 +52,10 @@ impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
 		Ok(())
 	}
 
+	fn forget_pass_kind(&self) -> TimerKind {
+		TimerKind::Tick
+	}
+
 	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<(), ValueError> {
 		if moves.is_empty() {
 			return Ok(());

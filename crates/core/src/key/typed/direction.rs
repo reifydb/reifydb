@@ -369,7 +369,7 @@ impl KeyScalar for DateTime {
 
 impl KeyScalar for TimerKind {
 	const MIN: Self = TimerKind::Seal;
-	const MAX: Self = TimerKind::Reclaim;
+	const MAX: Self = TimerKind::ForgetPass;
 	const COLUMN_TYPE: KeyColumnType = KeyColumnType::U8;
 
 	fn successor(&self) -> Option<Self> {
@@ -514,32 +514,26 @@ mod tests {
 
 	#[test]
 	fn timer_kind_walks_its_whole_domain() {
-		walks_its_whole_domain(TimerKind::Grace, TimerKind::RowTtl);
+		walks_its_whole_domain(TimerKind::RowTtl, TimerKind::Tick);
 	}
 
 	#[test]
 	fn timer_kind_orders_by_its_repr_discriminant() {
 		// the key column stores the discriminant byte, so an Ord that disagreed with `as u8` would sort
 		// the wheel index differently in memory than in sqlite
-		let mut kinds = [
-			TimerKind::Reclaim,
-			TimerKind::Maintenance,
-			TimerKind::Seal,
-			TimerKind::RowTtl,
-			TimerKind::Grace,
-		];
+		let mut kinds = [TimerKind::ForgetPass, TimerKind::Tick, TimerKind::Seal, TimerKind::RowTtl];
 		kinds.sort();
 		let discriminants: Vec<u8> = kinds.iter().map(|kind| *kind as u8).collect();
-		assert_eq!(discriminants, vec![0, 1, 2, 3, 4]);
+		assert_eq!(discriminants, vec![0, 1, 2, 3]);
 	}
 
 	#[test]
 	fn timer_kind_successor_stops_at_the_last_declared_variant() {
 		// from_u8 is what bounds the walk; a wider MAX would hand out a variant that does not exist
-		assert_eq!(TimerKind::Maintenance.successor(), Some(TimerKind::Reclaim));
-		assert_eq!(TimerKind::Reclaim.successor(), None);
+		assert_eq!(TimerKind::Tick.successor(), Some(TimerKind::ForgetPass));
+		assert_eq!(TimerKind::ForgetPass.successor(), None);
 		assert_eq!(TimerKind::Seal.predecessor(), None);
-		assert_eq!(TimerKind::Seal.successor(), Some(TimerKind::Grace));
+		assert_eq!(TimerKind::Seal.successor(), Some(TimerKind::RowTtl));
 	}
 
 	#[test]
@@ -558,7 +552,7 @@ mod tests {
 		assert_eq!(<Desc<Hash128> as BoundedKey>::low(), Desc(Hash128(u128::MAX)));
 		assert_eq!(<Desc<Partition> as BoundedKey>::low(), Desc(Partition(u128::MAX)));
 		assert_eq!(<Desc<ContentVersion> as BoundedKey>::low(), Desc(ContentVersion(u64::MAX)));
-		assert_eq!(<Desc<TimerKind> as BoundedKey>::low(), Desc(TimerKind::Reclaim));
+		assert_eq!(<Desc<TimerKind> as BoundedKey>::low(), Desc(TimerKind::ForgetPass));
 	}
 
 	#[test]

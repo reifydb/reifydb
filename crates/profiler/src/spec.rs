@@ -65,7 +65,7 @@ static SPECS: &[SpanSpec] = &[
 		render: Some(render_state_range),
 	},
 	SpanSpec {
-		name: "flow::join::maintenance",
+		name: "flow::join::forget_pass",
 		duration_override: None,
 		dims: &[DimSource::Text("outcome")],
 		extras: &[],

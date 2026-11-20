@@ -245,7 +245,7 @@ impl HostOperator for WindowOperator {
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		let fired = FiredAt::of(&timer);
-		if timer.kind == TimerKind::Maintenance {
+		if timer.kind == TimerKind::ForgetPass {
 			forget_sealed_groups(self, host, fired)?;
 			return Ok(None);
 		}

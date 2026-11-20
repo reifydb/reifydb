@@ -126,6 +126,11 @@ pub enum CoreError {
 		kind: &'static str,
 	},
 
+	#[error("timer kind '{kind}' keeps one timer per key and cannot be rearmed in a batch")]
+	OperatorTimerKindNotBatched {
+		kind: &'static str,
+	},
+
 	#[error("cannot use column `{column}` in a primary key: a {ty} value cannot be a key")]
 	PrimaryKeyDigestColumn {
 		fragment: Fragment,

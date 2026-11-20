@@ -46,9 +46,19 @@ fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 }
 
 fn reject_reserved_kind(kind: TimerKind) -> Result<(), SdkError> {
-	if kind == TimerKind::Reclaim {
+	if kind == TimerKind::ForgetPass {
 		return Err(ValueError::from(CoreError::OperatorTimerKindReserved {
-			kind: "Reclaim",
+			kind: kind.name(),
+		})
+		.into());
+	}
+	Ok(())
+}
+
+fn reject_unique_rearm(kind: TimerKind) -> Result<(), SdkError> {
+	if kind.is_unique() {
+		return Err(ValueError::from(CoreError::OperatorTimerKindNotBatched {
+			kind: kind.name(),
 		})
 		.into());
 	}
@@ -332,6 +342,7 @@ impl GuestEmitContext for InProcessContext<'_> {
 	}
 	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<(), SdkError> {
 		reject_reserved_kind(kind)?;
+		reject_unique_rearm(kind)?;
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).rearm_timers(kind, moves) }.map_err(to_sdk_err)

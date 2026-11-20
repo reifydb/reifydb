@@ -1010,7 +1010,7 @@ impl HostOperator for LookupOperator {
 	}
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
-		if timer.kind == TimerKind::Maintenance {
+		if timer.kind == TimerKind::ForgetPass {
 			self.forget.free_due(host, FiredAt::of(&timer))?;
 		}
 		Ok(None)
@@ -1901,7 +1901,7 @@ mod tests {
 
 		let timer = Timer {
 			due: at_millis(20_000),
-			kind: TimerKind::Maintenance,
+			kind: TimerKind::ForgetPass,
 			key: LookupForget::timer_key(),
 		};
 		txn.disarm_timer(OperatorId(OP), &timer).unwrap();
@@ -2063,7 +2063,7 @@ mod tests {
 		run(&mut op, &mut txn, first, Diff::insert(rows(&[Some("a")], &[8], at_millis(30_000))));
 		let timer = Timer {
 			due: at_millis(20_000),
-			kind: TimerKind::Maintenance,
+			kind: TimerKind::ForgetPass,
 			key: LookupForget::timer_key(),
 		};
 		txn.disarm_timer(OperatorId(OP), &timer).unwrap();

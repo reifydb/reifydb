@@ -111,8 +111,8 @@ impl LookupForget {
 
 	fn resync_timer(&mut self, host: &mut dyn HostContext) -> Result<(), ValueError> {
 		match self.index.min(host)? {
-			Some(at) => host.arm_timer(at, TimerKind::Maintenance, &Self::timer_key()),
-			None => host.disarm_timer_by_key(TimerKind::Maintenance, &Self::timer_key()),
+			Some(at) => host.arm_timer(at, TimerKind::ForgetPass, &Self::timer_key()),
+			None => host.disarm_timer_by_key(TimerKind::ForgetPass, &Self::timer_key()),
 		}
 	}
 }

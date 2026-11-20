@@ -184,8 +184,8 @@ where
 		};
 		match kind {
 			TimerKind::Seal => seal(engine, store, fired, seal_span, self.due_batch, true),
-			TimerKind::Maintenance => {
-				forget_pass(engine, store, fired, seal_span, self.due_batch).map(|_| ())
+			TimerKind::ForgetPass | TimerKind::Tick => {
+				forget_pass(engine, store, fired, self.due_batch).map(|_| ())
 			}
 			other => internal_err!("a window runner fired a {:?} timer it never arms", other),
 		}

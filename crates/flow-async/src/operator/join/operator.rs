@@ -314,13 +314,13 @@ impl JoinOperator {
 
 	fn resync_timer(&mut self, host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<(), ValueError> {
 		let earliest = self.forget.min(host)?;
-		self.arm_maintenance(host, earliest, retry)
+		self.arm_forget_pass(host, earliest, retry)
 	}
 
-	#[instrument(name = "flow::join::maintenance", level = "debug", skip_all, fields(
+	#[instrument(name = "flow::join::forget_pass", level = "debug", skip_all, fields(
 		outcome = if earliest.is_none() && retry.is_none() { "disarmed" } else { "armed" }
 	))]
-	fn arm_maintenance(
+	fn arm_forget_pass(
 		&mut self,
 		host: &mut dyn HostContext,
 		earliest: Option<DateTime>,
@@ -331,8 +331,8 @@ impl JoinOperator {
 			(earliest, retry) => earliest.or(retry),
 		};
 		match next {
-			Some(at) => host.arm_timer(at, TimerKind::Maintenance, &Self::timer_key()),
-			None => host.disarm_timer_by_key(TimerKind::Maintenance, &Self::timer_key()),
+			Some(at) => host.arm_timer(at, TimerKind::ForgetPass, &Self::timer_key()),
+			None => host.disarm_timer_by_key(TimerKind::ForgetPass, &Self::timer_key()),
 		}
 	}
 
@@ -583,7 +583,7 @@ impl JoinOperator {
 			assert!(
 				scanned == earliest,
 				"the drain read {earliest:?} as the first instant past {fired:?}, but the index now \
-				 holds {scanned:?}; arming the maintenance timer on a stale read leaves a row \
+				 holds {scanned:?}; arming the forget pass timer on a stale read leaves a row \
 				 unforgotten until the next fire"
 			);
 		}
@@ -1106,7 +1106,7 @@ impl HostOperator for JoinOperator {
 	}
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
-		if timer.kind == TimerKind::Maintenance {
+		if timer.kind == TimerKind::ForgetPass {
 			self.free_due_join_rows(host, FiredAt::of(&timer))?;
 		}
 		Ok(None)
@@ -1667,7 +1667,7 @@ mod seal_tests {
 		let operator = op.operator;
 		let timer = Timer {
 			due,
-			kind: TimerKind::Maintenance,
+			kind: TimerKind::ForgetPass,
 			key: JoinOperator::timer_key(),
 		};
 		txn.disarm_timer(operator, &timer).unwrap();
@@ -1874,7 +1874,7 @@ mod seal_tests {
 		};
 		let timer = Timer {
 			due: at_millis(19_001),
-			kind: TimerKind::Maintenance,
+			kind: TimerKind::ForgetPass,
 			key: JoinOperator::timer_key(),
 		};
 		counting.disarm_timer(op.operator, &timer).unwrap();
@@ -1901,7 +1901,7 @@ mod seal_tests {
 			Some(at_millis(15_001)),
 			"the due time is event time + lateness + the strict gate step"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "and exactly one maintenance timer covers the operator");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "and exactly one forget pass timer covers the operator");
 	}
 
 	#[test]
@@ -1965,7 +1965,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_row_still_inside_its_lateness_survives_a_maintenance_tick() {
+	fn a_row_still_inside_its_lateness_survives_a_forget_pass_fire() {
 		// The gate is strict: a row whose due time lands one tick past the fire must not be forgotten yet.
 		let engine = TestEngine::new();
 		let mut op = join(3, Some(seconds(10)), None);

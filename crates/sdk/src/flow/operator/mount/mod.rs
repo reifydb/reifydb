@@ -292,13 +292,32 @@ mod tests {
 		let mut ctx = InProcessContext::new(&mut host, NODE);
 		let due = DateTime::from_millis(5_000);
 
-		let armed = ctx.arm_timer(due, TimerKind::Reclaim, &key("r")).expect_err("arming Reclaim must fail");
-		let disarmed =
-			ctx.disarm_timer(due, TimerKind::Reclaim, &key("r")).expect_err("disarming Reclaim must fail");
+		let armed =
+			ctx.arm_timer(due, TimerKind::ForgetPass, &key("r")).expect_err("arming ForgetPass must fail");
+		let disarmed = ctx
+			.disarm_timer(due, TimerKind::ForgetPass, &key("r"))
+			.expect_err("disarming ForgetPass must fail");
 
 		assert!(armed.to_string().contains("FLOW_074"), "expected FLOW_074, got: {armed}");
 		assert!(disarmed.to_string().contains("FLOW_074"), "expected FLOW_074, got: {disarmed}");
 		ctx.arm_timer(due, TimerKind::Seal, &key("s")).expect("a guest Seal timer must still arm");
 		ctx.disarm_timer(due, TimerKind::Seal, &key("s")).expect("and still disarm");
+	}
+
+	#[test]
+	fn an_in_process_guest_arms_a_tick_one_at_a_time_and_never_in_a_batch() {
+		// A batched rearm skips the timer index a Tick keeps, so the index and the wheel drift apart.
+		let mut txn = TestFlowTransaction::new(CommitVersion(7), Clock::Mock(MockClock::new(0)));
+		txn.set_batch_time(Some(DateTime::from_millis(0)));
+		let mut host = TxnHostContext::new(&mut txn, NODE);
+		let mut ctx = InProcessContext::new(&mut host, NODE);
+		let due = DateTime::from_millis(5_000);
+
+		ctx.arm_timer(due, TimerKind::Tick, &key("t")).expect("a guest Tick must arm");
+		ctx.disarm_timer(due, TimerKind::Tick, &key("t")).expect("and disarm");
+		let rearmed = ctx.rearm_timers(TimerKind::Tick, &[]).expect_err("a batched Tick rearm must fail");
+
+		assert!(rearmed.to_string().contains("FLOW_097"), "expected FLOW_097, got: {rearmed}");
+		ctx.rearm_timers(TimerKind::Seal, &[]).expect("a batched Seal rearm must still pass");
 	}
 }

@@ -15,7 +15,7 @@ use crate::{
 	operator::state::seal::{
 		coord::{Coord, IsZero},
 		domain::SealDomain,
-		ledger::SealLedger,
+		ledger::{SealLedger, SealLedgerState},
 	},
 	window::{driver::store::WindowStore, settings::WindowSettings, span::Slot},
 };
@@ -204,9 +204,14 @@ impl SealDomain for ByU8 {
 
 	fn arm_forget_pass(
 		_store: &mut dyn WindowStore,
+		_ledger: SealLedgerState,
 		_fired: DateTime,
 		_seal_span: RowSpan,
 	) -> Result<(), ValueError> {
+		Ok(())
+	}
+
+	fn retry_forget_pass(_store: &mut dyn WindowStore, _fired: DateTime) -> Result<(), ValueError> {
 		Ok(())
 	}
 }

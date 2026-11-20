@@ -19,7 +19,7 @@ use crate::{
 	operator::state::seal::{
 		coord::Coord,
 		gate::{EvictionGate, rearm_seal, seal_move},
-		ledger::SealLedger,
+		ledger::{SealLedger, SealLedgerState},
 		rule::{SEAL_GATE_STEP, SealRule},
 	},
 	window::{
@@ -68,9 +68,12 @@ pub trait SealDomain: Coord {
 
 	fn arm_forget_pass(
 		store: &mut dyn WindowStore,
+		ledger: SealLedgerState,
 		fired: DateTime,
 		seal_span: Self::SealSpan,
 	) -> Result<(), ValueError>;
+
+	fn retry_forget_pass(store: &mut dyn WindowStore, fired: DateTime) -> Result<(), ValueError>;
 
 	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Self::Span>, ValueError> {
 		with.reject_retention()?;
@@ -185,10 +188,22 @@ impl SealDomain for ByDateTime {
 
 	fn arm_forget_pass(
 		store: &mut dyn WindowStore,
+		ledger: SealLedgerState,
 		fired: DateTime,
 		seal_span: Duration,
 	) -> Result<(), ValueError> {
-		store.arm_timer(fired.saturating_add(seal_span), TimerKind::Maintenance, &EncodedKey::new(Vec::new()))
+		if ledger.forget_pass_armed.is_some() {
+			return Ok(());
+		}
+		let due = fired.saturating_add(seal_span);
+		store.arm_timer(due, store.forget_pass_kind(), &EncodedKey::new(Vec::new()))?;
+		SealLedger::record_forget_pass(store, ledger, due)
+	}
+
+	fn retry_forget_pass(store: &mut dyn WindowStore, fired: DateTime) -> Result<(), ValueError> {
+		let due = fired.saturating_add(SEAL_GATE_STEP);
+		store.arm_timer(due, store.forget_pass_kind(), &EncodedKey::new(Vec::new()))?;
+		SealLedger::set_forget_pass_armed(store, Some(due))
 	}
 }
 
