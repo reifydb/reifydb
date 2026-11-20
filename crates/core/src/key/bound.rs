@@ -613,7 +613,7 @@ mod bound_order_matches_encoded_order {
 		// by `Key` bounds and ranged by the others, and the storage engine merges the same span
 		// on bytes. A disagreement here is a range that silently includes or drops a row.
 		//
-		// Two non-key bounds may legitimately encode to the same byte position and still order
+		// Two non-key bounds may legitimately encode to the same bytes and still order
 		// strictly against each other (`PrefixEnd` of one group is `Prefix` of the next), which
 		// only makes range merging more conservative, so those pairs are not compared here.
 		let probes = probes();

@@ -66,7 +66,7 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		),
 		lookup: None,
 	});
-	// The substrate derives an intern's position from the batch time, so it is set here.
+	// The substrate derives an intern's row time from the batch time, so it is set here.
 	txn.set_batch_time(Some(DateTime::from_millis(0)));
 	txn
 }

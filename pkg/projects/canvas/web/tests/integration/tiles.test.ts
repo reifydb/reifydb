@@ -140,7 +140,7 @@ describe('tile stream', () => {
   })
 
   it('reports a closed batch to its owner', async () => {
-    // A late hydration failure closes the chunk after the ack; without a report the canvas silently freezes.
+    // A late hydration failure closes the chunk after the ack; without a report the canvas silently stalls.
     const subscribe = vi.spyOn(client, 'subscribe')
     await stream.start()
     const chunks = subscribe.mock.calls[0][0]
@@ -151,7 +151,7 @@ describe('tile stream', () => {
   })
 
   it('reports a close of any chunk to its owner', async () => {
-    // The server closes one chunk at a time; a chunk without onClosed would freeze its rows with nothing said.
+    // The server closes one chunk at a time; a chunk without onClosed would stall its rows with nothing said.
     const subscribe = vi.spyOn(client, 'subscribe')
     await stream.start()
     const chunks = subscribe.mock.calls[0][0]

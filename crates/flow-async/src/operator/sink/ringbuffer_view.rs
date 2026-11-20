@@ -1995,7 +1995,7 @@ mod tests {
 
 	#[test]
 	fn a_capacity_push_out_announces_a_remove_of_the_oldest_row_and_an_insert() {
-		// Announced as one update, a sealed oldest row would take the new row down with it downstream.
+		// Announced as one update, the oldest row's removal would take the new row down with it downstream.
 		let mut txn = push_out(3, &[("", 1), ("", 2), ("", 3)]);
 		let emitted = txn.take_emits(ViewId(1));
 		assert_eq!(emitted.len(), 2, "a remove then an insert per push-out: {emitted:?}");

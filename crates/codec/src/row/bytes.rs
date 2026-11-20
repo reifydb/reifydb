@@ -378,7 +378,7 @@ mod tests {
 
 	#[test]
 	fn time_survives_a_verbatim_rewrite_that_refreshes_updated_at() {
-		// set_timestamps is the seal flush's verbatim-rewrite path. #time describes when the
+		// set_timestamps is the verbatim-rewrite path. #time describes when the
 		// event happened, so re-stamping it locally would drift row ttl to wall clock.
 		let mut row = shape(1).allocate_table();
 		row.set_timestamps(at_nanos(7), at_nanos(7));

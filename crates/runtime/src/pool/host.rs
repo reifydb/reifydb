@@ -100,8 +100,9 @@ impl Pools {
 			assert!(
 				handle_present == runtime_present,
 				"async handle/runtime presence must agree (handle_present={handle_present}, runtime_present={runtime_present}); \
-				 a handle without its runtime makes tokio_handle() dispatch onto a runtime that Drop never shuts down (thread leak), \
-				 and a runtime without a handle makes spawn()/block_on() panic via the expect in tokio_handle()"
+				 a handle without its runtime makes tokio_handle() dispatch onto a runtime that Drop never shuts down \
+				 (thread leak), and a runtime without a handle makes spawn()/block_on() panic \
+				 via the expect in tokio_handle()"
 			);
 		}
 

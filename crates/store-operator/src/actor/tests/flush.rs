@@ -300,7 +300,7 @@ fn a_drop_flushes_before_the_writes_recorded_after_it() {
 	);
 	assert!(
 		storage.get(OP_B, &[&key(1)]).unwrap().pop().flatten().is_some(),
-		"the drop is scoped to one operator, otherwise one seal wipes the whole store"
+		"the drop is scoped to one operator, otherwise one drop wipes the whole store"
 	);
 }
 

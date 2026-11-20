@@ -1630,8 +1630,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_cutoff_the_clock_cannot_place_evicts_nothing() {
-		// When `now - ttl` underflows there is no cutoff to apply, and the evictor must delete
+	fn a_row_expiry_floor_the_clock_cannot_place_evicts_nothing() {
+		// When `now - ttl` underflows there is no floor to apply, and the evictor must delete
 		// nothing: a permissive fallback would expire every row whose age it cannot establish.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
