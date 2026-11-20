@@ -70,10 +70,6 @@ pub trait RangeDomain: Copy + Debug + 'static {
 
 	fn caches_ranges(partition: &Self::Partition) -> bool;
 
-	fn partition_walk_end(_partition: &Self::Partition) -> Edge<Self::Key> {
-		Edge::Top
-	}
-
 	fn supersedes(_resident: &Self::Row, _incoming: &Self::Row) -> bool {
 		true
 	}

@@ -336,21 +336,12 @@ impl<D: RangeDomain> RangeTier<D> {
 		let mut materialized = false;
 		let mut claim: Option<Interval<D::Key>> = None;
 		let mut claimed: Vec<(usize, usize)> = Vec::new();
-		let mut walk_end: Option<Edge<D::Key>> = None;
 		if !span.is_empty() {
 			loop {
-				if let Some(limit) = walk_end.as_ref()
-					&& *limit <= start
-				{
-					break;
-				}
 				let Some(at) = start.anchor() else {
 					break;
 				};
 				let partition = scan.confined.unwrap_or_else(|| D::partition(scan.dimension, &at));
-				if walk_end.is_none() {
-					walk_end = Some(D::partition_walk_end(&partition));
-				}
 				let (_, bound) = D::span(&partition);
 				let end = bound.min(span.end.clone());
 				let piece = Interval::new(start, end.clone());
@@ -712,21 +703,8 @@ fn split_at_partitions<D: RangeDomain>(
 	};
 
 	let mut start = whole.start.clone();
-	let mut walk_end: Option<Edge<D::Key>> = None;
 	loop {
 		if whole.end <= start {
-			return;
-		}
-		if let Some(limit) = walk_end.as_ref()
-			&& *limit <= start
-		{
-			out.push((
-				Segment::Gap {
-					interval: Interval::new(start, whole.end.clone()),
-					exempt: false,
-				},
-				None,
-			));
 			return;
 		}
 		let Some(at) = start.anchor() else {
@@ -737,9 +715,6 @@ fn split_at_partitions<D: RangeDomain>(
 		let bound = if ram {
 			D::span(&partition).1
 		} else {
-			if walk_end.is_none() {
-				walk_end = Some(D::partition_walk_end(&partition));
-			}
 			Edge::Top
 		};
 		let end = bound.min(whole.end.clone());
@@ -1054,28 +1029,6 @@ mod tests {
 				.all(|(segment, partition)| matches!(segment, Segment::Resident(_))
 					&& partition.is_some()),
 			"every RAM piece must name the partition that serves it"
-		);
-	}
-
-	#[test]
-	fn materialising_a_span_reaching_past_its_group_claims_no_further_than_the_group() {
-		// materialize walks the span partition by partition to decide what it may claim, so an open ended
-		// span hung there for the same reason the planner did. Stopping at the group under claims rather
-		// than over claims: a claim wider than the rows proved would answer later reads from a cache that
-		// never held them.
-		let tier = roomy();
-		let range = keyspace_inner_range(group(), CACHED);
-		let at = |suffix: &[u8]| key(CACHED, suffix);
-
-		assert!(claim(&tier, &range, &Interval::new(Edge::Key(at(b"a")), Edge::Top), &[(at(b"a"), row("a1"))])
-			== Materialize::Materialized);
-
-		let Edge::Key(boundary) = partition(CACHED).group_end() else {
-			panic!("a group below the top of the key space must have a boundary");
-		};
-		assert!(
-			intervals(&tier).iter().all(|held| held.end <= Edge::Key(boundary.clone())),
-			"no claim may reach past the group the span started in"
 		);
 	}
 

@@ -64,15 +64,6 @@ impl TestPartition {
 		(Edge::Key(start), end)
 	}
 
-	pub fn group_end(&self) -> Edge<OpaqueKey> {
-		let prefix = self.prefix();
-		let group = &prefix.as_slice()[..OperatorStateKey::KEYSPACE_INNER_OFFSET as usize];
-		match prefix_successor(group) {
-			Some(successor) => Edge::of(successor),
-			None => Edge::Top,
-		}
-	}
-
 	pub fn caches_ranges(&self) -> bool {
 		self.keyspace != KeyspaceId::CUSTOM_UNMANAGED
 	}
@@ -113,10 +104,6 @@ impl RangeDomain for TestDomain {
 
 	fn caches_ranges(partition: &Self::Partition) -> bool {
 		partition.caches_ranges()
-	}
-
-	fn partition_walk_end(partition: &Self::Partition) -> Edge<Self::Key> {
-		partition.group_end()
 	}
 
 	fn metric_bucket(partition: &Self::Partition) -> usize {
