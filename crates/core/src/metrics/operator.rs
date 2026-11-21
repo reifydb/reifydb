@@ -8,6 +8,14 @@ pub const STATE_RESIDENT_BYTES: &str = "state_resident_bytes";
 pub const ROW_NUMBER_CACHE_BYTES: &str = "row_number_cache_bytes";
 pub const ROW_NUMBER_MEMBERSHIP_BYTES: &str = "row_number_membership_bytes";
 
+pub const DROPPED_INSERTS_PAST_SEAL: &str = "dropped_inserts_past_seal";
+pub const DROPPED_UPDATES_PAST_SEAL: &str = "dropped_updates_past_seal";
+pub const DROPPED_REMOVES_PAST_SEAL: &str = "dropped_removes_past_seal";
+pub const DROPPED_ROWS_IN_SEALED_WINDOWS: &str = "dropped_rows_in_sealed_windows";
+pub const DROPPED_CHANGES_PAST_IMMUTABLE: &str = "dropped_changes_past_immutable";
+pub const DROPPED_REFUSED_SESSION_ROWS: &str = "dropped_refused_session_rows";
+pub const DROPPED_REMOVES_OF_FORGOTTEN_DISTINCT: &str = "dropped_removes_of_forgotten_distinct";
+
 pub const MEMORY_BYTES: &[&str] = &[STATE_RESIDENT_BYTES, ROW_NUMBER_CACHE_BYTES, ROW_NUMBER_MEMBERSHIP_BYTES];
 
 #[cfg(test)]

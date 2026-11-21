@@ -102,9 +102,21 @@ impl StateCompleteness {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DropCounts {
+	pub inserts_past_seal: Option<u64>,
+	pub updates_past_seal: Option<u64>,
+	pub removes_past_seal: Option<u64>,
+	pub rows_in_sealed_windows: Option<u64>,
+	pub changes_past_immutable: Option<u64>,
+	pub refused_session_rows: Option<u64>,
+	pub removes_of_forgotten_distinct: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct OperatorSample {
 	pub memory: Option<StateMemory>,
 	pub row_number_cache: Option<StateMemory>,
+	pub drops: DropCounts,
 }
 
 impl OperatorSample {
@@ -117,6 +129,11 @@ impl OperatorSample {
 
 	pub fn with_row_number_cache(mut self, memory: StateMemory) -> Self {
 		self.row_number_cache = Some(memory);
+		self
+	}
+
+	pub fn with_drops(mut self, drops: DropCounts) -> Self {
+		self.drops = drops;
 		self
 	}
 }

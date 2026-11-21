@@ -26,6 +26,7 @@ use reifydb_core::{
 	},
 	internal_err,
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey},
+	metrics::heap::{DropCounts, OperatorSample},
 };
 use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_flow::{context::FlowContext, operator::source::decode_change};
@@ -247,6 +248,13 @@ impl HostOperator for DistinctOperator {
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		CAPABILITIES
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		Some(OperatorSample::default().with_drops(DropCounts {
+			removes_of_forgotten_distinct: Some(self.plan.dropped.total()),
+			..DropCounts::default()
+		}))
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {

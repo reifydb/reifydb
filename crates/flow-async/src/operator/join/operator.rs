@@ -71,7 +71,7 @@ use crate::{
 	error::FlowAsyncError,
 	operator::{
 		HostOperator, InputOrder, TimedOutput,
-		drops::DropCounter,
+		drops::{DropCounter, seal_drops},
 		host::HostContext,
 		join::{Emitted, Identity, forget::JoinForgetIndex},
 		row_times,
@@ -992,7 +992,12 @@ impl HostOperator for JoinOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		Some(OperatorSample::default())
+		Some(OperatorSample::default().with_drops(seal_drops(
+			self.widest_lateness().is_some(),
+			&self.sealed_inserts,
+			&self.sealed_updates,
+			&self.sealed_removes,
+		)))
 	}
 
 	fn input_order(&self) -> InputOrder {
@@ -1435,6 +1440,7 @@ mod seal_tests {
 				traits::Keyspace,
 			},
 		},
+		metrics::heap::DropCounts,
 		value::{batch::batch, column::factory::int4},
 	};
 	use reifydb_flow::txn::{Find, FlowBatch, FlowGet, Intern, Resolve};
@@ -2825,5 +2831,41 @@ mod seal_tests {
 		assert_eq!(op.sealed_inserts.total(), 2, "two sealed inserts in one batch");
 		assert_eq!(op.sealed_updates.total(), 1, "one sealed update");
 		assert_eq!(op.sealed_removes.total(), 1, "one sealed remove");
+	}
+
+	#[test]
+	fn a_join_without_a_lateness_reports_no_seal_drop_reasons() {
+		// a zero row must mean nothing dropped yet, never an operator that cannot drop at all
+		let op = join(1, None, None);
+
+		assert_eq!(op.sample().expect("a join reports a sample").drops, DropCounts::default());
+	}
+
+	#[test]
+	fn the_join_sample_reports_its_seal_drops_by_reason() {
+		// a drop the sample does not carry never reaches system metrics, so late input stays invisible
+
+		let engine = TestEngine::new();
+		let mut op = join(1, Some(seconds(10)), None);
+		let mut txn = txn_at(&engine, 100);
+		let live = rows(&[7], &[42], at_millis(5_000));
+		let all = rows(&[7, 5, 6], &[42, 40, 41], at_millis(5_000));
+		apply_left(&mut op, &mut txn, Diff::insert(all.clone()));
+		txn.set_flow_watermark(at_millis(30_000));
+
+		apply_left(&mut op, &mut txn, Diff::insert(rows(&[8, 9], &[43, 44], at_millis(1_000))));
+		apply_left(&mut op, &mut txn, Diff::update(live.clone(), live));
+		apply_left(&mut op, &mut txn, Diff::remove(all));
+
+		assert_eq!(
+			op.sample().expect("the operator reports a sample").drops,
+			DropCounts {
+				inserts_past_seal: Some(2),
+				updates_past_seal: Some(1),
+				removes_past_seal: Some(3),
+				..DropCounts::default()
+			},
+			"the sample must carry each seal count under its own reason"
+		);
 	}
 }

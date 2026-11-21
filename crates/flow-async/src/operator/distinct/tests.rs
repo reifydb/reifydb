@@ -14,6 +14,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		operator::state::{GroupId, GroupStateKey, KeyspaceId},
 	},
+	metrics::heap::DropCounts,
 	state::timer::StateStore,
 	value::{batch::batch, column::factory::int8},
 };
@@ -220,4 +221,23 @@ fn layout_row_rewritten_only_on_change() {
 	mock_clock.advance_millis(10);
 	op.apply(&mut host(&mut txn, operator), build_insert(45, 2)).unwrap();
 	assert_eq!(layout_row(&op, &mut txn), Some(first_layout), "an unchanged layout must not be rewritten");
+}
+
+#[test]
+fn the_distinct_sample_reports_a_remove_of_a_forgotten_entry() {
+	let engine = TestEngine::new();
+	let mut op = make_op(7, &engine);
+	let operator = op.plan.operator;
+	let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
+
+	let out = op.apply(&mut host(&mut txn, operator), build_remove(42, 1)).unwrap();
+
+	assert!(out.diffs.is_empty(), "a remove with no entry must emit nothing, got {:?}", out.diffs);
+	assert_eq!(
+		op.sample().expect("distinct reports a sample").drops,
+		DropCounts {
+			removes_of_forgotten_distinct: Some(1),
+			..DropCounts::default()
+		}
+	);
 }

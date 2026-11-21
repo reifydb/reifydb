@@ -7,8 +7,13 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	metrics::{
 		collect::MetricsCollector,
-		heap::OperatorSample,
-		operator::{ROW_NUMBER_CACHE_BYTES, STATE_RESIDENT_BYTES},
+		heap::{DropCounts, OperatorSample},
+		operator::{
+			DROPPED_CHANGES_PAST_IMMUTABLE, DROPPED_INSERTS_PAST_SEAL, DROPPED_REFUSED_SESSION_ROWS,
+			DROPPED_REMOVES_OF_FORGOTTEN_DISTINCT, DROPPED_REMOVES_PAST_SEAL,
+			DROPPED_ROWS_IN_SEALED_WINDOWS, DROPPED_UPDATES_PAST_SEAL, ROW_NUMBER_CACHE_BYTES,
+			STATE_RESIDENT_BYTES,
+		},
 		sample::MetricsSample,
 	},
 };
@@ -77,6 +82,24 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, operator: Oper
 		));
 		out.push(MetricsSample::heap(format!("flow_node::{operator}"), ROW_NUMBER_CACHE_BYTES, memory.bytes));
 	}
+	push_drop_counts(out, operator, &sample.drops);
+}
+
+fn push_drop_counts(out: &mut Vec<MetricsSample>, operator: OperatorId, drops: &DropCounts) {
+	let counts = [
+		(DROPPED_INSERTS_PAST_SEAL, drops.inserts_past_seal),
+		(DROPPED_UPDATES_PAST_SEAL, drops.updates_past_seal),
+		(DROPPED_REMOVES_PAST_SEAL, drops.removes_past_seal),
+		(DROPPED_ROWS_IN_SEALED_WINDOWS, drops.rows_in_sealed_windows),
+		(DROPPED_CHANGES_PAST_IMMUTABLE, drops.changes_past_immutable),
+		(DROPPED_REFUSED_SESSION_ROWS, drops.refused_session_rows),
+		(DROPPED_REMOVES_OF_FORGOTTEN_DISTINCT, drops.removes_of_forgotten_distinct),
+	];
+	for (metric, count) in counts {
+		if let Some(count) = count {
+			out.push(MetricsSample::counter(format!("flow_node::{operator}"), metric, count));
+		}
+	}
 }
 
 impl MetricsCollector for OperatorSampleCollector {
@@ -93,7 +116,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		metrics::{
 			collect::MetricsCollector,
-			heap::{OperatorSample, StateMemory},
+			heap::{DropCounts, OperatorSample, StateMemory},
 		},
 	};
 	use reifydb_value::{byte_size::ByteSize, count::Count};
@@ -194,6 +217,62 @@ mod tests {
 		collector.collect(&mut out);
 
 		assert!(out.is_empty(), "a sample carrying no memory must not emit phantom zero rows");
+	}
+
+	#[test]
+	fn a_drop_count_reaches_metrics_under_its_reason_name() {
+		// each reason must land under its own name, or a dashboard blames the wrong kind of late input
+		let registry = OperatorSampleRegistry::new();
+		registry.record(
+			OperatorId(9),
+			OperatorSample::default().with_drops(DropCounts {
+				inserts_past_seal: Some(1),
+				updates_past_seal: Some(2),
+				removes_past_seal: Some(3),
+				rows_in_sealed_windows: Some(4),
+				changes_past_immutable: Some(5),
+				refused_session_rows: Some(6),
+				removes_of_forgotten_distinct: Some(7),
+			}),
+		);
+
+		let mut out = Vec::new();
+		OperatorSampleCollector::new(registry).collect(&mut out);
+
+		let emitted: Vec<(&str, &str, f64)> =
+			out.iter().map(|sample| (&*sample.scope, sample.metric, sample.reading.as_f64())).collect();
+		assert_eq!(
+			emitted,
+			vec![
+				("flow_node::9", "dropped_inserts_past_seal", 1.0),
+				("flow_node::9", "dropped_updates_past_seal", 2.0),
+				("flow_node::9", "dropped_removes_past_seal", 3.0),
+				("flow_node::9", "dropped_rows_in_sealed_windows", 4.0),
+				("flow_node::9", "dropped_changes_past_immutable", 5.0),
+				("flow_node::9", "dropped_refused_session_rows", 6.0),
+				("flow_node::9", "dropped_removes_of_forgotten_distinct", 7.0),
+			]
+		);
+	}
+
+	#[test]
+	fn a_reason_the_operator_does_not_have_emits_no_metric() {
+		// a reason the operator has must show even at zero, and one it lacks must never show as a fake zero
+		let registry = OperatorSampleRegistry::new();
+		registry.record(
+			OperatorId(9),
+			OperatorSample::default().with_drops(DropCounts {
+				inserts_past_seal: Some(0),
+				..DropCounts::default()
+			}),
+		);
+
+		let mut out = Vec::new();
+		OperatorSampleCollector::new(registry).collect(&mut out);
+
+		let emitted: Vec<(&str, f64)> =
+			out.iter().map(|sample| (sample.metric, sample.reading.as_f64())).collect();
+		assert_eq!(emitted, vec![("dropped_inserts_past_seal", 0.0)]);
 	}
 
 	#[test]

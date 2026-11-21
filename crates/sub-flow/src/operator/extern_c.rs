@@ -284,6 +284,7 @@ impl HostOperator for ExternCOperatorHandle {
 
 fn sample_from_usage(usage: &ExternCStateUsage) -> OperatorSample {
 	OperatorSample {
+		drops: Default::default(),
 		memory: (usage.memory_present != 0).then(|| {
 			StateMemory::new(Count::new(usage.state_entries), ByteSize::from_bytes(usage.state_bytes))
 		}),

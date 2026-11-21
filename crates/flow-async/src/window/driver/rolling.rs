@@ -9,8 +9,12 @@ use std::{
 
 use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::{
-	common::OnEmpty, interface::catalog::flow::OperatorId, internal_err, key::operator::state::GroupId,
-	metrics::heap::HeapSize, state::timer::TimerKind,
+	common::OnEmpty,
+	interface::catalog::flow::OperatorId,
+	internal_err,
+	key::operator::state::GroupId,
+	metrics::heap::{DropCounts, HeapSize},
+	state::timer::TimerKind,
 };
 use reifydb_value::error::ValueError;
 
@@ -256,6 +260,14 @@ impl<C: SealDomain> RollingRunner<C> {
 		}
 	}
 
+	pub fn drops(&self) -> DropCounts {
+		DropCounts {
+			rows_in_sealed_windows: Some(self.sealed_drops.total()),
+			changes_past_immutable: Some(self.immutable_drops.total()),
+			..DropCounts::default()
+		}
+	}
+
 	pub fn pane(&self) -> Option<C::Span> {
 		self.pane
 	}
@@ -341,5 +353,36 @@ impl<C: SealDomain> RollingRunner<C> {
 		let after = engine.earliest_age_out(store)?;
 		C::rearm_decay(store, self.size, Some(self.lag), before, after)?;
 		hooks.emit(emits)
+	}
+}
+
+#[cfg(test)]
+mod drop_tests {
+	use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::DropCounts};
+	use reifydb_value::value::duration::Duration;
+
+	use super::RollingRunner;
+	use crate::window::coord::ByDateTime;
+
+	#[test]
+	fn the_rolling_runner_reports_sealed_and_immutable_drops_under_their_own_reasons() {
+		// swapped reasons would blame a late row on the immutable frame, or the reverse
+		let runner = RollingRunner::<ByDateTime>::new(
+			OperatorId(1),
+			Duration::from_seconds(10).unwrap(),
+			Duration::zero(),
+			None,
+		);
+		runner.sealed_drops.note(3);
+		runner.immutable_drops.note(5);
+
+		assert_eq!(
+			runner.drops(),
+			DropCounts {
+				rows_in_sealed_windows: Some(3),
+				changes_past_immutable: Some(5),
+				..DropCounts::default()
+			}
+		);
 	}
 }

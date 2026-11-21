@@ -41,7 +41,7 @@ pub(crate) type NativePaneEngine = PaneEngine<Hash128, ByDateTime, RowAccumulato
 type NativeEmit = RollingEmit<Hash128, Vec<Value>, Vec<Value>>;
 
 pub(crate) struct BuiltinRolling {
-	runner: RollingRunner<ByDateTime>,
+	pub(super) runner: RollingRunner<ByDateTime>,
 	engine: NativePaneEngine,
 }
 

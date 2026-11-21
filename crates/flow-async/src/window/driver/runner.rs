@@ -8,6 +8,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	internal_err,
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
+	metrics::heap::DropCounts,
 	state::timer::TimerKind,
 };
 use reifydb_value::{error::ValueError, value::row_number::RowNumber};
@@ -76,6 +77,14 @@ where
 			sealed_drops: DropCounter::new(operator, "mutations targeting sealed windows"),
 			refused: DropCounter::new(operator, "session rows refused by assignment"),
 			forget_pass_pending: true,
+		}
+	}
+
+	pub fn drops(&self) -> DropCounts {
+		DropCounts {
+			rows_in_sealed_windows: Some(self.sealed_drops.total()),
+			refused_session_rows: Some(self.refused.total()),
+			..DropCounts::default()
 		}
 	}
 
@@ -358,5 +367,37 @@ where
 		let first_admitted = C::first_admitted(C::from_order(fired.at().to_order()), seal_span);
 		let moves = forget_trackers::<C>(store, &hashes, first_admitted, gap)?;
 		store.rearm_timers(TimerKind::Seal, &tracker_moves::<C>(seal_span, moves))
+	}
+}
+
+#[cfg(test)]
+mod drop_tests {
+	use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::DropCounts};
+	use reifydb_value::value::duration::Duration;
+
+	use super::WindowRunner;
+	use crate::window::{coord::ByDateTime, engine::config::WindowEngineConfig};
+
+	#[test]
+	fn the_runner_reports_sealed_and_refused_drops_under_their_own_reasons() {
+		// swapped reasons would blame a late row on session assignment, or the reverse
+		let runner = WindowRunner::<ByDateTime>::new(
+			OperatorId(1),
+			Duration::from_seconds(10).unwrap(),
+			None,
+			None,
+			&WindowEngineConfig::builder().build(),
+		);
+		runner.sealed_drops.note(3);
+		runner.refused.note(5);
+
+		assert_eq!(
+			runner.drops(),
+			DropCounts {
+				rows_in_sealed_windows: Some(3),
+				refused_session_rows: Some(5),
+				..DropCounts::default()
+			}
+		);
 	}
 }

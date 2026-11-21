@@ -33,7 +33,7 @@ use reifydb_value::{
 use crate::{
 	operator::{
 		BoxedHostOperator, HostOperator, TimedOutput,
-		drops::DropCounter,
+		drops::{DropCounter, seal_drops},
 		host::HostContext,
 		join::kept::dictionary_columns,
 		stamp_output_created,
@@ -206,7 +206,12 @@ impl HostOperator for ApplyOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		self.inner.sample()
+		Some(self.inner.sample().unwrap_or_default().with_drops(seal_drops(
+			self.input_seal.is_some(),
+			&self.sealed_inserts,
+			&self.sealed_updates,
+			&self.sealed_removes,
+		)))
 	}
 
 	fn output_schema(&self) -> Option<SchemaRef> {
@@ -942,6 +947,7 @@ mod seal_tests {
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion, WindowKind, WindowSize},
 		interface::change::Diff,
+		metrics::heap::DropCounts,
 		value::{batch::batch, column::factory::int4},
 	};
 	use reifydb_test_harness::engine::TestEngine;
@@ -1102,6 +1108,37 @@ mod seal_tests {
 	}
 
 	#[test]
+	fn the_apply_sample_reports_its_seal_drops_by_reason() {
+		// a drop the sample does not carry never reaches system metrics, so late input stays invisible
+
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 30_000);
+		let (mut op, _) = recorder(lateness(10));
+		let old = rows(&[1], &[Some(5_000)]);
+
+		apply(
+			&mut op,
+			&mut txn,
+			vec![
+				Diff::insert(rows(&[2, 3], &[Some(1_000), Some(2_000)])),
+				Diff::update(old.clone(), old),
+				Diff::remove(rows(&[1, 4, 5], &[Some(5_000), Some(5_000), Some(5_000)])),
+			],
+		);
+
+		assert_eq!(
+			op.sample().expect("the operator reports a sample").drops,
+			DropCounts {
+				inserts_past_seal: Some(2),
+				updates_past_seal: Some(1),
+				removes_past_seal: Some(3),
+				..DropCounts::default()
+			},
+			"the sample must carry each seal count under its own reason"
+		);
+	}
+
+	#[test]
 	fn a_windowed_apply_leaves_the_seal_to_its_window() {
 		// a session row older than the gap can still sit in an open session, so a row-time seal drops live
 		// input
@@ -1157,6 +1194,14 @@ mod seal_tests {
 		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1], &[Some(5_000)]))]);
 
 		assert_eq!(keys_seen(&seen), vec![1]);
+	}
+
+	#[test]
+	fn an_apply_without_a_seal_reports_no_seal_drop_reasons() {
+		// a zero row must mean nothing dropped yet, never an operator that cannot drop at all
+		let (op, _) = recorder(ApplyWith::default());
+
+		assert_eq!(op.sample().expect("an apply reports a sample").drops, DropCounts::default());
 	}
 
 	#[test]

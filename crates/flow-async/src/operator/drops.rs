@@ -3,7 +3,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::DropCounts};
 use tracing::warn;
 
 const WARN_STRIDE: u64 = 1_000;
@@ -42,6 +42,18 @@ impl DropCounter {
 
 	pub fn total(&self) -> u64 {
 		self.count.load(Ordering::Relaxed)
+	}
+}
+
+pub fn seal_drops(sealed: bool, inserts: &DropCounter, updates: &DropCounter, removes: &DropCounter) -> DropCounts {
+	if !sealed {
+		return DropCounts::default();
+	}
+	DropCounts {
+		inserts_past_seal: Some(inserts.total()),
+		updates_past_seal: Some(updates.total()),
+		removes_past_seal: Some(removes.total()),
+		..DropCounts::default()
 	}
 }
 

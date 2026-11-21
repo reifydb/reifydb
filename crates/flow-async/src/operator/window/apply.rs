@@ -198,6 +198,7 @@ mod forget_pass_tests {
 		common::{CommitVersion, WindowKind, WindowSize},
 		interface::catalog::flow::OperatorId,
 		key::operator::state::{GroupId, KeyspaceId},
+		metrics::heap::DropCounts,
 	};
 	use reifydb_flow::context::FlowContext;
 	use reifydb_routine_abi::registry::Routines;
@@ -211,6 +212,7 @@ mod forget_pass_tests {
 	use super::*;
 	use crate::{
 		operator::{
+			HostOperator,
 			host::TxnHostContext,
 			state::{forget_pass::enqueue, test_utils::test::whole_keyspace},
 			window::operator::{WindowConfig, WindowOperator},
@@ -248,6 +250,22 @@ mod forget_pass_tests {
 			i64::try_from(step).expect("test step fits in i64 nanoseconds"),
 		)));
 		txn
+	}
+
+	#[test]
+	fn the_window_sample_carries_its_runner_drop_reasons() {
+		// a window that reports no sample hides every late row it drops from system metrics
+
+		let operator = window(1);
+
+		assert_eq!(
+			operator.sample().expect("a window reports a sample").drops,
+			DropCounts {
+				rows_in_sealed_windows: Some(0),
+				refused_session_rows: Some(0),
+				..DropCounts::default()
+			}
+		);
 	}
 
 	fn armed_timers(txn: &mut DeferredTransaction, operator: OperatorId) -> usize {

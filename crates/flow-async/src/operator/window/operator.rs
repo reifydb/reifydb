@@ -10,7 +10,7 @@ use reifydb_core::{
 	expression::Expression,
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	internal_err,
-	metrics::heap::OperatorSample,
+	metrics::heap::{DropCounts, OperatorSample},
 	state::timer::TimerKind,
 };
 use reifydb_flow::{aggregate::AggregateContext, context::FlowContext, operator::source::decode_change};
@@ -221,7 +221,14 @@ impl HostOperator for WindowOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		None
+		let windowed = self.runner.as_ref().map(WindowRunner::drops);
+		let rolling = self.rolling.as_ref().map(|rolling| rolling.runner.drops());
+		let drops = match (windowed, rolling) {
+			(Some(windowed), _) => windowed,
+			(None, Some(rolling)) => rolling,
+			(None, None) => DropCounts::default(),
+		};
+		Some(OperatorSample::default().with_drops(drops))
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
