@@ -163,19 +163,6 @@ enum Published {
 }
 
 impl Published {
-	fn output_id(&self) -> RowNumber {
-		match self {
-			Published::Matched {
-				output_id,
-				..
-			}
-			| Published::Unmatched {
-				output_id,
-				..
-			} => *output_id,
-		}
-	}
-
 	fn kind(&self) -> usize {
 		match self {
 			Published::Matched {
@@ -244,7 +231,7 @@ impl Output {
 	}
 
 	fn update(&mut self, pre: Published, post: Published) {
-		if pre.kind() != post.kind() || pre.output_id() != post.output_id() {
+		if pre.kind() != post.kind() {
 			self.remove(pre);
 			self.insert(post);
 			return;
@@ -553,15 +540,14 @@ impl LookupOperator {
 		left_idx: usize,
 		times: &[Option<DateTime>],
 		row_number: RowNumber,
-		output_id: RowNumber,
 		resolved: Resolved,
 		output: &mut Output,
 	) -> Result<Published, ValueError> {
-		ledger.store(row_number, StoredRead::new(output_id, resolved.right.as_ref(), resolved.key))?;
+		ledger.store(row_number, StoredRead::new(resolved.right.as_ref(), resolved.key))?;
 		if let Some(key) = resolved.key {
 			output.held.push((left_idx, key));
 		}
-		let published = output.published(left_idx, output_id, resolved.right);
+		let published = output.published(left_idx, row_number, resolved.right);
 		if let Some(at) = times.get(left_idx).copied().flatten() {
 			output.armed.push((row_number, at));
 		}
@@ -575,7 +561,7 @@ impl LookupOperator {
 		pre: &RecordBatch,
 		left_idx: usize,
 		output: &mut Output,
-	) -> Result<Option<(Published, RowNumber)>, ValueError> {
+	) -> Result<Option<Published>, ValueError> {
 		let row_number = require_row_numbers(pre)?[left_idx];
 		let Some(read) = ledger.take(row_number)? else {
 			return Ok(None);
@@ -588,7 +574,7 @@ impl LookupOperator {
 				&[row_number],
 			)?;
 		}
-		Ok(Some((output.published(left_idx, read.output, read.right()), read.output)))
+		Ok(Some(output.published(left_idx, row_number, read.right())))
 	}
 
 	fn apply_insert(
@@ -621,7 +607,6 @@ impl LookupOperator {
 					left_idx,
 					&times,
 					row_numbers[left_idx],
-					row_numbers[left_idx],
 					read,
 					&mut output,
 				)?;
@@ -646,7 +631,7 @@ impl LookupOperator {
 		let mut ledger = ReadLedger::read(host, row_numbers(pre)?.iter().copied())?;
 		let mut output = Output::default();
 		for left_idx in 0..pre.num_rows() {
-			if let Some((published, _)) = self.undo(host, &mut ledger, pre, left_idx, &mut output)?
+			if let Some(published) = self.undo(host, &mut ledger, pre, left_idx, &mut output)?
 				&& let Some(published) = self.visible(published)
 			{
 				output.remove(published);
@@ -690,14 +675,13 @@ impl LookupOperator {
 						left_idx,
 						&times,
 						row_number,
-						row_number,
 						read,
 						&mut output,
 					)?)
 				}
 				None => None,
 			};
-			let pre = undone.and_then(|(pre, _)| self.visible(pre));
+			let pre = undone.and_then(|pre| self.visible(pre));
 			let post = published.and_then(|post| self.visible(post));
 			output.publish(pre, post);
 		}
@@ -864,9 +848,9 @@ impl LookupOperator {
 				ledger.store(*row, stored)?;
 				continue;
 			}
-			let pre = output.published(left_idx, stored.output, stored.right());
-			let post = output.published(left_idx, stored.output, right.cloned());
-			ledger.store(*row, StoredRead::new(stored.output, right, stored.key))?;
+			let pre = output.published(left_idx, *row, stored.right());
+			let post = output.published(left_idx, *row, right.cloned());
+			ledger.store(*row, StoredRead::new(right, stored.key))?;
 			output.publish(self.visible(pre), self.visible(post));
 		}
 		ledger.commit(host)?;
@@ -1312,10 +1296,6 @@ mod tests {
 		stored.map(|stored| decode_read(&stored).unwrap())
 	}
 
-	fn stored_output(txn: &mut DeferredTransaction, row: u64) -> RowNumber {
-		stored_read(txn, row).unwrap_or_else(|| panic!("row {row} has no stored read")).output
-	}
-
 	fn stores_a_right_row(txn: &mut DeferredTransaction, row: u64) -> bool {
 		stored_read(txn, row).is_some_and(|read| read.right.is_some())
 	}
@@ -1558,11 +1538,6 @@ mod tests {
 		assert_eq!(cell(&out, "r_v", 0), Value::Int4(10), "the row of partition a, not of b");
 		assert_eq!(
 			require_row_numbers(&out).unwrap(),
-			&[stored_output(&mut txn, 7)],
-			"IC4: the output carries the id minted for its left row"
-		);
-		assert_eq!(
-			require_row_numbers(&out).unwrap(),
 			&[RowNumber(7)],
 			"the output id is the left row's own number, so it never depends on the order rows arrive in"
 		);
@@ -1706,7 +1681,7 @@ mod tests {
 	}
 
 	#[test]
-	fn an_in_place_update_keeps_the_minted_output_id() {
+	fn an_in_place_update_keeps_the_left_row_number_as_output_id() {
 		// Pre and post of one update must share an output id, otherwise downstream sees a row move under an
 		// update.
 		let engine = TestEngine::new();
@@ -1744,7 +1719,6 @@ mod tests {
 			&[minted],
 			"the post reuses the pre's id, no fresh mint"
 		);
-		assert_eq!(stored_output(&mut txn, 7), minted, "the stored id survives the update");
 	}
 
 	#[test]

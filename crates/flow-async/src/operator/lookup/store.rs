@@ -31,19 +31,13 @@ use crate::{error::FlowAsyncError, operator::host::HostContext};
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StoredRead {
-	pub(crate) output: RowNumber,
 	pub(crate) right: Option<(RowNumber, Vec<u8>)>,
 	pub(crate) key: Option<Partition>,
 }
 
 impl StoredRead {
-	pub(crate) fn new(
-		output: RowNumber,
-		right: Option<&(RowNumber, EncodedBytes)>,
-		key: Option<Partition>,
-	) -> Self {
+	pub(crate) fn new(right: Option<&(RowNumber, EncodedBytes)>, key: Option<Partition>) -> Self {
 		Self {
-			output,
 			right: right.map(|(number, bytes)| (*number, bytes.as_ref().to_vec())),
 			key,
 		}
