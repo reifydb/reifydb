@@ -6,12 +6,16 @@ use std::{collections::BTreeSet, sync::Arc};
 use arrow_schema::{FieldRef, Schema, SchemaRef};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
+	interface::{
+		catalog::flow::OperatorId,
+		change::{Change, Diff},
+		flow::OperatorCapability,
+	},
 	key::operator::keyspace::due::CustomManagedDue,
 	metrics::heap::OperatorSample,
 	operator_with::{ApplyWith, WithSpan},
 	state::timer::TimerKind,
-	value::column::builder::ColumnBuilder,
+	value::{batch::filter, column::builder::ColumnBuilder},
 };
 use reifydb_value::{
 	error::ValueError,
@@ -29,13 +33,18 @@ use reifydb_value::{
 use crate::{
 	operator::{
 		BoxedHostOperator, HostOperator, TimedOutput,
+		drops::DropCounter,
 		host::HostContext,
 		join::kept::dictionary_columns,
 		stamp_output_created,
 		state::{
 			due::{due_drop, due_earliest, due_entries, managed_due_group, managed_latest_key},
 			forget_pass::{StoreForgetter, drain, drain_group, enqueue},
-			seal::rule::{SEAL_GATE_STEP, SealRule},
+			seal::{
+				check::{SEALED_INSERTS, SEALED_REMOVES, SEALED_UPDATES, kept_unsealed},
+				ledger::{FiredAt, SealLedger},
+				rule::{SEAL_GATE_STEP, SealRule},
+			},
 		},
 	},
 	timer::Timer,
@@ -47,6 +56,10 @@ pub struct ApplyOperator {
 	inner: BoxedHostOperator,
 	seal_span: Option<Duration>,
 	retention: Option<Duration>,
+	input_seal: Option<Duration>,
+	sealed_inserts: DropCounter,
+	sealed_updates: DropCounter,
+	sealed_removes: DropCounter,
 }
 
 impl ApplyOperator {
@@ -62,7 +75,87 @@ impl ApplyOperator {
 			inner,
 			seal_span: engine_seal_span(with),
 			retention: engine_retention(with),
+			input_seal: input_seal(with),
+			sealed_inserts: DropCounter::new(operator, SEALED_INSERTS),
+			sealed_updates: DropCounter::new(operator, SEALED_UPDATES),
+			sealed_removes: DropCounter::new(operator, SEALED_REMOVES),
 		}
+	}
+
+	fn drop_sealed(&self, host: &mut dyn HostContext, mut change: Change) -> Result<Option<Change>, ValueError> {
+		let Some(seal) = self.input_seal else {
+			return Ok(Some(change));
+		};
+		if change.diffs.is_empty() {
+			return Ok(Some(change));
+		}
+		let mut kept = Vec::with_capacity(change.diffs.len());
+		for diff in change.diffs.drain(..) {
+			if let Some(diff) = self.drop_sealed_diff(host, seal, diff)? {
+				kept.push(diff);
+			}
+		}
+		if kept.is_empty() {
+			return Ok(None);
+		}
+		change.diffs = kept.into();
+		Ok(Some(change))
+	}
+
+	fn drop_sealed_diff(
+		&self,
+		host: &mut dyn HostContext,
+		seal: Duration,
+		diff: Diff,
+	) -> Result<Option<Diff>, ValueError> {
+		let (timed, drops) = match &diff {
+			Diff::Insert {
+				post,
+				..
+			} => (post, &self.sealed_inserts),
+			Diff::Update {
+				post,
+				..
+			} => (post, &self.sealed_updates),
+			Diff::Remove {
+				pre,
+				..
+			} => (pre, &self.sealed_removes),
+		};
+		let kept = kept_unsealed(host, seal, timed)?;
+		if kept.dropped == 0 {
+			return Ok(Some(diff));
+		}
+		drops.note(kept.dropped);
+		if kept.dropped as usize == timed.num_rows() {
+			return Ok(None);
+		}
+		let mask = kept.mask.values();
+		Ok(Some(match diff {
+			Diff::Insert {
+				post,
+				origin,
+			} => Diff::Insert {
+				post: filter(&post, mask)?,
+				origin,
+			},
+			Diff::Update {
+				pre,
+				post,
+				origin,
+			} => Diff::Update {
+				pre: filter(&pre, mask)?,
+				post: filter(&post, mask)?,
+				origin,
+			},
+			Diff::Remove {
+				pre,
+				origin,
+			} => Diff::Remove {
+				pre: filter(&pre, mask)?,
+				origin,
+			},
+		}))
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<SchemaRef> {
@@ -89,6 +182,10 @@ impl HostOperator for ApplyOperator {
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		let changed_at = change.changed_at;
+		let version = change.version;
+		let Some(change) = self.drop_sealed(host, change)? else {
+			return Ok(Change::from_flow(self.operator, version, Vec::new(), changed_at));
+		};
 		let mut out = self.inner.apply(host, change)?;
 		stamp_output_created(&mut out.diffs, changed_at)?;
 		Ok(out)
@@ -96,6 +193,7 @@ impl HostOperator for ApplyOperator {
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		if timer.kind == TimerKind::ForgetPass {
+			SealLedger::advance(host, FiredAt::of(&timer))?;
 			fire_forget_pass(host, timer.due)?;
 			return Ok(None);
 		}
@@ -174,6 +272,13 @@ pub fn engine_seal_span(with: &ApplyWith) -> Option<Duration> {
 		},
 	};
 	span.filter(|span| !span.is_zero())
+}
+
+fn input_seal(with: &ApplyWith) -> Option<Duration> {
+	if with.window.is_some() {
+		return None;
+	}
+	engine_seal_span(with).or(with.retention.filter(|retention| !retention.is_zero()))
 }
 
 pub fn engine_retention(with: &ApplyWith) -> Option<Duration> {
@@ -826,5 +931,268 @@ mod output_schema_tests {
 			dictionaries(output_schema_of(parent(&[MINTS]), declared).unwrap()),
 			vec![("base".into(), Some(OTHER))]
 		);
+	}
+}
+
+#[cfg(test)]
+mod seal_tests {
+	use std::sync::{Arc, Mutex};
+
+	use arrow_array::{Int32Array, RecordBatch, UInt64Array};
+	use reifydb_core::{
+		common::{ChangeVersion, CommitVersion, WindowKind, WindowSize},
+		interface::change::Diff,
+		value::{batch::batch, column::factory::int4},
+	};
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_value::{
+		factory::time::{at_millis, secs},
+		value::system_columns::{SystemColumn, with_system_column},
+	};
+
+	use super::*;
+	use crate::{
+		operator::{host::TxnHostContext, time_column},
+		transaction::{FlowTransaction, deferred::DeferredTransaction, mock::FlowTxn},
+	};
+
+	const OP: OperatorId = OperatorId(1);
+
+	#[derive(Default)]
+	struct Seen {
+		calls: usize,
+		diffs: Vec<Diff>,
+	}
+
+	struct Recorder {
+		seen: Arc<Mutex<Seen>>,
+	}
+
+	impl HostOperator for Recorder {
+		fn id(&self) -> OperatorId {
+			OP
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
+		}
+
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
+			let mut seen = self.seen.lock().unwrap();
+			seen.calls += 1;
+			seen.diffs.extend(change.diffs.iter().cloned());
+			Ok(Change::from_flow(OP, change.version, Vec::new(), change.changed_at))
+		}
+	}
+
+	fn recorder(with: ApplyWith) -> (ApplyOperator, Arc<Mutex<Seen>>) {
+		let seen = Arc::new(Mutex::new(Seen::default()));
+		let inner = Recorder {
+			seen: Arc::clone(&seen),
+		};
+		(ApplyOperator::new(None, OP, Box::new(inner), &with), seen)
+	}
+
+	fn lateness(seconds: u64) -> ApplyWith {
+		ApplyWith {
+			lateness: Some(WithSpan::Duration(secs(seconds))),
+			..ApplyWith::default()
+		}
+	}
+
+	fn txn(engine: &TestEngine, watermark_millis: i64) -> DeferredTransaction {
+		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
+		txn.set_flow_watermark(at_millis(watermark_millis));
+		txn
+	}
+
+	fn rows(keys: &[i32], times: &[Option<i64>]) -> RecordBatch {
+		let columns = batch(vec![int4("k", keys.to_vec())]).unwrap();
+		let numbers: Vec<u64> = keys.iter().map(|k| *k as u64).collect();
+		let columns =
+			with_system_column(columns, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(numbers)))
+				.unwrap();
+		let times = time_column(times.iter().map(|time| time.map(at_millis)));
+		with_system_column(columns, SystemColumn::Time, times).unwrap()
+	}
+
+	fn apply(op: &mut ApplyOperator, txn: &mut DeferredTransaction, diffs: Vec<Diff>) {
+		let mut host = TxnHostContext::with_retention(txn, OP, op.retention());
+		let change = Change::from_flow(
+			OperatorId(1_000),
+			ChangeVersion::from(CommitVersion(7)),
+			diffs,
+			at_millis(0),
+		);
+		op.apply(&mut host, change).unwrap();
+	}
+
+	fn keys_seen(seen: &Arc<Mutex<Seen>>) -> Vec<i32> {
+		let seen = seen.lock().unwrap();
+		let mut keys = Vec::new();
+		for diff in &seen.diffs {
+			let batch = match diff {
+				Diff::Insert {
+					post,
+					..
+				} => post,
+				Diff::Update {
+					post,
+					..
+				} => post,
+				Diff::Remove {
+					pre,
+					..
+				} => pre,
+			};
+			let column = batch.column_by_name("k").unwrap().as_any().downcast_ref::<Int32Array>().unwrap();
+			keys.extend(column.values().iter().copied());
+		}
+		keys
+	}
+
+	#[test]
+	fn an_insert_past_the_seal_never_reaches_the_guest() {
+		// the guest cannot tell a new row from one whose state it already forgot, so it must never see it
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 30_000);
+		let (mut op, seen) = recorder(lateness(10));
+
+		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1], &[Some(5_000)]))]);
+
+		assert_eq!(seen.lock().unwrap().calls, 0, "a change emptied by the seal must not call the guest");
+		assert_eq!(op.sealed_inserts.total(), 1);
+	}
+
+	#[test]
+	fn a_mixed_batch_keeps_rows_inside_the_seal_and_rows_without_a_time() {
+		// dropping a row with no time, or one inside the lateness, loses live data
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 30_000);
+		let (mut op, seen) = recorder(lateness(10));
+
+		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1, 2, 3], &[Some(5_000), Some(25_000), None]))]);
+
+		assert_eq!(keys_seen(&seen), vec![2, 3]);
+		assert_eq!(op.sealed_inserts.total(), 1);
+	}
+
+	#[test]
+	fn each_seal_reason_counts_only_its_own_kind() {
+		// a remove or update past the seal must be dropped and counted under its own reason
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 30_000);
+		let (mut op, seen) = recorder(lateness(10));
+		let old = rows(&[1], &[Some(5_000)]);
+
+		apply(
+			&mut op,
+			&mut txn,
+			vec![
+				Diff::insert(rows(&[2, 3], &[Some(1_000), Some(2_000)])),
+				Diff::update(old.clone(), old.clone()),
+				Diff::remove(old),
+			],
+		);
+
+		assert_eq!(seen.lock().unwrap().calls, 0);
+		assert_eq!(op.sealed_inserts.total(), 2);
+		assert_eq!(op.sealed_updates.total(), 1);
+		assert_eq!(op.sealed_removes.total(), 1);
+	}
+
+	#[test]
+	fn a_windowed_apply_leaves_the_seal_to_its_window() {
+		// a session row older than the gap can still sit in an open session, so a row-time seal drops live
+		// input
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 12_100);
+		let with = ApplyWith {
+			window: Some(WindowKind::Session {
+				gap: Duration::from_milliseconds_const(1_000),
+			}),
+			..ApplyWith::default()
+		};
+		let (mut op, seen) = recorder(with);
+
+		apply(&mut op, &mut txn, vec![Diff::remove(rows(&[2], &[Some(10_800)]))]);
+
+		assert_eq!(
+			keys_seen(&seen),
+			vec![2],
+			"the remove of a row in a session open until 12.6s must reach the guest"
+		);
+	}
+
+	#[test]
+	fn an_apply_with_a_retention_and_no_lateness_drops_by_its_retention() {
+		// a missing lateness defaults to the retention, otherwise input reaches state already forgotten
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 30_000);
+		let with = ApplyWith {
+			retention: Some(secs(10)),
+			..ApplyWith::default()
+		};
+		let (mut op, seen) = recorder(with);
+
+		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1, 2], &[Some(5_000), Some(25_000)]))]);
+
+		assert_eq!(keys_seen(&seen), vec![2]);
+	}
+
+	#[test]
+	fn a_count_window_with_a_retention_drops_nothing() {
+		// a count window seals in rows, so a time seal would drop rows of an open window
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 30_000);
+		let with = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Count(10),
+			}),
+			retention: Some(secs(10)),
+			..ApplyWith::default()
+		};
+		let (mut op, seen) = recorder(with);
+
+		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1], &[Some(5_000)]))]);
+
+		assert_eq!(keys_seen(&seen), vec![1]);
+	}
+
+	#[test]
+	fn an_apply_without_lateness_or_retention_keeps_an_old_row() {
+		// with no seal declared nothing is ever sealed, so an old row must still reach the guest
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 9_000_000);
+		let (mut op, seen) = recorder(ApplyWith::default());
+
+		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1], &[Some(1_000)]))]);
+
+		assert_eq!(keys_seen(&seen), vec![1]);
+	}
+
+	#[test]
+	fn a_forget_pass_keeps_the_seal_when_the_flow_watermark_falls_back() {
+		// without the ledger a row the forget pass already freed passes again once the watermark falls back
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 40_000);
+		let (mut op, seen) = recorder(lateness(10));
+		{
+			let mut host = TxnHostContext::with_retention(&mut txn, OP, op.retention());
+			op.on_timer(
+				&mut host,
+				Timer {
+					due: at_millis(40_000),
+					kind: TimerKind::ForgetPass,
+					key: EncodedKey::new(Vec::new()),
+				},
+			)
+			.unwrap();
+		}
+		txn.set_flow_watermark(at_millis(20_000));
+
+		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1, 2], &[Some(25_000), Some(35_000)]))]);
+
+		assert_eq!(keys_seen(&seen), vec![2]);
 	}
 }
