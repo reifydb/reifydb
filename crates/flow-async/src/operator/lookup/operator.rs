@@ -25,7 +25,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	state::timer::TimerKind,
 	value::{
-		batch::{empty_batch, from_encoded_bytes},
+		batch::{empty_batch, filter, from_encoded_bytes},
 		column::factory::none,
 	},
 };
@@ -60,6 +60,7 @@ use super::{
 use crate::{
 	operator::{
 		HostOperator, InputOrder, TimedOutput,
+		drops::DropCounter,
 		host::HostContext,
 		join::{
 			column::{JoinedColumnsBuilder, JoinedColumnsCache, SequenceColumn},
@@ -69,7 +70,10 @@ use crate::{
 			strategy::hash::{JoinRows, decode_runs},
 		},
 		row_times,
-		state::seal::ledger::FiredAt,
+		state::seal::{
+			check::kept_unsealed,
+			ledger::{FiredAt, SealLedger},
+		},
 	},
 	timer::Timer,
 	transaction::LookupAt,
@@ -78,6 +82,12 @@ use crate::{
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
 const RE_EMIT_PAGE: usize = 1024;
+
+const SEALED_INSERTS: &str = "inserts past the seal";
+
+const SEALED_UPDATES: &str = "updates past the seal";
+
+const SEALED_REMOVES: &str = "removes past the seal";
 
 fn key_partition(
 	host: &mut dyn HostContext,
@@ -128,6 +138,9 @@ pub struct LookupOperator {
 	left_kept: Vec<(String, DictionaryId)>,
 	left_store: Store,
 	waiting: HashMap<Partition, DateTime>,
+	sealed_inserts: DropCounter,
+	sealed_updates: DropCounter,
+	sealed_removes: DropCounter,
 }
 
 #[derive(Default)]
@@ -263,6 +276,7 @@ impl LookupOperator {
 		)?;
 		let left_kept = dictionary_columns(&config.left_schema)?.into_iter().collect();
 		let cache = RefCell::new(LookupCache::new(config.cache_entries));
+		let operator = config.operator;
 		Ok(Self {
 			config,
 			cache,
@@ -273,7 +287,32 @@ impl LookupOperator {
 			left_kept,
 			left_store: Store::new(JoinSide::Left),
 			waiting: HashMap::new(),
+			sealed_inserts: DropCounter::new(operator, SEALED_INSERTS),
+			sealed_updates: DropCounter::new(operator, SEALED_UPDATES),
+			sealed_removes: DropCounter::new(operator, SEALED_REMOVES),
 		})
+	}
+
+	fn drop_sealed(
+		&self,
+		host: &mut dyn HostContext,
+		paired: Option<RecordBatch>,
+		timed: RecordBatch,
+		drops: &DropCounter,
+	) -> Result<Option<(Option<RecordBatch>, RecordBatch)>, ValueError> {
+		let Some(lateness) = self.forget.lateness() else {
+			return Ok(Some((paired, timed)));
+		};
+		let kept = kept_unsealed(host, lateness, &timed)?;
+		if kept.dropped == 0 {
+			return Ok(Some((paired, timed)));
+		}
+		drops.note(kept.dropped);
+		if kept.dropped as usize == timed.num_rows() {
+			return Ok(None);
+		}
+		let paired = paired.map(|paired| filter(&paired, kept.mask.values())).transpose()?;
+		Ok(Some((paired, filter(&timed, kept.mask.values())?)))
 	}
 
 	fn re_emits(&self) -> bool {
@@ -991,16 +1030,34 @@ impl HostOperator for LookupOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_insert(host, &post, source, &mut reads, &mut result)?,
+				} => {
+					if let Some((_, post)) =
+						self.drop_sealed(host, None, post, &self.sealed_inserts)?
+					{
+						self.apply_insert(host, &post, source, &mut reads, &mut result)?
+					}
+				}
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_remove(host, &pre, &mut result)?,
+				} => {
+					if let Some((_, pre)) =
+						self.drop_sealed(host, None, pre, &self.sealed_removes)?
+					{
+						self.apply_remove(host, &pre, &mut result)?
+					}
+				}
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_update(host, &pre, &post, source, &mut reads, &mut result)?,
+				} => {
+					if let Some((Some(pre), post)) =
+						self.drop_sealed(host, Some(pre), post, &self.sealed_updates)?
+					{
+						self.apply_update(host, &pre, &post, source, &mut reads, &mut result)?
+					}
+				}
 			}
 		}
 
@@ -1011,6 +1068,7 @@ impl HostOperator for LookupOperator {
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		if timer.kind == TimerKind::ForgetPass {
+			SealLedger::advance(host, FiredAt::of(&timer))?;
 			self.forget.free_due(host, FiredAt::of(&timer))?;
 		}
 		Ok(None)
@@ -2737,5 +2795,141 @@ mod tests {
 			Value::Int4(20),
 			"a partition holding two rows answers with the newer one"
 		);
+	}
+
+	fn forget_through(op: &mut LookupOperator, txn: &mut DeferredTransaction, due: DateTime) {
+		let timer = Timer {
+			due,
+			kind: TimerKind::ForgetPass,
+			key: LookupForget::timer_key(),
+		};
+		txn.disarm_timer(OperatorId(OP), &timer).unwrap();
+		op.on_timer(&mut TxnHostContext::new(txn, OperatorId(OP)), timer).unwrap();
+	}
+
+	#[test]
+	fn a_left_insert_past_the_seal_emits_nothing_and_holds_nothing() {
+		// a row older than the seal must never arm state, or the operator holds a row it already forgot
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let version = put_right(&engine, "a", 10);
+		let mut op = lookup(&table, JoinType::Left, Some(Duration::from_seconds(10).unwrap()));
+		let mut txn = txn_at(&engine, version);
+		txn.set_flow_watermark(at_millis(30_000));
+
+		let out = run(&mut op, &mut txn, version, Diff::insert(rows(&[Some("a")], &[7], at_millis(5_000))));
+
+		assert!(out.is_empty(), "a sealed left insert must emit nothing, got {out:?}");
+		assert_eq!(stored_read(&mut txn, 7), None, "and must store no read version");
+	}
+
+	#[test]
+	fn a_left_update_of_a_forgotten_row_emits_nothing() {
+		// the forgotten row's update must be dropped, or it publishes against state the lookup no longer holds
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let version = put_right(&engine, "a", 10);
+		let mut op = lookup(&table, JoinType::Left, Some(Duration::from_seconds(10).unwrap()));
+		let mut txn = txn_at(&engine, version);
+		let row = rows(&[Some("a")], &[7], at_millis(5_000));
+		run(&mut op, &mut txn, version, Diff::insert(row.clone()));
+		forget_through(&mut op, &mut txn, at_millis(20_000));
+		assert_eq!(
+			stored_read(&mut txn, 7),
+			None,
+			"the forget pass must have forgotten row 7 or this proves nothing"
+		);
+
+		let out = run(&mut op, &mut txn, version, Diff::update(row.clone(), row));
+
+		assert!(out.is_empty(), "an update of a forgotten row must be dropped, got {out:?}");
+	}
+
+	#[test]
+	fn a_left_remove_past_the_seal_is_dropped_even_before_its_forget_runs() {
+		// past the seal the row is already as good as forgotten, so its remove must not retract the published
+		// row
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let version = put_right(&engine, "a", 10);
+		let mut op = lookup(&table, JoinType::Left, Some(Duration::from_seconds(10).unwrap()));
+		let mut txn = txn_at(&engine, version);
+		let row = rows(&[Some("a")], &[7], at_millis(5_000));
+		only_insert(&run(&mut op, &mut txn, version, Diff::insert(row.clone())));
+		txn.set_flow_watermark(at_millis(30_000));
+
+		let out = run(&mut op, &mut txn, version, Diff::remove(row));
+
+		assert!(out.is_empty(), "a remove past the seal must be dropped, got {out:?}");
+	}
+
+	#[test]
+	fn a_right_change_is_never_dropped_by_the_left_seal() {
+		// the seal guards left input only; dropping a right change leaves every held left row stale
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let first = put_right(&engine, "a", 10);
+		let mut op = re_emitting(&table, JoinType::Left, Some(Duration::from_seconds(10).unwrap()));
+		let mut txn = txn_at(&engine, first);
+		only_insert(&run(&mut op, &mut txn, first, Diff::insert(rows(&[Some("a")], &[7], at_millis(25_000)))));
+		commit(&engine, &mut txn);
+
+		let second = put_right(&engine, "a", 11);
+		let mut txn = txn_at(&engine, second);
+		txn.set_flow_watermark(at_millis(30_000));
+		let old_right = with_system_column(
+			right_rows("a"),
+			SystemColumn::Time,
+			Arc::new(datetime_array(vec![at_millis(1_000)])),
+		)
+		.unwrap();
+		let out = run_right(&mut op, &mut txn, second, Diff::insert(old_right));
+
+		let [
+			Diff::Update {
+				post,
+				..
+			},
+		] = out.as_slice()
+		else {
+			panic!("a right change must re-emit the held left row, got {out:?}");
+		};
+		assert_eq!(cell(post, "r_v", 0), Value::Int4(11));
+	}
+
+	#[test]
+	fn a_lookup_without_a_lateness_keeps_an_old_left_row() {
+		// with no seal span there is no seal, so even an ancient row must publish
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let version = put_right(&engine, "a", 10);
+		let mut op = lookup(&table, JoinType::Left, None);
+		let mut txn = txn_at(&engine, version);
+		txn.set_flow_watermark(at_millis(300_000));
+
+		let out = run(&mut op, &mut txn, version, Diff::insert(rows(&[Some("a")], &[7], at_millis(1_000))));
+
+		only_insert(&out);
+	}
+
+	#[test]
+	fn each_seal_reason_counts_only_its_own_kind() {
+		// one shared counter would hide which harm happened: a missing row, a stale update or a stale row
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let version = put_right(&engine, "a", 10);
+		let mut op = lookup(&table, JoinType::Left, Some(Duration::from_seconds(10).unwrap()));
+		let mut txn = txn_at(&engine, version);
+		let live = rows(&[Some("a")], &[7], at_millis(5_000));
+		only_insert(&run(&mut op, &mut txn, version, Diff::insert(live.clone())));
+		txn.set_flow_watermark(at_millis(30_000));
+
+		run(&mut op, &mut txn, version, Diff::insert(rows(&[Some("a"), Some("a")], &[8, 9], at_millis(1_000))));
+		run(&mut op, &mut txn, version, Diff::update(live.clone(), live.clone()));
+		run(&mut op, &mut txn, version, Diff::remove(live));
+
+		assert_eq!(op.sealed_inserts.total(), 2, "two sealed inserts in one batch");
+		assert_eq!(op.sealed_updates.total(), 1, "one sealed update");
+		assert_eq!(op.sealed_removes.total(), 1, "one sealed remove");
 	}
 }

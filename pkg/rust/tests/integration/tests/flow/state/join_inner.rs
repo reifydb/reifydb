@@ -84,7 +84,10 @@ fn state_of(operator: u64) -> String {
 
 fn per_key_state_of(operator: u64) -> String {
 	// The schema and the counters are the operator's own bookkeeping, so every other keyspace is per join key.
-	format!("{} filter {{ keyspace != 'JOIN_SCHEMA' and keyspace != 'NODE_COUNTER' }}", state_of(operator))
+	format!(
+		"{} filter {{ keyspace != 'JOIN_SCHEMA' and keyspace != 'NODE_COUNTER' and keyspace != 'SEAL_LEDGER' }}",
+		state_of(operator)
+	)
 }
 
 fn assert_only_bounded_bookkeeping_survives(db: &TestDb, operator: u64, schemas: u64) {
@@ -94,13 +97,17 @@ fn assert_only_bounded_bookkeeping_survives(db: &TestDb, operator: u64, schemas:
 
 	assert_eq!(
 		column_values(frame, "keyspace"),
-		vec![Value::Utf8("JOIN_SCHEMA".to_string()), Value::Utf8("NODE_COUNTER".to_string())],
+		vec![
+			Value::Utf8("JOIN_SCHEMA".to_string()),
+			Value::Utf8("NODE_COUNTER".to_string()),
+			Value::Utf8("SEAL_LEDGER".to_string()),
+		],
 		"the schema names each side's row shape, the counter keeps row numbers unique; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
 	assert_eq!(
 		column_values(frame, "keys"),
-		vec![Value::Uint8(schemas), Value::Uint8(1)],
+		vec![Value::Uint8(schemas), Value::Uint8(1), Value::Uint8(1)],
 		"one schema per side that saw rows and one row number counter, never a key per row; surface now: {:?}",
 		db.query(&state_of(operator))
 	);

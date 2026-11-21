@@ -98,7 +98,10 @@ fn state_of(operator: u64) -> String {
 
 fn per_key_state_of(operator: u64) -> String {
 	// The schema and the counters are the operator's own bookkeeping, so every other keyspace is per join key.
-	format!("{} filter {{ keyspace != 'JOIN_SCHEMA' and keyspace != 'NODE_COUNTER' }}", state_of(operator))
+	format!(
+		"{} filter {{ keyspace != 'JOIN_SCHEMA' and keyspace != 'NODE_COUNTER' and keyspace != 'SEAL_LEDGER' }}",
+		state_of(operator)
+	)
 }
 
 fn view_rv(db: &TestDb) -> Vec<Value> {

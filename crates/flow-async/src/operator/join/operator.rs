@@ -76,13 +76,15 @@ use crate::{
 		row_times,
 		state::{
 			forget_pass::{StoreForgetter, drain, drain_group, enqueue, queue_key, queued},
-			seal::{domain::SealDomain, ledger::FiredAt, rule::SealRule},
+			seal::{
+				check::kept_unsealed,
+				ledger::{FiredAt, SealLedger},
+				rule::SealRule,
+			},
 		},
-		time_at_or_after,
 	},
 	timer::Timer,
 	transaction::join_forget::{DueStart, JoinDueEntry, join_forget_range},
-	window::coord::ByDateTime,
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -421,16 +423,15 @@ impl JoinOperator {
 		pre: Option<RecordBatch>,
 		post: RecordBatch,
 	) -> Result<(Option<RecordBatch>, RecordBatch), ValueError> {
-		let (Some(lateness), Some(flow_watermark)) = (self.lateness_of(side), host.flow_watermark()?) else {
+		let Some(lateness) = self.lateness_of(side) else {
 			return Ok((pre, post));
 		};
-		let first_admitted = <ByDateTime as SealDomain>::first_admitted(ByDateTime(flow_watermark), lateness).0;
-		let kept = time_at_or_after(&post, first_admitted)?;
-		if kept.false_count() == 0 {
+		let kept = kept_unsealed(host, lateness, &post)?;
+		if kept.dropped == 0 {
 			return Ok((pre, post));
 		}
-		let pre = pre.map(|pre| filter(&pre, kept.values())).transpose()?;
-		Ok((pre, filter(&post, kept.values())?))
+		let pre = pre.map(|pre| filter(&pre, kept.mask.values())).transpose()?;
+		Ok((pre, filter(&post, kept.mask.values())?))
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -1107,6 +1108,7 @@ impl HostOperator for JoinOperator {
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		if timer.kind == TimerKind::ForgetPass {
+			SealLedger::advance(host, FiredAt::of(&timer))?;
 			self.free_due_join_rows(host, FiredAt::of(&timer))?;
 		}
 		Ok(None)
@@ -1402,13 +1404,13 @@ impl JoinOperator {
 mod seal_tests {
 	use std::{ops::Bound, sync::Arc};
 
-	use arrow_array::UInt64Array;
+	use arrow_array::{Int32Array, UInt64Array};
 	use arrow_schema::Schema;
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::row::{bytes::EncodedBytes, operator::state::decode, shape::RowShape};
 	use reifydb_core::{
 		actors::pending::Pending,
-		common::CommitVersion,
+		common::{ChangeVersion, CommitVersion},
 		interface::{catalog::dictionary::Dictionary, store::MultiVersionRow},
 		key::{
 			any::TaggedKey,
@@ -1443,6 +1445,7 @@ mod seal_tests {
 			join::strategy::hash::merge_runs,
 			sink::DurableSink,
 			state::test_utils::test::{scan_operator, whole_keyspace},
+			time_column,
 		},
 		timer::{TimerDue, extension::TimerExtension},
 		transaction::{
@@ -2646,5 +2649,129 @@ mod seal_tests {
 				"key {name} must emit the same cells batched and per key"
 			);
 		}
+	}
+
+	fn apply_left(op: &mut JoinOperator, txn: &mut DeferredTransaction, diff: Diff) -> Vec<Diff> {
+		let change = Change::from_flow(
+			OperatorId(op.operator.0 + 1_000),
+			ChangeVersion::from(CommitVersion(100)),
+			vec![diff],
+			DateTime::default(),
+		);
+		let operator = op.operator;
+		op.apply(&mut TxnHostContext::new(txn, operator), change).unwrap().diffs.to_vec()
+	}
+
+	#[test]
+	fn a_left_insert_past_the_seal_never_reaches_the_join() {
+		// a row older than the seal must be dropped before it arms state, or forgotten state comes back
+		let engine = TestEngine::new();
+		let mut op = join(1, Some(seconds(10)), None);
+		let mut txn = txn_at(&engine, 100);
+		txn.set_flow_watermark(at_millis(30_000));
+		let late = rows(&[7], &[42], at_millis(5_000));
+
+		let out = apply_left(&mut op, &mut txn, Diff::insert(late.clone()));
+
+		assert!(out.is_empty(), "a sealed left insert must emit nothing, got {out:?}");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &late, 0));
+		assert_eq!(
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
+			None,
+			"and must arm no forget entry"
+		);
+	}
+
+	#[test]
+	fn a_flow_watermark_falling_back_after_a_forget_pass_still_drops_the_forgotten_row() {
+		// a newly attached source drags the flow watermark down; without the ledger the forgotten row is
+		// re-admitted
+		let engine = TestEngine::new();
+		let mut op = join(1, Some(seconds(10)), None);
+		let mut txn = txn_at(&engine, 100);
+		let row = rows(&[7], &[42], at_millis(1_000));
+		apply_left(&mut op, &mut txn, Diff::insert(row.clone()));
+		fire(&mut op, &mut txn, at_millis(12_000));
+		let group = group_of(&hash_of(&op, JoinSide::Left, &row, 0));
+		assert_eq!(
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
+			None,
+			"the forget pass must have forgotten the row or this test proves nothing"
+		);
+
+		txn.set_flow_watermark(at_millis(3_000));
+		let out = apply_left(&mut op, &mut txn, Diff::update(row.clone(), row));
+
+		assert!(
+			out.is_empty(),
+			"an update of a forgotten row past the forget pass must be dropped, got {out:?}"
+		);
+	}
+
+	#[test]
+	fn a_row_exactly_at_the_first_admitted_instant_is_kept_and_one_nanosecond_earlier_is_dropped() {
+		// the seal edge is inclusive on the admitted side; off by one either way drops live rows or keeps
+		// sealed ones
+		let engine = TestEngine::new();
+		let mut op = join(1, Some(seconds(10)), None);
+		let mut txn = txn_at(&engine, 100);
+		txn.set_flow_watermark(at_millis(30_000));
+		let first_admitted = DateTime::from_nanos(19_999_000_001);
+
+		let kept = apply_left(&mut op, &mut txn, Diff::insert(rows(&[7], &[1], first_admitted)));
+		let dropped = apply_left(
+			&mut op,
+			&mut txn,
+			Diff::insert(rows(&[8], &[2], DateTime::from_nanos(19_999_000_000))),
+		);
+
+		assert_eq!(kept.len(), 1, "a row at the first admitted instant must reach the output");
+		assert!(dropped.is_empty(), "a row one nanosecond before it must be dropped, got {dropped:?}");
+	}
+
+	#[test]
+	fn a_row_without_a_time_is_never_dropped_as_sealed() {
+		// a row with no time cannot be judged against the seal, so it must pass rather than vanish
+		let engine = TestEngine::new();
+		let mut op = join(1, Some(seconds(10)), None);
+		let mut txn = txn_at(&engine, 100);
+		txn.set_flow_watermark(at_millis(30_000));
+		let columns = batch(vec![int4("k", vec![7, 8])]).unwrap();
+		let columns = with_system_column(
+			columns,
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(vec![1u64, 2])),
+		)
+		.unwrap();
+		let mixed =
+			with_system_column(columns, SystemColumn::Time, time_column([None, Some(at_millis(5_000))]))
+				.unwrap();
+
+		let out = apply_left(&mut op, &mut txn, Diff::insert(mixed));
+
+		let [
+			Diff::Insert {
+				post,
+				..
+			},
+		] = out.as_slice()
+		else {
+			panic!("exactly one insert must reach the output, got {out:?}");
+		};
+		let keys = post.column_by_name("k").unwrap().as_any().downcast_ref::<Int32Array>().unwrap();
+		assert_eq!(keys.values().to_vec(), vec![7], "only the untimed row survives beside a sealed one");
+	}
+
+	#[test]
+	fn a_join_without_a_lateness_never_drops_an_old_row() {
+		// with no seal span there is no seal, so even an ancient row must pass
+		let engine = TestEngine::new();
+		let mut op = join(1, None, None);
+		let mut txn = txn_at(&engine, 100);
+		txn.set_flow_watermark(at_millis(300_000));
+
+		let out = apply_left(&mut op, &mut txn, Diff::insert(rows(&[7], &[1], at_millis(1_000))));
+
+		assert_eq!(out.len(), 1, "a join with no lateness must keep every row, got {out:?}");
 	}
 }
