@@ -21,7 +21,6 @@ pub(crate) mod migration;
 pub(crate) mod namespace;
 pub(crate) mod object;
 pub(crate) mod operator;
-pub mod operator_horizon;
 pub(crate) mod policy;
 #[allow(dead_code)]
 pub(crate) mod primary_key;

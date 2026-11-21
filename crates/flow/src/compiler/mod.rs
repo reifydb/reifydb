@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::{catalog::Catalog, store::operator_horizon::create::create_operator_horizon};
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	error::diagnostic::{
 		flow::{
@@ -22,11 +22,10 @@ use reifydb_core::{
 		view::View,
 	},
 	internal_err,
-	row::OperatorHorizon,
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::query::QueryPlan;
-use reifydb_value::{error::ValueError, fragment::Fragment, value::duration::Duration};
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 pub mod operator;
 pub mod source;
@@ -167,27 +166,6 @@ impl FlowCompiler {
 		let operator_id = self.next_node_id(txn)?;
 		self.builder.add_node(FlowNode::new(operator_id, node_type));
 		Ok(operator_id)
-	}
-
-	pub(crate) fn write_operator_horizon(
-		&self,
-		txn: &mut Transaction<'_>,
-		operator_id: OperatorId,
-		horizon: Option<Duration>,
-	) -> Result<(), ValueError> {
-		if self.ephemeral {
-			return Ok(());
-		}
-		if let Some(duration) = horizon {
-			create_operator_horizon(
-				txn.admin_mut(),
-				operator_id,
-				&OperatorHorizon {
-					duration,
-				},
-			)?;
-		}
-		Ok(())
 	}
 
 	pub(crate) fn compile(

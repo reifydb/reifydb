@@ -36,11 +36,6 @@ impl RowSettings {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OperatorHorizon {
-	pub duration: Duration,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JoinLateness {
 	pub left: Option<Duration>,
 

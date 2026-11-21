@@ -39,7 +39,6 @@ use crate::{
 			key::{OperatorByFlowKey, OperatorKey},
 			state::OperatorStateKey,
 		},
-		operator_horizon::OperatorHorizonKey,
 		output_watermark::OutputWatermarkKey,
 		partition::PartitionKey,
 		procedure::{ProcedureKey, ProcedureParamKey},
@@ -140,7 +139,6 @@ pub enum TaggedKey {
 	ProcedureParam(ProcedureParamKey),
 	Binding(BindingKey),
 	NamespaceBinding(NamespaceBindingKey),
-	OperatorHorizon(OperatorHorizonKey),
 	ColumnBlock(ColumnBlockKey),
 	SeriesColumnBlock(SeriesColumnBlockKey),
 	TableColumnBlock(TableColumnBlockKey),
@@ -239,7 +237,6 @@ impl TaggedKey {
 			Self::ProcedureParam(_) => KeyTag::ProcedureParam,
 			Self::Binding(_) => KeyTag::Binding,
 			Self::NamespaceBinding(_) => KeyTag::NamespaceBinding,
-			Self::OperatorHorizon(_) => KeyTag::OperatorHorizon,
 			Self::ColumnBlock(_) => KeyTag::ColumnBlock,
 			Self::SeriesColumnBlock(_) => KeyTag::SeriesColumnBlock,
 			Self::TableColumnBlock(_) => KeyTag::TableColumnBlock,
@@ -353,7 +350,6 @@ impl TaggedKey {
 			Self::ProcedureParam(key) => key.encode(),
 			Self::Binding(key) => key.encode(),
 			Self::NamespaceBinding(key) => key.encode(),
-			Self::OperatorHorizon(key) => key.encode(),
 			Self::ColumnBlock(key) => key.encode(),
 			Self::SeriesColumnBlock(key) => key.encode(),
 			Self::TableColumnBlock(key) => key.encode(),
@@ -464,7 +460,6 @@ impl TaggedKey {
 			KeyTag::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),
 			KeyTag::Binding => BindingKey::decode(key).map(Self::Binding),
 			KeyTag::NamespaceBinding => NamespaceBindingKey::decode(key).map(Self::NamespaceBinding),
-			KeyTag::OperatorHorizon => OperatorHorizonKey::decode(key).map(Self::OperatorHorizon),
 			KeyTag::ColumnBlock => ColumnBlockKey::decode(key).map(Self::ColumnBlock),
 			KeyTag::SeriesColumnBlock => SeriesColumnBlockKey::decode(key).map(Self::SeriesColumnBlock),
 			KeyTag::TableColumnBlock => TableColumnBlockKey::decode(key).map(Self::TableColumnBlock),
@@ -926,12 +921,6 @@ impl From<NamespaceBindingKey> for TaggedKey {
 	}
 }
 
-impl From<OperatorHorizonKey> for TaggedKey {
-	fn from(key: OperatorHorizonKey) -> Self {
-		Self::OperatorHorizon(key)
-	}
-}
-
 impl From<ColumnBlockKey> for TaggedKey {
 	fn from(key: ColumnBlockKey) -> Self {
 		Self::ColumnBlock(key)
@@ -1306,7 +1295,6 @@ impl KeyFields for TaggedKey {
 			Self::ProcedureParam(key) => key.fields(),
 			Self::Binding(key) => key.fields(),
 			Self::NamespaceBinding(key) => key.fields(),
-			Self::OperatorHorizon(key) => key.fields(),
 			Self::ColumnBlock(key) => key.fields(),
 			Self::SeriesColumnBlock(key) => key.fields(),
 			Self::TableColumnBlock(key) => key.fields(),
@@ -1411,7 +1399,6 @@ impl Ord for TaggedKey {
 			(Self::ProcedureParam(left), Self::ProcedureParam(right)) => left.cmp_fields(right),
 			(Self::Binding(left), Self::Binding(right)) => left.cmp_fields(right),
 			(Self::NamespaceBinding(left), Self::NamespaceBinding(right)) => left.cmp_fields(right),
-			(Self::OperatorHorizon(left), Self::OperatorHorizon(right)) => left.cmp_fields(right),
 			(Self::ColumnBlock(left), Self::ColumnBlock(right)) => left.cmp_fields(right),
 			(Self::SeriesColumnBlock(left), Self::SeriesColumnBlock(right)) => left.cmp_fields(right),
 			(Self::TableColumnBlock(left), Self::TableColumnBlock(right)) => left.cmp_fields(right),
@@ -1507,7 +1494,6 @@ mod tests {
 				key::{OperatorByFlowKey, OperatorKey},
 				state::{GroupId, KeyspaceId, OperatorStateKey},
 			},
-			operator_horizon::OperatorHorizonKey,
 			output_watermark::OutputWatermarkKey,
 			partition::PartitionKey,
 			procedure::{ProcedureKey, ProcedureParamKey},
@@ -2354,9 +2340,6 @@ mod tests {
 				namespace: NamespaceId(85),
 				binding: BindingId(86),
 			}),
-			probe(OperatorHorizonKey {
-				operator: OperatorId(87),
-			}),
 			probe(ColumnBlockKey {
 				block: ColumnBlockId(88),
 			}),
@@ -2587,7 +2570,7 @@ mod tests {
 		let mut kinds: Vec<u8> = all_probes().iter().map(|(key, _)| key.kind() as u8).collect();
 		kinds.sort_unstable();
 		kinds.dedup();
-		assert_eq!(kinds.len(), 88);
+		assert_eq!(kinds.len(), 87);
 	}
 
 	#[test]

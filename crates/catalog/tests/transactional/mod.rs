@@ -11,7 +11,6 @@ mod identity;
 mod identity_attribute;
 mod namespace;
 mod operator;
-mod operator_horizon;
 mod policy;
 mod procedure;
 mod queue;

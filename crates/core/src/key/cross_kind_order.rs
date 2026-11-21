@@ -50,7 +50,6 @@ use crate::{
 			key::{OperatorByFlowKey, OperatorKey},
 			state::{GroupId, KeyspaceId, OperatorStateKey},
 		},
-		operator_horizon::OperatorHorizonKey,
 		output_watermark::OutputWatermarkKey,
 		partition::PartitionKey,
 		procedure::{ProcedureKey, ProcedureParamKey},
@@ -76,7 +75,7 @@ use crate::{
 	value::index::encoded::EncodedIndexKey,
 };
 
-const DECLARED_KINDS: usize = 94;
+const DECLARED_KINDS: usize = 93;
 
 fn bare(kind: KeyTag) -> EncodedKey {
 	let mut serializer = KeySerializer::with_capacity(1);
@@ -382,10 +381,6 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		KeyTag::NamespaceBinding => NamespaceBindingKey {
 			namespace: NamespaceId(1),
 			binding: BindingId(1),
-		}
-		.encode(),
-		KeyTag::OperatorHorizon => OperatorHorizonKey {
-			operator: OperatorId(1),
 		}
 		.encode(),
 		KeyTag::ColumnBlock => ColumnBlockKey {

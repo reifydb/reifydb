@@ -373,7 +373,7 @@ impl ConfigKey {
 				 delay plus per-class budgets drain it over many ticks instead of one mass eviction."
 			}
 			Self::MinHistoryHorizon => {
-				"Lower bound on the history horizon. The horizon is the longest declared row ttl or join or lookup lateness, never less than this minimum; epoch samples older than it are removed."
+				"Lower bound on the history horizon. The horizon is the longest declared row ttl, never less than this minimum; epoch samples older than it are removed."
 			}
 			Self::HistoricalGcBatchSize => {
 				"Max historical (key, version) pairs scanned per object per historical GC tick."

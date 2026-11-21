@@ -6,7 +6,6 @@ pub mod coverage;
 pub mod floor;
 pub mod gate;
 pub mod metrics;
-pub mod operator;
 pub mod progress;
 pub mod registry;
 pub mod task;

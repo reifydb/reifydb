@@ -154,8 +154,6 @@ impl CompileOperator for LookupCompiler {
 			},
 		)?;
 
-		compiler.write_operator_horizon(txn, node_id, self.with.lateness)?;
-
 		compiler.add_edge(txn, &left_node, &node_id)?;
 		if let Some(right_node) = right_node {
 			compiler.add_edge(txn, &right_node, &node_id)?;

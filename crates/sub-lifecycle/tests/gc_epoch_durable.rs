@@ -356,6 +356,37 @@ fn pruning_drops_samples_beyond_the_horizon_and_keeps_the_ones_inside_it() {
 }
 
 #[test]
+fn a_join_lateness_longer_than_every_row_ttl_does_not_stretch_the_history_horizon() {
+	// operators forget on flow timers in event time, so a join lateness must never keep epoch samples past the row
+	// ttls
+	let t = TestEngine::new();
+	let engine: StandardEngine = t.inner().clone();
+	let clock = t.mock_clock();
+	t.admin("CREATE NAMESPACE late");
+	t.admin("CREATE TABLE late::lhs { k: int4, lv: int4, at: datetime } with { time: event(at) }");
+	t.admin("CREATE TABLE late::rhs { k: int4, rv: int4, at: datetime } with { time: event(at) }");
+	t.admin("CREATE DEFERRED VIEW late::joined { k: int4, lv: int4, rv: int4 } AS { \
+		 FROM late::lhs \
+		 inner join { FROM late::rhs } as r using (k, r.k) with { retention: { left: 30d } } \
+		 map { k: k, lv: lv, rv: r_rv } }");
+
+	commit_a_version(&engine, "ingest", 1);
+	let mut task = EpochLogTask::new(engine.clone(), open_gate(&engine));
+	task.run_slice();
+	let ancient = durable_samples(&engine)[0].0;
+
+	clock.advance_days(8);
+	commit_a_version(&engine, "ingest", 2);
+	task.run_slice();
+
+	let remaining = durable_samples(&engine);
+	assert!(
+		!remaining.iter().any(|(bucket, _, _)| *bucket == ancient),
+		"a 30d join lateness must not hold a sample past the 7d minimum horizon; remaining {remaining:?}"
+	);
+}
+
+#[test]
 fn pruning_is_held_back_while_the_startup_gate_is_closed() {
 	// Pruning is deletion like any other, so it waits out the startup delay - but sampling must continue during
 	// it, or the gate creates the very coverage gap it is protecting against.

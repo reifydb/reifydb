@@ -11,7 +11,7 @@ use crate::{
 		column_block::ColumnBlock,
 		config::Config,
 		dictionary::Dictionary,
-		flow::{FlowEntry, OperatorId},
+		flow::FlowEntry,
 		handler::Handler,
 		identity::{GrantedRole, Identity, IdentityAttribute, IdentityAttributeValue, Role},
 		key::PrimaryKey,
@@ -33,7 +33,7 @@ use crate::{
 		view::View,
 		windowed_view_group::WindowedViewGroup,
 	},
-	row::{OperatorHorizon, RowSettings},
+	row::RowSettings,
 };
 
 pub trait CatalogTrackConfigChangeOperations {
@@ -230,14 +230,6 @@ pub trait CatalogTrackRowSettingsChangeOperations {
 	fn track_row_settings_created(&mut self, storage: StorageId, settings: RowSettings) -> Result<(), ValueError>;
 }
 
-pub trait CatalogTrackOperatorHorizonChangeOperations {
-	fn track_operator_horizon_created(
-		&mut self,
-		operator: OperatorId,
-		horizon: OperatorHorizon,
-	) -> Result<(), ValueError>;
-}
-
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackBindingChangeOperations
 	+ CatalogTrackColumnBlockChangeOperations
@@ -270,6 +262,5 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackWindowedViewGroupChangeOperations
 	+ CatalogTrackConfigChangeOperations
 	+ CatalogTrackRowSettingsChangeOperations
-	+ CatalogTrackOperatorHorizonChangeOperations
 {
 }

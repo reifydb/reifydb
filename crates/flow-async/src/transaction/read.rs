@@ -120,7 +120,6 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyTag::WindowedViewGroup => ReadFrom::Query,
 			KeyTag::NamespaceWindowedViewGroup => ReadFrom::Query,
 			KeyTag::RowSettings => ReadFrom::Query,
-			KeyTag::OperatorHorizon => ReadFrom::Query,
 			KeyTag::Procedure => ReadFrom::Query,
 			KeyTag::NamespaceProcedure => ReadFrom::Query,
 			KeyTag::ProcedureParam => ReadFrom::Query,

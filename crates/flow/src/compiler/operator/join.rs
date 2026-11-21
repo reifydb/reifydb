@@ -225,13 +225,6 @@ impl CompileOperator for JoinCompiler {
 			},
 		)?;
 
-		let longest_side = self
-			.with
-			.lateness
-			.as_ref()
-			.and_then(|lateness| lateness.left.iter().chain(&lateness.right).copied().max());
-		compiler.write_operator_horizon(txn, node_id, longest_side)?;
-
 		compiler.add_edge(txn, &left_node, &node_id)?;
 		compiler.add_edge(txn, &right_node, &node_id)?;
 

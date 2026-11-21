@@ -19,7 +19,6 @@ pub mod identity_attribute;
 pub mod identity_attribute_value;
 pub mod migration;
 pub mod namespace;
-pub mod operator_horizon;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;

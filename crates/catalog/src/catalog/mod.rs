@@ -17,7 +17,6 @@ pub mod migration;
 pub mod name;
 pub mod namespace;
 pub mod object;
-pub mod operator_horizon;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
