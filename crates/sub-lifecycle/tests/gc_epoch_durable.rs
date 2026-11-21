@@ -7,6 +7,7 @@
 //! instant. These tests pin the map itself: samples reaching storage, hydration covering instants older than this
 //! process, and pruning bounded by the longest declared ttl rather than by a buffer size.
 
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},
 	key::{any::TaggedKey, system::VersionEpochKey},
@@ -444,6 +445,22 @@ fn hydrating_a_cold_database_leaves_the_epoch_resolving_nothing() {
 		None,
 		"a cold epoch must yield no cutoff, so gc deletes nothing"
 	);
+}
+
+#[test]
+fn a_corrupt_epoch_sample_fails_hydration_instead_of_shrinking_coverage() {
+	// a skipped sample silently shortens ttl coverage after a restart, so a bad one must fail the load
+	let t = TestEngine::new();
+	let engine: StandardEngine = t.inner().clone();
+	let now = EpochSeconds::from_datetime(engine.clock().now());
+	let mut txn = engine.begin_command(IdentityId::system()).expect("system command transaction");
+	txn.set(vec![(VersionEpochKey::new(now).into(), EncodedPodRow::new(&[1, 2, 3]).into_bytes())])
+		.expect("write the corrupt sample");
+	txn.commit_unchecked().expect("commit the corrupt sample");
+
+	let hydrated = hydrate(&engine, Duration::from_days(7).unwrap());
+
+	assert!(hydrated.is_err(), "a 3 byte sample must fail hydration, got {hydrated:?}");
 }
 
 #[test]

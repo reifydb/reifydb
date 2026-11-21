@@ -24,7 +24,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::error::ValueError;
-use tracing::{info, warn};
+use tracing::info;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::store::flush::PersistentFlushTask;
@@ -92,12 +92,8 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 		);
 
 		let horizon = history_horizon(&catalog);
-		match hydrate(&engine, horizon) {
-			Ok(samples) => info!(samples, horizon = %horizon, "version epoch hydrated"),
-			Err(e) => {
-				warn!(error = %e, "version epoch hydration failed; ttls resolve only from this uptime")
-			}
-		}
+		let samples = hydrate(&engine, horizon)?;
+		info!(samples, horizon = %horizon, "version epoch hydrated");
 
 		registry.register(Box::new(Measured::new(
 			EpochLogTask::new(engine.clone(), gate.clone()),

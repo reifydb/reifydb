@@ -75,7 +75,10 @@ impl EpochLog {
 				break;
 			}
 			let Some(sample) = decode(EncodedPodRow::view(&entry.bytes)) else {
-				continue;
+				return_internal_error!(
+					"epoch log sample in bucket {} is not a {SAMPLE_WIDTH} byte sample",
+					key.bucket.seconds()
+				)
 			};
 			if sample.at >= oldest {
 				samples.push(sample);
