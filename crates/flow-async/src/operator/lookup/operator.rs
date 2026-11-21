@@ -71,7 +71,7 @@ use crate::{
 		},
 		row_times,
 		state::seal::{
-			check::kept_unsealed,
+			check::{SEALED_INSERTS, SEALED_REMOVES, SEALED_UPDATES, kept_unsealed},
 			ledger::{FiredAt, SealLedger},
 		},
 	},
@@ -82,12 +82,6 @@ use crate::{
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
 const RE_EMIT_PAGE: usize = 1024;
-
-const SEALED_INSERTS: &str = "inserts past the seal";
-
-const SEALED_UPDATES: &str = "updates past the seal";
-
-const SEALED_REMOVES: &str = "removes past the seal";
 
 fn key_partition(
 	host: &mut dyn HostContext,

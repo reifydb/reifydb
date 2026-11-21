@@ -71,13 +71,14 @@ use crate::{
 	error::FlowAsyncError,
 	operator::{
 		HostOperator, InputOrder, TimedOutput,
+		drops::DropCounter,
 		host::HostContext,
 		join::{Emitted, Identity, forget::JoinForgetIndex},
 		row_times,
 		state::{
 			forget_pass::{StoreForgetter, drain, drain_group, enqueue, queue_key, queued},
 			seal::{
-				check::kept_unsealed,
+				check::{SEALED_INSERTS, SEALED_REMOVES, SEALED_UPDATES, kept_unsealed},
 				ledger::{FiredAt, SealLedger},
 				rule::SealRule,
 			},
@@ -195,6 +196,9 @@ pub struct JoinOperator {
 	forget_pass_fires: Counter,
 	forget: JoinForgetIndex,
 	columns: JoinedColumnsCache,
+	sealed_inserts: DropCounter,
+	sealed_updates: DropCounter,
+	sealed_removes: DropCounter,
 }
 
 impl JoinOperator {
@@ -265,6 +269,9 @@ impl JoinOperator {
 			),
 			forget: JoinForgetIndex::default(),
 			output_sumtypes,
+			sealed_inserts: DropCounter::new(operator, SEALED_INSERTS),
+			sealed_updates: DropCounter::new(operator, SEALED_UPDATES),
+			sealed_removes: DropCounter::new(operator, SEALED_REMOVES),
 		})
 	}
 
@@ -422,6 +429,7 @@ impl JoinOperator {
 		side: JoinSide,
 		pre: Option<RecordBatch>,
 		post: RecordBatch,
+		drops: &DropCounter,
 	) -> Result<(Option<RecordBatch>, RecordBatch), ValueError> {
 		let Some(lateness) = self.lateness_of(side) else {
 			return Ok((pre, post));
@@ -430,6 +438,7 @@ impl JoinOperator {
 		if kept.dropped == 0 {
 			return Ok((pre, post));
 		}
+		drops.note(kept.dropped);
 		let pre = pre.map(|pre| filter(&pre, kept.mask.values())).transpose()?;
 		Ok((pre, filter(&post, kept.mask.values())?))
 	}
@@ -1057,7 +1066,7 @@ impl HostOperator for JoinOperator {
 				};
 				let pre = self.entry(host, side, pre)?;
 				let post = self.entry(host, side, post)?;
-				let (_, post) = self.drop_sealed(host, side, None, post)?;
+				let (_, post) = self.drop_sealed(host, side, None, post, &self.sealed_inserts)?;
 				self.apply_join_replace(host, &pre, &post, &mut state, &mut result)?;
 				continue;
 			}
@@ -1067,7 +1076,8 @@ impl HostOperator for JoinOperator {
 					..
 				} => {
 					let post = self.entry(host, side, post)?;
-					let (_, post) = self.drop_sealed(host, side, None, post)?;
+					let (_, post) =
+						self.drop_sealed(host, side, None, post, &self.sealed_inserts)?;
 					if post.num_rows() > 0 {
 						self.apply_join_insert(host, &post, side, &mut state, &mut result)?
 					}
@@ -1077,7 +1087,10 @@ impl HostOperator for JoinOperator {
 					..
 				} => {
 					let pre = self.entry(host, side, pre)?;
-					self.apply_join_remove(host, &pre, side, &mut state, &mut result)?
+					let (_, pre) = self.drop_sealed(host, side, None, pre, &self.sealed_removes)?;
+					if pre.num_rows() > 0 {
+						self.apply_join_remove(host, &pre, side, &mut state, &mut result)?
+					}
 				}
 				Diff::Update {
 					pre,
@@ -1085,7 +1098,8 @@ impl HostOperator for JoinOperator {
 					..
 				} => {
 					let (pre, post) = (self.entry(host, side, pre)?, self.entry(host, side, post)?);
-					let (pre, post) = self.drop_sealed(host, side, Some(pre), post)?;
+					let (pre, post) =
+						self.drop_sealed(host, side, Some(pre), post, &self.sealed_updates)?;
 					if let Some(pre) = pre
 						&& post.num_rows() > 0
 					{
@@ -2773,5 +2787,43 @@ mod seal_tests {
 		let out = apply_left(&mut op, &mut txn, Diff::insert(rows(&[7], &[1], at_millis(1_000))));
 
 		assert_eq!(out.len(), 1, "a join with no lateness must keep every row, got {out:?}");
+	}
+
+	#[test]
+	fn a_left_remove_past_the_seal_is_dropped_even_before_its_forget_runs() {
+		// past the seal the row is as good as forgotten, so its remove must not retract the published row
+		let engine = TestEngine::new();
+		let mut op = join(1, Some(seconds(10)), None);
+		let mut txn = txn_at(&engine, 100);
+		let row = rows(&[7], &[42], at_millis(5_000));
+		assert_eq!(
+			apply_left(&mut op, &mut txn, Diff::insert(row.clone())).len(),
+			1,
+			"precondition: the row publishes"
+		);
+		txn.set_flow_watermark(at_millis(30_000));
+
+		let out = apply_left(&mut op, &mut txn, Diff::remove(row));
+
+		assert!(out.is_empty(), "a remove past the seal must be dropped, got {out:?}");
+	}
+
+	#[test]
+	fn each_join_seal_reason_counts_only_its_own_kind() {
+		// one shared counter would hide which harm happened: a missing row, a stale update or a stale row
+		let engine = TestEngine::new();
+		let mut op = join(1, Some(seconds(10)), None);
+		let mut txn = txn_at(&engine, 100);
+		let live = rows(&[7], &[42], at_millis(5_000));
+		apply_left(&mut op, &mut txn, Diff::insert(live.clone()));
+		txn.set_flow_watermark(at_millis(30_000));
+
+		apply_left(&mut op, &mut txn, Diff::insert(rows(&[8, 9], &[43, 44], at_millis(1_000))));
+		apply_left(&mut op, &mut txn, Diff::update(live.clone(), live.clone()));
+		apply_left(&mut op, &mut txn, Diff::remove(live));
+
+		assert_eq!(op.sealed_inserts.total(), 2, "two sealed inserts in one batch");
+		assert_eq!(op.sealed_updates.total(), 1, "one sealed update");
+		assert_eq!(op.sealed_removes.total(), 1, "one sealed remove");
 	}
 }

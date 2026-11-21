@@ -9,6 +9,12 @@ use crate::{
 	window::{coord::ByDateTime, driver::store::WindowStore},
 };
 
+pub const SEALED_INSERTS: &str = "inserts past the seal";
+
+pub const SEALED_UPDATES: &str = "updates past the seal";
+
+pub const SEALED_REMOVES: &str = "removes past the seal";
+
 pub struct Kept {
 	pub mask: BooleanArray,
 	pub dropped: u64,
