@@ -28,6 +28,7 @@ reifydb-store-operator = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-codec = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-auth = { workspace = true }
 reifydb-transaction = { workspace = true }

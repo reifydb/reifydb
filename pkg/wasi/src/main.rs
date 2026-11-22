@@ -21,6 +21,7 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	system::SystemCatalog,
 };
+use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
 use reifydb_core::{
 	CoreVersion,
 	commit::queue::{CommitQueue, FlowQueuePosition},
@@ -43,7 +44,11 @@ use reifydb_rql_frontend::RqlFrontendVersion;
 use reifydb_runtime::{
 	Runtime, RuntimeConfig,
 	actor::timers::drain_due_timers,
-	context::{RuntimeContext, clock::Clock, spawner::Spawner},
+	context::{
+		RuntimeContext,
+		clock::{Clock, MockClock},
+		spawner::Spawner,
+	},
 	pool::PoolConfig,
 	shutdown::{Shutdown, ShutdownErrors},
 	version_epoch::VersionEpoch,
@@ -75,12 +80,18 @@ struct Bridge {
 	engine: StandardEngine,
 	flow_subsystem: FlowSubsystem,
 	runtime: Runtime,
+	mock_clock: Option<MockClock>,
 }
 
 impl Bridge {
-	fn new(configs: &[(ConfigKey, Value)]) -> Result<Self, Box<dyn Error>> {
+	fn new(configs: &[(ConfigKey, Value)], mock_clock: bool) -> Result<Self, Box<dyn Error>> {
+		let mock_clock = mock_clock.then(|| MockClock::from_millis(0));
+		let mut runtime_config = RuntimeConfig::default().seeded(0);
+		if let Some(mock) = &mock_clock {
+			runtime_config.clock = Clock::Mock(mock.clone());
+		}
 		let runtime = Runtime::from_config(
-			RuntimeConfig::default().seeded(0),
+			runtime_config,
 			PoolConfig {
 				coordination_threads: 1,
 				flow_threads: 1,
@@ -105,7 +116,7 @@ impl Bridge {
 			range: None,
 			event_bus: eventbus.clone(),
 			spawner: spawner.clone(),
-			clock: Clock::Real,
+			clock: clock.clone(),
 		});
 		let single_store = SingleStore::testing_memory();
 		let operator_store = OperatorStore::testing_memory();
@@ -218,6 +229,7 @@ impl Bridge {
 			engine,
 			flow_subsystem,
 			runtime,
+			mock_clock,
 		})
 	}
 }
@@ -273,6 +285,14 @@ fn parse_configs(msg: &JsonValue) -> Result<Vec<(ConfigKey, Value)>, Box<dyn Err
 	Ok(configs)
 }
 
+fn hex(bytes: &[u8]) -> String {
+	let mut out = String::with_capacity(bytes.len() * 2);
+	for byte in bytes {
+		let _ = write!(out, "{byte:02x}");
+	}
+	out
+}
+
 fn respond(obj: &JsonValue) {
 	let mut stdout = io::stdout().lock();
 	let _ = json_to_writer(&mut stdout, obj);
@@ -307,7 +327,9 @@ fn main() {
 		let cmd = msg.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
 
 		match cmd {
-			"new" => match parse_configs(&msg).and_then(|configs| Bridge::new(&configs)) {
+			"new" => match parse_configs(&msg).and_then(|configs| {
+				Bridge::new(&configs, msg.get("mock_clock").and_then(|v| v.as_bool()).unwrap_or(false))
+			}) {
 				Ok(b) => {
 					bridge = Some(b);
 					respond(&json!({"ok": "ready"}));
@@ -323,13 +345,10 @@ fn main() {
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
 				match b.engine.command_as(IdentityId::root(), rql, Params::None).check() {
-					Ok(result) => {
-						let mut output = String::new();
-						for frame in result.frames {
-							let _ = writeln!(output, "{}", frame);
-						}
-						respond(&json!({"ok": output}));
-					}
+					Ok(result) => match encode_frames(&result.frames, &EncodeOptions::fast()) {
+						Ok(bytes) => respond(&json!({"ok": hex(&bytes)})),
+						Err(e) => respond(&json!({"err": e.to_string()})),
+					},
 					Err(e) => {
 						respond(&json!({"err": format!("{}", e)}));
 					}
@@ -342,13 +361,10 @@ fn main() {
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
 				match b.engine.admin_as(IdentityId::root(), rql, Params::None).check() {
-					Ok(result) => {
-						let mut output = String::new();
-						for frame in result.frames {
-							let _ = writeln!(output, "{}", frame);
-						}
-						respond(&json!({"ok": output}));
-					}
+					Ok(result) => match encode_frames(&result.frames, &EncodeOptions::fast()) {
+						Ok(bytes) => respond(&json!({"ok": hex(&bytes)})),
+						Err(e) => respond(&json!({"err": e.to_string()})),
+					},
 					Err(e) => {
 						respond(&json!({"err": format!("{}", e)}));
 					}
@@ -361,17 +377,32 @@ fn main() {
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
 				match b.engine.query_as(IdentityId::root(), rql, Params::None).check() {
-					Ok(result) => {
-						let mut output = String::new();
-						for frame in result.frames {
-							let _ = writeln!(output, "{}", frame);
-						}
-						respond(&json!({"ok": output}));
-					}
+					Ok(result) => match encode_frames(&result.frames, &EncodeOptions::fast()) {
+						Ok(bytes) => respond(&json!({"ok": hex(&bytes)})),
+						Err(e) => respond(&json!({"err": e.to_string()})),
+					},
 					Err(e) => {
 						respond(&json!({"err": format!("{}", e)}));
 					}
 				}
+			}
+			"advance_clock" => {
+				let Some(b) = bridge.as_ref() else {
+					respond(&json!({"err": "no database instance"}));
+					continue;
+				};
+				let Some(mock) = b.mock_clock.as_ref() else {
+					respond(
+						&json!({"err": "advance_clock needs a bridge started with mock_clock"}),
+					);
+					continue;
+				};
+				let Some(millis) = msg.get("millis").and_then(|v| v.as_u64()) else {
+					respond(&json!({"err": "advance_clock needs an unsigned millis"}));
+					continue;
+				};
+				mock.advance_millis(millis);
+				respond(&json!({"ok": "ok"}));
 			}
 			"query_count" => {
 				let Some(b) = bridge.as_ref() else {
