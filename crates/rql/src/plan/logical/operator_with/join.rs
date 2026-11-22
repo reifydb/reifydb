@@ -404,6 +404,15 @@ mod tests {
 	}
 
 	#[test]
+	fn a_zero_side_lateness_is_refused() {
+		// Zero must never reach the join, otherwise it reads as keep forever while a window reads it as no late
+		// rows.
+		assert!(join_with(&join("retention: { left: 0s }")).is_err());
+		assert!(join_with(&join("retention: { right: 0s }")).is_err());
+		assert!(join_with(&join("retention: { left: 1s }")).is_ok());
+	}
+
+	#[test]
 	fn test_join_rejects_latest_and_earliest_together() {
 		let err = parse_err(&join("latest: { o.total }, earliest: { o.seq }"));
 		assert!(err.contains("earliest"), "the rejection must name the clash, got: {err}");

@@ -283,7 +283,10 @@ fn input_seal(with: &ApplyWith) -> Option<Duration> {
 	if with.window.is_some() {
 		return None;
 	}
-	engine_seal_span(with).or(with.retention.filter(|retention| !retention.is_zero()))
+	match with.lateness {
+		Some(WithSpan::Duration(lateness)) => Some(lateness),
+		_ => with.retention.filter(|retention| !retention.is_zero()),
+	}
 }
 
 pub fn engine_retention(with: &ApplyWith) -> Option<Duration> {
@@ -1067,6 +1070,19 @@ mod seal_tests {
 		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1], &[Some(5_000)]))]);
 
 		assert_eq!(seen.lock().unwrap().calls, 0, "a change emptied by the seal must not call the guest");
+		assert_eq!(op.sealed_inserts.total(), 1);
+	}
+
+	#[test]
+	fn a_zero_lateness_drops_every_late_row_and_keeps_the_watermark_instant() {
+		// Zero must mean no late rows like a window lateness, otherwise every late row slips past the seal.
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 30_000);
+		let (mut op, seen) = recorder(lateness(0));
+
+		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1, 2, 3], &[Some(29_999), Some(30_000), None]))]);
+
+		assert_eq!(keys_seen(&seen), vec![2, 3]);
 		assert_eq!(op.sealed_inserts.total(), 1);
 	}
 
