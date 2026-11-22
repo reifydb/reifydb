@@ -766,6 +766,21 @@ pub fn flow_row_ttl_requires_time(view: &str) -> Diagnostic {
 	)
 }
 
+pub fn flow_seal_shorter_below(
+	flow: &str,
+	lower: &str,
+	lower_span: Duration,
+	upper: &str,
+	upper_span: Duration,
+) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_099",
+		format!("{flow} {lower} seals after {lower_span} below {upper} that seals after {upper_span}"),
+		"a row the upper operator keeps may be as late as its seal, and a lower operator with a shorter seal drops \
+		 it. Give the lower operator a retention or lateness at least as long as the upper one, or move it above.",
+	)
+}
+
 pub fn flow_operator_timer_kind_reserved(kind: &str) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_074",
