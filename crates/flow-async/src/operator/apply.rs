@@ -1074,6 +1074,24 @@ mod seal_tests {
 	}
 
 	#[test]
+	fn a_retention_alone_drops_input_by_the_retention_and_holds_no_output() {
+		// The drop must stop rows whose state is forgotten, and a hold by retention would stall every reader by
+		// the state bound.
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 30_000);
+		let (mut op, seen) = recorder(ApplyWith {
+			retention: Some(secs(10)),
+			..ApplyWith::default()
+		});
+
+		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1, 2], &[Some(19_999), Some(20_000)]))]);
+
+		assert_eq!(keys_seen(&seen), vec![2]);
+		assert_eq!(op.sealed_inserts.total(), 1);
+		assert_eq!(op.seal_span(), None);
+	}
+
+	#[test]
 	fn a_zero_lateness_drops_every_late_row_and_keeps_the_watermark_instant() {
 		// Zero must mean no late rows like a window lateness, otherwise every late row slips past the seal.
 		let engine = TestEngine::new();
