@@ -14,6 +14,9 @@ path = "src/main.rs"
 [build-dependencies]
 reifydb-build = { workspace = true }
 
+[features]
+testing = ["reifydb-core/testing"]
+
 [dependencies]
 reifydb-engine = { workspace = true }
 reifydb-extension = { workspace = true }

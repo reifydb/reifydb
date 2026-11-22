@@ -16,7 +16,7 @@ use std::{
 use reifydb_auth::{AuthVersion, registry::AuthenticationRegistry};
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{bootstrap_system_objects, load_catalog_cache},
+	bootstrap::{apply_bootstrap_configs, bootstrap_system_objects, load_catalog_cache, seed_bootstrap_configs},
 	cache::CatalogCache,
 	catalog::Catalog,
 	system::SystemCatalog,
@@ -63,7 +63,12 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	wal::{memory_wal, replay},
 };
-use reifydb_value::{byte_size::ByteSize, error::ValueError, params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	byte_size::ByteSize,
+	error::ValueError,
+	params::Params,
+	value::{Value, identity::IdentityId, value_type::ValueType},
+};
 use serde_json::{Value as JsonValue, from_str as json_from_str, json, to_writer as json_to_writer};
 
 struct Bridge {
@@ -73,7 +78,7 @@ struct Bridge {
 }
 
 impl Bridge {
-	fn new() -> Result<Self, Box<dyn Error>> {
+	fn new(configs: &[(ConfigKey, Value)]) -> Result<Self, Box<dyn Error>> {
 		let runtime = Runtime::from_config(
 			RuntimeConfig::default().seeded(0),
 			PoolConfig {
@@ -138,7 +143,9 @@ impl Bridge {
 			.version_epoch(version_epoch.clone())
 			.build();
 		load_catalog_cache(&multi, &single, &catalog_cache, &runtime_context)?;
+		seed_bootstrap_configs(&multi, &catalog_cache, configs)?;
 		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus, &runtime_context)?;
+		apply_bootstrap_configs(&multi, &single, &catalog_cache, &eventbus, configs, &runtime_context)?;
 
 		let commit_queue = CommitQueue::new(
 			ByteSize::from_bytes(multi.config().get_config_uint8(ConfigKey::CommitQueueBytes)),
@@ -247,6 +254,25 @@ impl Drop for Bridge {
 	}
 }
 
+fn parse_configs(msg: &JsonValue) -> Result<Vec<(ConfigKey, Value)>, Box<dyn Error>> {
+	let Some(entries) = msg.get("configs") else {
+		return Ok(Vec::new());
+	};
+	let entries = entries.as_object().ok_or("configs must be an object of key to number")?;
+	let mut configs = Vec::with_capacity(entries.len());
+	for (name, raw) in entries {
+		let key: ConfigKey = name.parse()?;
+		let n = raw.as_u64().ok_or_else(|| format!("config {name} must be an unsigned number"))?;
+		let value = match key.expected_types().first() {
+			Some(ValueType::Uint2) => Value::Uint2(u16::try_from(n)?),
+			Some(ValueType::Uint8) => Value::Uint8(n),
+			other => return Err(format!("config {name} has unsupported type {other:?}").into()),
+		};
+		configs.push((key, value));
+	}
+	Ok(configs)
+}
+
 fn respond(obj: &JsonValue) {
 	let mut stdout = io::stdout().lock();
 	let _ = json_to_writer(&mut stdout, obj);
@@ -281,7 +307,7 @@ fn main() {
 		let cmd = msg.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
 
 		match cmd {
-			"new" => match Bridge::new() {
+			"new" => match parse_configs(&msg).and_then(|configs| Bridge::new(&configs)) {
 				Ok(b) => {
 					bridge = Some(b);
 					respond(&json!({"ok": "ready"}));
