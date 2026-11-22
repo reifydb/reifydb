@@ -260,8 +260,8 @@ impl JoinOperator {
 			emit,
 			natural,
 			pick,
-			left_lateness: left_lateness.filter(|span| !span.is_zero()),
-			right_lateness: right_lateness.filter(|span| !span.is_zero()),
+			left_lateness,
+			right_lateness,
 			ctx,
 			forget_pass_fires: Counter::new(
 				"flow.operator.join.forget_pass_fires_total",

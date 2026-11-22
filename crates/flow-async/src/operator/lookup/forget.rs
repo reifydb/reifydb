@@ -32,7 +32,7 @@ pub(crate) struct LookupForget {
 impl LookupForget {
 	pub(crate) fn new(lateness: Option<Duration>) -> Self {
 		Self {
-			lateness: lateness.filter(|span| !span.is_zero()),
+			lateness,
 			index: JoinForgetIndex::default(),
 		}
 	}
