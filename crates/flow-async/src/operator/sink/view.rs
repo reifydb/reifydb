@@ -5,8 +5,8 @@ use reifydb_core::interface::{catalog::flow::OperatorId, change::Change, flow::O
 use reifydb_flow::operator::{sink::table::TableSink, source::decode_change_keeping};
 use reifydb_value::error::ValueError;
 
-use super::DurableSink;
-use crate::transaction::deferred::DeferredTransaction;
+use super::{DurableSink, row_ttl::RowTtl};
+use crate::{operator::TimedOutput, timer::Timer, transaction::deferred::DeferredTransaction};
 
 impl DurableSink for TableSink {
 	fn id(&self) -> OperatorId {
@@ -23,6 +23,43 @@ impl DurableSink for TableSink {
 		let changed_at = change.changed_at;
 		TableSink::apply(self, txn, change)?;
 		Ok(Change::from_flow(TableSink::id(self), version, Vec::new(), changed_at))
+	}
+}
+
+pub struct SinkTableViewOperator {
+	sink: TableSink,
+	row_ttl: RowTtl,
+}
+
+impl SinkTableViewOperator {
+	pub fn new(sink: TableSink, row_ttl: RowTtl) -> Self {
+		Self {
+			sink: sink.tracking_rows(),
+			row_ttl,
+		}
+	}
+}
+
+impl DurableSink for SinkTableViewOperator {
+	fn id(&self) -> OperatorId {
+		self.sink.id()
+	}
+
+	fn capabilities(&self) -> &[OperatorCapability] {
+		OperatorCapability::STANDARD
+	}
+
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change, ValueError> {
+		let change = decode_change_keeping(txn, change, self.sink.view().columns())?;
+		let version = change.version;
+		let changed_at = change.changed_at;
+		let writes = self.sink.apply(txn, change)?;
+		self.row_ttl.track(txn, writes)?;
+		Ok(Change::from_flow(self.sink.id(), version, Vec::new(), changed_at))
+	}
+
+	fn on_timer(&mut self, txn: &mut DeferredTransaction, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
+		self.row_ttl.on_timer(txn, &timer)
 	}
 }
 

@@ -113,6 +113,7 @@ pub(crate) fn create_deferred_view(
 		&result,
 		*plan.as_clause,
 		&services.ioc,
+		plan.ttl.is_some(),
 	)?;
 
 	single_row([

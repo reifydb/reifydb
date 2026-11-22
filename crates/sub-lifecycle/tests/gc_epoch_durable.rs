@@ -388,6 +388,59 @@ fn a_join_lateness_longer_than_every_row_ttl_does_not_stretch_the_history_horizo
 }
 
 #[test]
+fn a_view_row_ttl_longer_than_every_table_ttl_does_not_stretch_the_history_horizon() {
+	// a view cuts on its own sink timer in event time, so its ttl must never keep epoch samples past the table ttls
+	let t = TestEngine::new();
+	let engine: StandardEngine = t.inner().clone();
+	let clock = t.mock_clock();
+	t.admin("CREATE NAMESPACE kept");
+	t.admin("CREATE TABLE kept::src { k: int4, at: datetime } with { time: event(at) }");
+	t.admin(
+		"CREATE DEFERRED VIEW kept::v { k: int4 } with { row: { ttl: 365d } } AS { FROM kept::src map { k: k } }",
+	);
+
+	commit_a_version(&engine, "ingest", 1);
+	let mut task = EpochLogTask::new(engine.clone(), open_gate(&engine));
+	task.run_slice();
+	let ancient = durable_samples(&engine)[0].0;
+
+	clock.advance_days(8);
+	commit_a_version(&engine, "ingest", 2);
+	task.run_slice();
+
+	let remaining = durable_samples(&engine);
+	assert!(
+		!remaining.iter().any(|(bucket, _, _)| *bucket == ancient),
+		"a 365d view ttl must not hold a sample past the 7d minimum horizon; remaining {remaining:?}"
+	);
+}
+
+#[test]
+fn a_table_row_ttl_longer_than_the_minimum_still_stretches_the_history_horizon() {
+	// the evictor still cuts tables on epoch samples, so a 30d table ttl must keep an 8 day old sample
+	let t = TestEngine::new();
+	let engine: StandardEngine = t.inner().clone();
+	let clock = t.mock_clock();
+	t.admin("CREATE NAMESPACE kept");
+	t.admin("CREATE TABLE kept::t { k: int4 } with { time: processing, row: { ttl: 30d } }");
+
+	commit_a_version(&engine, "ingest", 1);
+	let mut task = EpochLogTask::new(engine.clone(), open_gate(&engine));
+	task.run_slice();
+	let ancient = durable_samples(&engine)[0].0;
+
+	clock.advance_days(8);
+	commit_a_version(&engine, "ingest", 2);
+	task.run_slice();
+
+	let remaining = durable_samples(&engine);
+	assert!(
+		remaining.iter().any(|(bucket, _, _)| *bucket == ancient),
+		"a 30d table ttl must hold an 8 day old sample; remaining {remaining:?}"
+	);
+}
+
+#[test]
 fn pruning_is_held_back_while_the_startup_gate_is_closed() {
 	// Pruning is deletion like any other, so it waits out the startup delay - but sampling must continue during
 	// it, or the gate creates the very coverage gap it is protecting against.

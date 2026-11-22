@@ -14,8 +14,8 @@ use reifydb_core::{
 			flow_operator_with_not_accepted, flow_operator_with_pane_missing,
 			flow_operator_with_window_kind_unsupported, flow_operator_with_window_missing,
 			flow_operator_with_window_not_supported, flow_operator_with_window_size_count,
-			flow_transactional_not_supported, flow_transactional_reads_deferred_view,
-			flow_view_calls_script_routine,
+			flow_row_ttl_requires_time, flow_transactional_not_supported,
+			flow_transactional_reads_deferred_view, flow_view_calls_script_routine,
 		},
 		operation::lookup_outside_deferred_view,
 		query,
@@ -384,11 +384,18 @@ pub(crate) fn create_deferred_view_flow(
 	view: &View,
 	mut plan: QueryPlan,
 	ioc: &IocContainer,
+	row_ttl: bool,
 ) -> Result<(), ValueError> {
 	prepare_flow_plan(operators, symbols, &mut plan)?;
 	let flow_id = catalog.next_flow_id(txn)?;
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow_id)?;
 	check_flow_dag(catalog, operators, txn, &dag, ioc)?;
+	if row_ttl
+		&& matches!(view, View::Table(_) | View::Series(_))
+		&& source_time_domain(catalog, &mut Transaction::Admin(txn), &dag)? == TimeDomain::None
+	{
+		return Err(error!(flow_row_ttl_requires_time(view.name())));
+	}
 	catalog.create_flow(
 		txn,
 		FlowToCreate {

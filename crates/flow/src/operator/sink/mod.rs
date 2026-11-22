@@ -12,7 +12,7 @@ use arrow_schema::FieldRef;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
-		bytes::{EncodedBytes, SHAPE_HEADER_SIZE, SourceRowBuilder, read_created_at},
+		bytes::{EncodedBytes, SHAPE_HEADER_SIZE, SourceRowBuilder, read_created_at, read_storage_time},
 		shape::{RowFamily, RowShape},
 	},
 };
@@ -34,6 +34,8 @@ use reifydb_value::{
 		column_view::{ColumnView, ViewData},
 		datetime::DateTime,
 		identity::IdentityId,
+		partition::Partition,
+		row_number::RowNumber,
 		system_columns::{created_at, time, updated_at, user_columns},
 		value_type::field::{from_field, to_field},
 	},
@@ -42,6 +44,37 @@ use reifydb_value::{
 use crate::{error::FlowSinkError, operator::with_system_columns_of, txn::FlowGet};
 
 static EMPTY_PARAMS: Params = Params::None;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowWrite {
+	pub partition: Option<Partition>,
+	pub row: RowNumber,
+	pub key: EncodedKey,
+	pub time: Option<DateTime>,
+}
+
+impl RowWrite {
+	pub fn of(partition: Option<Partition>, row: RowNumber, key: EncodedKey, bytes: &[u8]) -> Self {
+		Self {
+			partition,
+			row,
+			key,
+			time: read_storage_time(bytes),
+		}
+	}
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RowWrites {
+	pub cleared: Vec<(Option<Partition>, RowNumber)>,
+	pub written: Vec<RowWrite>,
+}
+
+impl RowWrites {
+	pub fn is_empty(&self) -> bool {
+		self.cleared.is_empty() && self.written.is_empty()
+	}
+}
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 static EMPTY_ROUTINES: LazyLock<Routines> = LazyLock::new(Routines::empty);
 

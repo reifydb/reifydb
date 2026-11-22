@@ -7,6 +7,7 @@ pub mod join;
 pub mod lookup;
 pub mod ringbuffer;
 pub mod root;
+pub mod row_ttl;
 pub mod timer;
 pub mod window;
 
@@ -40,6 +41,10 @@ use crate::{
 				root::{
 					CustomManaged, CustomUnmanaged, GateVisibility, GroupRowMapping,
 					GuestRowMapping, NodeCounter, SealLedger, SourceWatermark, TakeRow,
+				},
+				row_ttl::{
+					PartitionedRowTtlArm, PartitionedRowTtlEntry, PartitionedRowTtlForward,
+					RowTtlArm, RowTtlEntry, RowTtlForward,
 				},
 				timer::{TimerIndex, TimerWheel},
 				window::{
@@ -188,6 +193,12 @@ catalogue!(
 	PartitionedRingbufferEntry,
 	PartitionedRingbufferTtlArm,
 	PartitionedRingbufferMeta,
+	RowTtlEntry,
+	PartitionedRowTtlEntry,
+	RowTtlForward,
+	PartitionedRowTtlForward,
+	RowTtlArm,
+	PartitionedRowTtlArm,
 	TimerWheel,
 	TimerIndex,
 	RollingAgeOut,
@@ -265,6 +276,12 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		| KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY
 		| KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM
 		| KeyspaceId::PARTITIONED_RINGBUFFER_META
+		| KeyspaceId::ROW_TTL_ENTRY
+		| KeyspaceId::PARTITIONED_ROW_TTL_ENTRY
+		| KeyspaceId::ROW_TTL_FORWARD
+		| KeyspaceId::PARTITIONED_ROW_TTL_FORWARD
+		| KeyspaceId::ROW_TTL_ARM
+		| KeyspaceId::PARTITIONED_ROW_TTL_ARM
 		| KeyspaceId::TIMER_WHEEL
 		| KeyspaceId::TIMER_INDEX => RootSibling::None,
 
@@ -485,7 +502,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 46, "a keyspace was added or removed without updating the catalogue size");
+		assert_eq!(seen.len(), 52, "a keyspace was added or removed without updating the catalogue size");
 	}
 
 	#[test]
@@ -509,7 +526,7 @@ mod tests {
 		// a dropped group column silently reclassifies a keyspace and the sweep follows it
 		assert_eq!(
 			KEYSPACES.len(),
-			46,
+			52,
 			"a keyspace was added or removed without revisiting the group scope split"
 		);
 		assert_eq!(

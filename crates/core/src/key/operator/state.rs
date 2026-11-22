@@ -201,7 +201,7 @@ impl GroupSet {
 pub struct KeyspaceId(pub u8);
 
 impl KeyspaceId {
-	pub const HIGHEST_DATA: u8 = 0x26;
+	pub const HIGHEST_DATA: u8 = 0x2C;
 
 	pub const NODE_COUNTER: Self = Self(0xFF);
 
@@ -295,6 +295,18 @@ impl KeyspaceId {
 
 	pub const RINGBUFFER_NEXT_ROW: Self = Self(0x26);
 
+	pub const ROW_TTL_ENTRY: Self = Self(0x27);
+
+	pub const PARTITIONED_ROW_TTL_ENTRY: Self = Self(0x28);
+
+	pub const ROW_TTL_FORWARD: Self = Self(0x29);
+
+	pub const PARTITIONED_ROW_TTL_FORWARD: Self = Self(0x2A);
+
+	pub const ROW_TTL_ARM: Self = Self(0x2B);
+
+	pub const PARTITIONED_ROW_TTL_ARM: Self = Self(0x2C);
+
 	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
 			Self::NODE_COUNTER => "NODE_COUNTER",
@@ -343,6 +355,12 @@ impl KeyspaceId {
 			Self::ROLLING_PANE => "ROLLING_PANE",
 			Self::TAKE_ROW => "TAKE_ROW",
 			Self::RINGBUFFER_NEXT_ROW => "RINGBUFFER_NEXT_ROW",
+			Self::ROW_TTL_ENTRY => "ROW_TTL_ENTRY",
+			Self::PARTITIONED_ROW_TTL_ENTRY => "PARTITIONED_ROW_TTL_ENTRY",
+			Self::ROW_TTL_FORWARD => "ROW_TTL_FORWARD",
+			Self::PARTITIONED_ROW_TTL_FORWARD => "PARTITIONED_ROW_TTL_FORWARD",
+			Self::ROW_TTL_ARM => "ROW_TTL_ARM",
+			Self::PARTITIONED_ROW_TTL_ARM => "PARTITIONED_ROW_TTL_ARM",
 			_ => return Cow::Owned(format!("{:#04x}", self.0)),
 		}
 		.into()
@@ -980,7 +998,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and the `KEYSPACES` table, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, bool); 46] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 52] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
@@ -1027,6 +1045,12 @@ mod tests {
 		("ROLLING_PANE", KeyspaceId::ROLLING_PANE, Phase::Data, true),
 		("TAKE_ROW", KeyspaceId::TAKE_ROW, Phase::Data, true),
 		("RINGBUFFER_NEXT_ROW", KeyspaceId::RINGBUFFER_NEXT_ROW, Phase::Data, true),
+		("ROW_TTL_ENTRY", KeyspaceId::ROW_TTL_ENTRY, Phase::Data, true),
+		("PARTITIONED_ROW_TTL_ENTRY", KeyspaceId::PARTITIONED_ROW_TTL_ENTRY, Phase::Data, true),
+		("ROW_TTL_FORWARD", KeyspaceId::ROW_TTL_FORWARD, Phase::Data, true),
+		("PARTITIONED_ROW_TTL_FORWARD", KeyspaceId::PARTITIONED_ROW_TTL_FORWARD, Phase::Data, true),
+		("ROW_TTL_ARM", KeyspaceId::ROW_TTL_ARM, Phase::Data, true),
+		("PARTITIONED_ROW_TTL_ARM", KeyspaceId::PARTITIONED_ROW_TTL_ARM, Phase::Data, true),
 	];
 
 	/// Counts `KeyspaceId` constants from the source text. There is no reflection over associated

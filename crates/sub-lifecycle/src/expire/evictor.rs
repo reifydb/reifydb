@@ -4,20 +4,16 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowFamily};
-#[cfg(reifydb_assertions)]
-use reifydb_core::interface::catalog::view::ViewKind;
 use reifydb_core::{
-	delta::RemoveVisibility,
 	event::row::RowsExpiredEvent,
 	interface::{
 		WithEventBus,
 		catalog::{
 			config::{ConfigKey, GetConfig},
-			id::{RingBufferId, SeriesId, ViewId},
+			id::{RingBufferId, SeriesId},
 			ringbuffer::EvictionVisibility,
 			series::SeriesPartitionMetadata,
 			storage::StorageId,
-			view::ViewStorageKind,
 		},
 		store::classify_range,
 	},
@@ -47,7 +43,6 @@ use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{
 	error::ValueError,
-	reifydb_assertions,
 	value::{
 		datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
 		row_number::RowNumber,
@@ -56,11 +51,7 @@ use reifydb_value::{
 use tracing::{debug, instrument, warn};
 
 use crate::{
-	expire::{
-		handoff::{HandOff, hand_off},
-		scan,
-		scan::ExpiryCursor,
-	},
+	expire::{scan, scan::ExpiryCursor},
 	plane::LifecyclePlane,
 };
 
@@ -102,17 +93,10 @@ impl EvictorState {
 	}
 }
 
-#[derive(Clone, Copy)]
-enum RowWriter {
-	Evictor,
-	Flow(ViewId),
-}
-
 #[derive(Default)]
 struct ClassTally {
 	rows: u64,
 	backlog: u64,
-	deferred: u64,
 }
 
 #[derive(Default)]
@@ -120,7 +104,6 @@ struct TickStats {
 	objects_scanned: u64,
 	objects_skipped: u64,
 	rows_expired: u64,
-	handoffs_skipped: u64,
 }
 
 pub struct Evictor {
@@ -165,14 +148,14 @@ impl Evictor {
 
 		let mut tally = ClassTally::default();
 		let mut unvisited_eligible = false;
-		let mut unvisited_checked = false;
 
 		let mut eligible: Vec<(StorageId, Ttl)> = catalog
 			.list_row_settings()
 			.into_iter()
 			.filter_map(|(storage, settings)| {
 				let ttl = settings.ttl?;
-				(LifecycleClass::RowTtl == target).then_some((storage, ttl))
+				(LifecycleClass::RowTtl == target && !matches!(storage, StorageId::View(_)))
+					.then_some((storage, ttl))
 			})
 			.collect();
 
@@ -187,9 +170,6 @@ impl Evictor {
 		for offset in 0..eligible.len() {
 			if budget == 0 {
 				unvisited_eligible = true;
-				unvisited_checked = (offset..eligible.len()).any(|later| {
-					!matches!(eligible[(start + later) % eligible.len()].0, StorageId::View(_))
-				});
 				break;
 			}
 			let (storage, ttl) = &eligible[(start + offset) % eligible.len()];
@@ -202,7 +182,6 @@ impl Evictor {
 
 			stats.objects_scanned += 1;
 			let expired_before = stats.rows_expired;
-			let skipped_before = stats.handoffs_skipped;
 			match self.evict_storage(state, storage, expiry_floor, batch_size, &mut budget, &mut stats) {
 				Ok(()) => {
 					state.failures.remove(&storage);
@@ -211,15 +190,8 @@ impl Evictor {
 			}
 
 			tally.rows += stats.rows_expired - expired_before;
-			let is_view = matches!(storage, StorageId::View(_));
 			if state.cursors.keys().any(|key| key.0 == storage) {
-				if is_view {
-					tally.deferred += 1;
-				} else {
-					tally.backlog += 1;
-				}
-			} else if stats.handoffs_skipped > skipped_before {
-				tally.deferred += 1;
+				tally.backlog += 1;
 			}
 			resume_after = Some(storage);
 		}
@@ -230,7 +202,7 @@ impl Evictor {
 			None
 		};
 
-		let backlog = tally.backlog + tally.deferred + u64::from(unvisited_eligible);
+		let backlog = tally.backlog + u64::from(unvisited_eligible);
 		self.plane.record_reclamation(target, self.class_floor(&eligible, now), tally.rows, backlog);
 		let budget_exhausted = budget == 0;
 		if budget_exhausted {
@@ -255,7 +227,7 @@ impl Evictor {
 		));
 		state.running = false;
 
-		if budget_exhausted && (tally.backlog > 0 || unvisited_checked) {
+		if budget_exhausted && (tally.backlog > 0 || unvisited_eligible) {
 			Progress::Yielded
 		} else {
 			Progress::Exhausted
@@ -299,23 +271,19 @@ impl Evictor {
 				state,
 				storage,
 				RowFamily::Table,
-				RowWriter::Evictor,
 				eviction,
 				expiry_floor,
 				batch_size,
 				budget,
 				stats,
 			),
-			StorageId::View(id) => {
-				self.evict_view(state, id, eviction, expiry_floor, batch_size, budget, stats)
-			}
 			StorageId::RingBuffer(id) => {
 				self.evict_ringbuffer(state, id, eviction, expiry_floor, batch_size, budget, stats)
 			}
 			StorageId::Series(id) => {
 				self.evict_series(state, id, eviction, expiry_floor, batch_size, budget, stats)
 			}
-			StorageId::Queue(_) => Ok(()),
+			StorageId::View(_) | StorageId::Queue(_) => Ok(()),
 		}
 	}
 
@@ -324,108 +292,6 @@ impl Evictor {
 		let eviction = self.engine.catalog().find_ttl_eviction(&mut Transaction::Command(&mut txn), storage);
 		txn.rollback()?;
 		eviction
-	}
-
-	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "lifecycle::expire::evict::view", level = "debug", skip_all)]
-	fn evict_view(
-		&self,
-		state: &mut EvictorState,
-		id: ViewId,
-		eviction: EvictionVisibility,
-		expiry_floor: InstantFloor,
-		batch_size: usize,
-		budget: &mut u64,
-		stats: &mut TickStats,
-	) -> Result<(), ValueError> {
-		let storage = StorageId::View(id);
-		let mut txn = self.engine.begin_command(IdentityId::system())?;
-		let view = self.engine.catalog().find_view(&mut Transaction::Command(&mut txn), id)?;
-		txn.rollback()?;
-
-		let Some(view) = view else {
-			state.clear_cursors(storage);
-			return Ok(());
-		};
-
-		match view.storage_kind() {
-			ViewStorageKind::Table => self.evict_rows(
-				state,
-				storage,
-				RowFamily::Table,
-				RowWriter::Flow(id),
-				eviction,
-				expiry_floor,
-				batch_size,
-				budget,
-				stats,
-			),
-			ViewStorageKind::Series => self.evict_rows(
-				state,
-				storage,
-				RowFamily::Series,
-				RowWriter::Flow(id),
-				eviction,
-				expiry_floor,
-				batch_size,
-				budget,
-				stats,
-			),
-			ViewStorageKind::RingBuffer | ViewStorageKind::Queue => {
-				state.clear_cursors(storage);
-				Ok(())
-			}
-		}
-	}
-
-	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "lifecycle::expire::evict::rows", level = "debug", skip_all)]
-	fn evict_rows(
-		&self,
-		state: &mut EvictorState,
-		storage: StorageId,
-		family: RowFamily,
-		writer: RowWriter,
-		eviction: EvictionVisibility,
-		expiry_floor: InstantFloor,
-		batch_size: usize,
-		budget: &mut u64,
-		stats: &mut TickStats,
-	) -> Result<(), ValueError> {
-		let keyspaces = match family {
-			RowFamily::Series => [
-				SeriesRowKeyRange::full_scan(storage, None),
-				PartitionedSeriesRowKeyRange::full_scan(storage),
-			],
-			_ => [RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)],
-		};
-
-		for keyspace in keyspaces {
-			loop {
-				if *budget == 0 {
-					return Ok(());
-				}
-				let (rows, drained) = self.evict_rows_batch(
-					state,
-					storage,
-					family,
-					writer,
-					eviction,
-					expiry_floor,
-					batch_size,
-					&keyspace,
-					stats,
-				)?;
-				stats.rows_expired += rows;
-				if rows > 0 || !drained {
-					*budget -= 1;
-				}
-				if drained {
-					break;
-				}
-			}
-		}
-		Ok(())
 	}
 
 	fn row_owner_exists(&self, txn: &mut CommandTransaction, storage: StorageId) -> Result<bool, ValueError> {
@@ -481,18 +347,63 @@ impl Evictor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "lifecycle::expire::evict::rows", level = "debug", skip_all)]
+	fn evict_rows(
+		&self,
+		state: &mut EvictorState,
+		storage: StorageId,
+		family: RowFamily,
+		eviction: EvictionVisibility,
+		expiry_floor: InstantFloor,
+		batch_size: usize,
+		budget: &mut u64,
+		stats: &mut TickStats,
+	) -> Result<(), ValueError> {
+		let keyspaces = match family {
+			RowFamily::Series => [
+				SeriesRowKeyRange::full_scan(storage, None),
+				PartitionedSeriesRowKeyRange::full_scan(storage),
+			],
+			_ => [RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)],
+		};
+
+		for keyspace in keyspaces {
+			loop {
+				if *budget == 0 {
+					return Ok(());
+				}
+				let (rows, drained) = self.evict_rows_batch(
+					state,
+					storage,
+					family,
+					eviction,
+					expiry_floor,
+					batch_size,
+					&keyspace,
+				)?;
+				stats.rows_expired += rows;
+				if rows > 0 || !drained {
+					*budget -= 1;
+				}
+				if drained {
+					break;
+				}
+			}
+		}
+		Ok(())
+	}
+
+	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "lifecycle::expire::evict::rows_batch", level = "trace", skip_all)]
 	fn evict_rows_batch(
 		&self,
 		state: &mut EvictorState,
 		storage: StorageId,
 		family: RowFamily,
-		writer: RowWriter,
 		eviction: EvictionVisibility,
 		expiry_floor: InstantFloor,
 		batch_size: usize,
 		keyspace: &TaggedKeyBoundRange,
-		stats: &mut TickStats,
 	) -> Result<(u64, bool), ValueError> {
 		let cursor_key = (storage, scan::keyspace_start(keyspace));
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
@@ -511,36 +422,10 @@ impl Evictor {
 		}
 
 		let rows = expired.len() as u64;
-		let view = match writer {
-			RowWriter::Evictor => {
-				self.remove_primary_key_entries(&mut txn, storage, eviction, &expired)?;
-				remove_expired(&mut txn, &expired, eviction)?;
-				txn.commit()?;
-				return Ok((rows, drained));
-			}
-			RowWriter::Flow(view) => view,
-		};
-		reifydb_assertions! {
-			let found = self.engine.catalog().find_view(&mut Transaction::Command(&mut txn), view)?;
-			assert!(
-				!found.is_some_and(|found| found.kind() == ViewKind::Transactional),
-				"the evictor met transactional view {view:?} with expired rows; a transactional view cannot have a row ttl"
-			);
-		}
-		txn.rollback()?;
-		let keys = expired.iter().map(TaggedKey::encode).collect();
-		let visibility = match eviction {
-			EvictionVisibility::Visible => RemoveVisibility::Announced,
-			EvictionVisibility::Silent => RemoveVisibility::Silent,
-		};
-		match hand_off(&self.engine, view, keys, visibility) {
-			HandOff::Sent => Ok((rows, drained)),
-			HandOff::Skipped => {
-				state.clear_cursors(storage);
-				stats.handoffs_skipped += 1;
-				Ok((0, true))
-			}
-		}
+		self.remove_primary_key_entries(&mut txn, storage, eviction, &expired)?;
+		remove_expired(&mut txn, &expired, eviction)?;
+		txn.commit()?;
+		Ok((rows, drained))
 	}
 
 	fn remove_primary_key_entries(
@@ -865,18 +750,15 @@ mod tests {
 	};
 
 	use reifydb_catalog::cache::{CatalogCache, load::CatalogCacheLoader};
-	#[cfg(reifydb_assertions)]
-	use reifydb_catalog::store::row_settings::create::create_row_settings;
 	use reifydb_codec::row::bytes::EncodedBytes;
-	#[cfg(reifydb_assertions)]
-	use reifydb_core::row::RowSettings;
 	use reifydb_core::{
 		actors::flow::FlowActorMessage,
 		common::CommitVersion,
-		delta::Delta,
+		delta::{Delta, RemoveVisibility},
 		interface::{
 			catalog::{
 				flow::FlowId,
+				id::ViewId,
 				ringbuffer::{
 					PartitionedMetadata, RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata,
 				},
@@ -1334,7 +1216,7 @@ mod tests {
 		// Without a running flow the evictor must never commit a deferred view's rows; that is the flow's job.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin("create table test::src { n: int4 }");
+		test.admin("create table test::src { n: int4 } with { time: processing }");
 		test.admin("create table test::stamped { n: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.admin(
 			"create deferred view test::v { n: int4 } with { row: { ttl: 1h }, eviction: { ttl: visible } } as { from test::src }",
@@ -1817,7 +1699,7 @@ mod tests {
 		// Without a running flow the evictor must skip the view, or it becomes a second writer on its rows.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin("create table test::src { n: int4 }");
+		test.admin("create table test::src { n: int4 } with { time: processing }");
 		test.admin("create table test::stamped { n: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.admin("create deferred view test::v { n: int4 } with { row: { ttl: 1h } } as { from test::src }");
 		test.command("INSERT test::stamped [{ n: 1 }]");
@@ -2123,7 +2005,7 @@ mod tests {
 		// Presence must hold independent of the `persistent` flag, which once gated it.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin("create table test::src { base: utf8, n: int4 }");
+		test.admin("create table test::src { base: utf8, n: int4 } with { time: processing }");
 		test.admin(
 			"create deferred view test::implicit { base: utf8, n: int4 } with { row: { ttl: 1h } } as { from test::src }",
 		);
@@ -2173,7 +2055,7 @@ mod tests {
 		// that restart, minus the disk.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin("create table test::src { base: utf8, n: int4 }");
+		test.admin("create table test::src { base: utf8, n: int4 } with { time: processing }");
 		test.admin(
 			"create deferred view test::implicit { base: utf8, n: int4 } with { row: { ttl: 1h } } as { from test::src }",
 		);
@@ -2246,10 +2128,6 @@ mod tests {
 		received
 	}
 
-	fn next_handoff(received: &Handoffs) -> (Vec<EncodedKey>, RemoveVisibility) {
-		received.recv_timeout(Duration::from_seconds(10).unwrap().to_std()).expect("the evictor must hand off")
-	}
-
 	fn no_handoff(received: &Handoffs) -> bool {
 		received.recv_timeout(Duration::from_milliseconds(200).unwrap().to_std()).is_err()
 	}
@@ -2276,83 +2154,32 @@ mod tests {
 	fn view_test() -> (TestEngine, EncodedBytes) {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin("create table test::src { n: int4 }");
+		test.admin("create table test::src { n: int4 } with { time: processing }");
 		let bytes = stamped_bytes(&test);
 		(test, bytes)
 	}
 
-	fn assert_handed_off(with: &str, visibility: RemoveVisibility) {
+	#[test]
+	fn the_evictor_never_touches_an_expired_view() {
+		// A view's sink timer is its only cutter, so the evictor must never send, commit or count its rows.
 		let (test, bytes) = view_test();
-		let view = ttl_view(&test, "v", with, 1, &bytes);
+		let view = ttl_view(&test, "v", ", eviction: { ttl: visible }", 2, &bytes);
 		let received = record_handoffs(&test, view);
 		age_past_ttl(&test);
 		let before = test.current_version().unwrap();
 
 		let evictor = Evictor::new(test.inner().clone());
 		let mut state = EvictorState::default();
-		evictor.run_tick(&mut state, LifecycleClass::RowTtl, test.mock_clock().now());
+		let progress = evictor.run_tick(&mut state, LifecycleClass::RowTtl, test.mock_clock().now());
 
-		let (keys, sent) = next_handoff(&received);
-		assert_eq!(keys, vec![RowKey::encoded(view, RowNumber(1))], "the hand-off must carry exactly its row");
-		assert_eq!(sent, visibility, "the hand-off must keep the view's eviction visibility");
-		assert!(no_handoff(&received), "one expired row must be handed off once");
-		assert_eq!(
-			test.current_version().unwrap(),
-			before,
-			"the evictor must not commit a deferred view's rows itself"
-		);
-		assert_eq!(storage_rows(&test, StorageId::View(view), false).len(), 1, "the row waits for its flow");
-		assert_eq!(
-			evictor.plane().snapshot(LifecycleClass::RowTtl).work_done,
-			1,
-			"a handed row must count as expired at send"
-		);
+		assert!(no_handoff(&received), "an expired view row must never be handed to its flow");
+		assert_eq!(test.current_version().unwrap(), before, "the evictor must commit nothing for a view");
+		assert_eq!(storage_rows(&test, StorageId::View(view), false).len(), 2, "a view must keep its rows");
+		let snapshot = evictor.plane().snapshot(LifecycleClass::RowTtl);
+		assert_eq!(snapshot.work_done, 0, "a view row must never count as expired work");
+		assert_eq!(snapshot.backlog_hint, 0, "a view must never be reported as evictor backlog");
+		assert_eq!(progress, Progress::Exhausted, "a view must never make the evictor yield");
 		drop(test);
-	}
-
-	#[test]
-	fn the_evictor_sends_expired_view_keys_and_commits_nothing_itself() {
-		// A checked commit must never carry a deferred view key: the view's flow is its only writer.
-		assert_handed_off(", eviction: { ttl: visible }", RemoveVisibility::Announced);
-	}
-
-	#[test]
-	fn a_silent_view_expiry_is_sent_as_silent() {
-		// A default view expiry must never reach the change feed, so it must travel as a silent remove.
-		assert_handed_off("", RemoveVisibility::Silent);
-	}
-
-	fn assert_skipped_as_backlog(test: &TestEngine, view: ViewId) {
-		let evictor = Evictor::new(test.inner().clone());
-		let mut state = EvictorState::default();
-		for tick in 1..=6 {
-			let progress = evictor.run_tick(&mut state, LifecycleClass::RowTtl, test.mock_clock().now());
-			assert_eq!(
-				progress,
-				Progress::Exhausted,
-				"tick {tick}: a skipped view must never make the evictor yield"
-			);
-			assert!(state.failures.is_empty(), "tick {tick}: a skipped view must never count as a failure");
-			assert_eq!(
-				evictor.plane().snapshot(LifecycleClass::RowTtl).backlog_hint,
-				1,
-				"tick {tick}: a skipped view with expired rows must be reported as backlog"
-			);
-		}
-		assert_eq!(
-			storage_rows(test, StorageId::View(view), false).len(),
-			1,
-			"a skipped view must keep its row"
-		);
-	}
-
-	#[test]
-	fn a_deferred_view_with_no_running_flow_is_skipped_as_backlog_and_never_as_a_failure() {
-		// A skip fed to the failure count panics at the fifth tick and stops the database.
-		let (test, bytes) = view_test();
-		let view = ttl_view(&test, "v", "", 1, &bytes);
-		age_past_ttl(&test);
-		assert_skipped_as_backlog(&test, view);
 	}
 
 	#[test]
@@ -2373,79 +2200,6 @@ mod tests {
 	}
 
 	#[test]
-	fn a_view_whose_flow_actor_is_gone_is_skipped_like_one_with_no_entry() {
-		// A failed send must never count as sent, otherwise rows count as expired that nobody removes.
-		let (test, bytes) = view_test();
-		let view = ttl_view(&test, "v", "", 1, &bytes);
-		let (sender, _received) = mpsc::channel();
-		let scope = test.inner().spawner().scope();
-		let handle = scope.spawn_ephemeral(
-			"handoff-closed",
-			HandoffRecorder {
-				received: sender,
-			},
-		);
-		let closed = handle.actor_ref().clone();
-		scope.shutdown();
-		handle.join().expect("the closed recorder must stop");
-		assert!(!closed.is_alive(), "precondition: the recorder's mailbox is closed");
-		test.inner().flow_writers().register(view, FlowId(1), closed);
-		age_past_ttl(&test);
-		assert_skipped_as_backlog(&test, view);
-	}
-
-	#[test]
-	fn a_skipped_view_is_scanned_from_its_first_row_again() {
-		// Without clearing the cursor a skip strands the rows it scanned past until the next full pass.
-		let (test, bytes) = view_test();
-		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(1));
-		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(10));
-		let view = ttl_view(&test, "v", "", 3, &bytes);
-		age_past_ttl(&test);
-		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, LifecycleClass::RowTtl);
-
-		let received = record_handoffs(&test, view);
-		tick_now(&test, &mut state, LifecycleClass::RowTtl);
-
-		let mut keys = Vec::new();
-		while let Ok((batch, _)) = received.recv_timeout(Duration::from_milliseconds(200).unwrap().to_std()) {
-			keys.extend(batch);
-		}
-		for row in 1..=3 {
-			assert!(
-				keys.contains(&RowKey::encoded(view, RowNumber(row))),
-				"row {row} must be handed off after the skip: {keys:?}"
-			);
-		}
-		drop(test);
-	}
-
-	#[test]
-	fn handed_off_views_never_make_the_evictor_yield() {
-		// A handed-off view must never yield, otherwise the evictor respins on rows only the flow can remove.
-		let (test, bytes) = view_test();
-		test.set_config(ConfigKey::ExpireBatchSize, Value::Uint8(1));
-		test.set_config(ConfigKey::ExpireMaxBatchesPerTick, Value::Uint8(2));
-		let first = ttl_view(&test, "v", "", 3, &bytes);
-		let second = ttl_view(&test, "w", "", 3, &bytes);
-		let _first = record_handoffs(&test, first);
-		let _second = record_handoffs(&test, second);
-		age_past_ttl(&test);
-
-		let evictor = Evictor::new(test.inner().clone());
-		let mut state = EvictorState::default();
-		let progress = evictor.run_tick(&mut state, LifecycleClass::RowTtl, test.mock_clock().now());
-
-		assert_eq!(progress, Progress::Exhausted, "handed-off views over budget must never yield");
-		assert!(
-			evictor.plane().snapshot(LifecycleClass::RowTtl).backlog_hint > 0,
-			"views left over budget must still be reported as backlog"
-		);
-		drop(test);
-	}
-
-	#[test]
 	fn a_table_backlog_still_yields_next_to_handed_off_views() {
 		// The view rule must never switch off the catch-up tick for a table the evictor writes itself.
 		let (test, bytes) = view_test();
@@ -2462,33 +2216,5 @@ mod tests {
 
 		assert_eq!(progress, Progress::Yielded, "a table over budget must still yield for catch-up");
 		drop(test);
-	}
-
-	#[cfg(reifydb_assertions)]
-	#[test]
-	#[should_panic(expected = "the evictor met transactional view")]
-	fn a_transactional_view_with_expired_rows_trips_the_evictor_assertion() {
-		// A transactional view has no flow, so expired rows on one must never be handed anywhere.
-		let (test, bytes) = view_test();
-		test.admin("create transactional view test::tv { n: int4 } as { from test::src }");
-		let view = view_by_name(&test, "tv").id();
-		let mut admin = test.inner().begin_admin(IdentityId::system()).unwrap();
-		create_row_settings(
-			&mut admin,
-			StorageId::View(view),
-			&RowSettings {
-				ttl: Some(Ttl {
-					duration: Duration::from_hours(1).unwrap(),
-				}),
-				persistent: false,
-			},
-		)
-		.unwrap();
-		admin.commit().unwrap();
-		put_row(&test, StorageId::View(view), RowNumber(1), bytes);
-		age_past_ttl(&test);
-
-		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, LifecycleClass::RowTtl);
 	}
 }

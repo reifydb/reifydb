@@ -15,8 +15,8 @@ use reifydb_value::error::ValueError;
 use crate::{
 	engine::FlowEngineInner,
 	operator::sink::{
-		queue_view::SinkQueueViewOperator, ringbuffer_view::SinkRingBufferViewOperator,
-		series_view::SinkSeriesViewOperator,
+		BoxedDurableSink, queue_view::SinkQueueViewOperator, ringbuffer_view::SinkRingBufferViewOperator,
+		row_ttl::RowTtl, series_view::SinkSeriesViewOperator, view::SinkTableViewOperator,
 	},
 };
 
@@ -33,11 +33,32 @@ impl FlowEngineInner {
 		self.require_parent(flow.id, first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
-		self.durable_sinks.insert(
-			(flow.id, operator_id),
-			Box::new(TableSink::new(operator_id, resolved.def().clone(), self.runtime_context.clone())),
-		);
+		let sink = TableSink::new(operator_id, resolved.def().clone(), self.runtime_context.clone());
+		let partitioned = !resolved.def().partition_by().is_empty();
+		let boxed: BoxedDurableSink = match self.row_ttl(txn, view, operator_id, partitioned)? {
+			Some(row_ttl) => Box::new(SinkTableViewOperator::new(sink, row_ttl)),
+			None => Box::new(sink),
+		};
+		self.durable_sinks.insert((flow.id, operator_id), boxed);
 		Ok(())
+	}
+
+	fn row_ttl(
+		&self,
+		txn: &mut Transaction<'_>,
+		view: ViewId,
+		operator_id: OperatorId,
+		partitioned: bool,
+	) -> Result<Option<RowTtl>, ValueError> {
+		let Some(ttl) = self
+			.catalog
+			.find_row_settings(&mut txn.reborrow(), StorageId::View(view))?
+			.and_then(|settings| settings.ttl)
+		else {
+			return Ok(None);
+		};
+		let eviction = self.catalog.find_ttl_eviction(&mut txn.reborrow(), StorageId::View(view))?;
+		Ok(Some(RowTtl::new(operator_id, ttl.duration, eviction, partitioned)))
 	}
 
 	#[inline]
@@ -123,16 +144,19 @@ impl FlowEngineInner {
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = resolved.def().partition_by().to_vec();
-		self.durable_sinks.insert(
-			(flow.id, operator_id),
-			Box::new(SinkSeriesViewOperator::new(
-				operator_id,
-				resolved,
-				key.clone(),
-				partition_by,
-				self.runtime_context.clone(),
-			)),
+		let row_ttl = self.row_ttl(txn, view, operator_id, !partition_by.is_empty())?;
+		let sink = SinkSeriesViewOperator::new(
+			operator_id,
+			resolved,
+			key.clone(),
+			partition_by,
+			self.runtime_context.clone(),
 		);
+		let boxed: BoxedDurableSink = match row_ttl {
+			Some(row_ttl) => Box::new(sink.with_row_ttl(row_ttl)),
+			None => Box::new(sink),
+		};
+		self.durable_sinks.insert((flow.id, operator_id), boxed);
 		Ok(())
 	}
 }

@@ -54,7 +54,7 @@ use tracing::instrument;
 use crate::{
 	error::FlowSinkError,
 	operator::sink::{
-		SourceRowEncoder, coerce_columns,
+		RowWrite, RowWrites, SourceRowEncoder, coerce_columns,
 		partition::{partition_batch, resolve_partitions_flow},
 		shape_field_columns, stored_created_at,
 		view::sort_runs,
@@ -74,6 +74,7 @@ pub struct TableSink {
 	partition_indices: Vec<usize>,
 	verified_partitions: HashMap<Partition, Vec<Value>>,
 	created_at: HashMap<RowNumber, DateTime>,
+	tracks_rows: bool,
 	runtime_context: RuntimeContext,
 }
 
@@ -92,8 +93,14 @@ impl TableSink {
 			partition_indices,
 			verified_partitions: HashMap::new(),
 			created_at: HashMap::new(),
+			tracks_rows: false,
 			runtime_context,
 		}
+	}
+
+	pub fn tracking_rows(mut self) -> Self {
+		self.tracks_rows = true;
+		self
 	}
 
 	pub fn view(&self) -> &View {
@@ -108,25 +115,26 @@ impl TableSink {
 		&mut self,
 		txn: &mut T,
 		change: Change,
-	) -> Result<(), ValueError> {
+	) -> Result<RowWrites, ValueError> {
+		let mut writes = RowWrites::default();
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_insert(txn, post)?,
+				} => self.apply_insert(txn, post, &mut writes)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_update(txn, pre, post)?,
+				} => self.apply_update(txn, pre, post, &mut writes)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_remove(txn, pre)?,
+				} => self.apply_remove(txn, pre, &mut writes)?,
 			}
 		}
-		Ok(())
+		Ok(writes)
 	}
 
 	#[inline]
@@ -167,6 +175,7 @@ impl TableSink {
 		&mut self,
 		txn: &mut T,
 		post: &RecordBatch,
+		writes: &mut RowWrites,
 	) -> Result<(), ValueError> {
 		if post.num_rows() == 0 {
 			return Ok(());
@@ -185,9 +194,11 @@ impl TableSink {
 		let partitions = self.resolved_partitions(txn, source)?;
 
 		for ((row_idx, &row_number), encoded) in row_numbers.iter().enumerate().take(row_count).zip(encoded) {
-			let key = self
-				.row_address(partitions.as_ref().map(|rows| rows[row_idx]), row_number)
-				.encoded(runs.next());
+			let partition = partitions.as_ref().map(|rows| rows[row_idx]);
+			let key = self.row_address(partition, row_number).encoded(runs.next());
+			if self.tracks_rows {
+				writes.written.push(RowWrite::of(partition, row_number, key.clone(), &encoded));
+			}
 			remember_created_at(&mut self.created_at, row_number, read_created_at(&encoded));
 			keys.push(key);
 			encoded_bytes_list.push(encoded);
@@ -205,6 +216,7 @@ impl TableSink {
 		txn: &mut T,
 		pre: &RecordBatch,
 		post: &RecordBatch,
+		writes: &mut RowWrites,
 	) -> Result<(), ValueError> {
 		if pre.num_rows() == 0 && post.num_rows() == 0 {
 			return Ok(());
@@ -248,6 +260,9 @@ impl TableSink {
 				self.row_address(pre_partition, pre_row_number).encoded(pre_runs.next()),
 				self.row_address(post_partition, post_row_number).encoded(post_runs.next()),
 			));
+			if self.tracks_rows && (pre_partition, pre_row_number) != (post_partition, post_row_number) {
+				writes.cleared.push((pre_partition, pre_row_number));
+			}
 		}
 
 		let may_clear = self.created_at.len() + row_count >= CREATED_AT_CACHE_CAPACITY;
@@ -294,6 +309,18 @@ impl TableSink {
 		let encoded = SourceRowEncoder::new(source_post, &self.shape, &field_columns)?
 			.with_created_at(&created)
 			.encode_all()?;
+		if self.tracks_rows {
+			let post_partitions = partitions.as_ref().map(|(_, post)| post);
+			for (row_idx, ((_, post_key), row)) in keys.iter().zip(&encoded).enumerate() {
+				let partition = post_partitions.map(|rows| rows[row_idx]);
+				writes.written.push(RowWrite::of(
+					partition,
+					post_row_numbers[row_idx],
+					post_key.clone(),
+					row,
+				));
+			}
+		}
 		FlowTableWriter::new(txn).update(keys
 			.into_iter()
 			.zip(encoded)
@@ -311,6 +338,7 @@ impl TableSink {
 		&mut self,
 		txn: &mut T,
 		pre: &RecordBatch,
+		writes: &mut RowWrites,
 	) -> Result<(), ValueError> {
 		if pre.num_rows() == 0 {
 			return Ok(());
@@ -330,9 +358,11 @@ impl TableSink {
 		let mut cached: Vec<Option<DateTime>> = Vec::with_capacity(row_count);
 		let mut reads: Vec<(EncodedKey, Option<EncodedKey>)> = Vec::new();
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
-			let key = self
-				.row_address(partitions.as_ref().map(|rows| rows[row_idx]), row_number)
-				.encoded(runs.next());
+			let partition = partitions.as_ref().map(|rows| rows[row_idx]);
+			let key = self.row_address(partition, row_number).encoded(runs.next());
+			if self.tracks_rows {
+				writes.cleared.push((partition, row_number));
+			}
 			let hit = cached_created_at(&self.created_at, row_number);
 			self.created_at.remove(&row_number);
 			if hit.is_none() {

@@ -756,6 +756,16 @@ pub fn flow_managed_operator_requires_event_time(flow: &str, operator: &str) -> 
 	)
 }
 
+pub fn flow_row_ttl_requires_time(view: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_098",
+		format!("view {view} declares a row ttl but its sources supply no time"),
+		"a view row is cut once the flow watermark passes its #time plus the ttl, so its source must declare a \
+		 time. Declare `with { time: processing }` or `with { time: event(<column>) }` on the source object this \
+		 view reads, or remove the row ttl.",
+	)
+}
+
 pub fn flow_operator_timer_kind_reserved(kind: &str) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_074",

@@ -25,7 +25,7 @@ use reifydb_flow::{
 	error::FlowSinkError,
 	operator::{
 		sink::{
-			SourceRowEncoder, coerce_columns,
+			RowWrite, RowWrites, SourceRowEncoder, coerce_columns,
 			partition::{partition_batch, resolve_partitions_flow},
 			shape_field_columns, stored_created_at,
 			table::{
@@ -52,8 +52,8 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::DurableSink;
-use crate::transaction::deferred::DeferredTransaction;
+use super::{DurableSink, row_ttl::RowTtl};
+use crate::{operator::TimedOutput, timer::Timer, transaction::deferred::DeferredTransaction};
 
 pub struct SinkSeriesViewOperator {
 	operator: OperatorId,
@@ -63,6 +63,7 @@ pub struct SinkSeriesViewOperator {
 	key: SeriesKey,
 	partition_indices: Vec<usize>,
 	verified_partitions: HashMap<Partition, Vec<Value>>,
+	row_ttl: Option<RowTtl>,
 	runtime_context: RuntimeContext,
 }
 
@@ -85,8 +86,14 @@ impl SinkSeriesViewOperator {
 			key,
 			partition_indices,
 			verified_partitions: HashMap::new(),
+			row_ttl: None,
 			runtime_context,
 		}
+	}
+
+	pub fn with_row_ttl(mut self, row_ttl: RowTtl) -> Self {
+		self.row_ttl = Some(row_ttl);
+		self
 	}
 
 	#[inline]
@@ -184,26 +191,45 @@ impl DurableSink for SinkSeriesViewOperator {
 		let view = resolved.def();
 		let shape = self.shape.clone();
 		let object_id = self.storage;
+		let mut writes = RowWrites::default();
 
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_series_view_insert(txn, view, &shape, object_id, post)?,
+				} => self.apply_series_view_insert(txn, view, &shape, object_id, post, &mut writes)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_series_view_update(txn, view, &shape, object_id, pre, post)?,
+				} => self.apply_series_view_update(
+					txn,
+					view,
+					&shape,
+					object_id,
+					pre,
+					post,
+					&mut writes,
+				)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_series_view_remove(txn, view, pre)?,
+				} => self.apply_series_view_remove(txn, view, pre, &mut writes)?,
 			}
+		}
+		if let Some(row_ttl) = &self.row_ttl {
+			row_ttl.track(txn, writes)?;
 		}
 
 		Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at))
+	}
+
+	fn on_timer(&mut self, txn: &mut DeferredTransaction, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
+		match &self.row_ttl {
+			Some(row_ttl) => row_ttl.on_timer(txn, &timer),
+			None => Ok(None),
+		}
 	}
 }
 
@@ -217,6 +243,7 @@ impl SinkSeriesViewOperator {
 		shape: &RowShape,
 		object_id: StorageId,
 		post: &RecordBatch,
+		writes: &mut RowWrites,
 	) -> Result<(), ValueError> {
 		if post.num_rows() == 0 {
 			return Ok(());
@@ -235,13 +262,11 @@ impl SinkSeriesViewOperator {
 		let series_keys = self.checked_series_keys(&series_keys)?;
 		let partitions = self.resolved_partitions(txn, view, object_id, source)?;
 		for ((row_idx, &row_number), encoded) in row_numbers.iter().enumerate().take(row_count).zip(encoded) {
-			let key = self
-				.row_address(
-					partitions.as_ref().map(|rows| rows[row_idx]),
-					series_keys[row_idx],
-					row_number.0,
-				)
-				.encoded();
+			let partition = partitions.as_ref().map(|rows| rows[row_idx]);
+			let key = self.row_address(partition, series_keys[row_idx], row_number.0).encoded();
+			if self.row_ttl.is_some() {
+				writes.written.push(RowWrite::of(partition, row_number, key.clone(), &encoded));
+			}
 			keys.push(key);
 			encoded_bytes_list.push(encoded);
 		}
@@ -260,6 +285,7 @@ impl SinkSeriesViewOperator {
 		object_id: StorageId,
 		pre: &RecordBatch,
 		post: &RecordBatch,
+		writes: &mut RowWrites,
 	) -> Result<(), ValueError> {
 		if pre.num_rows() == 0 && post.num_rows() == 0 {
 			return Ok(());
@@ -304,6 +330,11 @@ impl SinkSeriesViewOperator {
 			};
 			let pre_key = self.row_address(pre_partition, pre_series_key, pre_row_number.0).encoded();
 			let post_key = self.row_address(post_partition, post_series_key, post_row_number.0).encoded();
+			if self.row_ttl.is_some()
+				&& (pre_partition, pre_row_number) != (post_partition, post_row_number)
+			{
+				writes.cleared.push((pre_partition, pre_row_number));
+			}
 			pre_keys.push(pre_key);
 			post_keys.push(post_key);
 		}
@@ -322,6 +353,18 @@ impl SinkSeriesViewOperator {
 		let encoded = SourceRowEncoder::new(source_post, shape, &field_columns)?
 			.with_created_at(&created)
 			.encode_all()?;
+		if self.row_ttl.is_some() {
+			let post_partitions = partitions.as_ref().map(|(_, post)| post);
+			for (row_idx, (post_key, row)) in post_keys.iter().zip(&encoded).enumerate() {
+				let partition = post_partitions.map(|rows| rows[row_idx]);
+				writes.written.push(RowWrite::of(
+					partition,
+					post_row_numbers[row_idx],
+					post_key.clone(),
+					row,
+				));
+			}
+		}
 		FlowSeriesWriter::new(txn).update(pre_keys, post_keys, encoded)?;
 		txn.emit(view.id(), Diff::update(coerced_pre, coerced_post))?;
 		Ok(())
@@ -334,6 +377,7 @@ impl SinkSeriesViewOperator {
 		txn: &mut DeferredTransaction,
 		view: &View,
 		pre: &RecordBatch,
+		writes: &mut RowWrites,
 	) -> Result<(), ValueError> {
 		if pre.num_rows() == 0 {
 			return Ok(());
@@ -352,9 +396,11 @@ impl SinkSeriesViewOperator {
 		};
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			let series_key = self.series_key_at(&series_keys, row_idx)?;
-			let key = self
-				.row_address(partitions.as_ref().map(|rows| rows[row_idx]), series_key, row_number.0)
-				.encoded();
+			let partition = partitions.as_ref().map(|rows| rows[row_idx]);
+			let key = self.row_address(partition, series_key, row_number.0).encoded();
+			if self.row_ttl.is_some() {
+				writes.cleared.push((partition, row_number));
+			}
 			keys.push(key);
 		}
 		FlowSeriesWriter::new(txn).delete(keys)?;
