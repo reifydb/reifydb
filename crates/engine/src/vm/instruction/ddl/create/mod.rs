@@ -539,3 +539,78 @@ pub(crate) fn create_transactional_view_flow(
 	)?;
 	Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+	use std::path::PathBuf;
+
+	use reifydb_catalog::vtable::system::operator_libary::{OperatorLibrary, OperatorLibraryInfo};
+	use reifydb_core::{
+		common::{OperatorClass, WindowRequirements, WindowSizeDomain},
+		flow::{
+			dag::FlowDag,
+			operator::{FlowNode, OperatorDef},
+		},
+		interface::catalog::flow::{FlowId, OperatorId},
+		operator_with::{ApplyWith, WithSpan},
+	};
+	use reifydb_value::factory::time::secs;
+
+	use super::check_operator_with_requirements;
+
+	fn managed_library() -> OperatorLibrary {
+		let library = OperatorLibrary::new();
+		library.add(OperatorLibraryInfo {
+			operator: "managed_probe".to_string(),
+			library_path: PathBuf::new(),
+			abi: None,
+			capabilities: 0,
+			input_columns: Vec::new(),
+			output_columns: Vec::new(),
+			class: OperatorClass::Managed,
+			window: WindowRequirements {
+				takes_window: false,
+				kinds: &[],
+				domain: WindowSizeDomain::Time,
+				needs_pane: false,
+			},
+			unmanaged_because: None,
+		});
+		library
+	}
+
+	fn apply_flow(with: ApplyWith) -> FlowDag {
+		let mut builder = FlowDag::builder(FlowId(1));
+		builder.add_node(FlowNode::new(
+			OperatorId(1),
+			OperatorDef::Apply {
+				operator: "managed_probe".to_string(),
+				params: Vec::new(),
+				with,
+			},
+		));
+		builder.build()
+	}
+
+	#[test]
+	fn a_managed_apply_without_forget_is_refused_before_any_operator_is_mounted() {
+		// Without this check a database with no flow subsystem stores a managed view whose state is never
+		// freed.
+		let library = managed_library();
+		let only_drop = ApplyWith {
+			drop: Some(WithSpan::Duration(secs(2))),
+			..ApplyWith::default()
+		};
+		let with_forget = ApplyWith {
+			forget: Some(secs(2)),
+			..ApplyWith::default()
+		};
+
+		for with in [ApplyWith::default(), only_drop] {
+			let err = check_operator_with_requirements(&apply_flow(with), &library)
+				.expect_err("must be refused");
+			assert_eq!(err.diagnostic().code, "FLOW_072");
+		}
+		check_operator_with_requirements(&apply_flow(with_forget), &library).expect("a forget is enough");
+	}
+}
