@@ -41,7 +41,7 @@ use crate::{
 			due::{due_drop, due_earliest, due_entries, managed_due_group, managed_latest_key},
 			forget_pass::{StoreForgetter, drain, drain_group, enqueue},
 			seal::{
-				check::{SEALED_INSERTS, SEALED_REMOVES, SEALED_UPDATES, kept_unsealed},
+				check::{SEALED_INSERTS, SEALED_REMOVES, SEALED_UPDATES, first_admitted, kept_from},
 				ledger::{FiredAt, SealLedger},
 				rule::{SEAL_GATE_STEP, SealRule},
 			},
@@ -89,9 +89,10 @@ impl ApplyOperator {
 		if change.diffs.is_empty() {
 			return Ok(Some(change));
 		}
+		let first_admitted = first_admitted(host, seal)?;
 		let mut kept = Vec::with_capacity(change.diffs.len());
 		for diff in change.diffs.drain(..) {
-			if let Some(diff) = self.drop_sealed_diff(host, seal, diff)? {
+			if let Some(diff) = self.drop_sealed_diff(first_admitted, diff)? {
 				kept.push(diff);
 			}
 		}
@@ -102,12 +103,7 @@ impl ApplyOperator {
 		Ok(Some(change))
 	}
 
-	fn drop_sealed_diff(
-		&self,
-		host: &mut dyn HostContext,
-		seal: Duration,
-		diff: Diff,
-	) -> Result<Option<Diff>, ValueError> {
+	fn drop_sealed_diff(&self, first_admitted: DateTime, diff: Diff) -> Result<Option<Diff>, ValueError> {
 		let (timed, drops) = match &diff {
 			Diff::Insert {
 				post,
@@ -122,7 +118,7 @@ impl ApplyOperator {
 				..
 			} => (pre, &self.sealed_removes),
 		};
-		let kept = kept_unsealed(host, seal, timed)?;
+		let kept = kept_from(first_admitted, timed)?;
 		if kept.dropped == 0 {
 			return Ok(Some(diff));
 		}

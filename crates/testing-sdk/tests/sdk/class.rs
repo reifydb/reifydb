@@ -1,10 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use reifydb_core::{
-	common::{OperatorClass, WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
-	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	common::{
+		ChangeVersion, CommitVersion, OperatorClass, WindowKind, WindowRequirements, WindowSize,
+		WindowSizeDomain,
+	},
+	interface::{
+		catalog::flow::OperatorId,
+		change::{Change, Diff},
+		flow::OperatorCapability,
+	},
 	operator_with::{ApplyWith, WithSpan},
+	value::{batch::batch, column::factory::int4},
 };
 use reifydb_sdk::{
 	error::SdkError,
@@ -18,7 +29,14 @@ use reifydb_sdk::{
 	},
 };
 use reifydb_testing_sdk::in_process::harness::InProcessOperatorHarnessBuilder;
-use reifydb_value::{config::ExtensionParams, factory::time::secs};
+use reifydb_value::{
+	config::ExtensionParams,
+	factory::time::{at_millis, secs},
+	value::{
+		container::temporal_array::datetime_array,
+		system_columns::{SystemColumn, with_system_column},
+	},
+};
 
 struct NostateProbe;
 
@@ -260,6 +278,30 @@ fn an_unmanaged_operator_accepts_a_drop_and_refuses_a_forget_next_to_it() {
 		panic!("create must refuse a forget next to a drop");
 	};
 	assert!(err.to_string().contains("FLOW_080"), "expected FLOW_080, got: {err}");
+}
+
+fn timed_row(number: u64) -> RecordBatch {
+	let user = batch(vec![int4("k", vec![number as i32])]).unwrap();
+	let numbers: ArrayRef = Arc::new(UInt64Array::from_iter_values([number]));
+	let user = with_system_column(user, SystemColumn::RowNumbers, numbers).unwrap();
+	let times: ArrayRef = Arc::new(datetime_array([at_millis(1_000)]));
+	with_system_column(user, SystemColumn::Time, times).unwrap()
+}
+
+#[test]
+fn an_apply_of_many_diffs_reads_the_operator_watermark_once() {
+	// A read per diff costs a host round trip for every diff of every change on the extern-C binding.
+	let mut harness = InProcessOperatorHarnessBuilder::<UnmanagedMount<UnmanagedProbe>>::new()
+		.with(drop_of(60))
+		.counting()
+		.build()
+		.expect("harness");
+	let diffs = vec![Diff::insert(timed_row(1)), Diff::insert(timed_row(2)), Diff::insert(timed_row(3))];
+	let change = Change::from_flow(OperatorId(1), ChangeVersion::from(CommitVersion(1)), diffs, at_millis(1_000));
+
+	harness.apply(change).expect("apply");
+
+	assert_eq!(harness.calls(), &[("state_get", 1), ("flow_watermark", 1)]);
 }
 
 #[test]
