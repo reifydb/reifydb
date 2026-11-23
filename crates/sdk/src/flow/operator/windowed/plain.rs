@@ -291,7 +291,14 @@ where
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
 
 	fn sample(&self) -> Option<OperatorSample> {
-		None
+		let drops = match (&self.rolling, &self.runner) {
+			(Some(mode), _) => mode.runner.drops(),
+			(None, Some(runner)) => runner.drops(),
+			(None, None) => {
+				panic!("{}: a windowed driver has neither a rolling mode nor a runner", A::NAME)
+			}
+		};
+		Some(OperatorSample::default().with_drops(drops))
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {

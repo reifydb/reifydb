@@ -11,14 +11,17 @@ use reifydb_core::{
 	common::WindowRequirements,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::GroupId,
-	metrics::heap::{HeapSize, OperatorSample},
+	metrics::heap::{DropCounts, HeapSize, OperatorSample},
 	operator_with::ApplyWith,
 	state::timer::StateStore,
 };
 use reifydb_flow_async::{
-	operator::state::{
-		forget_pass::{drain, drain_groups, enqueue, enqueue_forgotten},
-		seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
+	operator::{
+		drops::DropCounter,
+		state::{
+			forget_pass::{drain, drain_groups, enqueue, enqueue_forgotten},
+			seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
+		},
 	},
 	window::{
 		accumulator::{AccumulatorOp, invertible::entry_map::EntryMapAccumulator},
@@ -35,7 +38,6 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{datetime::DateTime, diff_type::DiffType, row_number::RowNumber},
 };
-use tracing::debug;
 
 use crate::{
 	error::SdkError,
@@ -81,6 +83,7 @@ where
 	forget_pass_queue_empty: bool,
 	seal_span: Option<SealSpan<A>>,
 	settings: WindowSettings<A::Coord>,
+	sealed_drops: DropCounter,
 }
 
 impl<A, K, V> EntryMapDriver<A, K, V>
@@ -215,6 +218,7 @@ where
 		engine: &mut Engine<A, K, V>,
 		forget_pass_queue_empty: &mut bool,
 		seal_span: Option<SealSpan<A>>,
+		sealed_drops: &DropCounter,
 		ctx: &mut C,
 		routing: Buckets<A, K, V>,
 	) -> Result<Emitted<A>, SdkError> {
@@ -237,9 +241,7 @@ where
 					true
 				}
 			});
-			if dropped > 0 {
-				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
-			}
+			sealed_drops.note(dropped);
 			order.retain(|key| buckets.contains_key(key));
 			Self::seal_through(engine, forget_pass_queue_empty, &mut store, operator_watermark, seal_span)?;
 			if buckets.is_empty() {
@@ -364,7 +366,10 @@ where
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
 
 	fn sample(&self) -> Option<OperatorSample> {
-		None
+		Some(OperatorSample::default().with_drops(DropCounts {
+			rows_in_sealed_windows: Some(self.sealed_drops.total()),
+			..DropCounts::default()
+		}))
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {
@@ -379,6 +384,7 @@ where
 			forget_pass_queue_empty: false,
 			seal_span,
 			settings,
+			sealed_drops: DropCounter::new(operator_id, "mutations targeting sealed windows"),
 		})
 	}
 
@@ -409,9 +415,18 @@ where
 				engine,
 				forget_pass_queue_empty,
 				seal_span,
+				sealed_drops,
 				..
 			} = &mut *self;
-			Self::apply_tumbling(aggregator, engine, forget_pass_queue_empty, *seal_span, ctx, buckets)?
+			Self::apply_tumbling(
+				aggregator,
+				engine,
+				forget_pass_queue_empty,
+				*seal_span,
+				sealed_drops,
+				ctx,
+				buckets,
+			)?
 		};
 		self.emit_batches(ctx, &inserts, &updates, &removes)
 	}

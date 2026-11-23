@@ -10,11 +10,14 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::WindowRequirements,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	metrics::heap::{HeapSize, OperatorSample},
+	metrics::heap::{DropCounts, HeapSize, OperatorSample},
 	operator_with::ApplyWith,
 };
 use reifydb_flow_async::{
-	operator::state::seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
+	operator::{
+		drops::DropCounter,
+		state::seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
+	},
 	window::{
 		accumulator::AccumulatorOp,
 		engine::{
@@ -29,7 +32,7 @@ use reifydb_value::{
 	config::ExtensionParams,
 	value::{datetime::DateTime, diff_type::DiffType, row_number::RowNumber},
 };
-use tracing::{debug, instrument};
+use tracing::instrument;
 
 use crate::{
 	error::SdkError,
@@ -79,6 +82,7 @@ where
 	seal_span: Option<SealSpan<A>>,
 	idle_forget: Option<<A::Coord as Coord>::Span>,
 	settings: WindowSettings<A::Coord>,
+	sealed_drops: DropCounter,
 }
 
 impl<A> CarryDriver<A>
@@ -232,9 +236,7 @@ where
 				true
 			}
 		});
-		if dropped > 0 {
-			debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
-		}
+		self.sealed_drops.note(dropped);
 		Ok(())
 	}
 
@@ -301,7 +303,10 @@ where
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
 
 	fn sample(&self) -> Option<OperatorSample> {
-		None
+		Some(OperatorSample::default().with_drops(DropCounts {
+			rows_in_sealed_windows: Some(self.sealed_drops.total()),
+			..DropCounts::default()
+		}))
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {
@@ -326,6 +331,7 @@ where
 			seal_span,
 			idle_forget,
 			settings,
+			sealed_drops: DropCounter::new(operator_id, "mutations targeting sealed windows"),
 		})
 	}
 

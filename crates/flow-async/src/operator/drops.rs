@@ -3,7 +3,17 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::DropCounts};
+use reifydb_core::{
+	interface::catalog::flow::OperatorId,
+	metrics::{
+		heap::DropCounts,
+		operator::{
+			DROPPED_CHANGES_PAST_IMMUTABLE, DROPPED_INSERTS_PAST_SEAL, DROPPED_REFUSED_SESSION_ROWS,
+			DROPPED_REMOVES_OF_FORGOTTEN_DISTINCT, DROPPED_REMOVES_PAST_SEAL,
+			DROPPED_ROWS_IN_SEALED_WINDOWS, DROPPED_UPDATES_PAST_SEAL,
+		},
+	},
+};
 use tracing::warn;
 
 const WARN_STRIDE: u64 = 1_000;
@@ -54,6 +64,40 @@ pub fn seal_drops(sealed: bool, inserts: &DropCounter, updates: &DropCounter, re
 		updates_past_seal: Some(updates.total()),
 		removes_past_seal: Some(removes.total()),
 		..DropCounts::default()
+	}
+}
+
+pub fn merge_drops(operator: OperatorId, host: DropCounts, inner: DropCounts) -> DropCounts {
+	let one = |reason: &'static str, host: Option<u64>, inner: Option<u64>| match (host, inner) {
+		(Some(_), Some(_)) => {
+			panic!("operator {} reports {reason} from both the host and the operator", operator.0)
+		}
+		(host, inner) => host.or(inner),
+	};
+	DropCounts {
+		inserts_past_seal: one(DROPPED_INSERTS_PAST_SEAL, host.inserts_past_seal, inner.inserts_past_seal),
+		updates_past_seal: one(DROPPED_UPDATES_PAST_SEAL, host.updates_past_seal, inner.updates_past_seal),
+		removes_past_seal: one(DROPPED_REMOVES_PAST_SEAL, host.removes_past_seal, inner.removes_past_seal),
+		rows_in_sealed_windows: one(
+			DROPPED_ROWS_IN_SEALED_WINDOWS,
+			host.rows_in_sealed_windows,
+			inner.rows_in_sealed_windows,
+		),
+		changes_past_immutable: one(
+			DROPPED_CHANGES_PAST_IMMUTABLE,
+			host.changes_past_immutable,
+			inner.changes_past_immutable,
+		),
+		refused_session_rows: one(
+			DROPPED_REFUSED_SESSION_ROWS,
+			host.refused_session_rows,
+			inner.refused_session_rows,
+		),
+		removes_of_forgotten_distinct: one(
+			DROPPED_REMOVES_OF_FORGOTTEN_DISTINCT,
+			host.removes_of_forgotten_distinct,
+			inner.removes_of_forgotten_distinct,
+		),
 	}
 }
 

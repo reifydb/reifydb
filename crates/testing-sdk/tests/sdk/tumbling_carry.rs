@@ -472,6 +472,31 @@ fn a_flow_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
 }
 
 #[test]
+fn a_late_insert_into_a_sealed_carry_window_is_counted_in_the_sample() {
+	// A dropped row the sample does not count never reaches system metrics, so late input stays invisible.
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<SealedCarry>>::new()
+		.with(sealed_with())
+		.build()
+		.expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	h.advance_flow_watermark(DateTime::from_millis(10_000)).expect("advance flow watermark");
+	assert_eq!(
+		h.sample().expect("a windowed operator reports a sample").drops.rows_in_sealed_windows,
+		Some(0),
+		"a windowed operator must report the reason at zero before anything is dropped"
+	);
+
+	h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
+	h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 0, 98.0)).build()).expect("apply");
+
+	assert_eq!(
+		h.sample().expect("a windowed operator reports a sample").drops.rows_in_sealed_windows,
+		Some(2),
+		"the count must keep adding across applies, one per dropped row"
+	);
+}
+
+#[test]
 fn a_carry_time_window_arms_a_seal_timer() {
 	// a driver with a required window must always arm a seal timer
 	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()

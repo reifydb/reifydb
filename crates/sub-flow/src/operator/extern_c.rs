@@ -16,7 +16,7 @@ use reifydb_core::{
 		change::{Change, Diff, Diffs},
 		flow::{OperatorCapability, from_bitmask},
 	},
-	metrics::heap::{OperatorSample, StateMemory},
+	metrics::heap::{DropCounts, OperatorSample, StateMemory},
 	value::batch::{empty_batch, reattach_dictionary_ids},
 };
 use reifydb_extension::{
@@ -284,7 +284,22 @@ impl HostOperator for ExternCOperatorHandle {
 
 fn sample_from_usage(usage: &ExternCStateUsage) -> OperatorSample {
 	OperatorSample {
-		drops: Default::default(),
+		drops: DropCounts {
+			inserts_past_seal: (usage.dropped_inserts_past_seal_present != 0)
+				.then_some(usage.dropped_inserts_past_seal),
+			updates_past_seal: (usage.dropped_updates_past_seal_present != 0)
+				.then_some(usage.dropped_updates_past_seal),
+			removes_past_seal: (usage.dropped_removes_past_seal_present != 0)
+				.then_some(usage.dropped_removes_past_seal),
+			rows_in_sealed_windows: (usage.dropped_rows_in_sealed_windows_present != 0)
+				.then_some(usage.dropped_rows_in_sealed_windows),
+			changes_past_immutable: (usage.dropped_changes_past_immutable_present != 0)
+				.then_some(usage.dropped_changes_past_immutable),
+			refused_session_rows: (usage.dropped_refused_session_rows_present != 0)
+				.then_some(usage.dropped_refused_session_rows),
+			removes_of_forgotten_distinct: (usage.dropped_removes_of_forgotten_distinct_present != 0)
+				.then_some(usage.dropped_removes_of_forgotten_distinct),
+		},
 		memory: (usage.memory_present != 0).then(|| {
 			StateMemory::new(Count::new(usage.state_entries), ByteSize::from_bytes(usage.state_bytes))
 		}),
@@ -353,8 +368,22 @@ mod tests {
 			state_bytes: 128,
 			row_number_entries: 2,
 			row_number_bytes: 64,
+			dropped_inserts_past_seal: 0,
+			dropped_updates_past_seal: 0,
+			dropped_removes_past_seal: 0,
+			dropped_rows_in_sealed_windows: 0,
+			dropped_changes_past_immutable: 0,
+			dropped_refused_session_rows: 0,
+			dropped_removes_of_forgotten_distinct: 0,
 			memory_present: 1,
 			row_number_cache_present: 1,
+			dropped_inserts_past_seal_present: 0,
+			dropped_updates_past_seal_present: 0,
+			dropped_removes_past_seal_present: 0,
+			dropped_rows_in_sealed_windows_present: 0,
+			dropped_changes_past_immutable_present: 0,
+			dropped_refused_session_rows_present: 0,
+			dropped_removes_of_forgotten_distinct_present: 0,
 		};
 
 		let sample = sample_from_usage(&usage);

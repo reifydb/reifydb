@@ -9,7 +9,7 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	metrics::heap::HeapSize,
-	operator_with::ApplyWith,
+	operator_with::{ApplyWith, WithSpan},
 };
 use reifydb_flow_async::window::{
 	accumulator::invertible::entry_map::EntryMapAccumulator, coord::ByDateTime, settings::WindowSettings,
@@ -223,4 +223,30 @@ fn parity_with_plain_driver() {
 	let theirs = plain.apply(close.clone()).expect("plain apply");
 	let ours = entry_map.apply(close).expect("entry map apply");
 	assert_eq!(seen(&ours), seen(&theirs), "close");
+}
+
+#[test]
+fn a_late_insert_into_a_sealed_entry_map_window_is_counted_in_the_sample() {
+	// A dropped row the sample does not count never reaches system metrics, so late input stays invisible.
+	let sealed = ApplyWith {
+		drop: Some(WithSpan::Duration(millis(1_000))),
+		..with()
+	};
+	let mut h = InProcessOperatorHarnessBuilder::<EntryMap>::new().with(sealed).build().expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 1, 0, 10)).build()).expect("apply");
+	h.advance_flow_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
+	assert_eq!(
+		h.sample().expect("a windowed operator reports a sample").drops.rows_in_sealed_windows,
+		Some(0),
+		"a windowed operator must report the reason at zero before anything is dropped"
+	);
+
+	let late = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 2, 1_000, 5)).build()).expect("apply");
+	assert!(late.diffs.is_empty(), "precondition: the row for the sealed window is dropped");
+
+	assert_eq!(
+		h.sample().expect("a windowed operator reports a sample").drops.rows_in_sealed_windows,
+		Some(1),
+		"the one row dropped into the sealed window must be counted exactly once"
+	);
 }

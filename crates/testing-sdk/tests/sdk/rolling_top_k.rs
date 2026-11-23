@@ -558,6 +558,30 @@ fn a_dead_top_k_group_removes_every_ranked_row_on_its_timer() {
 }
 
 #[test]
+fn a_top_k_trade_dropped_behind_the_window_is_counted_in_the_sample() {
+	// A dropped row the sample does not count never reaches system metrics, so late input stays invisible.
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
+		.with(dead_with())
+		.build()
+		.expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 7, 1.0)).build()).expect("apply");
+	h.advance_flow_watermark(DateTime::from_millis(115)).expect("flow watermark");
+	assert_eq!(
+		h.sample().expect("a windowed operator reports a sample").drops.rows_in_sealed_windows,
+		Some(0),
+		"a windowed operator must report the reason at zero before anything is dropped"
+	);
+
+	h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 102, 7, 2.0)).build()).expect("apply");
+
+	assert_eq!(
+		h.sample().expect("a windowed operator reports a sample").drops.rows_in_sealed_windows,
+		Some(1),
+		"the one trade dropped behind the window must be counted exactly once"
+	);
+}
+
+#[test]
 fn a_top_k_trade_behind_the_window_is_dropped_and_a_trade_inside_it_revives_the_group() {
 	// A trade behind clock minus size must never resurrect aged-out panes; one inside must restart from its own
 	// pane.

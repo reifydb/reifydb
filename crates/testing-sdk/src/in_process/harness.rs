@@ -18,6 +18,7 @@ use reifydb_core::{
 		keyspace::timer::TimerWheelKey,
 		state::{GroupId, KeyspaceId, OperatorStateKey},
 	},
+	metrics::heap::OperatorSample,
 	operator_with::ApplyWith,
 	state::{timer::TimerKind, typed::SuffixBytes},
 };
@@ -355,6 +356,10 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 
 	pub fn operator_id(&self) -> OperatorId {
 		self.operator_id
+	}
+
+	pub fn sample(&self) -> Option<OperatorSample> {
+		self.operator.sample()
 	}
 }
 

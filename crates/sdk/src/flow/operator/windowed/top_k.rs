@@ -292,7 +292,7 @@ where
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
 
 	fn sample(&self) -> Option<OperatorSample> {
-		None
+		Some(OperatorSample::default().with_drops(self.runner.drops()))
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {

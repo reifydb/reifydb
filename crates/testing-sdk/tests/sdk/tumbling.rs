@@ -577,6 +577,30 @@ fn late_event_for_sealed_window_dropped() {
 }
 
 #[test]
+fn a_late_insert_into_a_sealed_window_is_counted_in_the_sample() {
+	// A dropped row the sample does not count never reaches system metrics, so late input stays invisible.
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
+		.with(sealed_with())
+		.build()
+		.expect("harness");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 180, 5.0)).build()).expect("apply");
+	h.advance_flow_watermark(DateTime::from_millis(180)).expect("advance flow watermark");
+	assert_eq!(
+		h.sample().expect("a windowed operator reports a sample").drops.rows_in_sealed_windows,
+		Some(0),
+		"a windowed operator must report the reason at zero before anything is dropped"
+	);
+
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
+
+	assert_eq!(
+		h.sample().expect("a windowed operator reports a sample").drops.rows_in_sealed_windows,
+		Some(1),
+		"the one row dropped into the sealed window must be counted exactly once"
+	);
+}
+
+#[test]
 fn late_event_within_seal_is_accepted() {
 	// The boundary is inclusive on the mutable side: at flow watermark == start + drop the
 	// window is still open. The flow watermark must be advanced explicitly, or the gate never

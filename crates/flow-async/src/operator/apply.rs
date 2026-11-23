@@ -33,7 +33,7 @@ use reifydb_value::{
 use crate::{
 	operator::{
 		BoxedHostOperator, HostOperator, TimedOutput,
-		drops::{DropCounter, seal_drops},
+		drops::{DropCounter, merge_drops, seal_drops},
 		host::HostContext,
 		join::kept::dictionary_columns,
 		stamp_output_created,
@@ -202,12 +202,14 @@ impl HostOperator for ApplyOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		Some(self.inner.sample().unwrap_or_default().with_drops(seal_drops(
+		let sample = self.inner.sample().unwrap_or_default();
+		let host = seal_drops(
 			self.input_seal.is_some(),
 			&self.sealed_inserts,
 			&self.sealed_updates,
 			&self.sealed_removes,
-		)))
+		);
+		Some(sample.with_drops(merge_drops(self.operator, host, sample.drops)))
 	}
 
 	fn output_schema(&self) -> Option<SchemaRef> {
@@ -1016,6 +1018,40 @@ mod seal_tests {
 		(ApplyOperator::new(None, OP, Box::new(inner), &with).unwrap(), seen)
 	}
 
+	struct Reporter {
+		drops: DropCounts,
+	}
+
+	impl HostOperator for Reporter {
+		fn id(&self) -> OperatorId {
+			OP
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
+		}
+
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
+			Ok(Change::from_flow(OP, change.version, Vec::new(), change.changed_at))
+		}
+
+		fn sample(&self) -> Option<OperatorSample> {
+			Some(OperatorSample::default().with_drops(self.drops))
+		}
+	}
+
+	fn reporter(with: ApplyWith, drops: DropCounts) -> ApplyOperator {
+		ApplyOperator::new(
+			None,
+			OP,
+			Box::new(Reporter {
+				drops,
+			}),
+			&with,
+		)
+		.unwrap()
+	}
+
 	fn drop_span(seconds: u64) -> ApplyWith {
 		ApplyWith {
 			drop: Some(WithSpan::Duration(secs(seconds))),
@@ -1285,6 +1321,68 @@ mod seal_tests {
 		let (op, _) = recorder(ApplyWith::default());
 
 		assert_eq!(op.sample().expect("an apply reports a sample").drops, DropCounts::default());
+	}
+
+	#[test]
+	fn a_windowed_apply_keeps_the_drops_its_operator_reports() {
+		// a window drop is counted only inside the operator, so overwriting it hides every late window row
+		let with = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Slots(10),
+			}),
+			..ApplyWith::default()
+		};
+		let reported = DropCounts {
+			rows_in_sealed_windows: Some(7),
+			refused_session_rows: Some(0),
+			changes_past_immutable: Some(2),
+			..DropCounts::default()
+		};
+		let op = reporter(with, reported);
+
+		assert_eq!(
+			op.sample().expect("an apply reports a sample").drops,
+			reported,
+			"the sample must carry exactly the reasons the operator reported"
+		);
+	}
+
+	#[test]
+	fn an_apply_with_a_seal_reports_its_own_drops_next_to_those_of_its_operator() {
+		// each side must keep its own reasons, otherwise one source of drops goes missing from metrics
+		let op = reporter(
+			drop_span(10),
+			DropCounts {
+				rows_in_sealed_windows: Some(7),
+				..DropCounts::default()
+			},
+		);
+
+		assert_eq!(
+			op.sample().expect("an apply reports a sample").drops,
+			DropCounts {
+				inserts_past_seal: Some(0),
+				updates_past_seal: Some(0),
+				removes_past_seal: Some(0),
+				rows_in_sealed_windows: Some(7),
+				..DropCounts::default()
+			}
+		);
+	}
+
+	#[test]
+	#[should_panic(expected = "dropped_inserts_past_seal")]
+	fn a_drop_reason_reported_by_both_the_host_and_its_operator_panics() {
+		// one reason from two sources means a row is counted twice, which must stop and never be summed
+		let op = reporter(
+			drop_span(10),
+			DropCounts {
+				inserts_past_seal: Some(1),
+				..DropCounts::default()
+			},
+		);
+
+		let _ = op.sample();
 	}
 
 	#[test]

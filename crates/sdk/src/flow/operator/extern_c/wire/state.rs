@@ -46,8 +46,22 @@ pub struct ExternCStateUsage {
 	pub state_bytes: u64,
 	pub row_number_entries: u64,
 	pub row_number_bytes: u64,
+	pub dropped_inserts_past_seal: u64,
+	pub dropped_updates_past_seal: u64,
+	pub dropped_removes_past_seal: u64,
+	pub dropped_rows_in_sealed_windows: u64,
+	pub dropped_changes_past_immutable: u64,
+	pub dropped_refused_session_rows: u64,
+	pub dropped_removes_of_forgotten_distinct: u64,
 	pub memory_present: u8,
 	pub row_number_cache_present: u8,
+	pub dropped_inserts_past_seal_present: u8,
+	pub dropped_updates_past_seal_present: u8,
+	pub dropped_removes_past_seal_present: u8,
+	pub dropped_rows_in_sealed_windows_present: u8,
+	pub dropped_changes_past_immutable_present: u8,
+	pub dropped_refused_session_rows_present: u8,
+	pub dropped_removes_of_forgotten_distinct_present: u8,
 }
 
 #[repr(C)]

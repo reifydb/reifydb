@@ -371,6 +371,34 @@ fn usage_from_sample(sample: Option<OperatorSample>) -> ExternCStateUsage {
 			usage.row_number_bytes = rows.bytes.as_bytes();
 			usage.row_number_cache_present = 1;
 		}
+		if let Some(count) = sample.drops.inserts_past_seal {
+			usage.dropped_inserts_past_seal = count;
+			usage.dropped_inserts_past_seal_present = 1;
+		}
+		if let Some(count) = sample.drops.updates_past_seal {
+			usage.dropped_updates_past_seal = count;
+			usage.dropped_updates_past_seal_present = 1;
+		}
+		if let Some(count) = sample.drops.removes_past_seal {
+			usage.dropped_removes_past_seal = count;
+			usage.dropped_removes_past_seal_present = 1;
+		}
+		if let Some(count) = sample.drops.rows_in_sealed_windows {
+			usage.dropped_rows_in_sealed_windows = count;
+			usage.dropped_rows_in_sealed_windows_present = 1;
+		}
+		if let Some(count) = sample.drops.changes_past_immutable {
+			usage.dropped_changes_past_immutable = count;
+			usage.dropped_changes_past_immutable_present = 1;
+		}
+		if let Some(count) = sample.drops.refused_session_rows {
+			usage.dropped_refused_session_rows = count;
+			usage.dropped_refused_session_rows_present = 1;
+		}
+		if let Some(count) = sample.drops.removes_of_forgotten_distinct {
+			usage.dropped_removes_of_forgotten_distinct = count;
+			usage.dropped_removes_of_forgotten_distinct_present = 1;
+		}
 	}
 	usage
 }
