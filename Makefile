@@ -65,7 +65,8 @@ help:
 	@printf "  %-25s %s\n" "test-full" "Same as 'make test'"
 	@printf "  %-25s %s\n" "test-workspace" "Run only workspace tests (REPEAT=K to repeat K times; SUITE=x to narrow)"
 	@printf "  %-25s %s\n" "test-mutant" "Mutate a crate against its own workspace tests (SUITE=x)"
-	@printf "  %-25s %s\n" "test-dst" "Run deterministic simulation tests"
+	@printf "  %-25s %s\n" "test-dst" "Run deterministic simulation tests (workspace and ../testdst)"
+	@printf "  %-25s %s\n" "test-dst-workspace" "Run only the workspace deterministic simulation tests"
 	@printf "  %-25s %s\n" "test-chaos" "Run chaos mirror tests in ../testchaos (N= per workload, REPEAT=, SEED=, FILTER=, SUITE=)"
 	@printf "  %-25s %s\n" "test-fuzz" "Replay tracked fuzz crash files in ../testfuzz"
 	@printf "  %-25s %s\n" "test-workspace-chaos N=64" "Run workspace chaos tests (N= per workload, FILTER=, SEED=, SUITE=)"
@@ -171,6 +172,7 @@ precheck-all:
 	cd $(TEST_CRATE_DIR) && $(MAKE) precheck
 	cd $(TEST_CHAOS_DIR) && $(MAKE) precheck
 	cd $(TEST_QUERY_DIR) && $(MAKE) precheck
+	cd $(TEST_DST_DIR) && $(MAKE) precheck
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) precheck
 	cd $(TEST_FUZZ_DIR) && $(MAKE) precheck
 
@@ -180,11 +182,11 @@ test-chaos-ci:
 
 .PHONY: pull-siblings
 pull-siblings:
-	@./scripts/pull-siblings.sh $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_REGRESSION_DIR) $(TEST_FUZZ_DIR)
+	@./scripts/pull-siblings.sh $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_DST_DIR) $(TEST_REGRESSION_DIR) $(TEST_FUZZ_DIR)
 
 .PHONY: rebase
 rebase:
-	@./scripts/pull-siblings.sh . $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_REGRESSION_DIR) $(TEST_FUZZ_DIR)
+	@./scripts/pull-siblings.sh . $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_DST_DIR) $(TEST_REGRESSION_DIR) $(TEST_FUZZ_DIR)
 
 .PHONY: all-siblings
 all-siblings:
@@ -192,6 +194,7 @@ all-siblings:
 	cd $(TEST_CRATE_DIR) && $(MAKE) all
 	cd $(TEST_CHAOS_DIR) && $(MAKE) all
 	cd $(TEST_QUERY_DIR) && $(MAKE) all
+	cd $(TEST_DST_DIR) && $(MAKE) all
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) all
 	cd $(TEST_FUZZ_DIR) && $(MAKE) all
 
@@ -216,6 +219,7 @@ check-code-quality:
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) check-code-quality
 	cd $(TEST_CHAOS_DIR) && $(MAKE) check-code-quality
 	cd $(TEST_QUERY_DIR) && $(MAKE) check-code-quality
+	cd $(TEST_DST_DIR) && $(MAKE) check-code-quality
 	cd $(TEST_FUZZ_DIR) && $(MAKE) check-code-quality
 #	@MAKEFLAGS= cargo clippy --release --workspace --all-targets -- -D warnings
 
@@ -262,7 +266,7 @@ test: test-full
 test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-crate test-regression test-query test-chaos test-external test-pkg-typescript test-projects test-fuzz
 	@echo "✅ All tests completed successfully!"
 
-test-full-local: test-workspace test-dst test-pkg-rust test-examples test-external test-pkg-typescript test-projects test-fuzz
+test-full-local: test-workspace test-dst-workspace test-pkg-rust test-examples test-external test-pkg-typescript test-projects test-fuzz
 
 test-dev: test-workspace test-dst test-pkg-rust test-examples test-suite-dev test-crate-dev test-regression test-query-dev
 	@echo "🚀 Development tests completed!"
