@@ -97,7 +97,7 @@ pub struct SeriesMaterializationActor {
 	block_encodings: BlockEncodings,
 	tick_interval: Duration,
 	bucket_width: u64,
-	lateness: Duration,
+	seal_delay: Duration,
 	merge_buckets: u64,
 	merge_file_delay: Duration,
 }
@@ -117,7 +117,7 @@ impl SeriesMaterializationActor {
 		block_encodings: BlockEncodings,
 		tick_interval: Duration,
 		bucket_width: u64,
-		lateness: Duration,
+		seal_delay: Duration,
 		merge_buckets: u64,
 		merge_file_delay: Duration,
 	) -> Self {
@@ -128,7 +128,7 @@ impl SeriesMaterializationActor {
 			block_encodings,
 			tick_interval,
 			bucket_width,
-			lateness,
+			seal_delay,
 			merge_buckets,
 			merge_file_delay,
 		}
@@ -215,7 +215,7 @@ impl SeriesMaterializationActor {
 						width: self.bucket_width,
 					};
 					start = start.saturating_add(self.bucket_width);
-					if !is_closed(&bucket, series, scope.metadata, now, self.lateness) {
+					if !is_closed(&bucket, series, scope.metadata, now, self.seal_delay) {
 						deferred = true;
 						continue;
 					}
@@ -594,7 +594,7 @@ impl SeriesMaterializationActor {
 				end: window.end,
 				width: self.bucket_width,
 			};
-			if !is_closed(&last, series, scope.metadata, now, self.lateness) {
+			if !is_closed(&last, series, scope.metadata, now, self.seal_delay) {
 				continue;
 			}
 			self.merge_window(series, scope, window, &inputs)?;
@@ -789,8 +789,8 @@ impl Actor for SeriesMaterializationActor {
 
 	fn init(&self, ctx: &Context<SeriesMessage>) -> SeriesMaterializationState {
 		debug!(
-			"SeriesMaterializationActor started (tick={:?}, width={}, lateness={:?})",
-			self.tick_interval, self.bucket_width, self.lateness
+			"SeriesMaterializationActor started (tick={:?}, width={}, seal_delay={:?})",
+			self.tick_interval, self.bucket_width, self.seal_delay
 		);
 		let handle =
 			ctx.schedule_tick(self.tick_interval, |nanos| SeriesMessage::Tick(DateTime::from_nanos(nanos)));

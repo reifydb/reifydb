@@ -26,7 +26,7 @@ pub fn is_closed(
 	series: &Series,
 	metadata: &SeriesPartitionMetadata,
 	now: DateTime,
-	lateness: Duration,
+	seal_delay: Duration,
 ) -> bool {
 	match &series.key {
 		SeriesKey::DateTime {
@@ -34,13 +34,13 @@ pub fn is_closed(
 			..
 		} => {
 			let bucket_end_wall = to_datetime(bucket.end, *precision);
-			now.saturating_duration_since(bucket_end_wall).to_std() > lateness.to_std()
+			now.saturating_duration_since(bucket_end_wall).to_std() > seal_delay.to_std()
 		}
 		SeriesKey::Integer {
 			..
 		} => {
 			metadata.newest_key >= bucket.end
-				|| now.saturating_duration_since(metadata.last_write_at).to_std() > lateness.to_std()
+				|| now.saturating_duration_since(metadata.last_write_at).to_std() > seal_delay.to_std()
 		}
 	}
 }
@@ -107,7 +107,7 @@ mod tests {
 	}
 
 	#[test]
-	fn datetime_bucket_closes_after_lateness_elapses() {
+	fn datetime_bucket_closes_after_seal_delay_elapses() {
 		// The bucket bound is in the series precision (ms) while the clock is nanos: end 1000 is 1e9 nanos.
 		let s = series_with(SeriesKey::DateTime {
 			column: "ts".into(),
@@ -121,12 +121,12 @@ mod tests {
 		let meta = SeriesPartitionMetadata::new();
 		let bucket_end = DateTime::from_nanos(1_000_000_000);
 		assert!(!is_closed(&b, &s, &meta, bucket_end, Duration::from_milliseconds(100).unwrap()));
-		let past_lateness = DateTime::from_nanos(1_000_000_000 + 250_000_000);
-		assert!(is_closed(&b, &s, &meta, past_lateness, Duration::from_milliseconds(100).unwrap()));
+		let past_seal_delay = DateTime::from_nanos(1_000_000_000 + 250_000_000);
+		assert!(is_closed(&b, &s, &meta, past_seal_delay, Duration::from_milliseconds(100).unwrap()));
 	}
 
 	#[test]
-	fn integer_bucket_seals_after_lateness_with_no_write() {
+	fn integer_bucket_seals_after_seal_delay_with_no_write() {
 		// An integer key carries no wall clock meaning, so a partition that goes silent
 		// mid-bucket has no key-based path to sealing. Without the last_write_at backstop
 		// its rows are stranded out of the column store forever.
@@ -141,13 +141,13 @@ mod tests {
 		let mut meta = SeriesPartitionMetadata::new();
 		meta.newest_key = 50;
 		meta.last_write_at = DateTime::from_nanos(1_000_000_000);
-		let lateness = Duration::from_milliseconds(100).unwrap();
-		let past_lateness = DateTime::from_nanos(1_000_000_000 + 250_000_000);
-		assert!(is_closed(&b, &s, &meta, past_lateness, lateness));
+		let seal_delay = Duration::from_milliseconds(100).unwrap();
+		let past_seal_delay = DateTime::from_nanos(1_000_000_000 + 250_000_000);
+		assert!(is_closed(&b, &s, &meta, past_seal_delay, seal_delay));
 	}
 
 	#[test]
-	fn integer_bucket_stays_open_before_lateness_elapses() {
+	fn integer_bucket_stays_open_before_seal_delay_elapses() {
 		// The backstop must not fire early, or a partition that is merely between writes
 		// gets its live bucket sealed and every later row lands outside the materialized block.
 		let s = series_with(SeriesKey::Integer {
@@ -161,9 +161,9 @@ mod tests {
 		let mut meta = SeriesPartitionMetadata::new();
 		meta.newest_key = 50;
 		meta.last_write_at = DateTime::from_nanos(1_000_000_000);
-		let lateness = Duration::from_milliseconds(100).unwrap();
-		let within_lateness = DateTime::from_nanos(1_000_000_000 + 50_000_000);
-		assert!(!is_closed(&b, &s, &meta, within_lateness, lateness));
+		let seal_delay = Duration::from_milliseconds(100).unwrap();
+		let within_seal_delay = DateTime::from_nanos(1_000_000_000 + 50_000_000);
+		assert!(!is_closed(&b, &s, &meta, within_seal_delay, seal_delay));
 	}
 
 	#[test]
@@ -177,8 +177,8 @@ mod tests {
 		let mut meta = SeriesPartitionMetadata::new();
 		meta.newest_key = 50;
 		meta.last_write_at = DateTime::from_nanos(1_000_000_000);
-		let lateness = Duration::from_milliseconds(100).unwrap();
-		let past_lateness = DateTime::from_nanos(1_000_000_000 + 250_000_000);
+		let seal_delay = Duration::from_milliseconds(100).unwrap();
+		let past_seal_delay = DateTime::from_nanos(1_000_000_000 + 250_000_000);
 		for start in [0u64, 100, 200] {
 			let b = Bucket {
 				start,
@@ -189,14 +189,14 @@ mod tests {
 				meta.newest_key < b.end,
 				"precondition: bucket {start} must be open under the key rule, or this asserts nothing"
 			);
-			assert!(is_closed(&b, &s, &meta, past_lateness, lateness), "bucket {start} must seal");
+			assert!(is_closed(&b, &s, &meta, past_seal_delay, seal_delay), "bucket {start} must seal");
 		}
 	}
 
 	#[test]
 	fn the_datetime_arm_ignores_metadata_entirely() {
 		// Metadata here would seal an integer bucket twice over: the key is past the end and
-		// the partition has been silent far longer than lateness. The datetime arm must still
+		// the partition has been silent far longer than the seal delay. The datetime arm must still
 		// answer from the bucket end alone, or a busy series seals buckets that are still live.
 		let s = series_with(SeriesKey::DateTime {
 			column: "ts".into(),
@@ -210,8 +210,8 @@ mod tests {
 		let mut meta = SeriesPartitionMetadata::new();
 		meta.newest_key = u64::MAX;
 		meta.last_write_at = DateTime::from_nanos(0);
-		let lateness = Duration::from_milliseconds(100).unwrap();
+		let seal_delay = Duration::from_milliseconds(100).unwrap();
 		let bucket_end = DateTime::from_nanos(1_000_000_000);
-		assert!(!is_closed(&b, &s, &meta, bucket_end, lateness));
+		assert!(!is_closed(&b, &s, &meta, bucket_end, seal_delay));
 	}
 }
