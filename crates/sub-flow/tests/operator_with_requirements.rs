@@ -320,6 +320,40 @@ fn an_unmanaged_apply_sealing_as_late_as_a_lookup_above_it_creates() {
 	assert!(created.is_ok(), "an unmanaged apply with the same seal as the lookup above must create: {created:?}");
 }
 
+fn three_lookups(first: &str, second: &str, third: &str) -> String {
+	format!("CREATE DEFERRED VIEW app::v {{ g: int4 }} AS {{ FROM app::t \
+		 INNER LOOKUP {{ FROM app::d }} AS x USING (g, x.g) WITH {{ emit: false, forget: {{ left: {first} }} }} \
+		 INNER LOOKUP {{ FROM app::d }} AS y USING (g, y.g) WITH {{ emit: false, forget: {{ left: {second} }} }} \
+		 INNER LOOKUP {{ FROM app::d }} AS z USING (g, z.g) WITH {{ emit: false, forget: {{ left: {third} }} }} \
+		 MAP {{ g: g }} }}")
+}
+
+#[test]
+fn a_lookup_sealing_sooner_than_one_two_steps_above_it_fails_the_create() {
+	// The longest seal above must be carried past a shorter first one, otherwise the 15s lookup drops rows the 20s
+	// kept.
+	let db = memory();
+	seal_order_source(&db);
+
+	let Err(err) = db.try_admin(&three_lookups("10s", "20s", "15s")) else {
+		panic!("a lookup sealing after 15s below one sealing after 20s must be refused");
+	};
+
+	let diagnostic = err.diagnostic();
+	assert_eq!(diagnostic.code, "FLOW_099", "{diagnostic:?}");
+}
+
+#[test]
+fn a_lookup_sealing_as_late_as_the_longest_one_above_it_creates() {
+	// Carrying more than the longest seal above would refuse a chain that drops nothing an upper lookup keeps.
+	let db = memory();
+	seal_order_source(&db);
+
+	let created = db.try_admin(&three_lookups("10s", "20s", "20s"));
+
+	assert!(created.is_ok(), "a lookup with the longest seal above it must create: {created:?}");
+}
+
 #[test]
 fn nostate_managed_and_unmanaged_probes_each_publish_takes_window_false() {
 	// a mount that claimed a window would let a view give it one at create, which the mount then refuses

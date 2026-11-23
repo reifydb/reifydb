@@ -66,7 +66,11 @@ fn check_seal_order(probe: &FlowEngineInner, dag: &FlowDag) -> Result<(), ValueE
 				*upper_span,
 			)));
 		}
-		if let Some(leaving) = widest.or(own.map(|span| (span, node.ty.label()))) {
+		let leaving = match (widest, own.map(|span| (span, node.ty.label()))) {
+			(Some(upper), Some(own)) if own.0 > upper.0 => Some(own),
+			(upper, own) => upper.or(own),
+		};
+		if let Some(leaving) = leaving {
 			widest_above.insert(*operator_id, leaving);
 		}
 	}
