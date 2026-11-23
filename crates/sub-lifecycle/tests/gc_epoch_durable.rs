@@ -357,8 +357,8 @@ fn pruning_drops_samples_beyond_the_horizon_and_keeps_the_ones_inside_it() {
 }
 
 #[test]
-fn a_join_lateness_longer_than_every_row_ttl_does_not_stretch_the_history_horizon() {
-	// operators forget on flow timers in event time, so a join lateness must never keep epoch samples past the row
+fn a_join_forget_longer_than_every_row_ttl_does_not_stretch_the_history_horizon() {
+	// operators forget on flow timers in event time, so a join forget must never keep epoch samples past the row
 	// ttls
 	let t = TestEngine::new();
 	let engine: StandardEngine = t.inner().clone();
@@ -368,7 +368,7 @@ fn a_join_lateness_longer_than_every_row_ttl_does_not_stretch_the_history_horizo
 	t.admin("CREATE TABLE late::rhs { k: int4, rv: int4, at: datetime } with { time: event(at) }");
 	t.admin("CREATE DEFERRED VIEW late::joined { k: int4, lv: int4, rv: int4 } AS { \
 		 FROM late::lhs \
-		 inner join { FROM late::rhs } as r using (k, r.k) with { retention: { left: 30d } } \
+		 inner join { FROM late::rhs } as r using (k, r.k) with { forget: { left: 30d } } \
 		 map { k: k, lv: lv, rv: r_rv } }");
 
 	commit_a_version(&engine, "ingest", 1);
@@ -383,7 +383,7 @@ fn a_join_lateness_longer_than_every_row_ttl_does_not_stretch_the_history_horizo
 	let remaining = durable_samples(&engine);
 	assert!(
 		!remaining.iter().any(|(bucket, _, _)| *bucket == ancient),
-		"a 30d join lateness must not hold a sample past the 7d minimum horizon; remaining {remaining:?}"
+		"a 30d join forget must not hold a sample past the 7d minimum horizon; remaining {remaining:?}"
 	);
 }
 

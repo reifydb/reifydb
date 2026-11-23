@@ -164,9 +164,9 @@ fn with() -> ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(60_000)),
 		}),
-		lateness: None,
+		drop: None,
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 type Seen = Vec<(DiffType, Vec<(RowNumber, Vec<Value>)>, Vec<(RowNumber, Vec<Value>)>)>;

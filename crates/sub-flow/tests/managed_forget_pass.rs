@@ -33,7 +33,7 @@ const TIMEOUT: Duration = Duration::from_seconds_const(20);
 const MANAGED_KEYS: &str = "from system::metric::flow::state::current filter { keyspace == 'CUSTOM_MANAGED' }";
 
 const MANAGED_VIEW: &str =
-	"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY tally{} WITH { lateness: 2s } }";
+	"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY tally{} WITH { forget: 2s } }";
 
 const G_COLUMNS: &[OperatorColumn] = &[OperatorColumn {
 	name: "g",
@@ -202,7 +202,7 @@ fn only_a_managed_apply_needs_event_time() {
 	db.admin("CREATE TABLE app::plain { id: int4, g: int4 }");
 
 	let managed = db.try_admin(
-		"CREATE DEFERRED VIEW app::m { g: int4 } AS { FROM app::timed APPLY tally{} WITH { lateness: 2s } }",
+		"CREATE DEFERRED VIEW app::m { g: int4 } AS { FROM app::timed APPLY tally{} WITH { forget: 2s } }",
 	);
 	let unmanaged =
 		db.try_admin("CREATE DEFERRED VIEW app::u { g: int4 } AS { FROM app::plain APPLY untracked{} }");
@@ -212,8 +212,8 @@ fn only_a_managed_apply_needs_event_time() {
 }
 
 #[test]
-fn managed_state_is_freed_once_the_operator_watermark_passes_its_write_plus_lateness_and_not_before() {
-	// A group freed before its write plus lateness loses state a late row inside the lateness still needs.
+fn managed_state_is_freed_once_the_operator_watermark_passes_its_write_plus_forget_and_not_before() {
+	// A group freed before its write plus forget loses state a late row inside the drop still needs.
 	let db = memory();
 	managed_view(&db);
 
@@ -274,27 +274,27 @@ fn a_due_entry_armed_before_a_restart_still_frees_its_group_after_it() {
 }
 
 #[test]
-fn a_retention_above_the_lateness_frees_later_than_the_lateness_would() {
-	// A forget pass by the lateness would free the group at 2s, a second before the declared retention allows.
+fn a_forget_above_the_drop_frees_later_than_the_drop_would() {
+	// A forget pass by the drop would free the group at 2s, a second before the declared forget allows.
 	let db = memory();
-	managed_view_with(&db, "lateness: 1s, retention: 2s");
+	managed_view_with(&db, "drop: 1s, forget: 2s");
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
 	assert_eq!(await_managed_keys(&db, 2), 2, "group 1 plus ROOT");
 
 	advance_to(&db, "2026-01-01T00:00:02Z");
 	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "2026-01-01T00:00:02Z" }]"#);
-	assert_eq!(await_managed_keys(&db, 3), 3, "at 2s the lateness has passed but group 1 is inside its retention");
+	assert_eq!(await_managed_keys(&db, 3), 3, "at 2s the drop has passed but group 1 is inside its forget");
 
 	advance_to(&db, "2026-01-01T00:00:03Z");
 	assert_eq!(await_managed_keys(&db, 2), 2, "group 1 is due at 3s; group 2 and ROOT must stay");
 }
 
 #[test]
-fn a_zero_retention_frees_at_the_next_gate_step() {
+fn a_zero_forget_frees_at_the_next_gate_step() {
 	// Zero is a bound, not an absence: the group must go as soon as the flow watermark passes its write.
 	let db = memory();
-	managed_view_with(&db, "retention: 0s");
+	managed_view_with(&db, "forget: 0s");
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00.500Z" }]"#);
 	assert_eq!(await_managed_keys(&db, 2), 2, "group 1 plus ROOT");
@@ -304,7 +304,7 @@ fn a_zero_retention_frees_at_the_next_gate_step() {
 }
 
 #[test]
-fn a_group_rewritten_inside_its_retention_is_freed_from_its_last_write_not_its_first() {
+fn a_group_rewritten_inside_its_forget_is_freed_from_its_last_write_not_its_first() {
 	// Freeing a rewritten group at its first write's due drops the state the rewrite just extended.
 	let db = memory();
 	managed_view(&db);

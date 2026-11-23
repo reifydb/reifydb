@@ -425,18 +425,18 @@ pub fn flow_rolling_lag_requires_event_time(flow: &str) -> Diagnostic {
 	}
 }
 
-pub fn flow_join_lateness_requires_event_time(flow: &str) -> Diagnostic {
+pub fn flow_join_drop_requires_event_time(flow: &str) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_049".to_string(),
 		rql: None,
-		message: format!("{flow} declares a join lateness but its sources supply no event time"),
+		message: format!("{flow} declares a join drop or forget but its sources supply no event time"),
 		column: None,
 		fragment: Fragment::None,
 		label: None,
 		help: Some(
-			"a join lateness frees a row once the operator watermark passes its own event time, which only has \
+			"a join drop or forget frees a row once the operator watermark passes its own event time, which only has \
 			 meaning against a source-supplied event time. Declare `with { time: event(<column>) }` on the \
-			 source object this flow reads, or remove the lateness."
+			 source object this flow reads, or remove the drop or forget."
 				.to_string(),
 		),
 		notes: vec![],
@@ -604,11 +604,11 @@ pub fn flow_operator_with_count_span(key: &str, count: u64) -> Diagnostic {
 	)
 }
 
-pub fn flow_operator_with_immutable_not_below_lateness(immutable: Duration, lateness: Duration) -> Diagnostic {
+pub fn flow_operator_with_immutable_not_below_drop(immutable: Duration, drop: Duration) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_064",
-		format!("immutable {} must be strictly less than lateness {}", immutable, lateness),
-		"A window becomes immutable before it seals, so immutable must be shorter than lateness.",
+		format!("immutable {} must be strictly less than drop {}", immutable, drop),
+		"A window becomes immutable before it seals, so immutable must be shorter than drop.",
 	)
 }
 
@@ -703,20 +703,20 @@ pub fn flow_operator_with_session_zero_gap() -> Diagnostic {
 	)
 }
 
-pub fn flow_operator_with_retention_not_supported() -> Diagnostic {
+pub fn flow_operator_with_forget_not_supported() -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_080",
-		"this operator takes no 'retention'".to_string(),
-		"Only managed operators and carry operators over a time window free state by retention; every other \
-		 operator refuses it. Remove retention from the with block.",
+		"this operator takes no 'forget'".to_string(),
+		"Only managed operators and carry operators over a time window free state by forget; every other \
+		 operator refuses it. Remove forget from the with block.",
 	)
 }
 
-pub fn flow_operator_with_retention_below_lateness(retention: Duration, lateness: Duration) -> Diagnostic {
+pub fn flow_operator_with_forget_below_drop(forget: Duration, drop: Duration) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_081",
-		format!("retention {} must not be below lateness {}", retention, lateness),
-		"A managed operator's state must outlive its output hold, so retention must be at least lateness.",
+		format!("forget {} must not be below drop {}", forget, drop),
+		"Stored rows must outlive the changes still accepted for them, so forget must be at least drop.",
 	)
 }
 pub fn flow_operator_with_duration_span(key: &str, duration: Duration) -> Diagnostic {
@@ -726,7 +726,7 @@ pub fn flow_operator_with_duration_span(key: &str, duration: Duration) -> Diagno
 			"operator setting '{}' is a duration ({}), but this operator is measured in rows",
 			key, duration
 		),
-		"Declare the setting as a count, for example lateness: 150.",
+		"Declare the setting as a count, for example drop: 150.",
 	)
 }
 
@@ -738,11 +738,11 @@ pub fn flow_operator_with_not_accepted() -> Diagnostic {
 	)
 }
 
-pub fn flow_operator_retention_required() -> Diagnostic {
+pub fn flow_operator_forget_required() -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_072",
-		"a managed operator needs 'retention' or 'lateness'".to_string(),
-		"Declare retention in the with block; lateness alone also bounds the state.",
+		"a managed operator needs 'forget'".to_string(),
+		"Declare forget in the with block; drop alone frees no state.",
 	)
 }
 
@@ -750,7 +750,7 @@ pub fn flow_managed_operator_requires_event_time(flow: &str, operator: &str) -> 
 	flow_diagnostic(
 		"FLOW_073",
 		format!("{flow} applies managed operator '{operator}' but its sources supply no event time"),
-		"a managed operator's state is freed once the operator watermark passes its last write plus retention, which only \
+		"a managed operator's state is freed once the operator watermark passes its last write plus forget, which only \
 		 has meaning against a source-supplied event time. Declare `with { time: event(<column>) }` on the \
 		 source object this flow reads.",
 	)
@@ -777,7 +777,7 @@ pub fn flow_seal_shorter_below(
 		"FLOW_099",
 		format!("{flow} {lower} seals after {lower_span} below {upper} that seals after {upper_span}"),
 		"a row the upper operator keeps may be as late as its seal, and a lower operator with a shorter seal drops \
-		 it. Give the lower operator a retention or lateness at least as long as the upper one, or move it above.",
+		 it. Give the lower operator a drop at least as long as the upper one, or move it above.",
 	)
 }
 

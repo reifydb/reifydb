@@ -110,7 +110,7 @@ fn window(engine: &TestEngine, kind: WindowKind) -> WindowOperator {
 		aggregations: parse_expression("n: math::count(k)").expect("aggregation parses"),
 		runtime_context: engine.executor().runtime_context.clone(),
 		routines: engine.executor().routines.clone(),
-		lateness: None,
+		drop: None,
 		immutable: None,
 		ctx: Arc::new(FlowContext::default()),
 	})

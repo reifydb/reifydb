@@ -168,7 +168,7 @@ fn a_looked_up_view_read_with_emit_after_folds_its_backlog() {
 	create_level(&db);
 	db.admin("CREATE DEFERRED VIEW app::cost { id: int4, usd: Option(int8) } AS { \
 		 FROM app::level \
-		 INNER LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { emit: 1s, retention: { left: 10s } } \
+		 INNER LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { emit: 1s, forget: { left: 10s } } \
 		 MAP { id, usd: p_v } }");
 	settle(&db);
 
@@ -216,7 +216,7 @@ fn a_producer_stays_exact_after_an_exact_reader_is_created() {
 	settle(&db);
 	db.admin("CREATE DEFERRED VIEW app::cost { id: int4, usd: Option(int8) } AS { \
 		 FROM app::level \
-		 INNER LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { emit: false, retention: { left: 10s } } \
+		 INNER LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { emit: false, forget: { left: 10s } } \
 		 MAP { id, usd: p_v } }");
 	settle(&db);
 
@@ -247,7 +247,7 @@ fn create_cost(db: &TestDb, view: &str) {
 	create_level(db);
 	db.admin(&format!("CREATE DEFERRED VIEW app::cost {{ id: int4, usd: Option(int8) }} AS {{ \
 		 FROM app::level \
-		 LEFT LOOKUP {{ FROM {view} }} AS p USING (k, p.k) WITH {{ emit: false, retention: {{ left: 10s }} }} \
+		 LEFT LOOKUP {{ FROM {view} }} AS p USING (k, p.k) WITH {{ emit: false, forget: {{ left: 10s }} }} \
 		 MAP {{ id, usd: p_v }} }}"));
 }
 
@@ -581,7 +581,7 @@ fn a_lookup_reader_takes_a_layered_backlog_from_below_its_cursor_and_keeps_the_h
 	create_level(&db);
 	db.admin("CREATE DEFERRED VIEW app::cost { id: int4, usd: Option(int8) } AS { \
 		 FROM app::level \
-		 LEFT LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { emit: 1s, retention: { left: 10s } } \
+		 LEFT LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { emit: 1s, forget: { left: 10s } } \
 		 MAP { id, usd: p_v } }");
 	insert_level(&db, 1, "a");
 	settle(&db);

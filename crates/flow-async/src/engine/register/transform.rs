@@ -292,34 +292,37 @@ impl FlowEngineInner {
 		let left_schema = entry_schema(&left_schema, &left_decoded, &left_kept);
 		let right_schema = entry_schema(&right_schema, &right_decoded, &right_kept);
 
-		let left_lateness = with.lateness.as_ref().and_then(|j| j.left);
-		let right_lateness = with.lateness.as_ref().and_then(|j| j.right);
+		let (forget_left, forget_right) = (with.forget_left(), with.forget_right());
+		let (drop_left, drop_right) = (with.effective_drop_left(), with.effective_drop_right());
 
 		self.operators.insert(
 			(flow_id, operator_id),
-			Box::new(JoinOperator::new(
-				JoinSideConfig {
-					schema: left_schema,
-					operator: left_node,
-					exprs: left_exprs,
-				},
-				JoinSideConfig {
-					schema: right_schema,
-					operator: right_node,
-					exprs: right_exprs,
-				},
-				operator_id,
-				join_type,
-				alias,
-				self.routines.clone(),
-				self.runtime_context.clone(),
-				with.emit,
-				natural,
-				with.pick,
-				left_lateness,
-				right_lateness,
-				Arc::clone(ctx),
-			)?),
+			Box::new(
+				JoinOperator::new(
+					JoinSideConfig {
+						schema: left_schema,
+						operator: left_node,
+						exprs: left_exprs,
+					},
+					JoinSideConfig {
+						schema: right_schema,
+						operator: right_node,
+						exprs: right_exprs,
+					},
+					operator_id,
+					join_type,
+					alias,
+					self.routines.clone(),
+					self.runtime_context.clone(),
+					with.emit,
+					natural,
+					with.pick,
+					forget_left,
+					forget_right,
+					Arc::clone(ctx),
+				)?
+				.with_drop(drop_left, drop_right),
+			),
 		);
 		Ok(())
 	}
@@ -409,7 +412,8 @@ impl FlowEngineInner {
 		let right_decoded = decoded_schema(&right_stored, |id| self.catalog.find_dictionary(txn, id))?;
 		let right_schema = mark_schema(&entry_schema(&right_stored, &right_decoded, &right_kept), &right_tags)?;
 		let right_kept = right_kept.into_iter().collect();
-		let left_lateness = with.lateness;
+		let left_drop = with.effective_drop();
+		let left_forget = with.forget;
 
 		let operator = LookupOperator::new(LookupConfig {
 			operator: operator_id,
@@ -432,7 +436,8 @@ impl FlowEngineInner {
 			left_schema,
 			right_schema,
 			alias,
-			left_lateness,
+			left_drop,
+			left_forget,
 			routines: self.routines.clone(),
 			runtime_context: self.runtime_context.clone(),
 			ctx: Arc::clone(ctx),
@@ -525,7 +530,7 @@ impl FlowEngineInner {
 
 		self.operators.insert(
 			(flow_id, operator_id),
-			Box::new(ApplyOperator::new(schema, operator_id, inner, &with)),
+			Box::new(ApplyOperator::new(schema, operator_id, inner, &with)?),
 		);
 		Ok(())
 	}
@@ -555,7 +560,7 @@ impl FlowEngineInner {
 			aggregations,
 			runtime_context: self.runtime_context.clone(),
 			routines: self.routines.clone(),
-			lateness: with.lateness,
+			drop: with.drop,
 			immutable: with.immutable,
 			ctx: Arc::clone(ctx),
 		})?;

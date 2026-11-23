@@ -48,7 +48,7 @@ fn routines() -> Routines {
 }
 
 fn rolling_window(
-	lateness: Option<Duration>,
+	drop_span: Option<Duration>,
 	immutable: Option<Duration>,
 	aggregations: &'static [&'static str],
 ) -> Harness<WindowOperator> {
@@ -69,7 +69,7 @@ fn rolling_window(
 				.collect(),
 			runtime_context: runtime,
 			routines: routines(),
-			lateness,
+			drop: drop_span,
 			immutable,
 			ctx: Arc::new(FlowContext::default()),
 		})
@@ -222,13 +222,13 @@ const VIEWS: [View; 2] = [
 		name: "running",
 		kind: FrameKind::Duration,
 		with_min: false,
-		with: "duration: 10m, pane: 1ms, lateness: 1h",
+		with: "duration: 10m, pane: 1ms, drop: 1h",
 	},
 	View {
 		name: "immutable",
 		kind: FrameKind::Duration,
 		with_min: true,
-		with: "duration: 10m, pane: 1ms, lateness: 1h, immutable: 5m",
+		with: "duration: 10m, pane: 1ms, drop: 1h, immutable: 5m",
 	},
 ];
 

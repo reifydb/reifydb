@@ -38,19 +38,19 @@ const S1_TS: &str = "2026-01-01T00:00:00.200Z";
 
 struct Timing {
 	name: &'static str,
-	lateness: &'static str,
+	drop: &'static str,
 	s2_ts: &'static str,
 }
 
 const TIMINGS: [Timing; 2] = [
 	Timing {
 		name: "far",
-		lateness: "20s",
+		drop: "20s",
 		s2_ts: "2026-01-01T00:00:30Z",
 	},
 	Timing {
 		name: "near",
-		lateness: "0s",
+		drop: "0s",
 		s2_ts: "2026-01-01T00:00:01.500Z",
 	},
 ];
@@ -203,24 +203,22 @@ fn settle(db: &TestDb) {
 	assert!(db.await_all_flows(SETTLE), "flows never caught up");
 }
 
-fn window_body(window: Window, lateness: &str) -> String {
+fn window_body(window: Window, drop_span: &str) -> String {
 	let aggregates = "{ start: window::start(), n: math::count(), total: math::sum(v) }";
 	match window {
 		Window::NativeTumbling => {
-			format!(
-				"| window tumbling {aggregates} with {{ duration: 1s, lateness: {lateness} }} by {{ k }}"
-			)
+			format!("| window tumbling {aggregates} with {{ duration: 1s, drop: {drop_span} }} by {{ k }}")
 		}
 		Window::NativeRolling => format!(
-			"| window rolling {{ n: math::count(), total: math::sum(v) }} with {{ duration: 1s, pane: 100ms, lateness: {lateness} }} by {{ k }}"
+			"| window rolling {{ n: math::count(), total: math::sum(v) }} with {{ duration: 1s, pane: 100ms, drop: {drop_span} }} by {{ k }}"
 		),
 		Window::SdkTumbling => {
 			format!(
-				"APPLY fold_window_probe {{}} WITH {{ window: tumbling, duration: 1s, lateness: {lateness} }}"
+				"APPLY fold_window_probe {{}} WITH {{ window: tumbling, duration: 1s, drop: {drop_span} }}"
 			)
 		}
 		Window::SdkRolling => format!(
-			"APPLY fold_window_probe {{}} WITH {{ window: rolling, duration: 1s, pane: 100ms, lateness: {lateness} }}"
+			"APPLY fold_window_probe {{}} WITH {{ window: rolling, duration: 1s, pane: 100ms, drop: {drop_span} }}"
 		),
 	}
 }
@@ -237,7 +235,7 @@ fn create(db: &TestDb, gate_name: &str, window: Window, timing: &Timing) {
 	db.admin(&format!(
 		"CREATE DEFERRED VIEW app::w {{ {} }} AS {{ FROM app::mid {} }}",
 		columns.join(", "),
-		window_body(window, timing.lateness)
+		window_body(window, timing.drop)
 	));
 }
 

@@ -21,7 +21,7 @@ pub struct WindowSpec {
 	pub kind: WindowKind,
 	pub group_by: &'static str,
 	pub aggregations: &'static str,
-	pub lateness: Option<Duration>,
+	pub drop: Option<Duration>,
 }
 
 use crate::operators::routines;
@@ -41,7 +41,7 @@ pub fn build_immutable(spec: &WindowSpec, immutable: Option<Duration>, runtime: 
 		aggregations: parse_expression(spec.aggregations).expect("aggregations parse"),
 		runtime_context: runtime,
 		routines: routines(),
-		lateness: spec.lateness,
+		drop: spec.drop,
 		immutable,
 		ctx: Arc::new(FlowContext::default()),
 	})

@@ -38,7 +38,7 @@ fn last_value_roundtrip() {
 
 #[test]
 fn immutable_min_default_is_fully_invertible() {
-	// With no lateness bound nothing folds, so add/remove stays a pure inverse even when the
+	// With no drop bound nothing folds, so add/remove stays a pure inverse even when the
 	// probe is a new minimum.
 	assert_add_remove_is_inverse::<ImmutableMin<ByDateTime, i64>>(
 		&[(ByDateTime(at_millis(1)), 10i64), (ByDateTime(at_millis(2)), 20), (ByDateTime(at_millis(3)), 30)],

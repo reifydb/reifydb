@@ -15,14 +15,14 @@ use reifydb_value::{
 
 use crate::plain_rolling::{SumTumblingOnly, harness, input_row, render};
 
-fn session(gap: u64, lateness: Option<u64>) -> ApplyWith {
+fn session(gap: u64, drop_span: Option<u64>) -> ApplyWith {
 	ApplyWith {
 		window: Some(WindowKind::Session {
 			gap: millis(gap),
 		}),
-		lateness: lateness.map(|n| WithSpan::Duration(millis(n))),
+		drop: drop_span.map(|n| WithSpan::Duration(millis(n))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -226,24 +226,20 @@ fn a_remove_of_a_row_in_a_sealed_session_is_dropped() {
 }
 
 #[test]
-fn the_driver_builds_a_session_with_a_lateness() {
-	// refusing a lateness here would split the sdk from the native session window, which honours it
+fn the_driver_builds_a_session_with_a_drop() {
+	// refusing a drop here would split the sdk from the native session window, which honours it
 	let built = harness!(SumTumblingOnly, session(10, Some(1)));
 
-	assert!(built.is_ok(), "a session lateness must build, got: {:?}", built.err().map(|e| e.to_string()));
+	assert!(built.is_ok(), "a session drop must build, got: {:?}", built.err().map(|e| e.to_string()));
 }
 
 #[test]
-fn the_driver_builds_a_session_with_no_or_zero_lateness() {
-	// refusing a declared zero would reject a session whose lateness adds nothing to its seal
-	for lateness in [None, Some(0)] {
-		let built = harness!(SumTumblingOnly, session(10, lateness));
+fn the_driver_builds_a_session_with_no_or_zero_drop() {
+	// refusing a declared zero would reject a session whose drop adds nothing to its seal
+	for drop_span in [None, Some(0)] {
+		let built = harness!(SumTumblingOnly, session(10, drop_span));
 
-		assert!(
-			built.is_ok(),
-			"lateness {lateness:?} must build, got: {:?}",
-			built.err().map(|e| e.to_string())
-		);
+		assert!(built.is_ok(), "drop {drop_span:?} must build, got: {:?}", built.err().map(|e| e.to_string()));
 	}
 }
 

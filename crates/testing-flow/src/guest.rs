@@ -16,7 +16,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_flow_async::{
-	operator::{BoxedHostOperator, apply::engine_retention, host::TxnHostContext},
+	operator::{BoxedHostOperator, apply::engine_forget, host::TxnHostContext},
 	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate},
 };
 use reifydb_runtime::context::{
@@ -40,7 +40,7 @@ pub struct GuestOperatorHarness<C: MountedOperator + OperatorMetadata + 'static>
 	engine: TestEngine,
 	operator: BoxedHostOperator,
 	operator_id: OperatorId,
-	retention: Option<Duration>,
+	forget: Option<Duration>,
 	version: u64,
 	pending: Pending,
 	substrate: FlowSubstrate,
@@ -111,7 +111,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		let operator = self.operator_id;
 		let mut txn = self.begin_txn();
 		let output = {
-			let mut host = TxnHostContext::with_retention(&mut txn, operator, self.retention);
+			let mut host = TxnHostContext::with_forget(&mut txn, operator, self.forget);
 			self.operator.apply(&mut host, input)?
 		};
 		self.end_txn(txn);
@@ -245,7 +245,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilde
 			engine,
 			operator,
 			operator_id: self.operator_id,
-			retention: engine_retention(&self.with),
+			forget: engine_forget(&self.with),
 			version: self.version.0,
 			pending: Pending::new(),
 			substrate,
@@ -262,7 +262,6 @@ mod tests {
 	use reifydb_core::{
 		interface::flow::OperatorCapability,
 		key::operator::state::{GroupId, managed_key_in},
-		operator_with::WithSpan,
 	};
 	use reifydb_sdk::{
 		error::SdkError,
@@ -312,9 +311,9 @@ mod tests {
 
 	#[test]
 	fn a_managed_operator_can_write_state_through_the_harness() {
-		// Without a retention the first managed write aborts the harness.
+		// Without a forget the first managed write aborts the harness.
 		let with = ApplyWith {
-			lateness: Some(WithSpan::Duration(secs(120))),
+			forget: Some(secs(120)),
 			..ApplyWith::default()
 		};
 		let mut harness = GuestOperatorHarness::<ManagedMount<ManagedWriter>>::builder()

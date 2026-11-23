@@ -120,6 +120,13 @@ fn group_by_key(keys: &[Option<Hash128>]) -> (Vec<Hash128>, HashMap<Hash128, Vec
 	(order, groups, undefined)
 }
 
+fn widest(left: Option<Duration>, right: Option<Duration>) -> Option<Duration> {
+	match (left, right) {
+		(Some(left), Some(right)) => Some(left.max(right)),
+		(left, right) => left.or(right),
+	}
+}
+
 #[cfg(test)]
 mod group_by_key_tests {
 	use super::*;
@@ -190,8 +197,10 @@ pub struct JoinOperator {
 	pub(crate) emit: Emit,
 	natural: bool,
 	pub(crate) pick: Option<JoinPick>,
-	left_lateness: Option<Duration>,
-	right_lateness: Option<Duration>,
+	left_drop: Option<Duration>,
+	right_drop: Option<Duration>,
+	left_forget: Option<Duration>,
+	right_forget: Option<Duration>,
 	ctx: Arc<FlowContext>,
 	forget_pass_fires: Counter,
 	forget: JoinForgetIndex,
@@ -218,8 +227,8 @@ impl JoinOperator {
 		emit: Emit,
 		natural: bool,
 		pick: Option<JoinPick>,
-		left_lateness: Option<Duration>,
-		right_lateness: Option<Duration>,
+		left_forget: Option<Duration>,
+		right_forget: Option<Duration>,
 		ctx: Arc<FlowContext>,
 	) -> Result<Self, ValueError> {
 		let left_node = left.operator;
@@ -260,8 +269,10 @@ impl JoinOperator {
 			emit,
 			natural,
 			pick,
-			left_lateness,
-			right_lateness,
+			left_drop: left_forget,
+			right_drop: right_forget,
+			left_forget,
+			right_forget,
 			ctx,
 			forget_pass_fires: Counter::new(
 				"flow.operator.join.forget_pass_fires_total",
@@ -275,10 +286,23 @@ impl JoinOperator {
 		})
 	}
 
-	pub(crate) fn lateness_of(&self, side: JoinSide) -> Option<Duration> {
+	pub fn with_drop(mut self, left: Option<Duration>, right: Option<Duration>) -> Self {
+		self.left_drop = left;
+		self.right_drop = right;
+		self
+	}
+
+	fn drop_of(&self, side: JoinSide) -> Option<Duration> {
 		match side {
-			JoinSide::Left => self.left_lateness,
-			JoinSide::Right => self.right_lateness,
+			JoinSide::Left => self.left_drop,
+			JoinSide::Right => self.right_drop,
+		}
+	}
+
+	fn forget_of(&self, side: JoinSide) -> Option<Duration> {
+		match side {
+			JoinSide::Left => self.left_forget,
+			JoinSide::Right => self.right_forget,
 		}
 	}
 
@@ -289,11 +313,12 @@ impl JoinOperator {
 		}
 	}
 
-	fn widest_lateness(&self) -> Option<Duration> {
-		match (self.lateness_of(JoinSide::Left), self.lateness_of(JoinSide::Right)) {
-			(Some(left), Some(right)) => Some(left.max(right)),
-			(left, right) => left.or(right),
-		}
+	fn widest_drop(&self) -> Option<Duration> {
+		widest(self.left_drop, self.right_drop)
+	}
+
+	fn widest_forget(&self) -> Option<Duration> {
+		widest(self.left_forget, self.right_forget)
 	}
 
 	fn timer_key() -> EncodedKey {
@@ -352,13 +377,13 @@ impl JoinOperator {
 		cleared: &[(GroupId, RowNumber)],
 		armed: &[(GroupId, RowNumber, DateTime)],
 	) -> Result<(), ValueError> {
-		let Some(lateness) = self.lateness_of(side) else {
+		let Some(forget) = self.forget_of(side) else {
 			return Ok(());
 		};
 		if cleared.is_empty() && armed.is_empty() {
 			return Ok(());
 		}
-		let rule = SealRule::of(lateness);
+		let rule = SealRule::of(forget);
 
 		for at in host.join_forget_clear(side.tag(), cleared)?.into_iter().flatten() {
 			self.forget.cleared(at);
@@ -385,7 +410,7 @@ impl JoinOperator {
 		columns: &RecordBatch,
 		keys: &[Option<Hash128>],
 	) -> Result<(), ValueError> {
-		if self.lateness_of(side).is_none() {
+		if self.forget_of(side).is_none() {
 			return Ok(());
 		}
 		let times = row_times(columns)?;
@@ -409,7 +434,7 @@ impl JoinOperator {
 		columns: &RecordBatch,
 		keys: &[Option<Hash128>],
 	) -> Result<(), ValueError> {
-		if self.lateness_of(side).is_none() {
+		if self.forget_of(side).is_none() {
 			return Ok(());
 		}
 		let row_numbers = require_row_numbers(columns)?;
@@ -431,10 +456,10 @@ impl JoinOperator {
 		post: RecordBatch,
 		drops: &DropCounter,
 	) -> Result<(Option<RecordBatch>, RecordBatch), ValueError> {
-		let Some(lateness) = self.lateness_of(side) else {
+		let Some(drop_span) = self.drop_of(side) else {
 			return Ok((pre, post));
 		};
-		let kept = kept_unsealed(host, lateness, &post)?;
+		let kept = kept_unsealed(host, drop_span, &post)?;
 		if kept.dropped == 0 {
 			return Ok((pre, post));
 		}
@@ -453,7 +478,7 @@ impl JoinOperator {
 		keys: (Option<Hash128>, Option<Hash128>),
 		moves: &mut ForgetMoves,
 	) -> Result<(), ValueError> {
-		if self.lateness_of(side).is_none() {
+		if self.forget_of(side).is_none() {
 			return Ok(());
 		}
 		if let Some(group) = self.forget_group_of(side, keys.0) {
@@ -512,7 +537,7 @@ impl JoinOperator {
 	}
 
 	fn free_due_join_rows(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<(), ValueError> {
-		let Some(span) = self.widest_lateness() else {
+		let Some(span) = self.widest_forget() else {
 			return Ok(());
 		};
 		let retry = fired.at().saturating_add(span);
@@ -993,7 +1018,7 @@ impl HostOperator for JoinOperator {
 
 	fn sample(&self) -> Option<OperatorSample> {
 		Some(OperatorSample::default().with_drops(seal_drops(
-			self.widest_lateness().is_some(),
+			self.widest_drop().is_some(),
 			&self.sealed_inserts,
 			&self.sealed_updates,
 			&self.sealed_removes,
@@ -1134,7 +1159,7 @@ impl HostOperator for JoinOperator {
 	}
 
 	fn seal_span(&self) -> Option<Duration> {
-		self.widest_lateness()
+		self.widest_drop()
 	}
 }
 
@@ -1320,7 +1345,7 @@ impl JoinOperator {
 		let pre_keys = self.compute_join_keys(pre, self.lowered_exprs_of(side))?;
 		let post_keys = self.compute_join_keys(post, self.lowered_exprs_of(side))?;
 		let row_count = post.num_rows();
-		let post_times = match self.lateness_of(side) {
+		let post_times = match self.forget_of(side) {
 			Some(_) => row_times(post)?,
 			None => Vec::new(),
 		};
@@ -1480,16 +1505,16 @@ mod seal_tests {
 		},
 	};
 
-	fn join(operator: u64, left_lateness: Option<Duration>, right_lateness: Option<Duration>) -> JoinOperator {
-		join_with(operator, Emit::On, None, left_lateness, right_lateness)
+	fn join(operator: u64, left_forget: Option<Duration>, right_forget: Option<Duration>) -> JoinOperator {
+		join_with(operator, Emit::On, None, left_forget, right_forget)
 	}
 
 	fn join_with(
 		operator: u64,
 		emit: Emit,
 		pick: Option<JoinPick>,
-		left_lateness: Option<Duration>,
-		right_lateness: Option<Duration>,
+		left_forget: Option<Duration>,
+		right_forget: Option<Duration>,
 	) -> JoinOperator {
 		JoinOperator::new(
 			JoinSideConfig {
@@ -1510,8 +1535,8 @@ mod seal_tests {
 			emit,
 			false,
 			pick,
-			left_lateness,
-			right_lateness,
+			left_forget,
+			right_forget,
 			Arc::new(FlowContext::default()),
 		)
 		.expect("the join operator must build")
@@ -1908,7 +1933,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn an_inserted_row_is_armed_one_lateness_past_its_own_event_time() {
+	fn an_inserted_row_is_armed_one_forget_past_its_own_event_time() {
 		// the join forget entry must be the row's own event time, not wall-clock, or a backfilled row evicts on
 		// arrival
 		let engine = TestEngine::new();
@@ -1922,7 +1947,7 @@ mod seal_tests {
 		assert_eq!(
 			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
-			"the due time is event time + lateness + the strict gate step"
+			"the due time is event time + forget + the strict gate step"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 1, "and exactly one forget pass timer covers the operator");
 	}
@@ -1988,7 +2013,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_row_still_inside_its_lateness_survives_a_forget_pass_fire() {
+	fn a_row_still_inside_its_forget_survives_a_forget_pass_fire() {
 		// The gate is strict: a row whose due time lands one tick past the fire must not be forgotten yet.
 		let engine = TestEngine::new();
 		let mut op = join(3, Some(seconds(10)), None);
@@ -2080,12 +2105,12 @@ mod seal_tests {
 			Some(at_millis(15_001)),
 			"the left join forget entry must still name the left row's own last write"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "and a side with no lateness must arm nothing of its own");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "and a side with no forget must arm nothing of its own");
 	}
 
 	#[test]
-	fn a_join_without_a_lateness_arms_nothing_at_all() {
-		// Arming without a lateness leaves one timer and one join forget entry per row that nothing ever
+	fn a_join_without_a_forget_arms_nothing_at_all() {
+		// Arming without a forget leaves one timer and one join forget entry per row that nothing ever
 		// collects.
 		let engine = TestEngine::new();
 		let mut op = join(7, None, None);
@@ -2098,7 +2123,7 @@ mod seal_tests {
 		assert_eq!(
 			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
 			None,
-			"no lateness means no join forget entry"
+			"no forget means no join forget entry"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 0, "and no timer");
 	}
@@ -2160,7 +2185,7 @@ mod seal_tests {
 
 		fire(&mut op, &mut txn, at_millis(15_001));
 
-		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 0, "the left row is past its own lateness");
+		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 0, "the left row is past its own forget");
 		assert_eq!(
 			side_rows(&op, &mut txn, group, JoinSide::Right),
 			1,
@@ -2169,7 +2194,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_row_short_of_its_own_lateness_holds_the_groups_timer_open() {
+	fn a_row_short_of_its_own_forget_holds_the_groups_timer_open() {
 		// The two sides are forgotten on independent spans, so the group re-arms on whichever forget entry is
 		// next due.
 		let engine = TestEngine::new();
@@ -2183,11 +2208,11 @@ mod seal_tests {
 
 		fire(&mut op, &mut txn, at_millis(15_001));
 
-		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 0, "the left row is past its own lateness");
+		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 0, "the left row is past its own forget");
 		assert_eq!(
 			join_forget_of(&op, &mut txn, group, JoinSide::Right, 99),
 			Some(at_millis(3_609_001)),
-			"the right row keeps the join forget entry its own longer lateness gave it"
+			"the right row keeps the join forget entry its own longer forget gave it"
 		);
 		assert_eq!(
 			armed_timers(&op, &mut txn),
@@ -2197,8 +2222,8 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_latest_join_forgets_both_sides_on_their_own_lateness() {
-		// A latest join holds one right row per key, and that row must still arm its own lateness.
+	fn a_latest_join_forgets_both_sides_on_their_own_forget() {
+		// A latest join holds one right row per key, and that row must still arm its own forget.
 		let engine = TestEngine::new();
 		let mut op = join_with(12, Emit::On, Some(JoinPick::latest()), Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
@@ -2216,7 +2241,7 @@ mod seal_tests {
 		assert_eq!(
 			join_forget_of(&op, &mut txn, group, JoinSide::Right, 99),
 			Some(at_millis(19_001)),
-			"the right row is an ordinary kept row and must be forgotten on its own lateness"
+			"the right row is an ordinary kept row and must be forgotten on its own forget"
 		);
 		assert_eq!(
 			armed_timers(&op, &mut txn),
@@ -2301,7 +2326,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_snapshot_join_forgets_both_sides_on_their_own_lateness() {
+	fn a_snapshot_join_forgets_both_sides_on_their_own_forget() {
 		// A sealed right row stashes its bytes into the pin, so pinning it no longer means it may never be
 		// forgotten.
 		let engine = TestEngine::new();
@@ -2783,7 +2808,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_join_without_a_lateness_never_drops_an_old_row() {
+	fn a_join_without_a_drop_never_drops_an_old_row() {
 		// with no seal span there is no seal, so even an ancient row must pass
 		let engine = TestEngine::new();
 		let mut op = join(1, None, None);
@@ -2792,7 +2817,7 @@ mod seal_tests {
 
 		let out = apply_left(&mut op, &mut txn, Diff::insert(rows(&[7], &[1], at_millis(1_000))));
 
-		assert_eq!(out.len(), 1, "a join with no lateness must keep every row, got {out:?}");
+		assert_eq!(out.len(), 1, "a join with no drop must keep every row, got {out:?}");
 	}
 
 	#[test]
@@ -2834,7 +2859,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_join_without_a_lateness_reports_no_seal_drop_reasons() {
+	fn a_join_without_a_drop_reports_no_seal_drop_reasons() {
 		// a zero row must mean nothing dropped yet, never an operator that cannot drop at all
 		let op = join(1, None, None);
 
@@ -2867,5 +2892,60 @@ mod seal_tests {
 			},
 			"the sample must carry each seal count under its own reason"
 		);
+	}
+
+	#[test]
+	fn a_side_with_a_drop_shorter_than_its_forget_refuses_late_rows_and_keeps_stored_rows_until_the_forget() {
+		// One span for both lines either frees a row still due to pair or admits a change long past the drop.
+		let engine = TestEngine::new();
+		let mut op = join(30, Some(seconds(3_600)), None).with_drop(Some(seconds(20)), None);
+		let mut txn = txn_at(&engine, 100);
+		let stored = rows(&[7], &[42], at_millis(1_000_000));
+		apply_left(&mut op, &mut txn, Diff::insert(stored.clone()));
+		let group = group_of(&hash_of(&op, JoinSide::Left, &stored, 0));
+		txn.set_flow_watermark(at_millis(2_800_000));
+
+		let late = apply_left(&mut op, &mut txn, Diff::insert(rows(&[7], &[43], at_millis(2_770_000))));
+		fire(&mut op, &mut txn, at_millis(2_800_000));
+		let paired = insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(2_800_000)));
+
+		assert!(late.is_empty(), "a change 30s behind the watermark is past the 20s drop, got {late:?}");
+		assert_eq!(op.sealed_inserts.total(), 1, "the refused change must be counted");
+		assert_eq!(op.seal_span(), Some(seconds(20)), "the hold is the drop, never the forget");
+		assert!(!paired.is_empty(), "a stored row 30 minutes old must still pair inside its forget");
+		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 1, "and must not be freed by the drop");
+		assert_eq!(
+			join_forget_of(&op, &mut txn, group, JoinSide::Left, 42),
+			Some(at_millis(4_600_001)),
+			"the forget entry is event time + forget + the strict gate step"
+		);
+
+		fire(&mut op, &mut txn, at_millis(4_600_001));
+
+		assert_eq!(
+			side_rows(&op, &mut txn, group, JoinSide::Left),
+			0,
+			"the row is freed once its forget is due"
+		);
+	}
+
+	#[test]
+	fn a_side_with_only_a_drop_refuses_late_rows_and_never_arms_a_stored_row() {
+		// A drop that also armed the forget pass would free rows the user never asked to forget.
+		let engine = TestEngine::new();
+		let mut op = join(31, None, None).with_drop(Some(seconds(20)), None);
+		let mut txn = txn_at(&engine, 100);
+		let stored = rows(&[7], &[42], at_millis(5_000));
+		apply_left(&mut op, &mut txn, Diff::insert(stored.clone()));
+		let group = group_of(&hash_of(&op, JoinSide::Left, &stored, 0));
+		txn.set_flow_watermark(at_millis(30_000));
+
+		let late = apply_left(&mut op, &mut txn, Diff::insert(rows(&[7], &[43], at_millis(5_000))));
+
+		assert!(late.is_empty(), "a row 25s behind the watermark is past the 20s drop, got {late:?}");
+		assert_eq!(op.sealed_inserts.total(), 1, "the refused row must be counted");
+		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 1, "the stored row stays");
+		assert_eq!(join_forget_of(&op, &mut txn, group, JoinSide::Left, 42), None, "no forget entry is armed");
+		assert_eq!(armed_timers(&op, &mut txn), 0, "and no forget pass timer is armed");
 	}
 }

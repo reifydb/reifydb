@@ -108,7 +108,7 @@ fn sliding_windows(table: &BTreeMap<i32, (i32, u64, f64)>) -> Vec<Vec<Value>> {
 fn a_sliding_percentile_view_equals_the_median_of_each_window_through_inserts_deletes_and_updates() {
 	// Every row sits in two windows, so a delete or update that reaches only one leaves the other digest wrong.
 	let db = memory();
-	declare(&db, &[("s", "sliding", P50, "duration: 10m, slide: 5m, lateness: 1h")]);
+	declare(&db, &[("s", "sliding", P50, "duration: 10m, slide: 5m, drop: 1h")]);
 	let mut table: BTreeMap<i32, (i32, u64, f64)> = BTreeMap::new();
 
 	for chunk in (1..=13).collect::<Vec<i32>>().chunks(3) {
@@ -139,7 +139,7 @@ fn a_sliding_percentile_view_equals_the_median_of_each_window_through_inserts_de
 fn a_session_percentile_view_equals_the_median_of_each_session_through_inserts_deletes_and_updates() {
 	// Deleting minute 1 leaves minutes 0 and 2 one gap apart, so row 1 splits into its own session.
 	let db = memory();
-	declare(&db, &[("s", "session", P50, "gap: 2m, lateness: 1h")]);
+	declare(&db, &[("s", "session", P50, "gap: 2m, drop: 1h")]);
 	let arrivals: [(i32, i32, u64, f64, u64); 9] = [
 		(1, 1, 0, 30.0, 0),
 		(2, 2, 0, 4.0, 0),
@@ -189,9 +189,9 @@ fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_immutable
 	let db = memory();
 	let calls = "p50: stats::approx_percentile(v, 0.5, 0.01), lo: math::min(v)";
 	let views = [
-		("tumbling", "tumbling", calls, "duration: 1h, lateness: 1h, immutable: 5m", 1),
-		("sliding", "sliding", calls, "duration: 1h, slide: 30m, lateness: 1h, immutable: 5m", 2),
-		("session", "session", calls, "gap: 30m, lateness: 1h, immutable: 5m", 1),
+		("tumbling", "tumbling", calls, "duration: 1h, drop: 1h, immutable: 5m", 1),
+		("sliding", "sliding", calls, "duration: 1h, slide: 30m, drop: 1h, immutable: 5m", 2),
+		("session", "session", calls, "gap: 30m, drop: 1h, immutable: 5m", 1),
 	];
 	declare(&db, &views.map(|(name, kind, calls, with, _)| (name, kind, calls, with)));
 	let expect = |p50: Value, lo: f64, windows: usize| vec![vec![Value::Int4(1), p50, Value::float8(lo)]; windows];

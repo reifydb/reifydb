@@ -280,7 +280,7 @@ fn a_window_update_retracts_the_total_it_previously_published() {
 			aggregations: parse_expression("total: math::sum(v)").expect("aggregation parses"),
 			runtime_context: runtime,
 			routines: routines(),
-			lateness: None,
+			drop: None,
 			immutable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})

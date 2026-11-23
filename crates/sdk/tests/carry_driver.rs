@@ -149,25 +149,25 @@ impl CarryEmit for LateCarry {
 
 const WINDOW: u64 = 60_000;
 
-fn with(size: u64, lateness: u64, immutable: u64) -> ApplyWith {
+fn with(size: u64, drop_span: u64, immutable: u64) -> ApplyWith {
 	ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(size)),
 		}),
-		lateness: Some(WithSpan::Duration(millis(lateness))),
+		drop: Some(WithSpan::Duration(millis(drop_span))),
 		immutable: Some(WithSpan::Duration(millis(immutable))),
-		retention: None,
+		forget: None,
 	}
 }
 
-fn idle_with(retention: Option<u64>) -> ApplyWith {
+fn idle_with(forget: Option<u64>) -> ApplyWith {
 	ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(WINDOW)),
 		}),
-		lateness: Some(WithSpan::Duration(millis(60_000))),
+		drop: Some(WithSpan::Duration(millis(60_000))),
 		immutable: None,
-		retention: retention.map(millis),
+		forget: forget.map(millis),
 	}
 }
 
@@ -213,7 +213,7 @@ fn window_order(millis: u64) -> u64 {
 }
 
 #[test]
-fn a_late_row_inside_lateness_lands_in_a_window_older_than_immutable() {
+fn a_late_row_inside_drop_lands_in_a_window_older_than_immutable() {
 	// The view admits any row from the first admitted instant on, so folding a window on immutable alone loses it.
 	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<LateCarry>>::new()
 		.with(with(WINDOW, 60_000, 59_000))
@@ -229,7 +229,7 @@ fn a_late_row_inside_lateness_lands_in_a_window_older_than_immutable() {
 	assert_eq!(
 		rows.get(&window_order(0)).map(|(sum, _)| *sum),
 		Some(109.0),
-		"the late row is 20s inside lateness, so window 0 must take it and republish, got {rows:?}"
+		"the late row is 20s inside drop, so window 0 must take it and republish, got {rows:?}"
 	);
 	assert_eq!(
 		rows.get(&window_order(WINDOW)).map(|(_, carry_in)| *carry_in),
@@ -260,14 +260,23 @@ fn a_carry_view_with_immutable_stays_bounded_while_the_flow_watermark_tracks_the
 		long <= short + 2,
 		"twice the windows must not mean more state: 20 windows left {short} rows, 40 left {long}"
 	);
-	assert!(long < 20, "40 windows past a one-window lateness must leave few rows, but left {long}");
+	assert!(long < 20, "40 windows past a one-window drop must leave few rows, but left {long}");
 }
 
-fn idle_harness(retention: Option<u64>) -> InProcessOperatorHarness<CarryDriver<LateCarry>> {
+fn idle_harness(forget: Option<u64>) -> InProcessOperatorHarness<CarryDriver<LateCarry>> {
 	InProcessOperatorHarnessBuilder::<CarryDriver<LateCarry>>::new()
-		.with(idle_with(retention))
+		.with(idle_with(forget))
 		.build()
 		.expect("harness")
+}
+
+#[test]
+fn a_time_carry_builds_with_a_forget() {
+	// Carry is the one windowed driver with idle state to free, so it must never refuse a forget.
+	InProcessOperatorHarnessBuilder::<CarryDriver<LateCarry>>::new()
+		.with(idle_with(Some(3_600_000)))
+		.build()
+		.expect("a time carry must accept a forget");
 }
 
 fn carry_in_of(out: &Change, window: u64) -> Option<f64> {
@@ -275,7 +284,7 @@ fn carry_in_of(out: &Change, window: u64) -> Option<f64> {
 }
 
 #[test]
-fn a_group_idle_past_window_and_lateness_carries_its_close_into_its_next_window() {
+fn a_group_idle_past_window_and_drop_carries_its_close_into_its_next_window() {
 	// Dropping an idle group's meta loses its sealed carry, so a gap-filling operator would re-warm from nothing.
 	let mut h = idle_harness(None);
 	h.apply(insert(1, 0, 10.0)).expect("apply");
@@ -291,8 +300,8 @@ fn a_group_idle_past_window_and_lateness_carries_its_close_into_its_next_window(
 }
 
 #[test]
-fn a_retention_drops_an_idle_group_only_once_it_is_idle_past_the_first_admitted_instant_by_more_than_retention() {
-	// Dropping at the first admitted instant would lose the carry retention keeps, and never dropping leaks it.
+fn a_forget_frees_an_idle_group_only_once_it_is_idle_past_the_first_admitted_instant_by_more_than_forget() {
+	// Freeing at the first admitted instant would lose the carry forget keeps, and never freeing leaks it.
 	let mut within = idle_harness(Some(300_000));
 	within.apply(insert(1, 0, 10.0)).expect("apply");
 	within.advance_flow_watermark(DateTime::from_millis(400_000)).expect("advance flow watermark");
@@ -306,20 +315,20 @@ fn a_retention_drops_an_idle_group_only_once_it_is_idle_past_the_first_admitted_
 	assert_eq!(
 		carry_in_of(&kept, 420_000),
 		Some(10.0),
-		"idle by less than the retention past the first admitted instant keeps the carry"
+		"idle by less than the forget past the first admitted instant keeps the carry"
 	);
 	assert_eq!(
 		carry_in_of(&dropped, 660_000),
 		Some(0.0),
-		"idle by more than the retention past the first admitted instant drops it"
+		"idle by more than the forget past the first admitted instant frees it"
 	);
 }
 
 #[test]
-fn a_retention_bounds_the_state_left_by_groups_that_went_idle() {
-	// Without the retention drop every idle group keeps a meta forever, so state grows with groups seen.
-	let feed = |groups: u64, retention: Option<u64>| {
-		let mut h = idle_harness(retention);
+fn a_forget_bounds_the_state_left_by_groups_that_went_idle() {
+	// Without the forget every idle group keeps a meta forever, so state grows with groups seen.
+	let feed = |groups: u64, forget: Option<u64>| {
+		let mut h = idle_harness(forget);
 		for g in 0..groups {
 			h.apply(insert_group(g + 1, &format!("G{g}"), 0, 10.0)).expect("apply");
 		}
@@ -332,11 +341,11 @@ fn a_retention_bounds_the_state_left_by_groups_that_went_idle() {
 
 	assert_eq!(
 		long, short,
-		"with retention idle groups must leave nothing per group: 10 left {short}, 40 left {long}"
+		"with forget idle groups must leave nothing per group: 10 left {short}, 40 left {long}"
 	);
 	assert!(
 		kept_long >= kept_short + 30,
-		"without retention every idle group keeps its meta: 10 left {kept_short}, 40 left {kept_long}"
+		"without forget every idle group keeps its meta: 10 left {kept_short}, 40 left {kept_long}"
 	);
 }
 
@@ -398,19 +407,19 @@ impl CarryEmit for SlotCarry {
 }
 
 #[test]
-fn a_slot_carry_refuses_a_retention_it_cannot_measure() {
-	// A retention is a duration and a slot window has no clock, so accepting it would bound nothing.
+fn a_slot_carry_refuses_a_forget_it_cannot_measure() {
+	// A forget is a duration and a slot window has no clock, so accepting it would bound nothing.
 	let with = ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Count(10),
 		}),
-		lateness: Some(WithSpan::Count(2)),
+		drop: Some(WithSpan::Count(2)),
 		immutable: None,
-		retention: Some(millis(60_000)),
+		forget: Some(millis(60_000)),
 	};
 
 	let Err(err) = InProcessOperatorHarnessBuilder::<CarryDriver<SlotCarry>>::new().with(with).build() else {
-		panic!("a slot carry must refuse a retention");
+		panic!("a slot carry must refuse a forget");
 	};
 
 	assert!(err.to_string().contains("FLOW_080"), "expected FLOW_080, got: {err}");

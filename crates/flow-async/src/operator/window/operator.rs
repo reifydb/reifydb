@@ -57,7 +57,7 @@ pub struct WindowConfig {
 	pub aggregations: Vec<Expression>,
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
-	pub lateness: Option<Duration>,
+	pub drop: Option<Duration>,
 	pub immutable: Option<Duration>,
 	pub ctx: Arc<FlowContext>,
 }
@@ -66,7 +66,7 @@ pub struct WindowOperator {
 	pub core: Aggregation,
 	pub kind: WindowKind,
 
-	pub lateness: Option<Duration>,
+	pub drop: Option<Duration>,
 	pub immutable: Option<Duration>,
 	rolling: Option<Box<BuiltinRolling>>,
 	pub(super) runner: Option<WindowRunner<ByDateTime>>,
@@ -103,7 +103,7 @@ impl WindowOperator {
 				);
 			}
 		}
-		let lateness = config.lateness.unwrap_or_else(Duration::zero);
+		let drop_span = config.drop.unwrap_or_else(Duration::zero);
 		let runner = match &config.kind {
 			WindowKind::Tumbling {
 				size: WindowSize::Duration(size),
@@ -111,7 +111,7 @@ impl WindowOperator {
 				config.operator,
 				*size,
 				None,
-				SealRule::for_window(&config.kind, lateness).map(|rule| rule.seal_span().duration()),
+				SealRule::for_window(&config.kind, drop_span).map(|rule| rule.seal_span().duration()),
 				&WindowEngineConfig::builder().build(),
 			)),
 			WindowKind::Sliding {
@@ -122,7 +122,7 @@ impl WindowOperator {
 				config.operator,
 				*size,
 				Some(*slide),
-				SealRule::for_window(&config.kind, lateness).map(|rule| rule.seal_span().duration()),
+				SealRule::for_window(&config.kind, drop_span).map(|rule| rule.seal_span().duration()),
 				&WindowEngineConfig::builder().build(),
 			)),
 			WindowKind::Session {
@@ -130,7 +130,7 @@ impl WindowOperator {
 			} => Some(WindowRunner::sessions(
 				config.operator,
 				*gap,
-				SealRule::for_window(&config.kind, lateness).map(|rule| rule.seal_span().duration()),
+				SealRule::for_window(&config.kind, drop_span).map(|rule| rule.seal_span().duration()),
 				&WindowEngineConfig::builder().build(),
 			)),
 			_ => None,
@@ -138,7 +138,7 @@ impl WindowOperator {
 		Ok(Self {
 			core,
 			kind: config.kind,
-			lateness: config.lateness,
+			drop: config.drop,
 			immutable: config.immutable,
 			rolling: None,
 			runner,
@@ -153,8 +153,8 @@ impl WindowOperator {
 		WindowEngineConfig::builder().build()
 	}
 
-	pub fn lateness(&self) -> Option<Duration> {
-		self.lateness
+	pub fn drop_span(&self) -> Option<Duration> {
+		self.drop
 	}
 
 	pub fn immutable(&self) -> Option<Duration> {
@@ -304,7 +304,7 @@ impl HostOperator for WindowOperator {
 	}
 
 	fn seal_span(&self) -> Option<Duration> {
-		SealRule::for_window(&self.kind, self.lateness().unwrap_or_else(Duration::zero))
+		SealRule::for_window(&self.kind, self.drop_span().unwrap_or_else(Duration::zero))
 			.map(|rule| rule.seal_span().duration())
 	}
 

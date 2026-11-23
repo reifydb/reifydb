@@ -26,7 +26,7 @@ fn routines() -> Routines {
 	b.configure()
 }
 
-fn session_harness(lateness: Option<Duration>) -> Harness<WindowOperator> {
+fn session_harness(drop_span: Option<Duration>) -> Harness<WindowOperator> {
 	Harness::new(move |runtime| {
 		WindowOperator::new(WindowConfig {
 			parent_schema: Some(Arc::new(Schema::empty())),
@@ -38,7 +38,7 @@ fn session_harness(lateness: Option<Duration>) -> Harness<WindowOperator> {
 			aggregations: parse_expression("total: math::sum(v)").expect("aggregation parses"),
 			runtime_context: runtime,
 			routines: routines(),
-			lateness,
+			drop: drop_span,
 			immutable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})

@@ -62,10 +62,10 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_inner_lookup_with_lateness() {
+	fn test_inner_lookup_with_forget() {
 		// The inner form must parse to its own node carrying JoinType::Inner, never to a join.
 		let bump = Bump::new();
-		let source = "inner lookup { from polaris::pool } as info using (pool, info.pool) and (pair, info.pair) with { retention: { left: 10s } }";
+		let source = "inner lookup { from polaris::pool } as info using (pool, info.pool) and (pair, info.pair) with { forget: { left: 10s } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
@@ -101,19 +101,19 @@ pub mod tests {
 
 		let with = lookup.with.as_ref().expect("the with block must be kept");
 		assert_eq!(with.entries.len(), 1);
-		assert_eq!(with.entries[0].key.word(), Some("retention"));
+		assert_eq!(with.entries[0].key.word(), Some("forget"));
 		let Some(AstOperatorWithValue::Block(sides)) = &with.entries[0].value else {
-			panic!("retention must hold a block, got {:?}", with.entries[0].value);
+			panic!("forget must hold a block, got {:?}", with.entries[0].value);
 		};
 		assert_eq!(sides.len(), 1);
 		assert_eq!(sides[0].key.word(), Some("left"));
 	}
 
 	#[test]
-	fn test_left_lookup_with_lateness() {
+	fn test_left_lookup_with_forget() {
 		// The left form must keep JoinType::Left so a miss keeps the left row with none columns.
 		let bump = Bump::new();
-		let source = "left lookup { from polaris::price::usd } as base using (info_base_mint, base.mint) with { emit: false, retention: { left: 10s } }";
+		let source = "left lookup { from polaris::price::usd } as base using (info_base_mint, base.mint) with { emit: false, forget: { left: 10s } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
@@ -131,7 +131,7 @@ pub mod tests {
 	fn test_lookup_after_from_in_pipeline() {
 		// A lookup must chain after a from like a join does, as the second node of the statement.
 		let bump = Bump::new();
-		let source = "from test::orders inner lookup { from test::users } as u using (user_id, u.id) with { emit: false, retention: { left: 1m } }";
+		let source = "from test::orders inner lookup { from test::users } as u using (user_id, u.id) with { emit: false, forget: { left: 1m } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();

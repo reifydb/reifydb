@@ -39,10 +39,10 @@ pub enum CoreError {
 		count: u64,
 	},
 
-	#[error("immutable {immutable} must be strictly less than lateness {lateness}")]
-	OperatorWithImmutableNotBelowLateness {
+	#[error("immutable {immutable} must be strictly less than drop {drop}")]
+	OperatorWithImmutableNotBelowDrop {
 		immutable: Duration,
-		lateness: Duration,
+		drop: Duration,
 	},
 
 	#[error("this operator needs 'window' in its with block")]
@@ -109,16 +109,16 @@ pub enum CoreError {
 	#[error("a nostate operator takes no 'with'")]
 	OperatorWithNotAccepted,
 
-	#[error("a managed operator needs 'retention' or 'lateness'")]
-	OperatorRetentionRequired,
+	#[error("a managed operator needs 'forget'")]
+	OperatorForgetRequired,
 
-	#[error("this operator takes no 'retention'")]
-	OperatorWithRetentionNotSupported,
+	#[error("this operator takes no 'forget'")]
+	OperatorWithForgetNotSupported,
 
-	#[error("retention {retention} must not be below lateness {lateness}")]
-	OperatorWithRetentionBelowLateness {
-		retention: Duration,
-		lateness: Duration,
+	#[error("forget {forget} must not be below drop {drop}")]
+	OperatorWithForgetBelowDrop {
+		forget: Duration,
+		drop: Duration,
 	},
 
 	#[error("timer kind '{kind}' is reserved for the engine")]

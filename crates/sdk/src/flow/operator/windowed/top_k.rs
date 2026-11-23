@@ -296,7 +296,7 @@ where
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {
-		with.reject_retention()?;
+		with.reject_forget()?;
 		with.require_window("rolling")?;
 		let seal_span = <A::Coord as SealDomain>::seal_span_of(with)?;
 		let settings = <A::Coord as SealDomain>::window_settings_of(with)?;
@@ -325,8 +325,8 @@ where
 		let spans = PaneSpans {
 			size: settings.fixed_size(),
 			lag: settings.lag.unwrap_or_default(),
-			lateness: settings.lateness,
-			retract: settings.immutable.unwrap_or(settings.lateness),
+			drop: settings.drop,
+			retract: settings.immutable.unwrap_or(settings.drop),
 		};
 		Ok(Self {
 			aggregator,

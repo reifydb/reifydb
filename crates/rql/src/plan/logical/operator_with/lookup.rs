@@ -17,15 +17,26 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_lookup_with(with: Option<&AstOperatorWith<'bump>>) -> Result<LookupWith, ValueError> {
 		let mut lookup = LookupWith::default();
 		let mut exact = None;
+		let mut forget_key = None;
 		for entry in entries(with) {
 			match entry.key.word() {
-				Some("retention") => lookup.lateness = Some(compile_lookup_lateness(entry)?),
+				Some("drop") => lookup.drop = Some(compile_lookup_left_span(entry)?),
+				Some("forget") => {
+					lookup.forget = Some(compile_lookup_left_span(entry)?);
+					forget_key = Some(entry.key.fragment());
+				}
 				Some("emit") => lookup.emit = compile_lookup_emit(entry)?,
 				Some("exact") => exact = Some((boolean(entry)?, entry)),
-				_ => return Err(unknown_key(entry, "retention, emit, or exact")),
+				_ => return Err(unknown_key(entry, "drop, forget, emit, or exact")),
 			}
 		}
 		lookup.exact = exact_or_default(exact, lookup.emit)?;
+		if let Err(mut err) = lookup.check_forget() {
+			if let Some(fragment) = forget_key {
+				err.with_fragment(fragment);
+			}
+			return Err(err);
+		}
 		Ok(lookup)
 	}
 }
@@ -38,7 +49,7 @@ fn compile_lookup_emit(entry: &AstOperatorWithEntry<'_>) -> Result<Emit, ValueEr
 	}
 }
 
-fn compile_lookup_lateness(entry: &AstOperatorWithEntry<'_>) -> Result<Duration, ValueError> {
+fn compile_lookup_left_span(entry: &AstOperatorWithEntry<'_>) -> Result<Duration, ValueError> {
 	let Some(AstOperatorWithValue::Block(sides)) = &entry.value else {
 		return Err(unknown_key(entry, "a block such as { left: 10s }"));
 	};
@@ -87,48 +98,75 @@ mod tests {
 	}
 
 	#[test]
-	fn lateness_left_is_kept() {
-		// The left lateness bounds the stored read versions and the lease, so it must survive as written.
-		let with = lookup_with(&lookup(" with { emit: false, retention: { left: 10s } }")).unwrap();
-		let lateness = with.lateness.expect("lateness must be set");
-		assert_eq!(lateness, Duration::from_seconds(10).unwrap());
+	fn forget_left_is_kept() {
+		// The left forget bounds the stored read versions and the lease, so it must survive as written.
+		let with = lookup_with(&lookup(" with { emit: false, forget: { left: 10s } }")).unwrap();
+		let forget = with.forget.expect("forget must be set");
+		assert_eq!(forget, Duration::from_seconds(10).unwrap());
 	}
 
 	#[test]
-	fn left_lookup_takes_the_same_lateness() {
-		// Both forms store read versions, so the left form takes the same left lateness as the inner one.
+	fn left_lookup_takes_the_same_forget() {
+		// Both forms store read versions, so the left form takes the same left forget as the inner one.
 		let with = lookup_with(
-			"left lookup { from orders } as o using (id, o.user_id) with { emit: false, retention: { left: 1h } }",
+			"left lookup { from orders } as o using (id, o.user_id) with { emit: false, forget: { left: 1h } }",
 		)
 		.unwrap();
-		assert_eq!(with.lateness.unwrap(), Duration::from_hours(1).unwrap());
+		assert_eq!(with.forget.unwrap(), Duration::from_hours(1).unwrap());
 	}
 
 	#[test]
-	fn missing_with_leaves_lateness_unset() {
-		// Lateness is optional like the join's, so no with must compile and leave the left side unbounded.
+	fn drop_and_forget_parse_into_their_own_fields() {
+		// A drop stored as a forget would free left rows the author only meant to stop accepting.
+		let with = lookup_with(&lookup(" with { drop: { left: 10s }, forget: { left: 1h } }")).unwrap();
+		assert_eq!(with.drop, Some(Duration::from_seconds(10).unwrap()));
+		assert_eq!(with.forget, Some(Duration::from_hours(1).unwrap()));
+
+		let drop_only = lookup_with(&lookup(" with { drop: { left: 10s } }")).unwrap();
+		assert_eq!(drop_only.drop, Some(Duration::from_seconds(10).unwrap()));
+		assert!(drop_only.forget.is_none(), "a drop alone must never free stored rows");
+		assert_eq!(code(&lookup(" with { drop: { right: 10s } }")), "AST_005");
+	}
+
+	#[test]
+	fn a_forget_below_the_drop_is_refused_at_the_forget_key() {
+		// Stored rows must outlive the arrivals still accepted for them, and the span must name the key to fix.
+		for with in [
+			" with { drop: { left: 1h }, forget: { left: 10s } }",
+			" with { forget: { left: 10s }, drop: { left: 1h } }",
+		] {
+			let err = lookup_with(&lookup(with)).expect_err(&format!("must be refused: {with}"));
+			assert_eq!(err.code, "FLOW_081", "wrong diagnostic for: {with}");
+			assert_eq!(err.fragment.text(), "forget", "wrong span for: {with}");
+		}
+		assert!(lookup_with(&lookup(" with { drop: { left: 1h }, forget: { left: 1h } }")).is_ok());
+	}
+
+	#[test]
+	fn missing_with_leaves_forget_unset() {
+		// Forget is optional like the join's, so no with must compile and leave the left side unbounded.
 		let with = lookup_with(&lookup("")).unwrap();
-		assert!(with.lateness.is_none());
+		assert!(with.forget.is_none());
 	}
 
 	#[test]
-	fn empty_lateness_block_is_ast_005() {
+	fn empty_forget_block_is_ast_005() {
 		// An empty block bounds no side, so it must be refused like the join's.
-		assert_eq!(code(&lookup(" with { retention: { } }")), "AST_005");
+		assert_eq!(code(&lookup(" with { forget: { } }")), "AST_005");
 	}
 
 	#[test]
-	fn lateness_right_is_rejected() {
-		// A lookup keeps no right rows, so a right lateness has nothing to forget and must be refused.
-		assert_eq!(code(&lookup(" with { retention: { left: 10s, right: 10s } }")), "AST_005");
-		assert_eq!(code(&lookup(" with { retention: { right: 10s } }")), "AST_005");
+	fn forget_right_is_rejected() {
+		// A lookup keeps no right rows, so a right forget has nothing to forget and must be refused.
+		assert_eq!(code(&lookup(" with { forget: { left: 10s, right: 10s } }")), "AST_005");
+		assert_eq!(code(&lookup(" with { forget: { right: 10s } }")), "AST_005");
 	}
 
 	#[test]
 	fn join_only_keys_are_rejected() {
-		// snapshot, latest and earliest have no meaning for a lookup; only lateness is accepted.
+		// snapshot, latest and earliest have no meaning for a lookup; only forget is accepted.
 		for key in ["snapshot: true", "latest: true", "earliest: true"] {
-			let source = lookup(&format!(" with {{ retention: {{ left: 10s }}, {key} }}"));
+			let source = lookup(&format!(" with {{ forget: {{ left: 10s }}, {key} }}"));
 			assert_eq!(code(&source), "AST_005", "wrong diagnostic for: {source}");
 		}
 	}
@@ -136,20 +174,20 @@ mod tests {
 	#[test]
 	fn a_rejected_key_points_at_that_key() {
 		// The span must land on the key the author has to remove, not on the lookup.
-		let err = lookup_with(&lookup(" with { retention: { left: 10s }, snapshot: true }")).unwrap_err();
+		let err = lookup_with(&lookup(" with { forget: { left: 10s }, snapshot: true }")).unwrap_err();
 		assert_eq!(err.fragment.text(), "snapshot");
 	}
 
 	#[test]
-	fn lateness_shorthand_is_rejected() {
+	fn forget_shorthand_is_rejected() {
 		// The join's per-side block shape is required; a bare duration does not say which side it bounds.
-		assert_eq!(code(&lookup(" with { retention: 10s }")), "AST_005");
+		assert_eq!(code(&lookup(" with { forget: 10s }")), "AST_005");
 	}
 
 	#[test]
-	fn non_positive_lateness_is_rejected() {
-		// A zero lateness would free every left row at once and leave no read version to undo against.
-		assert!(lookup_with(&lookup(" with { retention: { left: 0s } }")).is_err());
+	fn non_positive_forget_is_rejected() {
+		// A zero forget would free every left row at once and leave no read version to undo against.
+		assert!(lookup_with(&lookup(" with { forget: { left: 0s } }")).is_err());
 	}
 
 	#[test]

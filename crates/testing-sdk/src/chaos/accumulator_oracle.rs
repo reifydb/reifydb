@@ -306,8 +306,8 @@ where
 	let mut model: RollingModel<RollingGroup<A>, RollingCoord<A>, RollingContribution<A>> =
 		RollingModel::new(RollingRules {
 			size,
-			lateness: settings.lateness,
-			retract: settings.immutable.unwrap_or(settings.lateness),
+			drop: settings.drop,
+			retract: settings.immutable.unwrap_or(settings.drop),
 		});
 
 	let mut panes: BTreeMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, Counted<A>>> = BTreeMap::new();
@@ -530,7 +530,7 @@ where
 	let mut metas: HashMap<CarryGroup<A>, CarryGroupState<CarryCoord<A>, A::Carry>> = HashMap::new();
 	let mut last_visible: HashMap<CarryWindowKey<A>, A::Output> = HashMap::new();
 	let below_first_admitted =
-		<A::Coord as SealDomain>::SIZE_DOMAIN == WindowSizeDomain::Time || !settings.lateness.is_zero();
+		<A::Coord as SealDomain>::SIZE_DOMAIN == WindowSizeDomain::Time || !settings.drop.is_zero();
 	let immutable = if below_first_admitted {
 		None
 	} else {

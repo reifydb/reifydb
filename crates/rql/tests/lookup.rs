@@ -18,7 +18,7 @@ fn lookup(block: &str, using: &str, with: &str) -> String {
 
 const BLOCK: &str = "{ FROM lk::price }";
 const USING: &str = "(mint, p.mint)";
-const WITH: &str = " WITH { emit: false, retention: { left: 10s } }";
+const WITH: &str = " WITH { emit: false, forget: { left: 10s } }";
 
 fn assert_code(err: &str, code: &str) {
 	assert!(err.contains(code), "expected {code}, got: {err}");
@@ -90,17 +90,17 @@ fn an_or_connector_is_lookup_002() {
 }
 
 #[test]
-fn a_lateness_without_left_is_ast_005() {
-	// An empty lateness block still leaves the left side unbounded.
+fn a_forget_without_left_is_ast_005() {
+	// An empty forget block still leaves the left side unbounded.
 	let engine = engine();
-	assert_code(&engine.query_err(&lookup(BLOCK, USING, " WITH { retention: { } }")), "AST_005");
+	assert_code(&engine.query_err(&lookup(BLOCK, USING, " WITH { forget: { } }")), "AST_005");
 }
 
 #[test]
-fn a_right_lateness_is_ast_005() {
-	// A lookup keeps no right rows, so a right lateness has nothing to forget.
+fn a_right_forget_is_ast_005() {
+	// A lookup keeps no right rows, so a right forget has nothing to forget.
 	let engine = engine();
-	let with = " WITH { retention: { left: 10s, right: 10s } }";
+	let with = " WITH { forget: { left: 10s, right: 10s } }";
 	assert_code(&engine.query_err(&lookup(BLOCK, USING, with)), "AST_005");
 }
 
@@ -109,7 +109,7 @@ fn a_join_only_key_is_ast_005() {
 	// snapshot, latest and earliest shape a join's right copy, which a lookup does not have.
 	let engine = engine();
 	for key in ["snapshot: true", "latest: true", "earliest: true"] {
-		let with = format!(" WITH {{ retention: {{ left: 10s }}, {key} }}");
+		let with = format!(" WITH {{ forget: {{ left: 10s }}, {key} }}");
 		assert_code(&engine.query_err(&lookup(BLOCK, USING, &with)), "AST_005");
 	}
 }

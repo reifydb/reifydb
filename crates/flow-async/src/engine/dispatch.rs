@@ -141,7 +141,7 @@ impl FlowEngineInner {
 		let result = match node {
 			Node::Operator(operator) => {
 				enforce_apply_capabilities(operator.id(), operator.capabilities(), &change);
-				let mut host = TxnHostContext::with_retention(txn, operator.id(), operator.retention());
+				let mut host = TxnHostContext::with_forget(txn, operator.id(), operator.forget());
 				operator.apply(&mut host, change)?
 			}
 			Node::DurableSink(sink) => {

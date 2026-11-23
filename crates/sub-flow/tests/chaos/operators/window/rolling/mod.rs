@@ -23,7 +23,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct Params {
 	pub size_secs: u64,
-	pub lateness_secs: u64,
+	pub drop_secs: u64,
 	pub groups: i32,
 	pub steps: u32,
 	pub max_batch: u32,
@@ -38,7 +38,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 }
 
 /// The rolling family under a different fold.
-/// Min and max fold only under immutable, never by lateness alone, otherwise they stay invertible.
+/// Min and max fold only under immutable, never by drop alone, otherwise they stay invertible.
 pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 	let workload = WindowWorkload {
 		groups: params.groups,
@@ -66,7 +66,7 @@ fn drive_with<W: Workload<Row = WindowRow>>(
 	immutable_ms: Option<u64>,
 ) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
-	let lateness_ms = params.lateness_secs * 1_000;
+	let drop_ms = params.drop_secs * 1_000;
 
 	let spec = WindowSpec {
 		kind: WindowKind::Rolling {
@@ -77,12 +77,12 @@ fn drive_with<W: Workload<Row = WindowRow>>(
 		},
 		group_by: "g",
 		aggregations: fold.rql(),
-		lateness: Some(Duration::from_seconds(params.lateness_secs as i64).unwrap()),
+		drop: Some(Duration::from_seconds(params.drop_secs as i64).unwrap()),
 	};
 
 	let immutable = immutable_ms.map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
 	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
-	let mut model = Oracle::new(size_ms, lateness_ms).with_fold(fold).with_immutable(immutable_ms);
+	let mut model = Oracle::new(size_ms, drop_ms).with_fold(fold).with_immutable(immutable_ms);
 
 	driver::drive(
 		seed,
@@ -90,7 +90,7 @@ fn drive_with<W: Workload<Row = WindowRow>>(
 			params.steps,
 			params.max_batch,
 			params.coord_span_ms,
-			params.coord_span_ms + size_ms + lateness_ms + 10_000,
+			params.coord_span_ms + size_ms + drop_ms + 10_000,
 		)
 		.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
 		&mut harness,
@@ -106,12 +106,12 @@ const SIZE_SECS: [u64; 6] = [1, 5, 15, 30, 60, 120];
 pub fn random_params(seed: u64) -> (u64, Params) {
 	let (mut rng, sequence_seed) = split(seed);
 	let size_secs = pick(&mut rng, &SIZE_SECS);
-	let lateness_secs = fuzz::lateness_secs(&mut rng, size_secs);
+	let drop_secs = fuzz::drop_secs(&mut rng, size_secs);
 	let coord_span_ms = fuzz::coord_span_ms(&mut rng, size_secs);
 	let mix = fuzz::mix(&mut rng);
 	let params = Params {
 		size_secs,
-		lateness_secs,
+		drop_secs,
 		groups: mix.groups,
 		steps: mix.steps,
 		max_batch: mix.max_batch,

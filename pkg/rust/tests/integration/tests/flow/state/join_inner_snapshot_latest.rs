@@ -42,20 +42,20 @@ fn snapshot_latest_inner_join(db: &TestDb, tail: &str) {
 	db.admin(&format!(r#"CREATE DEFERRED VIEW app::j {{ k: int4, lv: int4, rv: int4 }} AS {{
 			FROM app::lhs
 				| inner join {{ from app::rhs }} as r using (k, r.k)
-					with {{ retention: {{ left: 1s }}, emit: false, latest: true }}
+					with {{ forget: {{ left: 1s }}, emit: false, latest: true }}
 				| map {{ k: k, lv: lv, rv: r_rv }}
 				{tail}
 		}}"#));
 }
 
-fn snapshot_latest_inner_join_with_right_lateness(db: &TestDb, tail: &str) {
+fn snapshot_latest_inner_join_with_right_forget(db: &TestDb, tail: &str) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::lhs { id: int4, k: int4, lv: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE TABLE app::rhs { id: int4, k: int4, rv: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(&format!(r#"CREATE DEFERRED VIEW app::j {{ k: int4, lv: int4, rv: int4 }} AS {{
 			FROM app::lhs
 				| inner join {{ from app::rhs }} as r using (k, r.k)
-					with {{ retention: {{ left: 1h, right: 2s }}, emit: false, latest: true }}
+					with {{ forget: {{ left: 1h, right: 2s }}, emit: false, latest: true }}
 				| map {{ k: k, lv: lv, rv: r_rv }}
 				{tail}
 		}}"#));
@@ -147,7 +147,7 @@ fn the_left_side_is_never_stored() {
 fn a_left_row_joins_only_the_newest_right_row_and_keeps_it_through_the_seal() {
 	// A sealed right row stashes its bytes into the pin, so the pair it published must outlive the row itself.
 	let db = setup();
-	snapshot_latest_inner_join_with_right_lateness(&db, "");
+	snapshot_latest_inner_join_with_right_forget(&db, "");
 	insert_right_a(&db);
 	insert_right_b_later(&db);
 	db.await_all_flows(TIMEOUT);

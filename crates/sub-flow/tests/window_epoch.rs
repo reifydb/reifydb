@@ -36,7 +36,7 @@ fn await_total(db: &TestDb, total: f64, shape: &str) {
 
 #[test]
 fn a_tumbling_window_publishes_a_row_coordinated_at_the_epoch() {
-	let db = setup(r#"window tumbling { total: math::sum(v) } with { duration: 1s, lateness: 0s }"#);
+	let db = setup(r#"window tumbling { total: math::sum(v) } with { duration: 1s, drop: 0s }"#);
 	insert(&db, 1, 10.0, EPOCH);
 	insert(&db, 1, 7.0, "1970-01-01T00:00:05Z");
 	await_total(&db, 10.0, "tumbling");
@@ -44,7 +44,7 @@ fn a_tumbling_window_publishes_a_row_coordinated_at_the_epoch() {
 
 #[test]
 fn a_sliding_window_publishes_a_row_coordinated_at_the_epoch() {
-	let db = setup(r#"window sliding { total: math::sum(v) } with { duration: 2s, slide: 1s, lateness: 0s }"#);
+	let db = setup(r#"window sliding { total: math::sum(v) } with { duration: 2s, slide: 1s, drop: 0s }"#);
 	insert(&db, 1, 10.0, EPOCH);
 	insert(&db, 1, 7.0, "1970-01-01T00:00:10Z");
 	// A row at the epoch falls in two overlapping windows, so both must reach the view.
@@ -60,7 +60,7 @@ fn a_sliding_window_publishes_a_row_coordinated_at_the_epoch() {
 
 #[test]
 fn a_session_window_publishes_a_row_coordinated_at_the_epoch() {
-	let db = setup(r#"window session { total: math::sum(v) } with { gap: 2s, lateness: 0s }"#);
+	let db = setup(r#"window session { total: math::sum(v) } with { gap: 2s, drop: 0s }"#);
 	insert(&db, 1, 10.0, EPOCH);
 	insert(&db, 1, 7.0, "1970-01-01T00:00:10Z");
 	await_total(&db, 10.0, "session");
@@ -68,7 +68,7 @@ fn a_session_window_publishes_a_row_coordinated_at_the_epoch() {
 
 #[test]
 fn a_session_window_one_hour_past_the_epoch_rotates_across_its_gap() {
-	let db = setup(r#"window session { total: math::sum(v) } with { gap: 2s, lateness: 0s }"#);
+	let db = setup(r#"window session { total: math::sum(v) } with { gap: 2s, drop: 0s }"#);
 	insert(&db, 1, 10.0, "1970-01-01T01:00:00Z");
 	insert(&db, 1, 7.0, "1970-01-01T01:00:10Z");
 	await_total(&db, 10.0, "session one hour past the epoch");
@@ -76,7 +76,7 @@ fn a_session_window_one_hour_past_the_epoch_rotates_across_its_gap() {
 
 #[test]
 fn a_rolling_window_keeps_a_row_coordinated_at_the_epoch() {
-	let db = setup(r#"window rolling { total: math::sum(v) } with { duration: 1h, pane: 1ms, lateness: 5m }"#);
+	let db = setup(r#"window rolling { total: math::sum(v) } with { duration: 1h, pane: 1ms, drop: 5m }"#);
 	insert(&db, 1, 10.0, EPOCH);
 	await_total(&db, 10.0, "rolling");
 }

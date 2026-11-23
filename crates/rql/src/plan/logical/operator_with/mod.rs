@@ -163,19 +163,19 @@ pub(crate) fn declared_count(token: &Token<'_>) -> Result<Declared<u64>, ValueEr
 	}
 }
 
-pub(crate) fn reject_immutable_not_smaller_than_lateness<T: PartialOrd>(
+pub(crate) fn reject_immutable_not_smaller_than_drop<T: PartialOrd>(
 	immutable: Option<&Declared<T>>,
-	lateness: Option<&Declared<T>>,
+	drop_span: Option<&Declared<T>>,
 ) -> Result<(), ValueError> {
-	let (Some(immutable), Some(lateness)) = (immutable, lateness) else {
+	let (Some(immutable), Some(drop_span)) = (immutable, drop_span) else {
 		return Ok(());
 	};
-	if immutable.value < lateness.value {
+	if immutable.value < drop_span.value {
 		return Ok(());
 	}
-	Err(RqlError::WindowImmutableNotSmallerThanLateness {
+	Err(RqlError::WindowImmutableNotSmallerThanDrop {
 		immutable_value: immutable.fragment.text().to_string(),
-		lateness_value: lateness.fragment.text().to_string(),
+		drop_value: drop_span.fragment.text().to_string(),
 		fragment: immutable.fragment.clone(),
 	}
 	.into())
@@ -192,7 +192,7 @@ mod tests {
 	fn an_aggregate_with_a_with_clause_after_its_by_clause_is_rejected() {
 		// AGGREGATE takes no WITH clause: the BY clause is the only bound on an aggregate's groups.
 		let bump = Bump::new();
-		let source = "AGGREGATE { count(value) } BY { slot } WITH { lateness: 1m }";
+		let source = "AGGREGATE { count(value) } BY { slot } WITH { drop: 1m }";
 		let mut result = parse_str(&bump, source).unwrap();
 
 		let result = result.pop().unwrap();
@@ -206,9 +206,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_distinct_with_lateness_duration_only_is_rejected() {
+	fn test_distinct_with_drop_duration_only_is_rejected() {
 		let bump = Bump::new();
-		let source = "DISTINCT { x } WITH { lateness: 1h }";
+		let source = "DISTINCT { x } WITH { drop: 1h }";
 		let mut result = parse_str(&bump, source).unwrap();
 
 		let result = result.pop().unwrap();
@@ -222,9 +222,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_distinct_with_lateness_full_config_is_rejected() {
+	fn test_distinct_with_drop_full_config_is_rejected() {
 		let bump = Bump::new();
-		let source = "DISTINCT { x } WITH { lateness: 5m, on: updated }";
+		let source = "DISTINCT { x } WITH { drop: 5m, on: updated }";
 		let mut result = parse_str(&bump, source).unwrap();
 
 		let result = result.pop().unwrap();

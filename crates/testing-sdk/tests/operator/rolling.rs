@@ -35,15 +35,15 @@ fn window_with() -> ApplyWith {
 			pane: Some(millis(common::ROLLING_BUCKET)),
 			on_empty: OnEmpty::Remove,
 		}),
-		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		drop: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
 fn forgetting_with() -> ApplyWith {
 	ApplyWith {
-		lateness: None,
+		drop: None,
 		..window_with()
 	}
 }

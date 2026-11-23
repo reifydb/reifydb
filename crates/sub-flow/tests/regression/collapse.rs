@@ -380,7 +380,7 @@ fn a_live_created_emit_off_reader_keeps_its_producer_one_layer_per_source() {
 	// A producer that stays collapsed after an exact reader appears pairs the reader's rows with a later price.
 	let mid = "CREATE DEFERRED VIEW app::mid { k: utf8, v: int8 } WITH { partition: { by: { k } } } AS { FROM app::price }".to_string();
 	let cost = "CREATE DEFERRED VIEW app::cost { id: int4, usd: Option(int8) } AS { FROM app::level \
-	            LEFT LOOKUP { FROM app::mid } AS p USING (k, p.k) WITH { emit: false, retention: { left: 10s } } \
+	            LEFT LOOKUP { FROM app::mid } AS p USING (k, p.k) WITH { emit: false, forget: { left: 10s } } \
 	            MAP { id, usd: p_v } }"
 		.to_string();
 	let case = Case {

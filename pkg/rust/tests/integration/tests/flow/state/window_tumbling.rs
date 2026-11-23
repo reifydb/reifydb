@@ -68,7 +68,7 @@ fn tumbling_window(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
-					with { duration: 1s, lateness: 1s }
+					with { duration: 1s, drop: 1s }
 					by { g }
 		}"#);
 }

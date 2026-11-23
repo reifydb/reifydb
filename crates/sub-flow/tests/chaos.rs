@@ -61,7 +61,7 @@ use crate::{
 	},
 };
 
-// Not free to pick: an operator's own lateness span overrides whatever the harness declares.
+// Not free to pick: an operator's own drop span overrides whatever the harness declares.
 const WINDOW_SECS: i64 = 60;
 
 fn tumbling_sum() -> WindowSpec {
@@ -71,7 +71,7 @@ fn tumbling_sum() -> WindowSpec {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		lateness: Some(Duration::default()),
+		drop: Some(Duration::default()),
 	}
 }
 
@@ -100,7 +100,7 @@ chaos_test!(window_tumbling_sum_chaos, |seed| {
 		seed,
 		operators::window::tumbling::Params {
 			size_secs: 60,
-			lateness_secs: 0,
+			drop_secs: 0,
 			groups: 4,
 			steps: 40,
 			max_batch: 5,
@@ -117,7 +117,7 @@ chaos_test!(window_tumbling_seal_chaos, |seed| {
 		seed,
 		operators::window::tumbling::Params {
 			size_secs: 30,
-			lateness_secs: 45,
+			drop_secs: 45,
 			groups: 3,
 			steps: 60,
 			max_batch: 4,
@@ -135,7 +135,7 @@ chaos_test!(window_sliding_sum_chaos, |seed| {
 		operators::window::sliding::Params {
 			size_secs: 60,
 			slide_secs: 15,
-			lateness_secs: 0,
+			drop_secs: 0,
 			groups: 4,
 			steps: 40,
 			max_batch: 5,
@@ -154,7 +154,7 @@ chaos_test!(window_sliding_moving_time_chaos, |seed| {
 		operators::window::sliding::Params {
 			size_secs: 60,
 			slide_secs: 15,
-			lateness_secs: 0,
+			drop_secs: 0,
 			groups: 4,
 			steps: 40,
 			max_batch: 5,
@@ -173,7 +173,7 @@ chaos_test!(window_rolling_sum_chaos, |seed| {
 		seed,
 		operators::window::rolling::Params {
 			size_secs: 60,
-			lateness_secs: 0,
+			drop_secs: 0,
 			groups: 4,
 			steps: 40,
 			max_batch: 5,
@@ -190,7 +190,7 @@ chaos_test!(window_rolling_seal_chaos, |seed| {
 		seed,
 		operators::window::rolling::Params {
 			size_secs: 30,
-			lateness_secs: 45,
+			drop_secs: 45,
 			groups: 3,
 			steps: 60,
 			max_batch: 4,
@@ -208,7 +208,7 @@ chaos_test!(window_sliding_seal_chaos, |seed| {
 		operators::window::sliding::Params {
 			size_secs: 30,
 			slide_secs: 10,
-			lateness_secs: 45,
+			drop_secs: 45,
 			groups: 3,
 			steps: 60,
 			max_batch: 4,
@@ -227,7 +227,7 @@ chaos_test!(window_tumbling_flow_shaped_chaos, |seed| {
 		seed,
 		operators::window::tumbling::Params {
 			size_secs: 30,
-			lateness_secs: 15,
+			drop_secs: 15,
 			groups: 3,
 			steps: 60,
 			max_batch: 5,
@@ -239,10 +239,10 @@ chaos_test!(window_tumbling_flow_shaped_chaos, |seed| {
 	);
 });
 
-fn window_fold_params(lateness_secs: u64) -> operators::window::tumbling::Params {
+fn window_fold_params(drop_secs: u64) -> operators::window::tumbling::Params {
 	operators::window::tumbling::Params {
 		size_secs: 30,
-		lateness_secs,
+		drop_secs,
 		groups: 3,
 		steps: 60,
 		max_batch: 4,
@@ -253,22 +253,22 @@ fn window_fold_params(lateness_secs: u64) -> operators::window::tumbling::Params
 	}
 }
 
-chaos_test!(window_tumbling_min_zero_lateness_chaos, |seed| {
-	// Min folds only under immutable, never by lateness, so retracting the current minimum must still apply.
+chaos_test!(window_tumbling_min_zero_drop_chaos, |seed| {
+	// Min folds only under immutable, never by drop, so retracting the current minimum must still apply.
 	operators::window::tumbling::drive_folded(seed, window_fold_params(0), Fold::Min);
 });
 
-chaos_test!(window_tumbling_max_zero_lateness_chaos, |seed| {
+chaos_test!(window_tumbling_max_zero_drop_chaos, |seed| {
 	operators::window::tumbling::drive_folded(seed, window_fold_params(0), Fold::Max);
 });
 
-chaos_test!(window_tumbling_min_lateness_chaos, |seed| {
-	// Lateness seals the window but never folds the min, only immutable does, so an admitted late retraction must
+chaos_test!(window_tumbling_min_drop_chaos, |seed| {
+	// Drop seals the window but never folds the min, only immutable does, so an admitted late retraction must
 	// apply.
 	operators::window::tumbling::drive_folded(seed, window_fold_params(45), Fold::Min);
 });
 
-chaos_test!(window_tumbling_max_lateness_chaos, |seed| {
+chaos_test!(window_tumbling_max_drop_chaos, |seed| {
 	operators::window::tumbling::drive_folded(seed, window_fold_params(45), Fold::Max);
 });
 
@@ -282,10 +282,10 @@ fn the_window_folds_are_stated_independently_of_the_slots_they_check() {
 	assert_eq!(Fold::Max.apply(&[3, 1, 2]), Value::Int8(3));
 }
 
-fn rolling_fold_params(lateness_secs: u64) -> operators::window::rolling::Params {
+fn rolling_fold_params(drop_secs: u64) -> operators::window::rolling::Params {
 	operators::window::rolling::Params {
 		size_secs: 30,
-		lateness_secs,
+		drop_secs,
 		groups: 3,
 		steps: 60,
 		max_batch: 4,
@@ -296,17 +296,17 @@ fn rolling_fold_params(lateness_secs: u64) -> operators::window::rolling::Params
 	}
 }
 
-chaos_test!(window_rolling_min_lateness_chaos, |seed| {
-	// Lateness never makes min an immutable min, only immutable does, so a late retraction in the frame must apply.
+chaos_test!(window_rolling_min_drop_chaos, |seed| {
+	// Drop never makes min an immutable min, only immutable does, so a late retraction in the frame must apply.
 	operators::window::rolling::drive_folded(seed, rolling_fold_params(45), Fold::Min);
 });
 
-chaos_test!(window_rolling_max_lateness_chaos, |seed| {
+chaos_test!(window_rolling_max_drop_chaos, |seed| {
 	operators::window::rolling::drive_folded(seed, rolling_fold_params(45), Fold::Max);
 });
 
-chaos_test!(window_rolling_min_zero_lateness_chaos, |seed| {
-	// Without immutable min stays invertible, so zero lateness must change only which late rows are refused.
+chaos_test!(window_rolling_min_zero_drop_chaos, |seed| {
+	// Without immutable min stays invertible, so zero drop must change only which late rows are refused.
 	operators::window::rolling::drive_folded(seed, rolling_fold_params(0), Fold::Min);
 });
 
@@ -329,17 +329,17 @@ fn the_random_sweeps_reach_the_configurations_that_found_defects() {
 	// shrinking one fail here rather than go quiet.
 	const SEEDS: u64 = 512;
 
-	let mut zero_lateness = 0;
-	let mut lateness_over_size = 0;
+	let mut zero_drop = 0;
+	let mut drop_over_size = 0;
 	let mut tumbling_sizes = std::collections::BTreeSet::new();
 	for seed in 0..SEEDS {
 		let (_, params) = operators::window::tumbling::random_params(seed);
 		tumbling_sizes.insert(params.size_secs);
-		if params.lateness_secs == 0 {
-			zero_lateness += 1;
+		if params.drop_secs == 0 {
+			zero_drop += 1;
 		}
-		if params.lateness_secs > params.size_secs {
-			lateness_over_size += 1;
+		if params.drop_secs > params.size_secs {
+			drop_over_size += 1;
 		}
 		assert!(
 			params.seal_pct + params.remove_pct + params.update_pct <= 85,
@@ -347,13 +347,10 @@ fn the_random_sweeps_reach_the_configurations_that_found_defects() {
 		);
 		assert!(params.steps > 0 && params.max_batch > 0 && params.groups > 0, "degenerate draw: {params:?}");
 	}
+	assert!(zero_drop > 0, "no zero-drop draw in {SEEDS} seeds; the closes-immediately boundary is uncovered");
 	assert!(
-		zero_lateness > 0,
-		"no zero-lateness draw in {SEEDS} seeds; the closes-immediately boundary is uncovered"
-	);
-	assert!(
-		lateness_over_size > 0,
-		"no lateness-wider-than-size draw in {SEEDS} seeds; that band is where the rolling operator was \
+		drop_over_size > 0,
+		"no drop-wider-than-size draw in {SEEDS} seeds; that band is where the rolling operator was \
 		 withdrawing live groups"
 	);
 	assert!(tumbling_sizes.len() >= 5, "sizes collapsed to {tumbling_sizes:?}; the sweep stopped spanning scales");
@@ -1866,7 +1863,7 @@ chaos_test!(window_session_zero_gap_chaos, |seed| {
 });
 
 chaos_test!(window_session_min_chaos, |seed| {
-	// Without immutable min stays invertible under lateness, so a retraction inside a session must still apply.
+	// Without immutable min stays invertible under drop, so a retraction inside a session must still apply.
 	operators::window::session::drive(seed, operators::window::session::params(2_000, 6_000, Fold::Min));
 });
 
@@ -1970,7 +1967,7 @@ fn a_percentile_window_publishes_its_total_where_the_projection_reads_it() {
 			},
 			group_by: "g",
 			aggregations: fold.rql(),
-			lateness: Some(Duration::default()),
+			drop: Some(Duration::default()),
 		};
 		let mut harness = Harness::new(|runtime| build(&spec, runtime));
 		let at = DateTime::from_epoch_millis(60_000).unwrap();
@@ -2044,7 +2041,7 @@ fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_immutable
 			kind: window,
 			group_by: "g",
 			aggregations: percentile::MEDIAN_NEXT_TO_MIN,
-			lateness: Some(Duration::default()),
+			drop: Some(Duration::default()),
 		};
 		let immutable = Some(Duration::from_seconds(5).unwrap());
 		let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
@@ -2085,7 +2082,7 @@ fn a_rolling_retraction_inside_immutable_rebuilds_the_percentile_and_the_min_and
 		},
 		group_by: "g",
 		aggregations: percentile::MEDIAN_NEXT_TO_MIN,
-		lateness: Some(Duration::default()),
+		drop: Some(Duration::default()),
 	};
 	let immutable = Some(Duration::from_seconds(5).unwrap());
 	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
@@ -2114,7 +2111,7 @@ fn rolling_immutable_spec(aggregations: &'static str) -> WindowSpec {
 		},
 		group_by: "g",
 		aggregations,
-		lateness: Some(Duration::default()),
+		drop: Some(Duration::default()),
 	}
 }
 
@@ -2270,11 +2267,11 @@ fn a_rolling_update_whose_pre_is_past_the_retract_line_then_removed_leaves_the_s
 	assert!(out.diffs.is_empty(), "a remove of a row held in an immutable pane must not republish");
 }
 
-chaos_test!(window_tumbling_percentile_zero_lateness_chaos, |seed| {
+chaos_test!(window_tumbling_percentile_zero_drop_chaos, |seed| {
 	tumbling::drive_folded(seed, window_fold_params(0), Fold::Percentile);
 });
 
-chaos_test!(window_tumbling_percentile_lateness_chaos, |seed| {
+chaos_test!(window_tumbling_percentile_drop_chaos, |seed| {
 	tumbling::drive_folded(seed, window_fold_params(45), Fold::Percentile);
 });
 
@@ -2290,11 +2287,11 @@ chaos_test!(window_tumbling_percentile_immutable_chaos, |seed| {
 	);
 });
 
-fn sliding_fold_params(lateness_secs: u64) -> sliding::Params {
+fn sliding_fold_params(drop_secs: u64) -> sliding::Params {
 	sliding::Params {
 		size_secs: 30,
 		slide_secs: 10,
-		lateness_secs,
+		drop_secs,
 		groups: 3,
 		steps: 60,
 		max_batch: 4,
@@ -2305,11 +2302,11 @@ fn sliding_fold_params(lateness_secs: u64) -> sliding::Params {
 	}
 }
 
-chaos_test!(window_sliding_percentile_zero_lateness_chaos, |seed| {
+chaos_test!(window_sliding_percentile_zero_drop_chaos, |seed| {
 	sliding::drive_folded(seed, sliding_fold_params(0), Fold::Percentile);
 });
 
-chaos_test!(window_sliding_percentile_lateness_chaos, |seed| {
+chaos_test!(window_sliding_percentile_drop_chaos, |seed| {
 	sliding::drive_folded(seed, sliding_fold_params(45), Fold::Percentile);
 });
 
@@ -2327,10 +2324,10 @@ chaos_test!(window_sliding_percentile_immutable_chaos, |seed| {
 
 const ROLLING_SLOT_GRAIN_MS: u64 = 10_000;
 
-fn rolling_slotted_params(lateness_secs: u64) -> rolling::Params {
+fn rolling_slotted_params(drop_secs: u64) -> rolling::Params {
 	rolling::Params {
 		size_secs: 30,
-		lateness_secs,
+		drop_secs,
 		groups: 2,
 		steps: 80,
 		max_batch: 4,
@@ -2341,7 +2338,7 @@ fn rolling_slotted_params(lateness_secs: u64) -> rolling::Params {
 	}
 }
 
-chaos_test!(window_rolling_percentile_zero_lateness_chaos, |seed| {
+chaos_test!(window_rolling_percentile_zero_drop_chaos, |seed| {
 	// Rows share slot timestamps, so a percentile folded per slot rather than over the frame reads the wrong rank.
 	rolling::drive_slotted(seed, rolling_slotted_params(0), Fold::Percentile, ROLLING_SLOT_GRAIN_MS, None);
 });

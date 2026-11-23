@@ -12,7 +12,7 @@ pub struct WindowSettings<C: Coord> {
 	pub lag: Option<C::Span>,
 	pub slide: Option<C::Span>,
 	pub gap: Option<C::Span>,
-	pub lateness: C::Span,
+	pub drop: C::Span,
 	pub immutable: Option<C::Span>,
 }
 
@@ -44,7 +44,7 @@ mod tests {
 			lag: None,
 			slide: None,
 			gap: None,
-			lateness: Duration::from_seconds(30).unwrap(),
+			drop: Duration::from_seconds(30).unwrap(),
 			immutable: None,
 		}
 	}

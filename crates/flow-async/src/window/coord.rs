@@ -139,10 +139,10 @@ impl SealDomain for ByU8 {
 
 	fn seal_span_of(with: &ApplyWith) -> Result<Option<RowSpan>, ValueError> {
 		let count = with.window_slots()?;
-		let Some(lateness) = with.lateness_count()? else {
+		let Some(drop_span) = with.drop_count()? else {
 			return Ok(None);
 		};
-		Ok(Some(RowSpan::of(count.saturating_add(lateness))))
+		Ok(Some(RowSpan::of(count.saturating_add(drop_span))))
 	}
 
 	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>, ValueError> {
@@ -156,7 +156,7 @@ impl SealDomain for ByU8 {
 			lag: None,
 			slide: with.window_slide_slots()?.map(RowSpan::of),
 			gap: None,
-			lateness: RowSpan::of(with.lateness_count()?.unwrap_or(0)),
+			drop: RowSpan::of(with.drop_count()?.unwrap_or(0)),
 			immutable: with.immutable_count()?.map(RowSpan::of),
 		})
 	}
@@ -311,45 +311,45 @@ mod tests {
 	}
 
 	#[test]
-	fn a_row_window_seals_after_its_count_plus_lateness() {
+	fn a_row_window_seals_after_its_count_plus_drop() {
 		// the seal span must hold both the slots the window keeps and the rows it still admits late
 		let with = ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Count(64),
 			}),
-			lateness: Some(WithSpan::Count(6)),
+			drop: Some(WithSpan::Count(6)),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert_eq!(ByU8::seal_span_of(&with).unwrap(), Some(RowSpan::of(70)));
 	}
 
 	#[test]
-	fn a_row_window_without_lateness_never_seals() {
-		// with no lateness bound, a row window has nothing to seal against and must never hold state
+	fn a_row_window_without_drop_never_seals() {
+		// with no drop bound, a row window has nothing to seal against and must never hold state
 		let with = ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Count(64),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert_eq!(ByU8::seal_span_of(&with).unwrap(), None);
 	}
 
 	#[test]
-	fn a_row_window_rejects_a_duration_lateness() {
-		// a row window counts rows, so a duration lateness has no count to add to its span
+	fn a_row_window_rejects_a_duration_drop() {
+		// a row window counts rows, so a duration drop has no count to add to its span
 		let with = ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Count(64),
 			}),
-			lateness: Some(WithSpan::Duration(secs(30))),
+			drop: Some(WithSpan::Duration(secs(30))),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert!(ByU8::seal_span_of(&with).is_err());
@@ -371,34 +371,34 @@ mod tests {
 	}
 
 	#[test]
-	fn the_ordinal_settings_read_counts_and_default_lateness_to_zero_rows() {
-		// a slot-domain window is sized in rows; an omitted lateness must be zero rows and an omitted
+	fn the_ordinal_settings_read_counts_and_default_drop_to_zero_rows() {
+		// a slot-domain window is sized in rows; an omitted drop must be zero rows and an omitted
 		// immutable none, or a plain window would silently start refusing retractions
 		let declared = ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Count(10),
 			}),
-			lateness: Some(WithSpan::Count(4)),
+			drop: Some(WithSpan::Count(4)),
 			immutable: Some(WithSpan::Count(2)),
-			retention: None,
+			forget: None,
 		};
 		let omitted = ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Count(10),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		let declared = ByU8::window_settings_of(&declared).unwrap();
 		let omitted = ByU8::window_settings_of(&omitted).unwrap();
 
 		assert_eq!(declared.size, Some(RowSpan::of(10)));
-		assert_eq!(declared.lateness, RowSpan::of(4));
+		assert_eq!(declared.drop, RowSpan::of(4));
 		assert_eq!(declared.immutable, Some(RowSpan::of(2)));
 		assert_eq!(declared.pane, None);
-		assert_eq!(omitted.lateness, RowSpan::ZERO);
+		assert_eq!(omitted.drop, RowSpan::ZERO);
 		assert_eq!(omitted.immutable, None);
 	}
 
@@ -409,9 +409,9 @@ mod tests {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(secs(60)),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert!(ByU8::window_settings_of(&ApplyWith::default()).is_err());
@@ -426,9 +426,9 @@ mod tests {
 				size: WindowSize::Count(10),
 				slide: WindowSize::Count(4),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		let settings = ByU8::window_settings_of(&sliding).unwrap();
@@ -559,9 +559,9 @@ mod tests {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(secs(60)),
 			}),
-			lateness: Some(WithSpan::Count(6)),
+			drop: Some(WithSpan::Count(6)),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert!(<ByU8 as SealDomain>::seal_span_of(&with).is_err());

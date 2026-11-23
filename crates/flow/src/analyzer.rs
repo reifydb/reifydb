@@ -197,15 +197,17 @@ impl FlowGraphAnalyzer {
 					..
 				} => {
 					(with.emit != Emit::Off || !with.exact)
-						&& with.lateness.is_none() && !(*join_type == JoinType::Left
-						&& with.emit != Emit::Off && with
-						.pick
-						.is_none())
+						&& with.drop.is_none() && with.forget.is_none()
+						&& !(*join_type == JoinType::Left
+							&& with.emit != Emit::Off && with.pick.is_none())
 				}
 				OperatorDef::Lookup {
 					with,
 					..
-				} => (with.emit != Emit::Off || !with.exact) && with.lateness.is_none(),
+				} => {
+					(with.emit != Emit::Off || !with.exact)
+						&& with.drop.is_none() && with.forget.is_none()
+				}
 				_ => false,
 			})
 		});
@@ -492,7 +494,7 @@ pub mod tests {
 			id::{RingBufferId, TableId, ViewId},
 		},
 		operator_with::{AggregateWith, ApplyWith, Emit, JoinWith, LookupWith, WindowWith},
-		row::{JoinLateness, JoinPick},
+		row::{JoinPick, JoinSpans},
 		sort::{SortDirection, SortKey},
 	};
 	use reifydb_value::{fragment::Fragment, value::duration::Duration};
@@ -1275,7 +1277,7 @@ pub mod tests {
 	#[test]
 	fn an_operator_that_needs_every_version_keeps_its_flow_from_collapsing() {
 		// One of these collapsed would drop in-between rows or pair a left row with a later right version.
-		let lateness = second;
+		let span = second;
 		let refused = vec![
 			("append", OperatorDef::Append {}),
 			(
@@ -1295,7 +1297,7 @@ pub mod tests {
 						kind: WindowKind::Tumbling {
 							size: WindowSize::Count(2),
 						},
-						lateness: None,
+						drop: None,
 						immutable: None,
 					},
 				},
@@ -1336,13 +1338,30 @@ pub mod tests {
 				}),
 			),
 			(
-				"join with lateness",
+				"join with forget",
 				join_with(JoinWith {
-					lateness: Some(JoinLateness {
+					forget: Some(JoinSpans {
 						left: None,
-						right: Some(lateness()),
+						right: Some(span()),
 					}),
 					..JoinWith::default()
+				}),
+			),
+			(
+				"join with drop",
+				join_with(JoinWith {
+					drop: Some(JoinSpans {
+						left: Some(span()),
+						right: None,
+					}),
+					..JoinWith::default()
+				}),
+			),
+			(
+				"lookup with drop",
+				lookup_with(LookupWith {
+					drop: Some(span()),
+					..LookupWith::default()
 				}),
 			),
 			(
@@ -1354,9 +1373,9 @@ pub mod tests {
 				}),
 			),
 			(
-				"lookup with lateness",
+				"lookup with forget",
 				lookup_with(LookupWith {
-					lateness: Some(lateness()),
+					forget: Some(span()),
 					..LookupWith::default()
 				}),
 			),

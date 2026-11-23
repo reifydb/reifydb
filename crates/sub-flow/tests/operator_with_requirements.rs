@@ -47,7 +47,7 @@ const G_COLUMNS: &[OperatorColumn] = &[OperatorColumn {
 }];
 
 const NOSTATE_VIEW: &str =
-	"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY nostate_probe{} WITH { lateness: 2s } }";
+	"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY nostate_probe{} WITH { drop: 2s } }";
 
 struct NostateProbe;
 
@@ -190,14 +190,14 @@ fn a_nostate_apply_with_a_with_block_fails_the_create() {
 }
 
 #[test]
-fn a_managed_apply_without_lateness_fails_the_create() {
-	// Without lateness a managed operator's state has no bound, and flow start is too late to say so.
+fn a_managed_apply_without_forget_fails_the_create() {
+	// Without forget a managed operator's state has no bound, and flow start is too late to say so.
 	let db = memory();
 	event_time_source(&db);
 
 	let Err(err) = db.try_admin("CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY managed_probe{} }")
 	else {
-		panic!("a managed apply without lateness must be refused at create");
+		panic!("a managed apply without forget must be refused at create");
 	};
 
 	let diagnostic = err.diagnostic();
@@ -205,26 +205,63 @@ fn a_managed_apply_without_lateness_fails_the_create() {
 }
 
 #[test]
-fn a_managed_apply_with_zero_lateness_creates() {
-	// Zero lateness is a real bound now: no output hold, and the state is freed at the next gate step.
+fn a_managed_apply_with_zero_forget_creates() {
+	// Zero forget is a real bound now: no output hold, and the state is freed at the next gate step.
 	let db = memory();
 	event_time_source(&db);
 
 	let created = db.try_admin(
-		"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY managed_probe{} WITH { lateness: 0s } }",
+		"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY managed_probe{} WITH { forget: 0s } }",
 	);
 
-	assert!(created.is_ok(), "a managed apply with zero lateness must create: {created:?}");
+	assert!(created.is_ok(), "a managed apply with zero forget must create: {created:?}");
+}
+
+#[test]
+fn a_managed_apply_with_only_drop_fails_the_create() {
+	// A drop frees nothing, so it must never stand in for the forget a managed operator needs.
+	let db = memory();
+	event_time_source(&db);
+
+	let Err(err) = db.try_admin(
+		"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY managed_probe{} WITH { drop: 2s } }",
+	) else {
+		panic!("a managed apply with only a drop must be refused at create");
+	};
+
+	let diagnostic = err.diagnostic();
+	assert_eq!(diagnostic.code, "FLOW_072", "{diagnostic:?}");
+	assert_eq!(diagnostic.message, "a managed operator needs 'forget'", "{diagnostic:?}");
+}
+
+#[test]
+fn an_unmanaged_apply_refuses_forget_and_accepts_drop() {
+	// An unmanaged operator owns its state, so a forget must be refused while a drop still cuts its late input.
+	let db = memory();
+	event_time_source(&db);
+
+	let Err(err) = db.try_admin(
+		"CREATE DEFERRED VIEW app::f { g: int4 } AS { FROM app::t APPLY unmanaged_probe{} WITH { forget: 1h } }",
+	) else {
+		panic!("an unmanaged apply with a forget must be refused at create");
+	};
+	let diagnostic = err.diagnostic();
+	assert_eq!(diagnostic.code, "FLOW_080", "{diagnostic:?}");
+
+	let created = db.try_admin(
+		"CREATE DEFERRED VIEW app::d { g: int4 } AS { FROM app::t APPLY unmanaged_probe{} WITH { drop: 2s } }",
+	);
+	assert!(created.is_ok(), "an unmanaged apply with a drop must create: {created:?}");
 }
 
 #[test]
 fn an_unmanaged_apply_with_a_with_block_creates_without_a_with_check() {
-	// A check that also caught unmanaged operators would refuse every view that legitimately declares lateness.
+	// A check that also caught unmanaged operators would refuse every view that legitimately declares drop.
 	let db = memory();
 	event_time_source(&db);
 
 	let created = db.try_admin(
-		"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY unmanaged_probe{} WITH { lateness: 2s } }",
+		"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY unmanaged_probe{} WITH { drop: 2s } }",
 	);
 
 	assert!(created.is_ok(), "an unmanaged apply takes its with block untouched: {created:?}");
@@ -496,7 +533,7 @@ fn a_no_rolling_operator_on_a_rolling_window_fails_the_create() {
 	event_time_source(&db);
 
 	assert_eq!(
-		refused_code(&db, "time_window_probe{} WITH { window: rolling, duration: 1h, pane: 1s, lateness: 2s }"),
+		refused_code(&db, "time_window_probe{} WITH { window: rolling, duration: 1h, pane: 1s, drop: 2s }"),
 		"FLOW_066"
 	);
 }
@@ -516,10 +553,7 @@ fn a_time_operator_given_a_slot_size_fails_the_create() {
 	let db = windowed_memory();
 	event_time_source(&db);
 
-	assert_eq!(
-		refused_code(&db, "time_window_probe{} WITH { window: tumbling, slots: 4, lateness: 2 }"),
-		"FLOW_068"
-	);
+	assert_eq!(refused_code(&db, "time_window_probe{} WITH { window: tumbling, slots: 4, drop: 2 }"), "FLOW_068");
 }
 
 #[test]
@@ -529,21 +563,18 @@ fn a_slot_operator_given_a_duration_size_fails_the_create() {
 	event_time_source(&db);
 
 	assert_eq!(
-		refused_code(&db, "slot_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s }"),
+		refused_code(&db, "slot_window_probe{} WITH { window: tumbling, duration: 1m, drop: 2s }"),
 		"FLOW_069"
 	);
 }
 
 #[test]
-fn a_slot_operator_given_a_duration_lateness_fails_the_create() {
-	// A slot operator can only count late slots, so a duration lateness must be refused, not truncated.
+fn a_slot_operator_given_a_duration_drop_fails_the_create() {
+	// A slot operator can only count late slots, so a duration drop must be refused, not truncated.
 	let db = windowed_memory();
 	event_time_source(&db);
 
-	assert_eq!(
-		refused_code(&db, "slot_window_probe{} WITH { window: tumbling, slots: 4, lateness: 30s }"),
-		"AST_005"
-	);
+	assert_eq!(refused_code(&db, "slot_window_probe{} WITH { window: tumbling, slots: 4, drop: 30s }"), "AST_005");
 }
 
 #[test]
@@ -552,10 +583,7 @@ fn a_rolling_window_without_a_pane_fails_the_create_on_a_top_k_operator() {
 	let db = windowed_memory();
 	event_time_source(&db);
 
-	assert_eq!(
-		refused_code(&db, "top_k_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"),
-		"WINDOW_011"
-	);
+	assert_eq!(refused_code(&db, "top_k_probe{} WITH { window: rolling, duration: 1h, drop: 2s }"), "WINDOW_011");
 }
 
 #[test]
@@ -564,37 +592,34 @@ fn a_rolling_window_without_a_pane_fails_the_create_on_a_plain_operator() {
 	let db = windowed_memory();
 	event_time_source(&db);
 
-	assert_eq!(
-		refused_code(&db, "rolling_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"),
-		"WINDOW_011"
-	);
+	assert_eq!(refused_code(&db, "rolling_probe{} WITH { window: rolling, duration: 1h, drop: 2s }"), "WINDOW_011");
 }
 
 #[test]
-fn a_session_window_with_a_lateness_creates() {
+fn a_session_window_with_a_drop_creates() {
 	// Refusing it here would split the sdk from the native session window, which honours it.
 	let db = windowed_memory();
 	event_time_source(&db);
 
-	let statement = view("late_v", "time_window_probe{} WITH { window: session, gap: 10s, lateness: 1ms }");
+	let statement = view("late_v", "time_window_probe{} WITH { window: session, gap: 10s, drop: 1ms }");
 	if let Err(err) = db.try_admin(&statement) {
-		panic!("a session with a lateness must create: {statement}: {:?}", err.diagnostic());
+		panic!("a session with a drop must create: {statement}: {:?}", err.diagnostic());
 	}
 }
 
 #[test]
-fn a_session_window_with_no_or_zero_lateness_creates() {
-	// Refusing a declared zero would reject a session whose lateness adds nothing to its seal.
+fn a_session_window_with_no_or_zero_drop_creates() {
+	// Refusing a declared zero would reject a session whose drop adds nothing to its seal.
 	let db = windowed_memory();
 	event_time_source(&db);
 
 	for (name, apply) in [
 		("none_v", "time_window_probe{} WITH { window: session, gap: 10s }"),
-		("zero_v", "time_window_probe{} WITH { window: session, gap: 10s, lateness: 0s }"),
+		("zero_v", "time_window_probe{} WITH { window: session, gap: 10s, drop: 0s }"),
 	] {
 		let statement = view(name, apply);
 		if let Err(err) = db.try_admin(&statement) {
-			panic!("a session with no positive lateness must create: {statement}: {:?}", err.diagnostic());
+			panic!("a session with no positive drop must create: {statement}: {:?}", err.diagnostic());
 		}
 	}
 }
@@ -629,9 +654,9 @@ fn well_formed_time_and_slot_windows_create() {
 	event_time_source(&db);
 
 	for (name, apply) in [
-		("time_v", "time_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s }"),
-		("slot_v", "slot_window_probe{} WITH { window: tumbling, slots: 4, lateness: 2 }"),
-		("top_v", "top_k_probe{} WITH { window: rolling, duration: 1h, pane: 1s, lateness: 2s }"),
+		("time_v", "time_window_probe{} WITH { window: tumbling, duration: 1m, drop: 2s }"),
+		("slot_v", "slot_window_probe{} WITH { window: tumbling, slots: 4, drop: 2 }"),
+		("top_v", "top_k_probe{} WITH { window: rolling, duration: 1h, pane: 1s, drop: 2s }"),
 	] {
 		let statement = view(name, apply);
 		if let Err(err) = db.try_admin(&statement) {
@@ -648,17 +673,17 @@ fn every_create_time_refusal_leaves_no_flow_and_no_poison() {
 
 	for (code, apply) in [
 		("FLOW_065", "time_window_probe{}"),
-		("FLOW_066", "time_window_probe{} WITH { window: rolling, duration: 1h, pane: 1s, lateness: 2s }"),
+		("FLOW_066", "time_window_probe{} WITH { window: rolling, duration: 1h, pane: 1s, drop: 2s }"),
 		("FLOW_067", "unmanaged_probe{} WITH { window: tumbling, duration: 1m }"),
-		("FLOW_068", "time_window_probe{} WITH { window: tumbling, slots: 4, lateness: 2 }"),
-		("FLOW_069", "slot_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s }"),
-		("AST_005", "slot_window_probe{} WITH { window: tumbling, slots: 4, lateness: 30s }"),
-		("FLOW_071", "nostate_probe{} WITH { lateness: 2s }"),
+		("FLOW_068", "time_window_probe{} WITH { window: tumbling, slots: 4, drop: 2 }"),
+		("FLOW_069", "slot_window_probe{} WITH { window: tumbling, duration: 1m, drop: 2s }"),
+		("AST_005", "slot_window_probe{} WITH { window: tumbling, slots: 4, drop: 30s }"),
+		("FLOW_071", "nostate_probe{} WITH { drop: 2s }"),
 		("FLOW_072", "managed_probe{}"),
-		("WINDOW_011", "top_k_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"),
+		("WINDOW_011", "top_k_probe{} WITH { window: rolling, duration: 1h, drop: 2s }"),
 		("FLOW_079", "time_window_probe{} WITH { window: session, gap: 0s }"),
-		("FLOW_080", "unmanaged_probe{} WITH { retention: 1h }"),
-		("AST_005", "managed_probe{} WITH { lateness: 2s, retention: 1s }"),
+		("FLOW_080", "unmanaged_probe{} WITH { forget: 1h }"),
+		("AST_005", "managed_probe{} WITH { drop: 2s, forget: 1s }"),
 	] {
 		assert_eq!(refused_code(&db, apply), code, "{apply}");
 		assert_eq!(flow_rows(&db, "v"), 0, "{code}: a refused create must register no flow");
@@ -667,46 +692,43 @@ fn every_create_time_refusal_leaves_no_flow_and_no_poison() {
 }
 
 #[test]
-fn a_retention_alone_creates_a_managed_apply() {
-	// Retention is the bound the managed forget pass reads, so it must satisfy the create without any lateness.
+fn a_forget_alone_creates_a_managed_apply() {
+	// Forget is the bound the managed forget pass reads, so it must satisfy the create without any drop.
 	let db = memory();
 	event_time_source(&db);
 
 	for (name, apply) in [
-		("hour_v", "managed_probe{} WITH { retention: 1h }"),
-		("zero_v", "managed_probe{} WITH { retention: 0s }"),
-		("both_v", "managed_probe{} WITH { lateness: 2s, retention: 1h }"),
+		("hour_v", "managed_probe{} WITH { forget: 1h }"),
+		("zero_v", "managed_probe{} WITH { forget: 0s }"),
+		("both_v", "managed_probe{} WITH { drop: 2s, forget: 1h }"),
 	] {
 		let statement = view(name, apply);
 		if let Err(err) = db.try_admin(&statement) {
-			panic!("a managed apply with a retention must create: {statement}: {:?}", err.diagnostic());
+			panic!("a managed apply with a forget must create: {statement}: {:?}", err.diagnostic());
 		}
 	}
 }
 
 #[test]
-fn a_retention_on_an_unmanaged_or_plain_windowed_apply_fails_the_create() {
-	// Only managed and carry operators read retention, so any other operator must refuse it, never ignore it.
+fn a_forget_on_an_unmanaged_or_plain_windowed_apply_fails_the_create() {
+	// Only managed and carry operators read forget, so any other operator must refuse it, never ignore it.
 	let db = windowed_memory();
 	event_time_source(&db);
 
-	assert_eq!(refused_code(&db, "unmanaged_probe{} WITH { retention: 1h }"), "FLOW_080");
+	assert_eq!(refused_code(&db, "unmanaged_probe{} WITH { forget: 1h }"), "FLOW_080");
 	assert_eq!(
-		refused_code(
-			&db,
-			"time_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s, retention: 1h }"
-		),
+		refused_code(&db, "time_window_probe{} WITH { window: tumbling, duration: 1m, drop: 2s, forget: 1h }"),
 		"FLOW_080"
 	);
 }
 
 #[test]
-fn a_retention_below_the_lateness_fails_the_create() {
-	// A retention under the lateness frees a group while a timer inside the hold can still fire for it.
+fn a_forget_below_the_drop_fails_the_create() {
+	// A forget under the drop frees a group while a timer inside the hold can still fire for it.
 	let db = memory();
 	event_time_source(&db);
 
-	assert_eq!(refused_code(&db, "managed_probe{} WITH { lateness: 2s, retention: 1s }"), "AST_005");
+	assert_eq!(refused_code(&db, "managed_probe{} WITH { drop: 2s, forget: 1s }"), "AST_005");
 }
 
 struct RefusingWindowProbe;
@@ -727,7 +749,7 @@ impl WindowedOperator for RefusingWindowProbe {
 	type Output = GRow;
 
 	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
-		Err(ValueError::from(CoreError::OperatorWithRetentionNotSupported).into())
+		Err(ValueError::from(CoreError::OperatorWithForgetNotSupported).into())
 	}
 
 	fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<ByDateTime>>, SdkError> {
@@ -817,7 +839,7 @@ impl CarryEmit for CarryProbe {
 	}
 }
 
-fn retention_memory() -> TestDb {
+fn forget_memory() -> TestDb {
 	TestDb::from(
 		embedded::memory()
 			.with_runtime_config(runtime())
@@ -833,12 +855,12 @@ fn retention_memory() -> TestDb {
 
 #[test]
 fn a_windowed_driver_that_refuses_its_create_fails_the_view_create() {
-	// The DDL leaves retention to each windowed driver, so a driver's own refusal must stop the view.
-	let db = retention_memory();
+	// The DDL leaves forget to each windowed driver, so a driver's own refusal must stop the view.
+	let db = forget_memory();
 	event_time_source(&db);
 
 	assert_eq!(
-		refused_code(&db, "refusing_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s }"),
+		refused_code(&db, "refusing_window_probe{} WITH { window: tumbling, duration: 1m, drop: 2s }"),
 		"FLOW_080"
 	);
 	assert_eq!(flow_rows(&db, "v"), 0, "a driver refusal must register no flow");
@@ -846,27 +868,23 @@ fn a_windowed_driver_that_refuses_its_create_fails_the_view_create() {
 }
 
 #[test]
-fn a_retention_on_a_carry_apply_creates_while_a_plain_windowed_apply_still_refuses_it() {
-	// Only the carry driver bounds idle state by retention; any other windowed driver accepting it would ignore it.
-	let db = retention_memory();
+fn a_forget_on_a_carry_apply_creates_while_a_plain_windowed_apply_still_refuses_it() {
+	// Only the carry driver bounds idle state by forget; any other windowed driver accepting it would ignore it.
+	let db = forget_memory();
 	event_time_source(&db);
 
-	let carry =
-		view("carry_v", "carry_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s, retention: 1h }");
+	let carry = view("carry_v", "carry_probe{} WITH { window: tumbling, duration: 1m, drop: 2s, forget: 1h }");
 	if let Err(err) = db.try_admin(&carry) {
-		panic!("a carry apply with a retention must create: {carry}: {:?}", err.diagnostic());
+		panic!("a carry apply with a forget must create: {carry}: {:?}", err.diagnostic());
 	}
 	assert_eq!(
-		refused_code(&db, "carry_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s, retention: 1s }"),
+		refused_code(&db, "carry_probe{} WITH { window: tumbling, duration: 1m, drop: 2s, forget: 1s }"),
 		"AST_005"
 	);
 	assert_eq!(
-		refused_code(
-			&db,
-			"time_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s, retention: 1h }"
-		),
+		refused_code(&db, "time_window_probe{} WITH { window: tumbling, duration: 1m, drop: 2s, forget: 1h }"),
 		"FLOW_080"
 	);
-	assert_eq!(flow_rows(&db, "v"), 0, "a refused retention must register no flow");
-	assert_eq!(poisoned(&db), None, "a refused retention must poison nothing");
+	assert_eq!(flow_rows(&db, "v"), 0, "a refused forget must register no flow");
+	assert_eq!(poisoned(&db), None, "a refused forget must poison nothing");
 }

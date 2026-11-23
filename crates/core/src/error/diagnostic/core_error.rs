@@ -9,12 +9,12 @@ use reifydb_value::{
 use crate::error::{
 	CoreError,
 	diagnostic::flow::{
-		flow_operator_retention_required, flow_operator_rolling_carry_unsupported,
+		flow_operator_forget_required, flow_operator_rolling_carry_unsupported,
 		flow_operator_rolling_unbounded, flow_operator_timer_kind_not_batched,
 		flow_operator_timer_kind_reserved, flow_operator_with_count_span, flow_operator_with_duration_span,
-		flow_operator_with_immutable_not_below_lateness, flow_operator_with_not_accepted,
-		flow_operator_with_pane_missing, flow_operator_with_retention_below_lateness,
-		flow_operator_with_retention_not_supported, flow_operator_with_session_immutable,
+		flow_operator_with_forget_below_drop, flow_operator_with_forget_not_supported,
+		flow_operator_with_immutable_not_below_drop, flow_operator_with_not_accepted,
+		flow_operator_with_pane_missing, flow_operator_with_session_immutable,
 		flow_operator_with_session_zero_gap, flow_operator_with_window_kind_unsupported,
 		flow_operator_with_window_missing, flow_operator_with_window_not_supported,
 		flow_operator_with_window_size_count, flow_operator_with_window_size_duration,
@@ -102,10 +102,10 @@ impl IntoDiagnostic for CoreError {
 				count,
 			} => flow_operator_with_count_span(key, count),
 
-			CoreError::OperatorWithImmutableNotBelowLateness {
+			CoreError::OperatorWithImmutableNotBelowDrop {
 				immutable,
-				lateness,
-			} => flow_operator_with_immutable_not_below_lateness(immutable, lateness),
+				drop,
+			} => flow_operator_with_immutable_not_below_drop(immutable, drop),
 
 			CoreError::OperatorWithWindowMissing => flow_operator_with_window_missing(),
 
@@ -157,14 +157,14 @@ impl IntoDiagnostic for CoreError {
 
 			CoreError::OperatorWithNotAccepted => flow_operator_with_not_accepted(),
 
-			CoreError::OperatorRetentionRequired => flow_operator_retention_required(),
+			CoreError::OperatorForgetRequired => flow_operator_forget_required(),
 
-			CoreError::OperatorWithRetentionNotSupported => flow_operator_with_retention_not_supported(),
+			CoreError::OperatorWithForgetNotSupported => flow_operator_with_forget_not_supported(),
 
-			CoreError::OperatorWithRetentionBelowLateness {
-				retention,
-				lateness,
-			} => flow_operator_with_retention_below_lateness(retention, lateness),
+			CoreError::OperatorWithForgetBelowDrop {
+				forget,
+				drop,
+			} => flow_operator_with_forget_below_drop(forget, drop),
 
 			CoreError::OperatorTimerKindReserved {
 				kind,

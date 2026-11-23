@@ -15,7 +15,7 @@ use crate::{
 	common::{OnEmpty, WindowKind, WindowSize},
 	error::CoreError,
 	internal_error,
-	row::{JoinLateness, JoinPick},
+	row::{JoinPick, JoinSpans},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,7 +27,7 @@ pub enum WithSpan {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WindowWith {
 	pub kind: WindowKind,
-	pub lateness: Option<Duration>,
+	pub drop: Option<Duration>,
 	pub immutable: Option<Duration>,
 }
 
@@ -87,7 +87,8 @@ impl ChangesWith {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct JoinWith {
-	pub lateness: Option<JoinLateness>,
+	pub drop: Option<JoinSpans>,
+	pub forget: Option<JoinSpans>,
 	pub emit: Emit,
 	pub pick: Option<JoinPick>,
 	pub exact: bool,
@@ -95,7 +96,8 @@ pub struct JoinWith {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LookupWith {
-	pub lateness: Option<Duration>,
+	pub drop: Option<Duration>,
+	pub forget: Option<Duration>,
 	pub emit: Emit,
 	pub exact: bool,
 }
@@ -103,9 +105,56 @@ pub struct LookupWith {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApplyWith {
 	pub window: Option<WindowKind>,
-	pub lateness: Option<WithSpan>,
+	pub drop: Option<WithSpan>,
 	pub immutable: Option<WithSpan>,
-	pub retention: Option<Duration>,
+	pub forget: Option<Duration>,
+}
+
+fn check_forget_not_below_drop(forget: Option<Duration>, drop_span: Option<Duration>) -> Result<(), ValueError> {
+	let (Some(forget), Some(drop_span)) = (forget, drop_span) else {
+		return Ok(());
+	};
+	if forget < drop_span {
+		return Err(CoreError::OperatorWithForgetBelowDrop {
+			forget,
+			drop: drop_span,
+		}
+		.into());
+	}
+	Ok(())
+}
+
+impl JoinWith {
+	pub fn forget_left(&self) -> Option<Duration> {
+		self.forget.as_ref().and_then(|spans| spans.left)
+	}
+
+	pub fn forget_right(&self) -> Option<Duration> {
+		self.forget.as_ref().and_then(|spans| spans.right)
+	}
+
+	pub fn effective_drop_left(&self) -> Option<Duration> {
+		self.drop.as_ref().and_then(|spans| spans.left).or(self.forget_left())
+	}
+
+	pub fn effective_drop_right(&self) -> Option<Duration> {
+		self.drop.as_ref().and_then(|spans| spans.right).or(self.forget_right())
+	}
+
+	pub fn check_forget(&self) -> Result<(), ValueError> {
+		check_forget_not_below_drop(self.forget_left(), self.drop.as_ref().and_then(|spans| spans.left))?;
+		check_forget_not_below_drop(self.forget_right(), self.drop.as_ref().and_then(|spans| spans.right))
+	}
+}
+
+impl LookupWith {
+	pub fn effective_drop(&self) -> Option<Duration> {
+		self.drop.or(self.forget)
+	}
+
+	pub fn check_forget(&self) -> Result<(), ValueError> {
+		check_forget_not_below_drop(self.forget, self.drop)
+	}
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,22 +165,22 @@ pub struct DistinctWith {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WindowKnobs {
-	pub lateness: Option<Duration>,
+	pub drop: Option<Duration>,
 	pub immutable: Option<Duration>,
 }
 
 impl WindowKnobs {
 	pub fn from_operator_with(with: &ApplyWith) -> Result<Self, ValueError> {
 		let knobs = Self {
-			lateness: duration_span("lateness", with.lateness)?,
+			drop: duration_span("drop", with.drop)?,
 			immutable: duration_span("immutable", with.immutable)?,
 		};
-		if let (Some(lateness), Some(immutable)) = (knobs.lateness, knobs.immutable)
-			&& immutable >= lateness
+		if let (Some(drop_span), Some(immutable)) = (knobs.drop, knobs.immutable)
+			&& immutable >= drop_span
 		{
-			return Err(CoreError::OperatorWithImmutableNotBelowLateness {
+			return Err(CoreError::OperatorWithImmutableNotBelowDrop {
 				immutable,
-				lateness,
+				drop: drop_span,
 			}
 			.into());
 		}
@@ -224,7 +273,7 @@ impl ApplyWith {
 		if !gap.is_positive() {
 			return Err(CoreError::OperatorWithSessionZeroGap.into());
 		}
-		self.lateness_duration()?;
+		self.drop_duration()?;
 		match duration_span("immutable", self.immutable)? {
 			Some(immutable) if immutable.is_positive() => Err(CoreError::OperatorWithSessionImmutable {
 				immutable,
@@ -234,31 +283,21 @@ impl ApplyWith {
 		}
 	}
 
-	pub fn effective_retention(&self) -> Result<Option<Duration>, ValueError> {
-		match self.retention {
-			Some(retention) => Ok(Some(retention)),
-			None => self.lateness_duration(),
+	pub fn effective_drop(&self) -> Result<Option<Duration>, ValueError> {
+		match self.drop_duration()? {
+			Some(drop_span) => Ok(Some(drop_span)),
+			None => Ok(self.forget),
 		}
 	}
 
-	pub fn check_retention(&self) -> Result<(), ValueError> {
-		let (Some(retention), Some(lateness)) = (self.retention, self.lateness_duration()?) else {
-			return Ok(());
-		};
-		if retention < lateness {
-			return Err(CoreError::OperatorWithRetentionBelowLateness {
-				retention,
-				lateness,
-			}
-			.into());
-		}
-		Ok(())
+	pub fn check_forget(&self) -> Result<(), ValueError> {
+		check_forget_not_below_drop(self.forget, self.drop_duration()?)
 	}
 
-	pub fn reject_retention(&self) -> Result<(), ValueError> {
-		match self.retention {
+	pub fn reject_forget(&self) -> Result<(), ValueError> {
+		match self.forget {
 			None => Ok(()),
-			Some(_) => Err(CoreError::OperatorWithRetentionNotSupported.into()),
+			Some(_) => Err(CoreError::OperatorWithForgetNotSupported.into()),
 		}
 	}
 	pub fn reject_window(&self) -> Result<(), ValueError> {
@@ -285,24 +324,24 @@ impl ApplyWith {
 		Ok(kind)
 	}
 
-	pub fn lateness_duration(&self) -> Result<Option<Duration>, ValueError> {
-		match self.lateness {
+	pub fn drop_duration(&self) -> Result<Option<Duration>, ValueError> {
+		match self.drop {
 			None => Ok(None),
 			Some(WithSpan::Duration(d)) => Ok(Some(d)),
 			Some(WithSpan::Count(count)) => Err(CoreError::OperatorWithCountSpan {
-				key: "lateness",
+				key: "drop",
 				count,
 			}
 			.into()),
 		}
 	}
 
-	pub fn lateness_count(&self) -> Result<Option<u64>, ValueError> {
-		match self.lateness {
+	pub fn drop_count(&self) -> Result<Option<u64>, ValueError> {
+		match self.drop {
 			None => Ok(None),
 			Some(WithSpan::Count(n)) => Ok(Some(n)),
 			Some(WithSpan::Duration(duration)) => Err(CoreError::OperatorWithDurationSpan {
-				key: "lateness",
+				key: "drop",
 				duration,
 			}
 			.into()),
@@ -369,14 +408,14 @@ pub fn encode_apply_with(with: &ApplyWith) -> Result<Vec<u8>, ValueError> {
 			}
 		}
 	}
-	if let Some(lateness) = with.lateness {
-		values.insert("lateness".to_string(), span_value(lateness));
+	if let Some(drop_span) = with.drop {
+		values.insert("drop".to_string(), span_value(drop_span));
 	}
 	if let Some(immutable) = with.immutable {
 		values.insert("immutable".to_string(), span_value(immutable));
 	}
-	if let Some(retention) = with.retention {
-		values.insert("retention".to_string(), Value::Duration(retention));
+	if let Some(forget) = with.forget {
+		values.insert("forget".to_string(), Value::Duration(forget));
 	}
 	encode_params(&Params::Named(Arc::new(values)))
 		.map_err(|e| internal_error!("failed to encode apply with: {}", e))
@@ -408,9 +447,9 @@ pub fn decode_apply_with(bytes: &[u8]) -> Result<ApplyWith, ValueError> {
 			("lag", Value::Duration(d)) => lag = Some(*d),
 			("pane", Value::Duration(d)) => pane = Some(*d),
 			("on_empty", Value::Utf8(action)) if action == "carry" => on_empty = OnEmpty::Carry,
-			("lateness", value) => with.lateness = Some(value_span(key, value)?),
+			("drop", value) => with.drop = Some(value_span(key, value)?),
 			("immutable", value) => with.immutable = Some(value_span(key, value)?),
-			("retention", Value::Duration(retention)) => with.retention = Some(*retention),
+			("forget", Value::Duration(forget)) => with.forget = Some(*forget),
 			_ => return Err(internal_error!("unexpected apply with entry {}: {:?}", key, value)),
 		}
 	}
@@ -559,63 +598,64 @@ mod tests {
 	};
 
 	use super::{
-		ApplyWith, OnEmpty, WindowKind, WindowKnobs, WindowSize, WithSpan, decode_apply_with, encode_apply_with,
+		ApplyWith, JoinSpans, JoinWith, LookupWith, OnEmpty, WindowKind, WindowKnobs, WindowSize, WithSpan,
+		decode_apply_with, encode_apply_with,
 	};
 
 	fn secs(n: i64) -> Duration {
 		Duration::from_seconds(n).unwrap()
 	}
 
-	fn with(lateness: Option<i64>, immutable: Option<i64>) -> ApplyWith {
+	fn with(drop_span: Option<i64>, immutable: Option<i64>) -> ApplyWith {
 		ApplyWith {
 			window: None,
-			lateness: lateness.map(|n| WithSpan::Duration(secs(n))),
+			drop: drop_span.map(|n| WithSpan::Duration(secs(n))),
 			immutable: immutable.map(|n| WithSpan::Duration(secs(n))),
-			retention: None,
+			forget: None,
 		}
 	}
 
 	#[test]
-	fn declared_immutable_below_lateness_is_kept_verbatim() {
+	fn declared_immutable_below_drop_is_kept_verbatim() {
 		assert_eq!(
 			WindowKnobs::from_operator_with(&with(Some(20), Some(15))).unwrap(),
 			WindowKnobs {
-				lateness: Some(secs(20)),
+				drop: Some(secs(20)),
 				immutable: Some(secs(15)),
 			}
 		);
 	}
 
 	#[test]
-	fn lateness_without_immutable_resolves_with_no_immutable() {
-		// Substituting the lateness would arm the immutable slots on a window that never asked to fold.
+	fn drop_without_immutable_resolves_with_no_immutable() {
+		// Substituting the drop would arm the immutable slots on a window that never asked to fold.
 		assert_eq!(
 			WindowKnobs::from_operator_with(&with(Some(20), None)).unwrap(),
 			WindowKnobs {
-				lateness: Some(secs(20)),
+				drop: Some(secs(20)),
 				immutable: None,
 			}
 		);
 	}
 
 	#[test]
-	fn declared_immutable_equal_to_lateness_is_rejected() {
-		// The bound is strict; an immutable equal to the lateness would never fold before the window closes.
+	fn declared_immutable_equal_to_drop_is_rejected() {
+		// The bound is strict; an immutable equal to the drop would never fold before the window closes.
 		assert!(WindowKnobs::from_operator_with(&with(Some(20), Some(20))).is_err());
 	}
 
 	#[test]
-	fn declared_immutable_above_lateness_is_rejected() {
+	fn declared_immutable_above_drop_is_rejected() {
 		assert!(WindowKnobs::from_operator_with(&with(Some(20), Some(30))).is_err());
 	}
 
 	#[test]
-	fn immutable_without_lateness_is_accepted() {
+	fn immutable_without_drop_is_accepted() {
 		// The ordering bound needs both knobs, so an immutable alone must reach the operator untouched.
 		assert_eq!(
 			WindowKnobs::from_operator_with(&with(None, Some(15))).unwrap(),
 			WindowKnobs {
-				lateness: None,
+				drop: None,
 				immutable: Some(secs(15)),
 			}
 		);
@@ -627,7 +667,7 @@ mod tests {
 		assert_eq!(
 			WindowKnobs::from_operator_with(&with(None, None)).unwrap(),
 			WindowKnobs {
-				lateness: None,
+				drop: None,
 				immutable: None,
 			}
 		);
@@ -638,19 +678,19 @@ mod tests {
 		assert_eq!(
 			WindowKnobs::from_operator_with(&with(Some(20), Some(15))).unwrap(),
 			WindowKnobs {
-				lateness: Some(secs(20)),
+				drop: Some(secs(20)),
 				immutable: Some(secs(15)),
 			}
 		);
 	}
 
 	#[test]
-	fn validated_returns_no_immutable_when_only_the_lateness_is_declared() {
-		// A window under the immutable floor declares a lateness alone and must still resolve.
+	fn validated_returns_no_immutable_when_only_the_drop_is_declared() {
+		// A window under the immutable floor declares a drop alone and must still resolve.
 		assert_eq!(
 			WindowKnobs::from_operator_with(&with(Some(20), None)).unwrap(),
 			WindowKnobs {
-				lateness: Some(secs(20)),
+				drop: Some(secs(20)),
 				immutable: None,
 			}
 		);
@@ -659,16 +699,16 @@ mod tests {
 	#[test]
 	fn validated_names_the_ordering_violation() {
 		let err = WindowKnobs::from_operator_with(&with(Some(20), Some(20))).unwrap_err();
-		assert!(err.to_string().contains("must be strictly less than lateness"), "{err}");
+		assert!(err.to_string().contains("must be strictly less than drop"), "{err}");
 	}
 
 	#[test]
-	fn validated_accepts_an_immutable_without_a_lateness() {
+	fn validated_accepts_an_immutable_without_a_drop() {
 		// Validation covers the ordering rule only; neither knob is required, so this must not fail.
 		assert_eq!(
 			WindowKnobs::from_operator_with(&with(None, Some(15))).unwrap(),
 			WindowKnobs {
-				lateness: None,
+				drop: None,
 				immutable: Some(secs(15)),
 			}
 		);
@@ -679,7 +719,7 @@ mod tests {
 		assert_eq!(
 			WindowKnobs::from_operator_with(&with(None, None)).unwrap(),
 			WindowKnobs {
-				lateness: None,
+				drop: None,
 				immutable: None,
 			}
 		);
@@ -690,12 +730,12 @@ mod tests {
 		// A count read as a duration would seal after that many nanoseconds instead of that many rows.
 		let with = ApplyWith {
 			window: None,
-			lateness: Some(WithSpan::Count(150)),
+			drop: Some(WithSpan::Count(150)),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		let err = WindowKnobs::from_operator_with(&with).unwrap_err();
-		assert!(err.to_string().contains("lateness"), "{err}");
+		assert!(err.to_string().contains("drop"), "{err}");
 	}
 
 	#[test]
@@ -706,9 +746,9 @@ mod tests {
 			with(Some(30), Some(10)),
 			ApplyWith {
 				window: None,
-				lateness: Some(WithSpan::Count(150)),
+				drop: Some(WithSpan::Count(150)),
 				immutable: Some(WithSpan::Count(0)),
-				retention: None,
+				forget: None,
 			},
 		] {
 			assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
@@ -725,7 +765,7 @@ mod tests {
 
 	#[test]
 	fn a_span_of_the_wrong_type_fails_to_decode() {
-		let values = HashMap::from([("lateness".to_string(), Value::Int8(5))]);
+		let values = HashMap::from([("drop".to_string(), Value::Int8(5))]);
 		let bytes = encode_params(&Params::Named(Arc::new(values))).unwrap();
 		assert!(decode_apply_with(&bytes).is_err());
 	}
@@ -739,7 +779,7 @@ mod tests {
 	#[test]
 	fn every_window_kind_round_trips_through_the_create_buffer() {
 		// A kind that decodes into the wrong shape would run the guest with a size or slide in the wrong unit.
-		let lateness = Some(WithSpan::Duration(secs(30)));
+		let drop_span = Some(WithSpan::Duration(secs(30)));
 		let kinds = [
 			WindowKind::Tumbling {
 				size: WindowSize::Duration(secs(60)),
@@ -774,9 +814,9 @@ mod tests {
 		for kind in kinds {
 			let with = ApplyWith {
 				window: Some(kind),
-				lateness,
+				drop: drop_span,
 				immutable: None,
-				retention: None,
+				forget: None,
 			};
 			assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
 		}
@@ -798,9 +838,9 @@ mod tests {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Count(10),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		assert!(count.window_duration().is_err());
 
@@ -808,9 +848,9 @@ mod tests {
 			window: Some(WindowKind::Session {
 				gap: secs(30),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		assert!(session.window_duration().is_err());
 	}
@@ -823,9 +863,9 @@ mod tests {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(secs(60)),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		assert!(duration.window_slots().is_err());
 	}
@@ -839,26 +879,26 @@ mod tests {
 				size: WindowSize::Duration(secs(60)),
 				slide: WindowSize::Duration(secs(15)),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		let by_slots = ApplyWith {
 			window: Some(WindowKind::Sliding {
 				size: WindowSize::Count(10),
 				slide: WindowSize::Count(4),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		let tumbling = ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(secs(60)),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert_eq!(by_time.window_slide_duration().unwrap(), Some(secs(15)));
@@ -877,9 +917,9 @@ mod tests {
 			window: Some(WindowKind::Session {
 				gap: secs(30),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		let others = [
 			WindowKind::Tumbling {
@@ -903,9 +943,9 @@ mod tests {
 			let name = kind.name();
 			let with = ApplyWith {
 				window: Some(kind),
-				lateness: None,
+				drop: None,
 				immutable: None,
-				retention: None,
+				forget: None,
 			};
 			assert_eq!(with.window_session_gap(), None, "a {name} window has no session gap");
 		}
@@ -916,9 +956,9 @@ mod tests {
 		// An immutable row cannot follow its session through a split or merge, so it would count twice.
 		let with = |window: WindowKind, immutable: Option<WithSpan>| ApplyWith {
 			window: Some(window),
-			lateness: None,
+			drop: None,
 			immutable,
-			retention: None,
+			forget: None,
 		};
 		let session = WindowKind::Session {
 			gap: secs(30),
@@ -937,16 +977,16 @@ mod tests {
 	}
 
 	#[test]
-	fn check_session_window_refuses_a_zero_gap_and_a_count_lateness_only_on_a_session() {
-		// A zero gap spans no row and a count lateness is the wrong unit; refusing a duration lateness would
+	fn check_session_window_refuses_a_zero_gap_and_a_count_drop_only_on_a_session() {
+		// A zero gap spans no row and a count drop is the wrong unit; refusing a duration drop would
 		// split the sdk from native.
-		let session = |gap: Duration, lateness: Option<WithSpan>| ApplyWith {
+		let session = |gap: Duration, drop_span: Option<WithSpan>| ApplyWith {
 			window: Some(WindowKind::Session {
 				gap,
 			}),
-			lateness,
+			drop: drop_span,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		let code = |with: ApplyWith| with.check_session_window().unwrap_err().0.code;
 
@@ -962,16 +1002,16 @@ mod tests {
 		assert_eq!(
 			code(session(secs(30), Some(WithSpan::Count(5)))),
 			"FLOW_063",
-			"a session seals by time, so a count lateness is the wrong unit"
+			"a session seals by time, so a count drop is the wrong unit"
 		);
 
 		let tumbling = ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(secs(60)),
 			}),
-			lateness: Some(WithSpan::Duration(secs(1))),
+			drop: Some(WithSpan::Duration(secs(1))),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		assert!(tumbling.check_session_window().is_ok());
 		assert!(ApplyWith::default().check_session_window().is_ok());
@@ -985,9 +1025,9 @@ mod tests {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(secs(60)),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		assert!(windowed.reject_window().is_err());
 	}
@@ -1003,37 +1043,37 @@ mod tests {
 				pane: None,
 				on_empty: OnEmpty::Remove,
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		assert!(rolling.require_window("tumbling").is_err());
 		assert!(rolling.require_window("rolling").is_ok());
 	}
 
 	#[test]
-	fn lateness_readers_refuse_the_other_unit() {
+	fn drop_readers_refuse_the_other_unit() {
 		let none = ApplyWith::default();
-		assert_eq!(none.lateness_duration().unwrap(), None);
-		assert_eq!(none.lateness_count().unwrap(), None);
+		assert_eq!(none.drop_duration().unwrap(), None);
+		assert_eq!(none.drop_count().unwrap(), None);
 
 		let duration = ApplyWith {
 			window: None,
-			lateness: Some(WithSpan::Duration(secs(30))),
+			drop: Some(WithSpan::Duration(secs(30))),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
-		assert_eq!(duration.lateness_duration().unwrap(), Some(secs(30)));
-		assert!(duration.lateness_count().is_err());
+		assert_eq!(duration.drop_duration().unwrap(), Some(secs(30)));
+		assert!(duration.drop_count().is_err());
 
 		let count = ApplyWith {
 			window: None,
-			lateness: Some(WithSpan::Count(5)),
+			drop: Some(WithSpan::Count(5)),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
-		assert_eq!(count.lateness_count().unwrap(), Some(5));
-		assert!(count.lateness_duration().is_err());
+		assert_eq!(count.drop_count().unwrap(), Some(5));
+		assert!(count.drop_duration().is_err());
 	}
 
 	#[test]
@@ -1046,9 +1086,9 @@ mod tests {
 				pane: Some(secs(1)),
 				on_empty: OnEmpty::Remove,
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
 	}
@@ -1064,9 +1104,9 @@ mod tests {
 				pane: Some(secs(1)),
 				on_empty,
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		for on_empty in [OnEmpty::Remove, OnEmpty::Carry] {
 			assert_eq!(
@@ -1113,26 +1153,26 @@ mod tests {
 
 		let count = ApplyWith {
 			window: None,
-			lateness: None,
+			drop: None,
 			immutable: Some(WithSpan::Count(4)),
-			retention: None,
+			forget: None,
 		};
 		assert_eq!(count.immutable_count().unwrap(), Some(4));
 
 		let duration = ApplyWith {
 			window: None,
-			lateness: None,
+			drop: None,
 			immutable: Some(WithSpan::Duration(secs(4))),
-			retention: None,
+			forget: None,
 		};
 		assert!(duration.immutable_count().is_err());
 	}
 
 	#[test]
-	fn retention_round_trips_through_the_create_buffer() {
-		// A retention dropped on the way to the guest would run the view with a bound it did not declare.
+	fn forget_round_trips_through_the_create_buffer() {
+		// A forget dropped on the way to the guest would run the view with a bound it did not declare.
 		let declared = ApplyWith {
-			retention: Some(secs(3600)),
+			forget: Some(secs(3600)),
 			..with(Some(20), None)
 		};
 		let bytes = encode_apply_with(&declared).unwrap();
@@ -1140,45 +1180,138 @@ mod tests {
 	}
 
 	#[test]
-	fn effective_retention_is_the_retention_or_else_the_lateness() {
-		// A view that declares lateness alone must keep the bound it had before retention existed.
-		assert_eq!(with(Some(20), None).effective_retention().unwrap(), Some(secs(20)));
-		assert_eq!(with(None, None).effective_retention().unwrap(), None);
-		let declared = ApplyWith {
-			retention: Some(secs(60)),
-			..with(Some(20), None)
-		};
-		assert_eq!(declared.effective_retention().unwrap(), Some(secs(60)));
-	}
-
-	#[test]
-	fn check_retention_refuses_below_the_lateness_and_accepts_equal() {
-		// A retention under the lateness frees a group while a timer inside the hold can still fire for it.
-		let below = ApplyWith {
-			retention: Some(secs(19)),
-			..with(Some(20), None)
-		};
-		let err = below.check_retention().unwrap_err();
-		assert!(err.to_string().contains("must not be below lateness"), "{err}");
-
-		let equal = ApplyWith {
-			retention: Some(secs(20)),
-			..with(Some(20), None)
-		};
-		assert!(equal.check_retention().is_ok());
-		assert!(with(Some(20), None).check_retention().is_ok());
-	}
-
-	#[test]
-	fn reject_retention_refuses_only_a_declared_retention() {
-		// A retention silently dropped on a class that never reclaims by it is a bound the author believes
-		// holds.
-		assert!(with(Some(20), None).reject_retention().is_ok());
-		let declared = ApplyWith {
-			retention: Some(secs(60)),
+	fn effective_drop_is_the_drop_or_else_the_forget() {
+		// A forget alone must cut arrivals at its own line, and a drop alone must never free state.
+		let forget_alone = ApplyWith {
+			forget: Some(secs(60)),
 			..with(None, None)
 		};
-		let err = declared.reject_retention().unwrap_err();
-		assert!(err.to_string().contains("takes no 'retention'"), "{err}");
+		assert_eq!(forget_alone.effective_drop().unwrap(), Some(secs(60)));
+
+		let drop_alone = with(Some(20), None);
+		assert_eq!(drop_alone.effective_drop().unwrap(), Some(secs(20)));
+		assert_eq!(drop_alone.forget, None);
+
+		assert_eq!(with(None, None).effective_drop().unwrap(), None);
+
+		let both = ApplyWith {
+			forget: Some(secs(60)),
+			..with(Some(20), None)
+		};
+		assert_eq!(both.effective_drop().unwrap(), Some(secs(20)));
+		assert_eq!(both.forget, Some(secs(60)));
+	}
+
+	fn spans(left: Option<i64>, right: Option<i64>) -> Option<JoinSpans> {
+		Some(JoinSpans {
+			left: left.map(secs),
+			right: right.map(secs),
+		})
+	}
+
+	#[test]
+	fn a_join_forget_below_the_drop_of_its_side_is_refused_and_equal_is_accepted() {
+		// A forget under the drop of its side frees stored rows while changes for them are still accepted.
+		let join = |drop_span, forget| JoinWith {
+			drop: drop_span,
+			forget,
+			..JoinWith::default()
+		};
+
+		let left_below = join(spans(Some(20), None), spans(Some(19), None)).check_forget().unwrap_err();
+		assert_eq!(left_below.0.code, "FLOW_081");
+		assert!(left_below.to_string().contains("must not be below drop"), "{left_below}");
+
+		let right_below = join(spans(Some(5), Some(20)), spans(Some(60), Some(19))).check_forget().unwrap_err();
+		assert_eq!(right_below.0.code, "FLOW_081");
+
+		assert!(join(spans(Some(20), Some(30)), spans(Some(20), Some(30))).check_forget().is_ok());
+		assert!(join(spans(Some(20), None), spans(None, Some(1))).check_forget().is_ok());
+		assert!(join(spans(Some(20), Some(20)), None).check_forget().is_ok());
+		assert!(join(None, spans(Some(1), Some(1))).check_forget().is_ok());
+	}
+
+	#[test]
+	fn a_lookup_forget_below_its_drop_is_refused_and_equal_is_accepted() {
+		// A forget under the drop frees stored left rows while changes for them are still accepted.
+		let lookup = |drop_span: Option<i64>, forget: Option<i64>| LookupWith {
+			drop: drop_span.map(secs),
+			forget: forget.map(secs),
+			..LookupWith::default()
+		};
+
+		let below = lookup(Some(20), Some(19)).check_forget().unwrap_err();
+		assert_eq!(below.0.code, "FLOW_081");
+		assert!(below.to_string().contains("must not be below drop"), "{below}");
+
+		assert!(lookup(Some(20), Some(20)).check_forget().is_ok());
+		assert!(lookup(Some(20), None).check_forget().is_ok());
+		assert!(lookup(None, Some(1)).check_forget().is_ok());
+	}
+
+	#[test]
+	fn the_effective_drop_of_a_join_side_falls_back_to_the_forget_of_that_side_only() {
+		// A side cut by the other side's forget would refuse arrivals its own with block never bounded.
+		let forget_left_only = JoinWith {
+			forget: spans(Some(60), None),
+			..JoinWith::default()
+		};
+		assert_eq!(forget_left_only.effective_drop_left(), Some(secs(60)));
+		assert_eq!(forget_left_only.effective_drop_right(), None);
+		assert_eq!(forget_left_only.forget_left(), Some(secs(60)));
+		assert_eq!(forget_left_only.forget_right(), None);
+
+		let mixed = JoinWith {
+			drop: spans(Some(20), None),
+			forget: spans(Some(60), Some(90)),
+			..JoinWith::default()
+		};
+		assert_eq!(mixed.effective_drop_left(), Some(secs(20)));
+		assert_eq!(mixed.effective_drop_right(), Some(secs(90)));
+
+		let drop_only = JoinWith {
+			drop: spans(None, Some(20)),
+			..JoinWith::default()
+		};
+		assert_eq!(drop_only.effective_drop_left(), None);
+		assert_eq!(drop_only.effective_drop_right(), Some(secs(20)));
+		assert_eq!(drop_only.forget_right(), None);
+
+		let lookup = LookupWith {
+			forget: Some(secs(60)),
+			..LookupWith::default()
+		};
+		assert_eq!(lookup.effective_drop(), Some(secs(60)));
+	}
+
+	#[test]
+	fn check_forget_refuses_below_the_drop_and_accepts_equal() {
+		// A forget under the drop frees a group while a timer inside the hold can still fire for it.
+		let below = ApplyWith {
+			forget: Some(secs(19)),
+			..with(Some(20), None)
+		};
+		let err = below.check_forget().unwrap_err();
+		assert!(err.to_string().contains("must not be below drop"), "{err}");
+
+		let equal = ApplyWith {
+			forget: Some(secs(20)),
+			..with(Some(20), None)
+		};
+		assert!(equal.check_forget().is_ok());
+		assert!(with(Some(20), None).check_forget().is_ok());
+	}
+
+	#[test]
+	fn reject_forget_refuses_only_a_declared_forget() {
+		// A forget silently dropped on a class that never reclaims by it is a bound the author believes
+		// holds.
+		assert!(with(Some(20), None).reject_forget().is_ok());
+		let declared = ApplyWith {
+			forget: Some(secs(60)),
+			..with(None, None)
+		};
+		let err = declared.reject_forget().unwrap_err();
+		assert!(err.to_string().contains("takes no 'forget'"), "{err}");
 	}
 }

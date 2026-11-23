@@ -11,7 +11,7 @@ use reifydb_value::value::row_number::RowNumber;
 
 pub struct RollingRules<C: Coord> {
 	pub size: C::Span,
-	pub lateness: C::Span,
+	pub drop: C::Span,
 	pub retract: C::Span,
 }
 
@@ -70,7 +70,7 @@ impl<G: Ord + Clone, C: Coord, V: Clone> RollingModel<G, C, V> {
 		let line = if retraction {
 			rules.retract
 		} else {
-			rules.lateness
+			rules.drop
 		};
 		pane >= newest.saturating_sub_span(line)
 	}
@@ -234,10 +234,10 @@ mod tests {
 		ByDateTime(DateTime::from_epoch_millis(ms).unwrap())
 	}
 
-	fn model(size_ms: i64, lateness_ms: i64, retract_ms: i64) -> RollingModel<i32, ByDateTime, i64> {
+	fn model(size_ms: i64, drop_ms: i64, retract_ms: i64) -> RollingModel<i32, ByDateTime, i64> {
 		RollingModel::new(RollingRules {
 			size: Duration::from_milliseconds(size_ms).unwrap(),
-			lateness: Duration::from_milliseconds(lateness_ms).unwrap(),
+			drop: Duration::from_milliseconds(drop_ms).unwrap(),
 			retract: Duration::from_milliseconds(retract_ms).unwrap(),
 		})
 	}

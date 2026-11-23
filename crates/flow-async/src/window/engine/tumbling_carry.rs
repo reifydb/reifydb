@@ -117,7 +117,7 @@ pub struct TumblingCarryEngine<G, S: WindowAnchor, Accumulator, Carry, Output> {
 	family: KeyspaceFamily,
 	meta_sweep: MetaSweep,
 	immutable: Option<SlotSpan<S>>,
-	idle_retention: Option<SlotSpan<S>>,
+	idle_forget: Option<SlotSpan<S>>,
 	_pd: PhantomData<(G, Accumulator, Carry, Output)>,
 }
 
@@ -139,7 +139,7 @@ where
 			family: config.base().family(),
 			meta_sweep: MetaSweep::default(),
 			immutable: config.immutable(),
-			idle_retention: config.idle_retention(),
+			idle_forget: config.idle_forget(),
 			_pd: PhantomData,
 		}
 	}
@@ -154,7 +154,7 @@ where
 		K: Fn(&G, S) -> EncodedKey,
 	{
 		let family = self.family;
-		let idle_retention = self.idle_retention;
+		let idle_forget = self.idle_forget;
 		let threshold = first_admitted.to_order();
 		let mut doomed: Vec<GroupStateKey> = Vec::new();
 		let mut groups: Vec<GroupId> = Vec::new();
@@ -184,8 +184,8 @@ where
 			};
 			let hw = high_water.order_key().to_order();
 			if hw < threshold {
-				let revisit = idle_retention
-					.map_or(u64::MAX, |retention| high_water.add_span(retention).to_order());
+				let revisit =
+					idle_forget.map_or(u64::MAX, |forget| high_water.add_span(forget).to_order());
 				if revisit < threshold {
 					return Ok(MetaFate::Stale);
 				}
@@ -813,9 +813,9 @@ mod tests {
 		TumblingCarryConfig::builder(WindowEngineConfig::builder().build()).immutable(immutable).build()
 	}
 
-	fn idle_config(idle_retention: Duration) -> TumblingCarryConfig<ByDateTime> {
+	fn idle_config(idle_forget: Duration) -> TumblingCarryConfig<ByDateTime> {
 		TumblingCarryConfig::builder(WindowEngineConfig::builder().build())
-			.idle_retention(Some(idle_retention))
+			.idle_forget(Some(idle_forget))
 			.build()
 	}
 
@@ -1044,7 +1044,7 @@ mod tests {
 
 		let dropped = engine.seal_due(&mut store, window_at(100 * WINDOW), seal_key).unwrap();
 
-		assert_eq!(dropped, 0, "without retention an idle group's meta must stay");
+		assert_eq!(dropped, 0, "without forget an idle group's meta must stay");
 		assert_eq!(
 			(store.accumulator_count(), store.row_mapping_count(), store.meta_entry_count()),
 			(0, 0, 1),
@@ -1061,8 +1061,8 @@ mod tests {
 	}
 
 	#[test]
-	fn an_idle_group_keeps_its_meta_until_it_is_idle_past_first_admitted_by_more_than_retention() {
-		// Dropping at first admitted loses the carry retention keeps, and never dropping leaks it.
+	fn an_idle_group_keeps_its_meta_until_it_is_idle_past_first_admitted_by_more_than_forget() {
+		// Dropping at first admitted loses the carry forget keeps, and never dropping leaks it.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(idle_config(millis(10 * WINDOW)));
 		for i in 0..10u64 {
@@ -1073,14 +1073,10 @@ mod tests {
 		assert_eq!(
 			(kept, store.meta_entry_count()),
 			(0, 1),
-			"window 9 plus a 10-window retention is not below 19"
+			"window 9 plus a 10-window forget is not below 19"
 		);
 		let dropped = engine.seal_due(&mut store, window_at(20 * WINDOW), seal_key).unwrap();
-		assert_eq!(
-			(dropped, store.meta_entry_count()),
-			(1, 0),
-			"window 9 plus a 10-window retention is below 20"
-		);
+		assert_eq!((dropped, store.meta_entry_count()), (1, 0), "window 9 plus a 10-window forget is below 20");
 
 		let results = feed_carrying(&mut engine, &mut store, window_at(30 * WINDOW), 30 * WINDOW, 100.0);
 		let window_30 =

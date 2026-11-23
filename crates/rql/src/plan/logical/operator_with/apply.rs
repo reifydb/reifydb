@@ -19,12 +19,12 @@ use crate::{
 		Compiler,
 		operator_with::{
 			Declared, declared_count, declared_duration, entries, is_duration, is_number, literal,
-			literal_boolean, reject_immutable_not_smaller_than_lateness, unknown_key, window::ParsedConfig,
+			literal_boolean, reject_immutable_not_smaller_than_drop, unknown_key, window::ParsedConfig,
 		},
 	},
 };
 
-const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, pane, lateness, retention, immutable, or on";
+const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, pane, drop, forget, immutable, or on";
 
 const APPLY_ON_EMPTY: &[(&str, OnEmpty)] = &[("carry", OnEmpty::Carry), ("remove", OnEmpty::Remove)];
 
@@ -35,8 +35,8 @@ enum Immutable {
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_apply_with(with: Option<&AstOperatorWith<'bump>>) -> Result<ApplyWith, ValueError> {
-		let mut lateness: Option<Declared<WithSpan>> = None;
-		let mut retention: Option<Declared<Duration>> = None;
+		let mut drop_span: Option<Declared<WithSpan>> = None;
+		let mut forget: Option<Declared<Duration>> = None;
 		let mut immutable: Option<Immutable> = None;
 		let mut window_kind: Option<AstWindowKind> = None;
 		let mut parsed = ParsedConfig::default();
@@ -127,11 +127,11 @@ impl<'bump> Compiler<'bump> {
 					parsed.on_empty = Some(Self::parse_on(entry, APPLY_ON_EMPTY)?);
 					size_keys_seen.push(("on", entry.key.fragment()));
 				}
-				Some("lateness") => lateness = Some(declared_span(literal(entry)?, "'lateness'")?),
-				Some("retention") => {
-					retention = Some(declared_duration(
+				Some("drop") => drop_span = Some(declared_span(literal(entry)?, "'drop'")?),
+				Some("forget") => {
+					forget = Some(declared_duration(
 						literal(entry)?,
-						"'retention'",
+						"'forget'",
 						DurationBound::AllowZero,
 					)?)
 				}
@@ -151,7 +151,7 @@ impl<'bump> Compiler<'bump> {
 				} else if parsed.duration.is_some() {
 					WithSpan::Duration(Duration::zero())
 				} else {
-					match lateness.as_ref().map(|lateness| lateness.value) {
+					match drop_span.as_ref().map(|drop_span| drop_span.value) {
 						Some(WithSpan::Count(_)) => WithSpan::Count(0),
 						_ => WithSpan::Duration(Duration::zero()),
 					}
@@ -160,8 +160,8 @@ impl<'bump> Compiler<'bump> {
 			},
 		});
 
-		reject_immutable_not_smaller_than_lateness_in_its_unit(immutable.as_ref(), lateness.as_ref())?;
-		reject_retention_below_lateness(retention.as_ref(), lateness.as_ref())?;
+		reject_immutable_not_smaller_than_drop_in_its_unit(immutable.as_ref(), drop_span.as_ref())?;
+		reject_forget_below_drop(forget.as_ref(), drop_span.as_ref())?;
 
 		if window_kind.is_none()
 			&& let Some((_, fragment)) = size_keys_seen.first()
@@ -204,12 +204,12 @@ impl<'bump> Compiler<'bump> {
 				let kind = Self::build_window_kind(ast_kind, &parsed)?;
 
 				let size_is_count = matches!(kind.size(), Some(WindowSize::Count(_)));
-				if let Some(lateness) = &lateness
-					&& matches!(lateness.value, WithSpan::Count(_)) != size_is_count
+				if let Some(drop_span) = &drop_span
+					&& matches!(drop_span.value, WithSpan::Count(_)) != size_is_count
 				{
 					return Err(AstError::UnexpectedToken {
-						expected: "lateness in the unit of the window size".to_string(),
-						fragment: lateness.fragment.clone(),
+						expected: "drop in the unit of the window size".to_string(),
+						fragment: drop_span.fragment.clone(),
 					}
 					.into());
 				}
@@ -217,7 +217,7 @@ impl<'bump> Compiler<'bump> {
 					&& matches!(immutable.value, WithSpan::Count(_)) != size_is_count
 				{
 					return Err(AstError::UnexpectedToken {
-						expected: "lateness in the unit of the window size".to_string(),
+						expected: "drop in the unit of the window size".to_string(),
 						fragment: immutable.fragment.clone(),
 					}
 					.into());
@@ -262,9 +262,9 @@ impl<'bump> Compiler<'bump> {
 
 		Ok(ApplyWith {
 			window: kind,
-			lateness: Declared::value_of(&lateness),
+			drop: Declared::value_of(&drop_span),
 			immutable: Declared::value_of(&immutable),
-			retention: Declared::value_of(&retention),
+			forget: Declared::value_of(&forget),
 		})
 	}
 }
@@ -312,47 +312,45 @@ fn declared_immutable(entry: &AstOperatorWithEntry<'_>) -> Result<Option<Immutab
 	})
 }
 
-fn reject_retention_below_lateness(
-	retention: Option<&Declared<Duration>>,
-	lateness: Option<&Declared<WithSpan>>,
+fn reject_forget_below_drop(
+	forget: Option<&Declared<Duration>>,
+	drop_span: Option<&Declared<WithSpan>>,
 ) -> Result<(), ValueError> {
-	let (Some(retention), Some(lateness)) = (retention, lateness) else {
+	let (Some(forget), Some(drop_span)) = (forget, drop_span) else {
 		return Ok(());
 	};
-	match lateness.value {
-		WithSpan::Duration(lateness_value) if retention.value < lateness_value => {
-			Err(AstError::UnexpectedToken {
-				expected: "a retention of at least the lateness".to_string(),
-				fragment: retention.fragment.clone(),
-			}
-			.into())
+	match drop_span.value {
+		WithSpan::Duration(drop_value) if forget.value < drop_value => Err(AstError::UnexpectedToken {
+			expected: "a forget of at least the drop".to_string(),
+			fragment: forget.fragment.clone(),
 		}
+		.into()),
 		_ => Ok(()),
 	}
 }
 
-fn reject_immutable_not_smaller_than_lateness_in_its_unit(
+fn reject_immutable_not_smaller_than_drop_in_its_unit(
 	immutable: Option<&Declared<WithSpan>>,
-	lateness: Option<&Declared<WithSpan>>,
+	drop_span: Option<&Declared<WithSpan>>,
 ) -> Result<(), ValueError> {
-	let (Some(immutable), Some(lateness)) = (immutable, lateness) else {
+	let (Some(immutable), Some(drop_span)) = (immutable, drop_span) else {
 		return Ok(());
 	};
-	match (immutable.value, lateness.value) {
-		(WithSpan::Duration(immutable_value), WithSpan::Duration(lateness_value)) => {
-			reject_immutable_not_smaller_than_lateness(
+	match (immutable.value, drop_span.value) {
+		(WithSpan::Duration(immutable_value), WithSpan::Duration(drop_value)) => {
+			reject_immutable_not_smaller_than_drop(
 				Some(&retag(immutable, immutable_value)),
-				Some(&retag(lateness, lateness_value)),
+				Some(&retag(drop_span, drop_value)),
 			)
 		}
-		(WithSpan::Count(immutable_value), WithSpan::Count(lateness_value)) => {
-			reject_immutable_not_smaller_than_lateness(
+		(WithSpan::Count(immutable_value), WithSpan::Count(drop_value)) => {
+			reject_immutable_not_smaller_than_drop(
 				Some(&retag(immutable, immutable_value)),
-				Some(&retag(lateness, lateness_value)),
+				Some(&retag(drop_span, drop_value)),
 			)
 		}
 		_ => Err(AstError::UnexpectedToken {
-			expected: "immutable in the same unit as lateness".to_string(),
+			expected: "immutable in the same unit as drop".to_string(),
 			fragment: immutable.fragment.clone(),
 		}
 		.into()),
@@ -394,56 +392,63 @@ mod tests {
 	}
 
 	#[test]
-	fn lateness_and_immutable_parse_as_durations() {
+	fn drop_and_immutable_parse_as_durations() {
 		assert_eq!(
-			apply_with("apply op { } with { lateness: 30s, immutable: 10s }").unwrap(),
+			apply_with("apply op { } with { drop: 30s, immutable: 10s }").unwrap(),
 			ApplyWith {
 				window: None,
-				lateness: seconds(30),
+				drop: seconds(30),
 				immutable: seconds(10),
-				retention: None,
+				forget: None,
 			}
 		);
 	}
 
 	#[test]
-	fn an_integer_lateness_parses_as_a_row_count() {
+	fn an_integer_drop_parses_as_a_row_count() {
 		// A count read as a duration would seal after 150 nanoseconds instead of 150 rows.
-		assert_eq!(
-			apply_with("apply op { } with { lateness: 150 }").unwrap().lateness,
-			Some(WithSpan::Count(150))
-		);
+		assert_eq!(apply_with("apply op { } with { drop: 150 }").unwrap().drop, Some(WithSpan::Count(150)));
 	}
 
 	#[test]
-	fn retention_parses_as_a_duration() {
-		// A retention read as a count would bound managed state by rows, which the forget pass cannot measure.
+	fn forget_parses_as_a_duration() {
+		// A forget read as a count would bound managed state by rows, which the forget pass cannot measure.
 		assert_eq!(
-			apply_with("apply op { } with { lateness: 30s, retention: 1h }").unwrap(),
+			apply_with("apply op { } with { drop: 30s, forget: 1h }").unwrap(),
 			ApplyWith {
 				window: None,
-				lateness: seconds(30),
+				drop: seconds(30),
 				immutable: None,
-				retention: Some(Duration::from_hours(1).unwrap()),
+				forget: Some(Duration::from_hours(1).unwrap()),
 			}
 		);
-		assert_eq!(
-			apply_with("apply op { } with { retention: 0s }").unwrap().retention,
-			Some(Duration::zero())
-		);
+		assert_eq!(apply_with("apply op { } with { forget: 0s }").unwrap().forget, Some(Duration::zero()));
 	}
 
 	#[test]
-	fn a_count_retention_is_rejected() {
+	fn drop_alone_and_forget_alone_fill_only_their_own_field() {
+		// Neither key may leak into the other field, otherwise a drop frees state or a forget cuts arrivals
+		// here.
+		let drop_only = apply_with("apply op { } with { drop: 30s }").unwrap();
+		assert_eq!(drop_only.drop, seconds(30));
+		assert_eq!(drop_only.forget, None);
+
+		let forget_only = apply_with("apply op { } with { forget: 1h }").unwrap();
+		assert_eq!(forget_only.drop, None);
+		assert_eq!(forget_only.forget, Some(Duration::from_hours(1).unwrap()));
+	}
+
+	#[test]
+	fn a_count_forget_is_rejected() {
 		// A bare number has no unit the forget pass can add to a write time.
-		assert!(apply_with("apply op { } with { retention: 150 }").is_err());
+		assert!(apply_with("apply op { } with { forget: 150 }").is_err());
 	}
 
 	#[test]
-	fn retention_below_lateness_is_rejected() {
-		// A retention under the lateness frees a group while a timer inside the hold can still fire for it.
-		assert!(apply_with("apply op { } with { lateness: 30s, retention: 10s }").is_err());
-		assert!(apply_with("apply op { } with { lateness: 30s, retention: 30s }").is_ok());
+	fn forget_below_drop_is_rejected() {
+		// A forget under the drop frees a group while a timer inside the hold can still fire for it.
+		assert!(apply_with("apply op { } with { drop: 30s, forget: 10s }").is_err());
+		assert!(apply_with("apply op { } with { drop: 30s, forget: 30s }").is_ok());
 	}
 
 	#[test]
@@ -459,36 +464,36 @@ mod tests {
 	}
 
 	#[test]
-	fn immutable_not_smaller_than_lateness_is_rejected() {
+	fn immutable_not_smaller_than_drop_is_rejected() {
 		for source in [
-			"apply op { } with { lateness: 30s, immutable: 30s }",
-			"apply op { } with { lateness: 30s, immutable: 40s }",
-			"apply op { } with { lateness: 150, immutable: 150 }",
+			"apply op { } with { drop: 30s, immutable: 30s }",
+			"apply op { } with { drop: 30s, immutable: 40s }",
+			"apply op { } with { drop: 150, immutable: 150 }",
 		] {
 			assert!(apply_with(source).is_err(), "must be rejected: {source}");
 		}
 	}
 
 	#[test]
-	fn immutable_in_a_different_unit_than_lateness_is_rejected() {
+	fn immutable_in_a_different_unit_than_drop_is_rejected() {
 		// A duration and a count cannot be ordered, so the immutable bound could never be checked.
 		for source in [
-			"apply op { } with { lateness: 30s, immutable: 10 }",
-			"apply op { } with { lateness: 150, immutable: 10s }",
+			"apply op { } with { drop: 30s, immutable: 10 }",
+			"apply op { } with { drop: 150, immutable: 10s }",
 		] {
 			assert!(apply_with(source).is_err(), "must be rejected: {source}");
 		}
 	}
 
 	#[test]
-	fn immutable_true_reads_as_zero_in_the_unit_of_lateness() {
-		// A zero duration next to a count lateness would fail the unit check for a boolean flag.
+	fn immutable_true_reads_as_zero_in_the_unit_of_drop() {
+		// A zero duration next to a count drop would fail the unit check for a boolean flag.
 		assert_eq!(
-			apply_with("apply op { } with { lateness: 30s, immutable: true }").unwrap().immutable,
+			apply_with("apply op { } with { drop: 30s, immutable: true }").unwrap().immutable,
 			seconds(0)
 		);
 		assert_eq!(
-			apply_with("apply op { } with { lateness: 150, immutable: true }").unwrap().immutable,
+			apply_with("apply op { } with { drop: 150, immutable: true }").unwrap().immutable,
 			Some(WithSpan::Count(0))
 		);
 		assert_eq!(apply_with("apply op { } with { immutable: true }").unwrap().immutable, seconds(0));
@@ -496,10 +501,7 @@ mod tests {
 
 	#[test]
 	fn immutable_false_reads_as_absent() {
-		assert_eq!(
-			apply_with("apply op { } with { lateness: 30s, immutable: false }").unwrap().immutable,
-			None
-		);
+		assert_eq!(apply_with("apply op { } with { drop: 30s, immutable: false }").unwrap().immutable, None);
 	}
 
 	#[test]
@@ -510,9 +512,7 @@ mod tests {
 	#[test]
 	fn a_tumbling_window_parses_into_apply_with() {
 		assert_eq!(
-			apply_with("apply op { } with { window: tumbling, duration: 1m, lateness: 30s }")
-				.unwrap()
-				.window,
+			apply_with("apply op { } with { window: tumbling, duration: 1m, drop: 30s }").unwrap().window,
 			Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(Duration::from_minutes(1).unwrap()),
 			})
@@ -536,8 +536,8 @@ mod tests {
 	#[test]
 	fn a_unit_mix_fails() {
 		for source in [
-			"apply op { } with { window: tumbling, slots: 1, lateness: 30s }",
-			"apply op { } with { window: tumbling, duration: 1m, lateness: 150 }",
+			"apply op { } with { window: tumbling, slots: 1, drop: 30s }",
+			"apply op { } with { window: tumbling, duration: 1m, drop: 150 }",
 			"apply op { } with { window: tumbling, duration: 1m, immutable: 150 }",
 		] {
 			assert!(apply_with(source).is_err(), "must be rejected: {source}");

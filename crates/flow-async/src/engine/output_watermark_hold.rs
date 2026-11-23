@@ -334,20 +334,23 @@ mod tests {
 		fn apply(mut self, id: u64, with: ApplyWith) -> Self {
 			self.inner.operators.insert(
 				(FLOW, OperatorId(id)),
-				Box::new(ApplyOperator::new(
-					None,
-					OperatorId(id),
-					Box::new(Sealing {
-						operator: OperatorId(id),
-						seal_span: None,
-					}),
-					&with,
-				)),
+				Box::new(
+					ApplyOperator::new(
+						None,
+						OperatorId(id),
+						Box::new(Sealing {
+							operator: OperatorId(id),
+							seal_span: None,
+						}),
+						&with,
+					)
+					.unwrap(),
+				),
 			);
 			self
 		}
 
-		fn tumbling_window(mut self, id: u64, size: Duration, lateness: Duration) -> Self {
+		fn tumbling_window(mut self, id: u64, size: Duration, drop_span: Duration) -> Self {
 			let window = WindowOperator::new(WindowConfig {
 				parent_schema: None,
 				operator: OperatorId(id),
@@ -358,7 +361,7 @@ mod tests {
 				aggregations: Vec::new(),
 				runtime_context: RuntimeContext::testing(0, 1),
 				routines: Routines::empty(),
-				lateness: Some(lateness),
+				drop: Some(drop_span),
 				immutable: None,
 				ctx: Arc::new(FlowContext::default()),
 			})
@@ -436,7 +439,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_window_holds_its_output_back_by_its_size_plus_lateness() {
+	fn a_window_holds_its_output_back_by_its_size_plus_drop() {
 		// A window that published its input watermark would let a consumer read a bucket still open to late
 		// rows.
 		let held = Harness::new()
@@ -459,9 +462,9 @@ mod tests {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(seconds(60)),
 			}),
-			lateness: Some(WithSpan::Duration(seconds(30))),
+			drop: Some(WithSpan::Duration(seconds(30))),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		let held = Harness::new()
 			.node(source(1))
@@ -477,11 +480,11 @@ mod tests {
 	}
 
 	#[test]
-	fn an_apply_with_retention_alone_holds_nothing() {
-		// Retention bounds the state, not the output; a hold by it would delay every downstream seal for
-		// nothing.
+	fn an_apply_with_forget_alone_holds_its_output_by_the_forget() {
+		// A missing drop defaults to the forget, otherwise a reader sees output a still accepted row can
+		// change.
 		let with = ApplyWith {
-			retention: Some(seconds(30)),
+			forget: Some(seconds(30)),
 			..ApplyWith::default()
 		};
 		let held = Harness::new()
@@ -492,9 +495,9 @@ mod tests {
 			.edge(2, 3)
 			.apply(2, with)
 			.registered_sink(3, FLOW)
-			.holds(vec![advance(1, 30_000)]);
+			.holds(vec![advance(1, 120_000)]);
 
-		assert_eq!(held, vec![hold(3, 30_000)]);
+		assert_eq!(held, vec![hold(3, 90_000)]);
 	}
 
 	#[test]

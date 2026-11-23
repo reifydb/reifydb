@@ -225,25 +225,25 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_append_query_rejects_a_retention_duration() {
-		// Append keeps no state, so a retention has nothing to bound and must not parse into silence.
+	fn test_append_query_rejects_a_forget_duration() {
+		// Append keeps no state, so a forget has nothing to free and must not parse into silence.
 		let bump = Bump::new();
-		let source = "append { from test::orders } with { retention: 1h }";
+		let source = "append { from test::orders } with { forget: 1h }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 
-		assert!(parser.parse().is_err(), "a retention on append must be rejected");
+		assert!(parser.parse().is_err(), "a forget on append must be rejected");
 	}
 
 	#[test]
-	fn test_append_query_rejects_a_full_retention_config() {
+	fn test_append_query_rejects_a_full_forget_config() {
 		// Same rejection with an anchor: no part of the with-clause may be accepted and dropped.
 		let bump = Bump::new();
-		let source = "append { from test::orders } with { retention: 30m, on: updated }";
+		let source = "append { from test::orders } with { forget: 30m, on: updated }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 
-		assert!(parser.parse().is_err(), "a retention on append must be rejected");
+		assert!(parser.parse().is_err(), "a forget on append must be rejected");
 	}
 
 	#[test]

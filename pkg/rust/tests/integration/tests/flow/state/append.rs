@@ -117,7 +117,8 @@ fn a_retraction_withdraws_the_published_row_however_late_it_arrives() {
 
 #[test]
 fn a_mutation_lands_however_late_it_arrives() {
-	// An update is a retraction plus an insert on the same output row, so lateness must not half-apply it either.
+	// An update is a retraction plus an insert on the same output row, so a late arrival must not half-apply it
+	// either.
 	let db = setup();
 	append_view(&db);
 	fill_both_inputs(&db);

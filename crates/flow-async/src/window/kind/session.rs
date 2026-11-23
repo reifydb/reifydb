@@ -18,7 +18,7 @@ impl SessionKind {
 		}
 	}
 
-	pub fn seal_rule(&self, lateness: Duration) -> SealRule {
-		SealRule::session(self.gap, lateness)
+	pub fn seal_rule(&self, drop_span: Duration) -> SealRule {
+		SealRule::session(self.gap, drop_span)
 	}
 }

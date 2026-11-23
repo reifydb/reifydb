@@ -13,7 +13,7 @@ fn setup() -> TestDb {
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE DEFERRED VIEW app::agg { g: int4, n: int8, top: int4 } AS { FROM app::t | aggregate { n: math::count(), top: math::max(v) } by { g } }");
 	db.admin(
-		"CREATE DEFERRED VIEW app::w { s: datetime, n: int8 } AS { FROM app::agg | window tumbling { s: window::start(), n: math::count() } with { duration: 60s, lateness: 1h } }",
+		"CREATE DEFERRED VIEW app::w { s: datetime, n: int8 } AS { FROM app::agg | window tumbling { s: window::start(), n: math::count() } with { duration: 60s, drop: 1h } }",
 	);
 	db
 }

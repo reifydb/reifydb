@@ -37,19 +37,19 @@ fn latest_left_join(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW app::j { k: int4, lv: int4, rv: Option(int4) } AS {
 			FROM app::lhs
 				| left join { from app::rhs } as r using (k, r.k)
-					with { retention: { left: 1s }, latest: true }
+					with { forget: { left: 1s }, latest: true }
 				| map { k: k, lv: lv, rv: r_rv }
 		}"#);
 }
 
-fn latest_left_join_with_right_lateness(db: &TestDb) {
+fn latest_left_join_with_right_forget(db: &TestDb) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::lhs { id: int4, k: int4, lv: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE TABLE app::rhs { id: int4, k: int4, rv: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::j { k: int4, lv: int4, rv: Option(int4) } AS {
 			FROM app::lhs
 				| left join { from app::rhs } as r using (k, r.k)
-					with { retention: { left: 1h, right: 2s }, latest: true }
+					with { forget: { left: 1h, right: 2s }, latest: true }
 				| map { k: k, lv: lv, rv: r_rv }
 		}"#);
 }
@@ -114,9 +114,9 @@ fn view_rv(db: &TestDb) -> Vec<Value> {
 
 #[test]
 fn the_losing_right_row_is_dropped_on_arrival_and_the_winner_still_seals() {
-	// The loser must go the moment the winner replaces it, and the winner must still arm its own lateness.
+	// The loser must go the moment the winner replaces it, and the winner must still arm its own forget.
 	let db = setup();
-	latest_left_join_with_right_lateness(&db);
+	latest_left_join_with_right_forget(&db);
 	insert_left(&db);
 	insert_right_a(&db);
 	insert_right_b_later(&db);
@@ -149,7 +149,7 @@ fn the_losing_right_row_is_dropped_on_arrival_and_the_winner_still_seals() {
 	assert_eq!(
 		await_state_keys(&db, RIGHT, 0, TIMEOUT),
 		0,
-		"and the winner's own right lateness must free it, or the held row is never forgotten; surface now: {:?}",
+		"and the winner's own right forget must free it, or the held row is never forgotten; surface now: {:?}",
 		db.query(SURFACE)
 	);
 }

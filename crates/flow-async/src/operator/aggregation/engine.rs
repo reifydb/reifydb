@@ -221,7 +221,7 @@ mod bucket_start_tests {
 	#[test]
 	fn a_bucket_stamps_the_same_time_regardless_of_what_arrived_in_it() {
 		// The stamp is a pure function of the bucket, so two replays of one corpus agree. A
-		// max-contributor stamp would vary with arrival and change retention decisions.
+		// max-contributor stamp would vary with arrival and change forget decisions.
 		let bucket = order(1_700_000_000_000);
 
 		assert_eq!(

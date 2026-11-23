@@ -25,20 +25,16 @@ const FORGET_BATCH: usize = 256;
 
 #[derive(Debug, Default)]
 pub(crate) struct LookupForget {
-	lateness: Option<Duration>,
+	forget: Option<Duration>,
 	index: JoinForgetIndex,
 }
 
 impl LookupForget {
-	pub(crate) fn new(lateness: Option<Duration>) -> Self {
+	pub(crate) fn new(forget: Option<Duration>) -> Self {
 		Self {
-			lateness,
+			forget,
 			index: JoinForgetIndex::default(),
 		}
-	}
-
-	pub(crate) fn lateness(&self) -> Option<Duration> {
-		self.lateness
 	}
 
 	pub(crate) fn timer_key() -> EncodedKey {
@@ -51,13 +47,13 @@ impl LookupForget {
 		cleared: &[RowNumber],
 		armed: &[(RowNumber, DateTime)],
 	) -> Result<(), ValueError> {
-		let Some(lateness) = self.lateness else {
+		let Some(forget) = self.forget else {
 			return Ok(());
 		};
 		if cleared.is_empty() && armed.is_empty() {
 			return Ok(());
 		}
-		let rule = SealRule::of(lateness);
+		let rule = SealRule::of(forget);
 		let cleared: Vec<(GroupId, RowNumber)> = cleared.iter().map(|row| (GroupId::ROOT, *row)).collect();
 		for at in host.join_forget_clear(LEFT_SIDE, &cleared)?.into_iter().flatten() {
 			self.index.cleared(at);
@@ -72,7 +68,7 @@ impl LookupForget {
 	}
 
 	pub(crate) fn free_due(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<(), ValueError> {
-		if self.lateness.is_none() {
+		if self.forget.is_none() {
 			return Ok(());
 		}
 		let mut start = match self.index.min(host)? {

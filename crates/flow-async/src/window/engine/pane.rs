@@ -139,7 +139,7 @@ impl<C, X> PaneEvents<C, X> {
 pub struct PaneSpans<Span> {
 	pub size: Span,
 	pub lag: Span,
-	pub lateness: Span,
+	pub drop: Span,
 	pub retract: Span,
 }
 
@@ -154,11 +154,11 @@ pub struct PaneLines {
 impl PaneLines {
 	pub fn of<C: Coord>(spans: &PaneSpans<C::Span>, newest: C) -> Self {
 		let output = newest.checked_sub_span(spans.lag).map(Coord::to_order);
-		let queue_below = newest.saturating_sub_span(spans.lateness.max(spans.retract)).to_order();
+		let queue_below = newest.saturating_sub_span(spans.drop.max(spans.retract)).to_order();
 		Self {
 			output,
 			queue: queue_below.checked_sub(1).zip(output).map(|(queue, output)| queue.min(output)),
-			seal: newest.saturating_sub_span(spans.lateness).to_order(),
+			seal: newest.saturating_sub_span(spans.drop).to_order(),
 			retract: newest.saturating_sub_span(spans.retract).to_order(),
 		}
 	}
@@ -1254,7 +1254,7 @@ mod tests {
 		size: u64,
 		running: bool,
 		lag: u64,
-		lateness: u64,
+		drop: u64,
 		immutable: Option<u64>,
 	}
 
@@ -1262,8 +1262,8 @@ mod tests {
 		let spans = PaneSpans {
 			size: span(shape.size),
 			lag: span(shape.lag),
-			lateness: span(shape.lateness),
-			retract: span(shape.immutable.unwrap_or(shape.lateness)),
+			drop: span(shape.drop),
+			retract: span(shape.immutable.unwrap_or(shape.drop)),
 		};
 		let config = WindowEngineConfig::builder().build();
 		if shape.running {
@@ -1293,9 +1293,9 @@ mod tests {
 				return false;
 			}
 			let line = if retraction {
-				shape.immutable.unwrap_or(shape.lateness)
+				shape.immutable.unwrap_or(shape.drop)
 			} else {
-				shape.lateness
+				shape.drop
 			};
 			self.newest.get(&group).is_none_or(|newest| pane >= newest.saturating_sub(line))
 		}
@@ -1468,7 +1468,7 @@ mod tests {
 						size: 25,
 						running,
 						lag,
-						lateness: 4,
+						drop: 4,
 						immutable,
 					});
 				}
@@ -1501,7 +1501,7 @@ mod tests {
 				size: 60_000,
 				running,
 				lag: 0,
-				lateness: 4,
+				drop: 4,
 				immutable: None,
 			};
 			let mut engine = engine(shape);
@@ -1596,7 +1596,7 @@ mod tests {
 		let spans = PaneSpans {
 			size: span(60),
 			lag: span(0),
-			lateness: span(4),
+			drop: span(4),
 			retract: span(4),
 		};
 		let mut engine: PaneEngine<u32, ByDateTime, Tally> =
@@ -1657,7 +1657,7 @@ mod tests {
 		let spans = PaneSpans {
 			size: span(60),
 			lag: span(0),
-			lateness: span(0),
+			drop: span(0),
 			retract: span(0),
 		};
 		PaneEngine::queue(WindowEngineConfig::builder().build(), spans, Merge::of())

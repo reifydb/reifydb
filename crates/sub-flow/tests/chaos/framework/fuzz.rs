@@ -7,13 +7,13 @@
 use rand::{RngExt, rngs::StdRng};
 use reifydb_testing_chaos::fuzz::pick;
 
-/// Lateness as a ratio of the window size, not an absolute: only the ratio changes behaviour, and above
+/// Drop as a ratio of the window size, not an absolute: only the ratio changes behaviour, and above
 /// 1 a coordinate can be new enough to admit while already too old to contribute. No absolute range
 /// lands in that band across sizes spanning two orders of magnitude.
-const LATENESS_RATIOS: [(u64, u64); 5] = [(0, 1), (1, 2), (1, 1), (2, 1), (3, 1)];
+const DROP_RATIOS: [(u64, u64); 5] = [(0, 1), (1, 2), (1, 1), (2, 1), (3, 1)];
 
-pub fn lateness_secs(rng: &mut StdRng, size_secs: u64) -> u64 {
-	let (numerator, denominator) = pick(rng, &LATENESS_RATIOS);
+pub fn drop_secs(rng: &mut StdRng, size_secs: u64) -> u64 {
+	let (numerator, denominator) = pick(rng, &DROP_RATIOS);
 	size_secs * numerator / denominator
 }
 

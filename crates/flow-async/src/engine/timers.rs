@@ -171,10 +171,10 @@ impl FlowEngineInner {
 						{
 							let count = run.len();
 							txn.set_batch_time(run.iter().map(|timer| timer.due).max());
-							let mut host = TxnHostContext::with_retention(
+							let mut host = TxnHostContext::with_forget(
 								txn,
 								operator.id(),
-								operator.retention(),
+								operator.forget(),
 							);
 							let outputs = operator.on_timers(&mut host, run)?;
 							if outputs.len() != count {
@@ -191,10 +191,10 @@ impl FlowEngineInner {
 							let mut outputs = Vec::with_capacity(run.len());
 							for timer in run {
 								txn.set_batch_time(Some(timer.due));
-								let mut host = TxnHostContext::with_retention(
+								let mut host = TxnHostContext::with_forget(
 									txn,
 									operator.id(),
-									operator.retention(),
+									operator.forget(),
 								);
 								outputs.push(operator.on_timer(&mut host, timer)?);
 							}
@@ -625,7 +625,7 @@ mod tests {
 
 	#[test]
 	fn a_forget_pass_timer_between_seals_keeps_its_place_in_the_dispatch() {
-		// A seal batched past a forget pass timer forgets groups before their lateness runs out.
+		// A seal batched past a forget pass timer forgets groups before their forget runs out.
 		let fired = dispatch_recorded(&[
 			(OPERATOR, timer_at(5_000, TimerKind::Seal, "a")),
 			(OPERATOR, timer_at(5_500, TimerKind::ForgetPass, "")),
@@ -641,7 +641,8 @@ mod tests {
 
 	#[test]
 	fn a_batching_operator_gets_each_run_of_its_own_seals_and_nothing_else_in_one_call() {
-		// A run spanning another operator or a forget pass timer reorders outputs or forgets before lateness.
+		// A run spanning another operator or a forget pass timer reorders outputs or forgets before the forget
+		// is due.
 		let runs: Runs = Arc::default();
 		dispatch_with(
 			&[

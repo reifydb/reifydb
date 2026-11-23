@@ -200,7 +200,7 @@ impl Emit for TestVolume {
 	}
 }
 
-// Sealing variant: 60ms windows plus 60ms lateness. Identical to TestVolume except for the seal
+// Sealing variant: 60ms windows plus 60ms drop. Identical to TestVolume except for the seal
 // envelope, so any difference in what these tests observe comes from sealing alone.
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default)]
@@ -415,9 +415,9 @@ fn window_with() -> ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(60)),
 		}),
-		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		drop: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -426,9 +426,9 @@ fn sealed_with() -> ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(60)),
 		}),
-		lateness: Some(WithSpan::Duration(millis(60))),
+		drop: Some(WithSpan::Duration(millis(60))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -564,7 +564,7 @@ fn boundary_slot_belongs_to_next_window() {
 
 #[test]
 fn late_event_for_sealed_window_dropped() {
-	// A window seals once the flow watermark passes start + lateness, and a sealed window must
+	// A window seals once the flow watermark passes start + drop, and a sealed window must
 	// refuse further inserts rather than reopen.
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
 		.with(sealed_with())
@@ -578,7 +578,7 @@ fn late_event_for_sealed_window_dropped() {
 
 #[test]
 fn late_event_within_seal_is_accepted() {
-	// The boundary is inclusive on the mutable side: at flow watermark == start + lateness the
+	// The boundary is inclusive on the mutable side: at flow watermark == start + drop the
 	// window is still open. The flow watermark must be advanced explicitly, or the gate never
 	// closes and the assertion would hold under any boundary rule.
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
@@ -588,7 +588,7 @@ fn late_event_within_seal_is_accepted() {
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 120, 5.0)).build()).expect("apply");
 	h.advance_flow_watermark(DateTime::from_millis(120)).expect("advance flow watermark");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
-	assert_eq!(out.diffs.len(), 1, "window 0 is still within its lateness at flow watermark 120");
+	assert_eq!(out.diffs.len(), 1, "window 0 is still within its drop at flow watermark 120");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(read::<f64>((post, 0), "volume"), Some(99.0));
 }
@@ -596,7 +596,7 @@ fn late_event_within_seal_is_accepted() {
 #[test]
 fn a_gated_driver_admits_a_late_event_while_the_flow_watermark_has_not_moved() {
 	// The operator watermark comes from the seal ledger and the flow watermark, not from arrivals, so a
-	// flow that has reported no progress has nothing to measure lateness against. If this ever
+	// flow that has reported no progress has nothing to measure drop against. If this ever
 	// starts dropping, the operator watermark is being derived from the batch again.
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedVolume>>::new()
 		.with(sealed_with())
@@ -611,8 +611,8 @@ fn a_gated_driver_admits_a_late_event_while_the_flow_watermark_has_not_moved() {
 }
 
 #[test]
-fn late_event_while_lateness_is_open_is_accepted() {
-	// while the lateness window has not elapsed, a driver must accept an arbitrarily late mutation
+fn late_event_while_drop_is_open_is_accepted() {
+	// while the drop window has not elapsed, a driver must accept an arbitrarily late mutation
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new()
 		.with(window_with())
 		.build()
@@ -639,7 +639,7 @@ fn remove_within_seal_is_applied_and_sealed_remove_is_dropped() {
 		.expect("apply");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 60, 1.0)).build()).expect("apply");
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(2, "BTC", 30, 5.0)).build()).expect("apply");
-	assert_eq!(out.diffs.len(), 1, "retraction within the lateness must be honored");
+	assert_eq!(out.diffs.len(), 1, "retraction within the drop must be honored");
 	let diff = &out.diffs[0];
 	assert_eq!(diff.kind(), DiffType::Update);
 	let r = (diff.post().expect("post"), 0);
@@ -726,7 +726,7 @@ fn sealing_forgets_window_state_in_the_store() {
 	let after = h.snapshot_state();
 	assert!(
 		before.keys().all(|k| after.contains_key(k)),
-		"a window whose lateness has not passed must not forget any state"
+		"a window whose drop has not passed must not forget any state"
 	);
 }
 
@@ -770,9 +770,9 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 			pane: None,
 			on_empty: OnEmpty::Remove,
 		}),
-		lateness: None,
+		drop: None,
 		immutable: None,
-		retention: None,
+		forget: None,
 	};
 	let Err(err) = InProcessOperatorHarnessBuilder::<PlainDriver<TestVolume>>::new().with(with).build() else {
 		panic!("create must refuse an unsupported window kind");

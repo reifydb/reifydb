@@ -183,9 +183,9 @@ fn window_with() -> ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(60)),
 		}),
-		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		drop: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -200,14 +200,14 @@ macro_rules! feed_windows {
 	}};
 }
 
-fn sealed_window_with(lateness: u64) -> ApplyWith {
+fn sealed_window_with(drop_span: u64) -> ApplyWith {
 	ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(60)),
 		}),
-		lateness: Some(WithSpan::Duration(millis(lateness))),
+		drop: Some(WithSpan::Duration(millis(drop_span))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -233,7 +233,7 @@ fn a_carry_window_folds_past_the_first_admitted_instant_and_drops_its_accumulato
 		long <= short + 2,
 		"twice the windows must not mean more state past the first admitted instant, but 20 windows left {short} rows and 40 left {long}"
 	);
-	assert!(long < 20, "40 windows past a 2-window lateness must leave few rows, but left {long}");
+	assert!(long < 20, "40 windows past a 2-window drop must leave few rows, but left {long}");
 }
 
 #[test]
@@ -264,9 +264,9 @@ fn the_carry_driver_refuses_a_window_that_is_not_tumbling() {
 			pane: None,
 			on_empty: OnEmpty::Remove,
 		}),
-		lateness: None,
+		drop: None,
 		immutable: None,
-		retention: None,
+		forget: None,
 	};
 
 	let Err(err) = InProcessOperatorHarnessBuilder::<CarryDriver<Probe>>::new().with(with).build() else {

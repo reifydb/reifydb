@@ -15,7 +15,7 @@ use crate::{
 ///
 /// Sum is the fold every pinned window corpus was recorded against and stays the default, so adding
 /// this enum does not re-point them.
-/// Min and max fold only under immutable, never by lateness alone, otherwise they stay invertible.
+/// Min and max fold only under immutable, never by drop alone, otherwise they stay invertible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fold {
 	Sum,
@@ -52,7 +52,7 @@ impl Fold {
 
 /// Which fixed-grid windows a coordinate belongs to. This is the only thing that differs between
 /// tumbling and sliding: both anchor their seal instant on the window start, both close at
-/// `start + size + lateness`, and both accumulate the same way.
+/// `start + size + drop`, and both accumulate the same way.
 pub trait Grid {
 	fn windows_of(&self, coord_ms: u64) -> Vec<i64>;
 }
@@ -74,10 +74,10 @@ struct Contribution {
 }
 
 impl<G: Grid> GridOracle<G> {
-	pub fn new(grid: G, size_ms: u64, lateness_ms: u64) -> Self {
+	pub fn new(grid: G, size_ms: u64, drop_ms: u64) -> Self {
 		Self {
 			grid,
-			cutoff_ms: size_ms + lateness_ms,
+			cutoff_ms: size_ms + drop_ms,
 			ledger: 0,
 			contributions: Vec::new(),
 			fold: Fold::Sum,

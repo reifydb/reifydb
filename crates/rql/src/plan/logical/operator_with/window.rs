@@ -18,16 +18,16 @@ use crate::{
 		Compiler,
 		operator_with::{
 			Declared, declared_count, declared_duration, entries, is_duration, is_number, literal,
-			literal_boolean, reject_immutable_not_smaller_than_lateness, unknown_key,
+			literal_boolean, reject_immutable_not_smaller_than_drop, unknown_key,
 		},
 	},
 };
 
-const WINDOW_CONFIG_KEYS: &str = "duration, count, slide, gap, lag, pane, lateness, or immutable";
+const WINDOW_CONFIG_KEYS: &str = "duration, count, slide, gap, lag, pane, drop, or immutable";
 
 const NATIVE_ON_EMPTY: &[(&str, OnEmpty)] = &[("zero", OnEmpty::Zero), ("remove", OnEmpty::Remove)];
 
-const NATIVE_WINDOW_CONFIG_KEYS: &str = "duration, slide, gap, lag, pane, lateness, immutable, or on";
+const NATIVE_WINDOW_CONFIG_KEYS: &str = "duration, slide, gap, lag, pane, drop, immutable, or on";
 
 #[derive(Debug, Default)]
 pub(super) struct ParsedConfig {
@@ -38,7 +38,7 @@ pub(super) struct ParsedConfig {
 	pub gap: Option<Declared<Duration>>,
 	pub lag: Option<Declared<Duration>>,
 	pub pane: Option<Declared<Duration>>,
-	pub lateness: Option<Declared<Duration>>,
+	pub drop: Option<Declared<Duration>>,
 	pub immutable: Option<Declared<Duration>>,
 	pub on_empty: Option<Declared<OnEmpty>>,
 	pub window: Fragment,
@@ -52,11 +52,11 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<WindowWith, ValueError> {
 		let parsed = Self::parse_config(with, window)?;
 		let kind = Self::build_window_kind(kind, &parsed)?;
-		Self::reject_immutable_not_smaller_than_lateness(&parsed)?;
+		Self::reject_immutable_not_smaller_than_drop(&parsed)?;
 		Self::reject_immutable_not_smaller_than_window(&parsed, &kind)?;
 		Ok(WindowWith {
 			kind,
-			lateness: Declared::value_of(&parsed.lateness),
+			drop: Declared::value_of(&parsed.drop),
 			immutable: Declared::value_of(&parsed.immutable),
 		})
 	}
@@ -189,12 +189,9 @@ impl<'bump> Compiler<'bump> {
 				config.pane =
 					Some(declared_duration(literal(entry)?, "'pane'", DurationBound::Positive)?);
 			}
-			"lateness" => {
-				config.lateness = Some(declared_duration(
-					literal(entry)?,
-					"'lateness'",
-					DurationBound::AllowZero,
-				)?);
+			"drop" => {
+				config.drop =
+					Some(declared_duration(literal(entry)?, "'drop'", DurationBound::AllowZero)?);
 			}
 			"immutable" => {
 				let token = literal(entry)?;
@@ -220,8 +217,8 @@ impl<'bump> Compiler<'bump> {
 		Ok(())
 	}
 
-	fn reject_immutable_not_smaller_than_lateness(parsed: &ParsedConfig) -> Result<(), ValueError> {
-		reject_immutable_not_smaller_than_lateness(parsed.immutable.as_ref(), parsed.lateness.as_ref())
+	fn reject_immutable_not_smaller_than_drop(parsed: &ParsedConfig) -> Result<(), ValueError> {
+		reject_immutable_not_smaller_than_drop(parsed.immutable.as_ref(), parsed.drop.as_ref())
 	}
 
 	fn window_base_span(kind: &WindowKind) -> Option<Duration> {
@@ -567,7 +564,7 @@ mod tests {
 	fn a_missing_measure_points_at_the_window() {
 		// An error about something absent has no key to point at, so it has to fall back to the window token;
 		// otherwise the author cannot tell which window in the statement lacks the measure.
-		let parsed = parse_window_config(r#"window tumbling { count(*) } with { lateness: 1s }"#).unwrap();
+		let parsed = parse_window_config(r#"window tumbling { count(*) } with { drop: 1s }"#).unwrap();
 
 		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
 		assert_eq!(err.fragment.text(), "window", "the window token is the fallback span");
@@ -722,9 +719,9 @@ mod tests {
 
 	#[test]
 	fn immutable_true_resolves_to_zero_duration() {
-		// `true` must compile to a zero-length lateness window, never be left unset.
+		// `true` must compile to a zero-length drop window, never be left unset.
 		let parsed = parse_window_config(
-			r#"window tumbling { count(*) } with { duration: 5m, lateness: 20s, immutable: true }"#,
+			r#"window tumbling { count(*) } with { duration: 5m, drop: 20s, immutable: true }"#,
 		)
 		.unwrap();
 		assert_eq!(Declared::value_of(&parsed.immutable), Some(Duration::zero()));
@@ -732,9 +729,9 @@ mod tests {
 
 	#[test]
 	fn immutable_false_resolves_to_absent() {
-		// `false` must fall back to lateness alone, exactly as if the key were never written.
+		// `false` must fall back to drop alone, exactly as if the key were never written.
 		let parsed = parse_window_config(
-			r#"window tumbling { count(*) } with { duration: 5m, lateness: 20s, immutable: false }"#,
+			r#"window tumbling { count(*) } with { duration: 5m, drop: 20s, immutable: false }"#,
 		)
 		.unwrap();
 		assert!(Declared::value_of(&parsed.immutable).is_none());
@@ -742,33 +739,33 @@ mod tests {
 
 	#[test]
 	fn immutable_duration_literal_is_still_accepted() {
-		// The pre-existing lateness-period form must keep working now that `immutable` also accepts a boolean.
+		// The pre-existing drop-period form must keep working now that `immutable` also accepts a boolean.
 		let parsed = parse_window_config(
-			r#"window tumbling { count(*) } with { duration: 5m, lateness: 20s, immutable: 15s }"#,
+			r#"window tumbling { count(*) } with { duration: 5m, drop: 20s, immutable: 15s }"#,
 		)
 		.unwrap();
 		assert_eq!(Declared::value_of(&parsed.immutable), Some(Duration::from_seconds(15).unwrap()));
 	}
 
 	#[test]
-	fn immutable_true_is_always_smaller_than_a_positive_lateness() {
-		// Zero must never be rejected by the immutable-vs-lateness guard against a positive lateness.
+	fn immutable_true_is_always_smaller_than_a_positive_drop() {
+		// Zero must never be rejected by the immutable-vs-drop guard against a positive drop.
 		let parsed = parse_window_config(
-			r#"window tumbling { count(*) } with { duration: 5m, lateness: 20s, immutable: true }"#,
+			r#"window tumbling { count(*) } with { duration: 5m, drop: 20s, immutable: true }"#,
 		)
 		.unwrap();
-		Compiler::<'static>::reject_immutable_not_smaller_than_lateness(&parsed)
-			.expect("zero immutable is always smaller than a positive lateness");
+		Compiler::<'static>::reject_immutable_not_smaller_than_drop(&parsed)
+			.expect("zero immutable is always smaller than a positive drop");
 	}
 
 	#[test]
-	fn immutable_without_lateness_is_accepted() {
-		// The lateness guard only fires once both knobs are declared; immutable alone has nothing to violate.
+	fn immutable_without_drop_is_accepted() {
+		// The drop guard only fires once both knobs are declared; immutable alone has nothing to violate.
 		let parsed =
 			parse_window_config(r#"window tumbling { count(*) } with { duration: 5m, immutable: 15s }"#)
 				.unwrap();
-		Compiler::<'static>::reject_immutable_not_smaller_than_lateness(&parsed)
-			.expect("no declared lateness means no lateness bound to violate");
+		Compiler::<'static>::reject_immutable_not_smaller_than_drop(&parsed)
+			.expect("no declared drop means no drop bound to violate");
 	}
 
 	#[test]
@@ -845,7 +842,7 @@ mod tests {
 		assert!(
 			parse_window_config(r#"window tumbling { count(*) } with { duration: 5m, seal: 30s }"#)
 				.is_err(),
-			"seal was renamed to lateness and must not be silently accepted"
+			"seal was renamed to drop and must not be silently accepted"
 		);
 		assert!(
 			parse_window_config(r#"window tumbling { count(*) } with { interval: 5m }"#).is_err(),

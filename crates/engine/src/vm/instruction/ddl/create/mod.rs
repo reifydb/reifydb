@@ -10,7 +10,7 @@ use reifydb_core::{
 	common::{OperatorClass, TimeDomain, WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	error::diagnostic::{
 		flow::{
-			flow_managed_operator_requires_event_time, flow_operator_retention_required,
+			flow_managed_operator_requires_event_time, flow_operator_forget_required,
 			flow_operator_with_not_accepted, flow_operator_with_pane_missing,
 			flow_operator_with_window_kind_unsupported, flow_operator_with_window_missing,
 			flow_operator_with_window_not_supported, flow_operator_with_window_size_count,
@@ -33,7 +33,7 @@ use reifydb_core::{
 use reifydb_evaluate::{expression::udf_extract::extract_udf_calls, stack::SymbolTable};
 use reifydb_flow::{
 	compiler::compile_flow,
-	time_domain::{check_join_lateness_requirements, check_window_time_requirements, source_time_domain},
+	time_domain::{check_join_drop_requirements, check_window_time_requirements, source_time_domain},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::{nodes::CompiledViewStorageKind, query::QueryPlan};
@@ -303,15 +303,15 @@ fn check_operator_with_requirements(flow: &FlowDag, operators: &OperatorLibrary)
 				}
 			}
 			OperatorClass::Managed => {
-				with.check_retention()?;
-				if with.effective_retention()?.is_none() {
-					return Err(error!(flow_operator_retention_required()));
+				with.check_forget()?;
+				if with.forget.is_none() {
+					return Err(error!(flow_operator_forget_required()));
 				}
 			}
-			OperatorClass::Unmanaged => with.reject_retention()?,
+			OperatorClass::Unmanaged => with.reject_forget()?,
 			OperatorClass::Windowed => {
-				if with.retention.is_some() {
-					with.check_retention()?;
+				if with.forget.is_some() {
+					with.check_forget()?;
 				}
 			}
 		}
@@ -366,7 +366,7 @@ pub(crate) fn check_flow_dag(
 	ioc: &IocContainer,
 ) -> Result<(), ValueError> {
 	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), dag)?;
-	check_join_lateness_requirements(catalog, &mut Transaction::Admin(txn), dag)?;
+	check_join_drop_requirements(catalog, &mut Transaction::Admin(txn), dag)?;
 	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), dag, operators)?;
 	check_operator_with_requirements(dag, operators)?;
 	if let Some(registration) = ioc.try_resolve::<FlowRegistrationCheckRef>() {

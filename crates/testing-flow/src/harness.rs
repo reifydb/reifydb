@@ -226,6 +226,7 @@ impl Harness<ApplyOperator> {
 	) -> Self {
 		Self::new(|_| {
 			ApplyOperator::new(None, operator, mount(logic, operator, capabilities), &ApplyWith::default())
+				.expect("apply operator build")
 		})
 	}
 
@@ -235,7 +236,10 @@ impl Harness<ApplyOperator> {
 		capabilities: &'static [OperatorCapability],
 		with: &ApplyWith,
 	) -> Self {
-		Self::new(|_| ApplyOperator::new(None, operator, mount(logic, operator, capabilities), with))
+		Self::new(|_| {
+			ApplyOperator::new(None, operator, mount(logic, operator, capabilities), with)
+				.expect("apply operator build")
+		})
 	}
 }
 

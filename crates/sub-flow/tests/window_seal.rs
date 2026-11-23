@@ -29,7 +29,7 @@ fn two_source_window(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 			FROM app::fast APPEND { FROM app::slow }
 				| window tumbling { total: math::sum(v) }
-					with { duration: 1s, lateness: 0s }
+					with { duration: 1s, drop: 0s }
 					by { g }
 		}"#);
 }
@@ -102,9 +102,9 @@ fn a_source_that_never_reports_holds_every_window_open() {
 	);
 }
 
-/// One table feeding a tumbling window, with the lateness left to the caller so a corpus can be run
+/// One table feeding a tumbling window, with the drop left to the caller so a corpus can be run
 /// either entirely inside the windows' seal spans or past them.
-fn ordering_pair(lateness: &str) -> (TestDb, TestDb) {
+fn ordering_pair(drop_span: &str) -> (TestDb, TestDb) {
 	let pair = (setup(), setup());
 	for db in [&pair.0, &pair.1] {
 		db.admin("CREATE NAMESPACE app");
@@ -112,7 +112,7 @@ fn ordering_pair(lateness: &str) -> (TestDb, TestDb) {
 		db.admin(&format!(r#"CREATE DEFERRED VIEW app::w {{ g: int4, total: int8 }} AS {{
 				FROM app::t
 					| window tumbling {{ total: math::sum(v) }}
-						with {{ duration: 1s, lateness: {lateness} }}
+						with {{ duration: 1s, drop: {drop_span} }}
 						by {{ g }}
 			}}"#));
 	}
@@ -137,7 +137,7 @@ fn view_rows(db: &TestDb) -> Vec<reifydb::Frame> {
 #[test]
 fn two_arrival_orders_of_the_same_corpus_produce_the_same_open_windows() {
 	// Bucketing, grouping, aggregation and the #time stamp must be pure functions of the data, so
-	// a different arrival order lands the same windows with the same stamps. The 10s lateness holds
+	// a different arrival order lands the same windows with the same stamps. The 10s drop holds
 	// every window open, so admission cannot depend on order either.
 	let (forward, reverse) = ordering_pair("10s");
 
@@ -266,7 +266,7 @@ fn a_window_stays_open_while_the_wall_clock_runs_past_it() {
 	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: int8 } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
-					with { duration: 2s, lateness: 0s }
+					with { duration: 2s, drop: 0s }
 					by { g }
 		}"#);
 
@@ -312,7 +312,7 @@ fn a_session_that_keeps_extending_seals_only_after_its_final_gap() {
 	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } AS {
 			FROM app::t
 				| window session { total: math::sum(v) }
-					with { gap: 2s, lateness: 0s }
+					with { gap: 2s, drop: 0s }
 					by { g }
 		}"#);
 
@@ -342,7 +342,7 @@ fn a_row_at_the_epoch_is_refused_once_its_window_has_sealed() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
-					with { duration: 1s, lateness: 3s }
+					with { duration: 1s, drop: 3s }
 					by { g }
 		}"#);
 
@@ -372,7 +372,7 @@ fn sealed_window_source(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, s: datetime, total: int8 } AS {
 			FROM app::t
 				| window tumbling { s: window::start(), total: math::sum(v) }
-					with { duration: 1s, lateness: 0s }
+					with { duration: 1s, drop: 0s }
 					by { g }
 		}"#);
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 10, ts: "1970-01-01T00:00:20Z" }]"#);
@@ -471,7 +471,7 @@ fn an_update_from_a_sealed_window_into_an_open_one_applies_only_its_open_side() 
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, s: datetime, n: int8, top: int4 } AS {
 			FROM app::agg
 				| window tumbling { s: window::start(), n: math::count(), top: math::max(top) }
-					with { duration: 1s, lateness: 0s }
+					with { duration: 1s, drop: 0s }
 					by { g }
 		}"#);
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 5, ts: "1970-01-01T00:00:20Z" }]"#);
@@ -515,7 +515,7 @@ fn tumbling_view(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
-					with { duration: 1m, lateness: 0s }
+					with { duration: 1m, drop: 0s }
 					by { g }
 		}"#);
 }
@@ -570,7 +570,7 @@ fn a_session_emptied_by_retraction_frees_its_accumulator_once_it_seals() {
 	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } AS {
 			FROM app::t
 				| window session { total: math::sum(v) }
-					with { gap: 2s, lateness: 0s }
+					with { gap: 2s, drop: 0s }
 					by { g }
 		}"#);
 
@@ -602,7 +602,7 @@ fn a_zero_gap_session_frees_its_accumulator_once_it_seals() {
 	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } AS {
 			FROM app::t
 				| window session { total: math::sum(v) }
-					with { gap: 0s, lateness: 0s }
+					with { gap: 0s, drop: 0s }
 					by { g }
 		}"#);
 
@@ -632,7 +632,7 @@ fn a_session_group_keeps_no_tracker_once_its_sessions_seal() {
 	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } AS {
 			FROM app::t
 				| window session { total: math::sum(v) }
-					with { gap: 2s, lateness: 0s }
+					with { gap: 2s, drop: 0s }
 					by { g }
 		}"#);
 
@@ -663,7 +663,7 @@ fn a_session_row_leaves_no_row_index_once_its_session_seals() {
 	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } AS {
 			FROM app::t
 				| window session { total: math::sum(v) }
-					with { gap: 2s, lateness: 0s }
+					with { gap: 2s, drop: 0s }
 					by { g }
 		}"#);
 

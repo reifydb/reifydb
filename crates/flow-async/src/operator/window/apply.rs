@@ -171,20 +171,20 @@ mod tests {
 	#[test]
 	fn output_watermark_goes_pre_epoch_for_young_watermarks() {
 		// Wrapping past the epoch instead of going negative would seal every window early
-		let lateness = Duration::from_milliseconds_const(10);
+		let drop_span = Duration::from_milliseconds_const(10);
 
 		assert_eq!(
-			output_watermark(ByDateTime(at_millis(3)), lateness),
+			output_watermark(ByDateTime(at_millis(3)), drop_span),
 			ByDateTime(at_millis(-7)),
-			"young operator watermark minus lateness is a real pre-epoch instant"
+			"young operator watermark minus drop is a real pre-epoch instant"
 		);
 		assert!(
-			!is_sealed(ByDateTime(at_millis(0)), output_watermark(ByDateTime(at_millis(3)), lateness)),
+			!is_sealed(ByDateTime(at_millis(0)), output_watermark(ByDateTime(at_millis(3)), drop_span)),
 			"the epoch is still after a pre-epoch output watermark"
 		);
 		assert!(
-			is_sealed(ByDateTime(at_millis(4)), output_watermark(ByDateTime(at_millis(20)), lateness)),
-			"anchor below operator watermark - lateness is sealed"
+			is_sealed(ByDateTime(at_millis(4)), output_watermark(ByDateTime(at_millis(20)), drop_span)),
+			"anchor below operator watermark - drop is sealed"
 		);
 	}
 }
@@ -237,7 +237,7 @@ mod forget_pass_tests {
 			aggregations: Vec::new(),
 			runtime_context: RuntimeContext::testing(0, 1),
 			routines: Routines::empty(),
-			lateness: None,
+			drop: None,
 			immutable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})
@@ -390,7 +390,7 @@ mod seal_arm_tests {
 			aggregations: Vec::new(),
 			runtime_context: RuntimeContext::testing(0, 1),
 			routines: Routines::empty(),
-			lateness: None,
+			drop: None,
 			immutable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})
@@ -466,7 +466,7 @@ mod seal_arm_tests {
 			aggregations: Vec::new(),
 			runtime_context: RuntimeContext::testing(0, 1),
 			routines: Routines::empty(),
-			lateness: None,
+			drop: None,
 			immutable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})

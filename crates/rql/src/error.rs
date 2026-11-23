@@ -38,11 +38,11 @@ pub enum RqlError {
 		slide_type: String,
 	},
 
-	#[error("Immutable must be smaller than lateness")]
-	WindowImmutableNotSmallerThanLateness {
+	#[error("Immutable must be smaller than drop")]
+	WindowImmutableNotSmallerThanDrop {
 		fragment: Fragment,
 		immutable_value: String,
-		lateness_value: String,
+		drop_value: String,
 	},
 
 	#[error("Immutable must be smaller than the window")]
@@ -281,23 +281,23 @@ impl IntoDiagnostic for RqlError {
 				operator_chain: None,
 			},
 
-			RqlError::WindowImmutableNotSmallerThanLateness { fragment, immutable_value, lateness_value } => Diagnostic {
+			RqlError::WindowImmutableNotSmallerThanDrop { fragment, immutable_value, drop_value } => Diagnostic {
 				code: "WINDOW_009".to_string(),
 				rql: None,
 				message: format!(
-					"Immutable ({}) must be smaller than lateness ({})",
-					immutable_value, lateness_value
+					"Immutable ({}) must be smaller than drop ({})",
+					immutable_value, drop_value
 				),
 				column: None,
 				fragment,
 				label: Some("immutable too large".to_string()),
 				help: Some(
-					"Reduce immutable below lateness, or drop it to keep every row for the life of the window".to_string(),
+					"Reduce immutable below drop, or remove it to keep every row for the life of the window".to_string(),
 				),
 				notes: vec![
-					"Lateness already bounds the window, so an immutable at or beyond it promises nothing".to_string(),
-					"Immutable is how long a row may still be updated or deleted, lateness is how long a late insert is still accepted".to_string(),
-					"Example: WINDOW TUMBLING { count(*) } WITH { duration: 1h, lateness: 20s, immutable: 15s }".to_string(),
+					"Drop already bounds the window, so an immutable at or beyond it promises nothing".to_string(),
+					"Immutable is how long a row may still be updated or deleted, drop is how long a late insert is still accepted".to_string(),
+					"Example: WINDOW TUMBLING { count(*) } WITH { duration: 1h, drop: 20s, immutable: 15s }".to_string(),
 				],
 				cause: None,
 				operator_chain: None,
@@ -336,7 +336,7 @@ impl IntoDiagnostic for RqlError {
 				notes: vec![
 					"A rolling window keeps one aggregate per pane, so the pane bounds its state to duration / pane".to_string(),
 					"The pane is also the step in which an event enters and leaves the window".to_string(),
-					"Example: WINDOW ROLLING { count(*) } WITH { duration: 1h, pane: 1m, lateness: 20s }".to_string(),
+					"Example: WINDOW ROLLING { count(*) } WITH { duration: 1h, pane: 1m, drop: 20s }".to_string(),
 				],
 				cause: None,
 				operator_chain: None,
@@ -352,7 +352,7 @@ impl IntoDiagnostic for RqlError {
 				help: Some("Use a pane at most the window duration".to_string()),
 				notes: vec![
 					"A pane wider than the window cannot fit inside it even once".to_string(),
-					"Example: WINDOW ROLLING { count(*) } WITH { duration: 1h, pane: 1m, lateness: 20s }".to_string(),
+					"Example: WINDOW ROLLING { count(*) } WITH { duration: 1h, pane: 1m, drop: 20s }".to_string(),
 				],
 				cause: None,
 				operator_chain: None,
@@ -368,7 +368,7 @@ impl IntoDiagnostic for RqlError {
 				help: Some("Pick a pane that fits a whole number of times into the duration".to_string()),
 				notes: vec![
 					"A window made of whole panes enters and leaves each pane as one step".to_string(),
-					"Example: WINDOW ROLLING { count(*) } WITH { duration: 3m, pane: 1m, lateness: 20s }".to_string(),
+					"Example: WINDOW ROLLING { count(*) } WITH { duration: 3m, pane: 1m, drop: 20s }".to_string(),
 				],
 				cause: None,
 				operator_chain: None,

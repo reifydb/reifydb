@@ -187,35 +187,35 @@ pub struct TxnHostContext<'a, T: FlowTransaction> {
 	txn: &'a mut T,
 	operator: OperatorId,
 	batch_time: DateTime,
-	retention: Option<Duration>,
+	forget: Option<Duration>,
 	#[cfg(test)]
 	pub dictionary_resolves: usize,
 }
 
 impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 	pub fn new(txn: &'a mut T, operator: OperatorId) -> Self {
-		Self::with_retention(txn, operator, None)
+		Self::with_forget(txn, operator, None)
 	}
 
-	pub fn with_retention(txn: &'a mut T, operator: OperatorId, retention: Option<Duration>) -> Self {
+	pub fn with_forget(txn: &'a mut T, operator: OperatorId, forget: Option<Duration>) -> Self {
 		let batch_time = txn.batch_time();
 		Self {
 			txn,
 			operator,
 			batch_time,
-			retention,
+			forget,
 			#[cfg(test)]
 			dictionary_resolves: 0,
 		}
 	}
 
 	fn arm_forget_pass(&mut self, group: GroupId) -> Result<(), ValueError> {
-		let Some(retention) = self.retention else {
-			return internal_err!("operator {} wrote managed state but has no retention", self.operator);
+		let Some(forget) = self.forget else {
+			return internal_err!("operator {} wrote managed state but has no forget", self.operator);
 		};
 		let latest = managed_latest_key(group);
 		let previous = due_get::<DateTime>(self, &latest)?;
-		let due = forget_pass_due(self.batch_time, retention);
+		let due = forget_pass_due(self.batch_time, forget);
 		let due = previous.map_or(due, |previous| previous.max(due));
 		if let Some(previous) = previous.filter(|previous| *previous != due) {
 			due_drop(self, &managed_due_key(previous, group))?;
@@ -248,8 +248,8 @@ fn managed_group(key: &GroupStateKey) -> Option<GroupId> {
 
 const NANOS_PER_SECOND: i64 = 1_000_000_000;
 
-fn forget_pass_due(batch_time: DateTime, retention: Duration) -> DateTime {
-	let free = batch_time.saturating_add(retention).saturating_add(SEAL_GATE_STEP);
+fn forget_pass_due(batch_time: DateTime, forget: Duration) -> DateTime {
+	let free = batch_time.saturating_add(forget).saturating_add(SEAL_GATE_STEP);
 	let nanos = free.to_nanos();
 	let ceil = nanos.div_euclid(NANOS_PER_SECOND) + i64::from(nanos.rem_euclid(NANOS_PER_SECOND) != 0);
 	DateTime::from_nanos(ceil.saturating_mul(NANOS_PER_SECOND))

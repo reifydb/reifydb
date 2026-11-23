@@ -34,7 +34,7 @@ fn rolling_sum_accumulates_correctly_across_separate_commits() {
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, pane: 1ms, lateness: 5m }
+					with { duration: 1h, pane: 1ms, drop: 5m }
 					by { g }
 		}"#);
 
@@ -86,7 +86,7 @@ fn a_processing_domain_rolling_window_rolls_up_over_the_rows_own_times() {
 	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, pane: 1ms, lateness: 5m }
+					with { duration: 1h, pane: 1ms, drop: 5m }
 					by { g }
 		}"#);
 
@@ -141,7 +141,7 @@ fn an_event_view_over_an_event_source_buckets_by_the_declared_column_not_by_arri
 	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, pane: 1ms, lateness: 5m }
+					with { duration: 1h, pane: 1ms, drop: 5m }
 					by { g }
 		}"#);
 
@@ -179,7 +179,7 @@ fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, pane: 1ms, lateness: 5m }
+					with { duration: 1h, pane: 1ms, drop: 5m }
 					by { g }
 		}"#);
 
@@ -204,14 +204,14 @@ fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 
 #[test]
 fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
-	// lateness follows the flow watermark, so without the 14:00 row nothing is late and refusal is never reached.
+	// drop follows the flow watermark, so without the 14:00 row nothing is late and refusal is never reached.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, pane: 1ms, lateness: 5m }
+					with { duration: 1h, pane: 1ms, drop: 5m }
 					by { g }
 		}"#);
 
@@ -223,7 +223,7 @@ fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
 	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 20.0, ts: "2026-01-01T14:00:00Z" }]"#);
 	db.await_row_count("FROM app::r | filter { g == 1 and total == 20.0 }", 1, TIMEOUT);
 
-	// Five hours behind the ledger, so past interval + lateness and refused as late. It is batched
+	// Five hours behind the ledger, so past interval + drop and refused as late. It is batched
 	// with an admitted row for another group so the batch cannot early-return on empty buckets.
 	db.command(
 		r#"INSERT app::t [{ id: 3, g: 1, v: 99.0, ts: "2026-01-01T09:00:00Z" }, { id: 4, g: 2, v: 1.0, ts: "2026-01-01T14:00:00Z" }]"#,
@@ -241,7 +241,7 @@ fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
 
 #[test]
 fn retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact() {
-	// The same "no result means gone" confusion through the other door: the lateness is wider than the
+	// The same "no result means gone" confusion through the other door: the drop is wider than the
 	// interval, so a coordinate can be new enough to admit while already older than the trailing
 	// window. Retracting one changes nothing, and that silence must not withdraw the group.
 	let db = setup();
@@ -250,7 +250,7 @@ fn retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact() {
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, pane: 1ms, lateness: 5m }
+					with { duration: 1h, pane: 1ms, drop: 5m }
 					by { g }
 		}"#);
 
@@ -266,7 +266,7 @@ fn retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact() {
 		db.query_as_root("FROM app::r", ())
 	);
 
-	// 11:30 is still inside interval + lateness of the 13:00 flow watermark, so this delete is admitted
+	// 11:30 is still inside interval + drop of the 13:00 flow watermark, so this delete is admitted
 	// and routed - but it targets a coordinate the window no longer holds.
 	db.command("DELETE app::t FILTER { id == 1 }");
 	db.await_all_flows(TIMEOUT);
@@ -343,7 +343,7 @@ fn a_rolling_percentile_across_separate_commits_reads_one_digest_over_every_row_
 		&db,
 		"p50: stats::approx_percentile(v, 0.5, 0.01)",
 		"p50: Option(float8)",
-		"duration: 1h, pane: 1ms, lateness: 5m",
+		"duration: 1h, pane: 1ms, drop: 5m",
 	);
 
 	let slots = [("12:00:00", [1.0, 2.0, 3.0]), ("12:01:00", [40.0, 50.0, 60.0]), ("12:02:00", [7.0, 80.0, 90.0])];
@@ -389,7 +389,7 @@ fn a_row_too_late_to_admit_leaves_the_rolling_percentile_intact() {
 		&db,
 		"p50: stats::approx_percentile(v, 0.5, 0.01)",
 		"p50: Option(float8)",
-		"duration: 1h, pane: 1ms, lateness: 5m",
+		"duration: 1h, pane: 1ms, drop: 5m",
 	);
 
 	insert(&db, &[(1, 1, 10.0, "12:00:00")]);
@@ -413,7 +413,7 @@ fn retracting_a_row_that_already_left_the_frame_leaves_the_rolling_percentile_in
 		&db,
 		"p50: stats::approx_percentile(v, 0.5, 0.01)",
 		"p50: Option(float8)",
-		"duration: 1h, pane: 1ms, lateness: 5m",
+		"duration: 1h, pane: 1ms, drop: 5m",
 	);
 
 	insert(&db, &[(1, 1, 1.0, "11:30:00")]);
@@ -438,7 +438,7 @@ fn a_retraction_inside_immutable_applies_to_a_rolling_percentile_and_the_min_bes
 		&db,
 		"p50: stats::approx_percentile(v, 0.5, 0.01), lo: math::min(v)",
 		"p50: Option(float8), lo: Option(float8)",
-		"duration: 1h, pane: 1ms, lateness: 1h, immutable: 5m",
+		"duration: 1h, pane: 1ms, drop: 1h, immutable: 5m",
 	);
 	let columns = ["p50", "lo"];
 
@@ -505,7 +505,7 @@ fn a_row_behind_the_flow_watermark_reaches_no_subscriber_of_a_rolling_view() {
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, pane: 1ms, lateness: 5m }
+					with { duration: 1h, pane: 1ms, drop: 5m }
 					by { g }
 		}"#);
 	let sub = db

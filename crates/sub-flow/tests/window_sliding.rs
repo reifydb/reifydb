@@ -34,13 +34,13 @@ fn query_internal(db: &TestDb, rql: &str) -> Vec<Frame> {
 /// One table feeding a sliding window whose size is a whole number of slides, so the window a
 /// coordinate belongs to can be worked out by hand. Window starts are multiples of the slide in
 /// absolute epoch millis, so a row early in a day is still covered by windows from the previous one.
-fn sliding_window(db: &TestDb, size: &str, slide: &str, lateness: &str) {
+fn sliding_window(db: &TestDb, size: &str, slide: &str, drop_span: &str) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(&format!(r#"CREATE DEFERRED VIEW app::w {{ g: int4, total: int8 }} AS {{
 				FROM app::t
 					| window sliding {{ total: math::sum(v) }}
-						with {{ duration: {size}, slide: {slide}, lateness: {lateness} }}
+						with {{ duration: {size}, slide: {slide}, drop: {drop_span} }}
 						by {{ g }}
 			}}"#));
 }
@@ -48,8 +48,8 @@ fn sliding_window(db: &TestDb, size: &str, slide: &str, lateness: &str) {
 #[test]
 fn a_row_lands_in_every_window_that_covers_it() {
 	// Overlap is the whole point: at size 60s and slide 15s the windows starting 15s, 30s, 45s and
-	// 60s cover t=70s while the one starting at 0s ends before it. The 120s lateness is load-bearing -
-	// every wrongly-covering window is an older one, and at zero lateness it has already sealed.
+	// 60s cover t=70s while the one starting at 0s ends before it. The 120s drop is load-bearing -
+	// every wrongly-covering window is an older one, and at zero drop it has already sealed.
 	let db = setup();
 	sliding_window(&db, "60s", "15s", "120s");
 
@@ -101,8 +101,8 @@ fn a_sliding_window_stamps_time_with_its_start_not_its_index() {
 }
 
 #[test]
-fn a_sliding_window_seals_size_plus_lateness_after_its_start() {
-	// Each window's seal instant is its own start plus size plus lateness, so overlapping windows
+fn a_sliding_window_seals_size_plus_drop_after_its_start() {
+	// Each window's seal instant is its own start plus size plus drop, so overlapping windows
 	// holding the identical row seal at different times. A global seal cannot produce a partial
 	// result, so the 7-versus-107 split is what a count check would miss.
 	let db = setup();

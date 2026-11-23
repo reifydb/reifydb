@@ -65,7 +65,7 @@ fn drive_with(seed: u64, params: Params, move_pct: u32) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: Box::leak(format!("{}; e: window::end()", params.fold.rql()).into_boxed_str()),
-		lateness: None,
+		drop: None,
 	};
 
 	let mut harness = Harness::new(|runtime| build_immutable(&spec, None, runtime));

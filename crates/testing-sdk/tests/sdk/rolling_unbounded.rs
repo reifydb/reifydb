@@ -206,9 +206,9 @@ fn rolling_with() -> ApplyWith {
 			pane: Some(millis(1)),
 			on_empty: OnEmpty::Remove,
 		}),
-		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		drop: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -217,9 +217,9 @@ fn tumbling_with() -> ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(3)),
 		}),
-		lateness: None,
+		drop: None,
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 

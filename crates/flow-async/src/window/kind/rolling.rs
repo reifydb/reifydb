@@ -22,8 +22,8 @@ impl RollingOverTime {
 		self.size.saturating_add(self.lag)
 	}
 
-	pub fn seal_rule(&self, lateness: Duration) -> SealRule {
-		SealRule::rolling(self.span(), lateness)
+	pub fn seal_rule(&self, drop_span: Duration) -> SealRule {
+		SealRule::rolling(self.span(), drop_span)
 	}
 }
 

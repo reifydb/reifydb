@@ -49,7 +49,7 @@ fn start_and_end_report_the_bucket_the_rows_fell_into() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
 			FROM app::t
 				| window tumbling { n: math::count(), s: window::start(), e: window::end() }
-					by { g } with { duration: 60s, lateness: 0s }
+					by { g } with { duration: 60s, drop: 0s }
 		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
@@ -93,7 +93,7 @@ fn a_partial_window_reports_its_whole_span_not_the_part_it_has_filled() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
 			FROM app::t
 				| window tumbling { n: math::count(), s: window::start(), e: window::end() }
-					by { g } with { duration: 60s, lateness: 300s }
+					by { g } with { duration: 60s, drop: 300s }
 		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
@@ -113,7 +113,7 @@ fn duration_is_measured_from_the_boundary_not_read_from_the_configured_size() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, d: duration } AS {
 			FROM app::t
 				| window tumbling { n: math::count(), d: window::duration() }
-					by { g } with { duration: 45s, lateness: 0s }
+					by { g } with { duration: 45s, drop: 0s }
 		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
@@ -139,7 +139,7 @@ fn window_last_reports_the_newest_event_in_the_bucket_not_the_boundary() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime } AS {
 			FROM app::t
 				| window tumbling { n: math::count(), l: window::last() }
-					by { g } with { duration: 60s, lateness: 300s }
+					by { g } with { duration: 60s, drop: 300s }
 		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:50Z");
@@ -165,7 +165,7 @@ fn time_still_stamps_the_window_start() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
 			FROM app::t
 				| window tumbling { n: math::count(), s: window::start() }
-					by { g } with { duration: 60s, lateness: 0s }
+					by { g } with { duration: 60s, drop: 0s }
 		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
@@ -240,7 +240,7 @@ fn a_session_window_starts_at_its_first_event_and_ends_one_gap_past_its_last() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime, d: duration } AS {
 			FROM app::t
 				| window session { n: math::count(), s: window::start(), e: window::end(), d: window::duration() }
-					by { g } with { gap: 30s, lateness: 0s }
+					by { g } with { gap: 30s, drop: 0s }
 		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
@@ -263,7 +263,7 @@ fn a_late_event_that_extends_a_session_backwards_moves_its_start() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
 			FROM app::t
 				| window session { n: math::count(), s: window::start(), e: window::end() }
-					by { g } with { gap: 30s, lateness: 0s }
+					by { g } with { gap: 30s, drop: 0s }
 		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:20Z");
@@ -286,7 +286,7 @@ fn two_sessions_of_one_group_each_report_their_own_span() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
 			FROM app::t
 				| window session { n: math::count(), s: window::start(), e: window::end() }
-					by { g } with { gap: 30s, lateness: 0s }
+					by { g } with { gap: 30s, drop: 0s }
 		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
@@ -316,7 +316,7 @@ fn a_session_touched_only_by_a_removal_shrinks_its_published_span_to_the_rows_le
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
 			FROM app::t
 				| window session { n: math::count(), s: window::start(), e: window::end() }
-					by { g } with { gap: 30s, lateness: 0s }
+					by { g } with { gap: 30s, drop: 0s }
 		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
@@ -339,7 +339,7 @@ fn an_update_moving_time_back_inside_a_sliding_window_takes_back_the_old_time() 
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime, x: int4 } AS {
 			FROM app::t
 				| window sliding { n: math::count(), l: window::last(), x: math::last(v) }
-					by { g } with { duration: 60s, slide: 30s, lateness: 0s }
+					by { g } with { duration: 60s, slide: 30s, drop: 0s }
 		}"#);
 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
@@ -370,7 +370,7 @@ fn an_aggregate_moving_time_inside_a_sliding_window_takes_back_the_old_time() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime, x: int4 } AS {
 			FROM app::a
 				| window sliding { n: math::count(), l: window::last(), x: math::last(v) }
-					by { g } with { duration: 60s, slide: 30s, lateness: 0s }
+					by { g } with { duration: 60s, slide: 30s, drop: 0s }
 		}"#);
 
 	db.command(r#"INSERT app::raw [{ id: 1, g: 1, k: 1, v: 5, ts: "2026-01-01T00:01:10Z" }]"#);
@@ -394,7 +394,7 @@ fn an_update_moving_time_out_of_a_sliding_window_leaves_it_and_joins_the_new_one
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
 			FROM app::t
 				| window sliding { n: math::count(), s: window::start() }
-					by { g } with { duration: 60s, slide: 30s, lateness: 1h }
+					by { g } with { duration: 60s, slide: 30s, drop: 1h }
 		}"#);
 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
@@ -431,7 +431,7 @@ fn an_update_moving_time_back_inside_a_session_takes_back_the_old_time() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime, x: int4 } AS {
 			FROM app::t
 				| window session { n: math::count(), l: window::last(), x: math::last(v) }
-					by { g } with { gap: 30s, lateness: 0s }
+					by { g } with { gap: 30s, drop: 0s }
 		}"#);
 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
@@ -462,7 +462,7 @@ fn an_aggregate_moving_time_inside_a_session_takes_back_the_old_time() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime, x: int4 } AS {
 			FROM app::a
 				| window session { n: math::count(), l: window::last(), x: math::last(v) }
-					by { g } with { gap: 30s, lateness: 0s }
+					by { g } with { gap: 30s, drop: 0s }
 		}"#);
 
 	db.command(r#"INSERT app::raw [{ id: 1, g: 1, k: 1, v: 5, ts: "2026-01-01T00:01:10Z" }]"#);
@@ -486,7 +486,7 @@ fn an_update_moving_time_out_of_a_session_leaves_it_and_opens_a_new_one() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
 			FROM app::t
 				| window session { n: math::count(), s: window::start(), e: window::end() }
-					by { g } with { gap: 30s, lateness: 1h }
+					by { g } with { gap: 30s, drop: 1h }
 		}"#);
 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
@@ -527,7 +527,7 @@ fn an_update_moving_time_forward_past_the_gap_from_the_remaining_row_splits_off_
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, e: datetime, x: int4 } AS {
 			FROM app::t
 				| window session { n: math::count(), e: window::end(), x: math::last(v) }
-					by { g } with { gap: 30s, lateness: 1h }
+					by { g } with { gap: 30s, drop: 1h }
 		}"#);
 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
@@ -563,7 +563,7 @@ fn an_update_moving_a_row_alone_in_its_session_moves_that_session_to_the_new_tim
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, x: int4 } AS {
 			FROM app::t
 				| window session { n: math::count(), s: window::start(), x: math::sum(v) }
-					by { g } with { gap: 10s, lateness: 1h }
+					by { g } with { gap: 10s, drop: 1h }
 		}"#);
 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
@@ -599,7 +599,7 @@ fn an_update_changing_the_group_moves_a_row_to_the_new_groups_sliding_windows() 
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
 			FROM app::t
 				| window sliding { n: math::count(), s: window::start() }
-					by { g } with { duration: 60s, slide: 30s, lateness: 1h }
+					by { g } with { duration: 60s, slide: 30s, drop: 1h }
 		}"#);
 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
@@ -639,7 +639,7 @@ fn an_update_changing_the_group_moves_a_row_into_the_new_groups_session() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
 			FROM app::t
 				| window session { n: math::count(), s: window::start() }
-					by { g } with { gap: 30s, lateness: 1h }
+					by { g } with { gap: 30s, drop: 1h }
 		}"#);
 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
@@ -674,7 +674,7 @@ fn an_update_changing_the_group_opens_a_session_in_the_new_group_at_the_row_time
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
 			FROM app::t
 				| window session { n: math::count(), s: window::start() }
-					by { g } with { gap: 10s, lateness: 1h }
+					by { g } with { gap: 10s, drop: 1h }
 		}"#);
 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
@@ -708,7 +708,7 @@ fn a_row_moved_to_another_group_and_back_leaves_no_stale_sliding_windows() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
 			FROM app::t
 				| window sliding { n: math::count(), s: window::start() }
-					by { g } with { duration: 60s, slide: 30s, lateness: 1h }
+					by { g } with { duration: 60s, slide: 30s, drop: 1h }
 		}"#);
 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
@@ -744,7 +744,7 @@ fn a_row_moved_to_another_group_and_back_leaves_no_stale_session() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
 			FROM app::t
 				| window session { n: math::count(), s: window::start() }
-					by { g } with { gap: 30s, lateness: 1h }
+					by { g } with { gap: 30s, drop: 1h }
 		}"#);
 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
@@ -774,7 +774,7 @@ fn a_row_moved_to_another_group_and_back_then_deleted_leaves_no_stale_session() 
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
 			FROM app::t
 				| window session { n: math::count(), s: window::start() }
-					by { g } with { gap: 10s, lateness: 1h }
+					by { g } with { gap: 10s, drop: 1h }
 		}"#);
 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
@@ -812,7 +812,7 @@ fn late_rows_within_the_gap_of_a_closed_session_are_refused_and_leave_both_spans
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
 			FROM app::t
 				| window session { n: math::count(), s: window::start(), e: window::end() }
-					by { g } with { gap: 10s, lateness: 0s }
+					by { g } with { gap: 10s, drop: 0s }
 		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:40Z");

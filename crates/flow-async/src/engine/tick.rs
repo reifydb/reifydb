@@ -63,7 +63,7 @@ impl FlowEngineInner {
 			let Some(operator) = self.operators.get_mut(&(flow.id, *operator_id)) else {
 				continue;
 			};
-			let mut host = TxnHostContext::with_retention(txn, operator.id(), operator.retention());
+			let mut host = TxnHostContext::with_forget(txn, operator.id(), operator.forget());
 			let Some(result) = operator.on_tick(&mut host)? else {
 				continue;
 			};

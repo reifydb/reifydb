@@ -183,9 +183,9 @@ fn window_with() -> ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(60)),
 		}),
-		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		drop: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -194,9 +194,9 @@ fn sealed_with() -> ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(60)),
 		}),
-		lateness: Some(WithSpan::Duration(millis(60))),
+		drop: Some(WithSpan::Duration(millis(60))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -305,8 +305,8 @@ fn update_in_current_window_recomputes_carry() {
 }
 
 #[test]
-fn late_event_accepted_while_lateness_is_open() {
-	// while the lateness window has not elapsed, a late event must still reopen its earlier window
+fn late_event_accepted_while_drop_is_open() {
+	// while the drop window has not elapsed, a late event must still reopen its earlier window
 	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(window_with())
 		.build()
@@ -389,7 +389,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// stops reporting stalls; only the flow watermark can drive its reclamation.
 	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<SealedCarry>>::new()
 		.with(ApplyWith {
-			retention: Some(millis(60)),
+			forget: Some(millis(60)),
 			..sealed_with()
 		})
 		.build()
@@ -449,7 +449,7 @@ fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
 #[test]
 fn a_flow_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
 	// The mirror of the stall above, and the reason that one cannot simply be "never seal".
-	// Sealing is what bounds operator state: once the flow watermark is truly past window + lateness,
+	// Sealing is what bounds operator state: once the flow watermark is truly past window + drop,
 	// late mutations for that window have to be refused, or a stalled group's buckets accumulate
 	// without limit. SealedCarry seals 120ms after a 60ms window, so a flow watermark at 10_000ms is
 	// far outside the envelope of the window starting at 0.
@@ -504,9 +504,9 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 			pane: None,
 			on_empty: OnEmpty::Remove,
 		}),
-		lateness: None,
+		drop: None,
 		immutable: None,
-		retention: None,
+		forget: None,
 	};
 	let Err(err) = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new().with(with).build() else {
 		panic!("create must refuse an unsupported window kind");

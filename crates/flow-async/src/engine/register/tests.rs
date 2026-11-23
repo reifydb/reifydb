@@ -170,7 +170,8 @@ fn lookup_flow(left: TableId, right: LookupObject, key: &str) -> FlowDag {
 			left: parse_expression(key).expect("the left key must parse"),
 			alias: Some("r".to_string()),
 			with: LookupWith {
-				lateness: None,
+				drop: None,
+				forget: None,
 				emit: Emit::Off,
 				exact: false,
 			},
@@ -351,7 +352,8 @@ fn a_lookup_with_two_inputs_fails_registration_instead_of_reading_the_second_as_
 			left: parse_expression("k").expect("the left key must parse"),
 			alias: Some("r".to_string()),
 			with: LookupWith {
-				lateness: None,
+				drop: None,
+				forget: None,
 				emit: Emit::Off,
 				exact: false,
 			},

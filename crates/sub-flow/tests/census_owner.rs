@@ -161,7 +161,7 @@ fn each_census_row_names_its_apply_owner_and_only_an_unmanaged_owner_says_why() 
 	let db = memory();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
-	db.admin("CREATE DEFERRED VIEW app::m { g: int4 } AS { FROM app::t APPLY tally{} WITH { lateness: 1h } }");
+	db.admin("CREATE DEFERRED VIEW app::m { g: int4 } AS { FROM app::t APPLY tally{} WITH { forget: 1h } }");
 	db.admin("CREATE DEFERRED VIEW app::u { g: int4 } AS { FROM app::t APPLY keeper{} }");
 	db.admin(
 		"CREATE DEFERRED VIEW app::a { g: int4, n: int8 } AS { FROM app::t | aggregate { n: math::count(id) } by { g } }",

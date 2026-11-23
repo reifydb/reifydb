@@ -108,7 +108,7 @@ fn a_deferred_view_with_a_natural_join_on_a_rolling_window_output_fills_in() -> 
 	let db = make_db();
 	db.admin("CREATE TABLE app::p { a: int4, b: int4, v: float8 } with { time: processing }");
 	db.admin(
-		"CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_total: float8 } AS { FROM app::t NATURAL JOIN { FROM app::p | window rolling { total: math::sum(v) } with { duration: 1h, pane: 1ms, lateness: 5m } by { a } } AS s }",
+		"CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_total: float8 } AS { FROM app::t NATURAL JOIN { FROM app::p | window rolling { total: math::sum(v) } with { duration: 1h, pane: 1ms, drop: 5m } by { a } } AS s }",
 	);
 	db.command("INSERT app::t [{ a: 2, b: 20 }]");
 	db.command("INSERT app::p [{ a: 2, b: 99, v: 1.5 }]");
@@ -124,7 +124,7 @@ fn a_deferred_view_with_a_natural_join_on_a_tumbling_window_output_fills_in() ->
 	let db = make_db();
 	db.admin("CREATE TABLE app::q { a: int4, b: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(
-		"CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_n: int8, s_opened: datetime } AS { FROM app::t NATURAL JOIN { FROM app::q | window tumbling { n: math::count(), opened: window::start() } by { a } with { duration: 60s, lateness: 0s } } AS s }",
+		"CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_n: int8, s_opened: datetime } AS { FROM app::t NATURAL JOIN { FROM app::q | window tumbling { n: math::count(), opened: window::start() } by { a } with { duration: 60s, drop: 0s } } AS s }",
 	);
 	db.command("INSERT app::t [{ a: 2, b: 20 }]");
 	db.command(r#"INSERT app::q [{ a: 2, b: 99, v: 7, ts: "2026-01-01T00:01:10Z" }]"#);
@@ -140,7 +140,7 @@ fn a_deferred_view_with_a_natural_join_on_a_sliding_window_output_fills_in() -> 
 	let db = make_db();
 	db.admin("CREATE TABLE app::q { a: int4, b: int4, v: float8, ts: datetime } with { time: event(ts) }");
 	db.admin(
-		"CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_total: float8 } AS { FROM app::t NATURAL JOIN { FROM app::q | window sliding { total: math::sum(v) } with { duration: 60s, slide: 15s, lateness: 0s } by { a } } AS s }",
+		"CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_total: float8 } AS { FROM app::t NATURAL JOIN { FROM app::q | window sliding { total: math::sum(v) } with { duration: 60s, slide: 15s, drop: 0s } by { a } } AS s }",
 	);
 	db.command("INSERT app::t [{ a: 2, b: 20 }]");
 	db.command(r#"INSERT app::q [{ a: 2, b: 99, v: 1.5, ts: "2026-01-01T00:01:10Z" }]"#);

@@ -18,15 +18,15 @@ use crate::{
 	read,
 };
 
-fn sliding(size: u64, slide: u64, lateness: u64) -> ApplyWith {
+fn sliding(size: u64, slide: u64, drop_span: u64) -> ApplyWith {
 	ApplyWith {
 		window: Some(WindowKind::Sliding {
 			size: WindowSize::Duration(millis(size)),
 			slide: WindowSize::Duration(millis(slide)),
 		}),
-		lateness: Some(WithSpan::Duration(millis(lateness))),
+		drop: Some(WithSpan::Duration(millis(drop_span))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 

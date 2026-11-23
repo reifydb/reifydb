@@ -251,7 +251,7 @@ fn input_row(rn: u64, group: &str, ts: u64, trader: u64, volume: f64) -> CoreRow
 		.build()
 }
 
-fn rolling(size: u64, pane: Option<u64>, lateness: u64) -> ApplyWith {
+fn rolling(size: u64, pane: Option<u64>, drop_span: u64) -> ApplyWith {
 	ApplyWith {
 		window: Some(WindowKind::Rolling {
 			size: WindowSize::Duration(millis(size)),
@@ -259,9 +259,9 @@ fn rolling(size: u64, pane: Option<u64>, lateness: u64) -> ApplyWith {
 			pane: pane.map(millis),
 			on_empty: OnEmpty::Remove,
 		}),
-		lateness: Some(WithSpan::Duration(millis(lateness))),
+		drop: Some(WithSpan::Duration(millis(drop_span))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -454,9 +454,9 @@ fn create_with_a_tumbling_window_reports_flow_066() {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(60)),
 		}),
-		lateness: None,
+		drop: None,
 		immutable: None,
-		retention: None,
+		forget: None,
 	};
 
 	let err = harness!(TopVolume, with).err().expect("create must fail");
@@ -474,7 +474,7 @@ fn create_without_a_window_reports_flow_065() {
 
 #[test]
 fn a_rolling_top_k_time_window_arms_a_seal_timer() {
-	// A driver with a lateness must always arm a seal timer.
+	// A driver with a drop must always arm a seal timer.
 	let mut h = harness!(TopVolume, rolling(3, Some(1), 117)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 7, 10.0)).build()).expect("apply");
 
@@ -512,7 +512,7 @@ fn a_row_older_than_the_seal_line_is_dropped_and_a_recent_one_is_kept() {
 
 	let dropped = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 50, 9, 4.0)).build()).expect("apply");
 
-	assert!(!render(&kept).is_empty(), "a row inside the lateness window is still admitted");
+	assert!(!render(&kept).is_empty(), "a row inside the drop window is still admitted");
 	assert!(render(&dropped).is_empty(), "a row below the seal line must be dropped");
 }
 

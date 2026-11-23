@@ -190,9 +190,9 @@ fn window_with() -> ApplyWith {
 			pane: Some(millis(1)),
 			on_empty: OnEmpty::Remove,
 		}),
-		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		drop: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -204,9 +204,9 @@ fn sealed_with() -> ApplyWith {
 			pane: Some(millis(1)),
 			on_empty: OnEmpty::Remove,
 		}),
-		lateness: Some(WithSpan::Duration(millis(117))),
+		drop: Some(WithSpan::Duration(millis(117))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -218,9 +218,9 @@ fn dead_with() -> ApplyWith {
 			pane: Some(millis(1)),
 			on_empty: OnEmpty::Remove,
 		}),
-		lateness: Some(WithSpan::Duration(millis(10))),
+		drop: Some(WithSpan::Duration(millis(10))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -367,8 +367,8 @@ fn time_eviction_drops_oldest_window() {
 }
 
 #[test]
-fn buried_window_insert_accepted_while_lateness_is_open() {
-	// while the lateness window has not elapsed, an insert into an older coordinate must still merge
+fn buried_window_insert_accepted_while_drop_is_open() {
+	// while the drop window has not elapsed, an insert into an older coordinate must still merge
 	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
 		.with(window_with())
 		.build()
@@ -497,9 +497,9 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(60)),
 		}),
-		lateness: None,
+		drop: None,
 		immutable: None,
-		retention: None,
+		forget: None,
 	};
 	let Err(err) = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new().with(with).build() else {
 		panic!("create must refuse an unsupported window kind");

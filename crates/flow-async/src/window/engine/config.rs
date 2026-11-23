@@ -62,7 +62,7 @@ impl WindowEngineConfigBuilder {
 pub struct TumblingCarryConfig<S: WindowAnchor> {
 	base: WindowEngineConfig,
 	immutable: Option<SlotSpan<S>>,
-	idle_retention: Option<SlotSpan<S>>,
+	idle_forget: Option<SlotSpan<S>>,
 }
 
 impl<S: WindowAnchor> TumblingCarryConfig<S> {
@@ -78,15 +78,15 @@ impl<S: WindowAnchor> TumblingCarryConfig<S> {
 		self.immutable
 	}
 
-	pub fn idle_retention(&self) -> Option<SlotSpan<S>> {
-		self.idle_retention
+	pub fn idle_forget(&self) -> Option<SlotSpan<S>> {
+		self.idle_forget
 	}
 }
 
 pub struct TumblingCarryConfigBuilder<S: WindowAnchor> {
 	base: WindowEngineConfig,
 	immutable: Option<SlotSpan<S>>,
-	idle_retention: Option<SlotSpan<S>>,
+	idle_forget: Option<SlotSpan<S>>,
 }
 
 impl<S: WindowAnchor> TumblingCarryConfigBuilder<S> {
@@ -94,7 +94,7 @@ impl<S: WindowAnchor> TumblingCarryConfigBuilder<S> {
 		Self {
 			base,
 			immutable: None,
-			idle_retention: None,
+			idle_forget: None,
 		}
 	}
 
@@ -103,8 +103,8 @@ impl<S: WindowAnchor> TumblingCarryConfigBuilder<S> {
 		self
 	}
 
-	pub fn idle_retention(mut self, idle_retention: Option<SlotSpan<S>>) -> Self {
-		self.idle_retention = idle_retention;
+	pub fn idle_forget(mut self, idle_forget: Option<SlotSpan<S>>) -> Self {
+		self.idle_forget = idle_forget;
 		self
 	}
 
@@ -112,7 +112,7 @@ impl<S: WindowAnchor> TumblingCarryConfigBuilder<S> {
 		TumblingCarryConfig {
 			base: self.base,
 			immutable: self.immutable,
-			idle_retention: self.idle_retention,
+			idle_forget: self.idle_forget,
 		}
 	}
 }

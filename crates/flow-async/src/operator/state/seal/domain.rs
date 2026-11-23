@@ -75,8 +75,8 @@ pub trait SealDomain: Coord {
 
 	fn retry_forget_pass(store: &mut dyn WindowStore, fired: DateTime) -> Result<(), ValueError>;
 
-	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Self::Span>, ValueError> {
-		with.reject_retention()?;
+	fn idle_forget_of(with: &ApplyWith) -> Result<Option<Self::Span>, ValueError> {
+		with.reject_forget()?;
 		Ok(None)
 	}
 }
@@ -102,13 +102,13 @@ impl SealDomain for ByDateTime {
 			}
 			.into());
 		}
-		let lateness = with.lateness_duration()?.unwrap_or_else(Duration::zero);
-		Ok(SealRule::for_window(kind, lateness).map(|rule| rule.seal_span().duration()))
+		let drop_span = with.drop_duration()?.unwrap_or_else(Duration::zero);
+		Ok(SealRule::for_window(kind, drop_span).map(|rule| rule.seal_span().duration()))
 	}
 
-	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Duration>, ValueError> {
-		with.check_retention()?;
-		Ok(with.retention)
+	fn idle_forget_of(with: &ApplyWith) -> Result<Option<Duration>, ValueError> {
+		with.check_forget()?;
+		Ok(with.forget)
 	}
 
 	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>, ValueError> {
@@ -135,7 +135,7 @@ impl SealDomain for ByDateTime {
 			lag,
 			slide: with.window_slide_duration()?,
 			gap,
-			lateness: knobs.lateness.unwrap_or_else(Duration::zero),
+			drop: knobs.drop.unwrap_or_else(Duration::zero),
 			immutable: knobs.immutable,
 		})
 	}
@@ -247,9 +247,9 @@ mod tests {
 				pane: Some(Duration::from_seconds(1).unwrap()),
 				on_empty: OnEmpty::Remove,
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		let settings = ByDateTime::window_settings_of(&with).unwrap();
 		let mut store = MockStore::recording_timers();
@@ -308,8 +308,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_wall_clock_first_admitted_is_the_operator_watermark_less_lateness_and_the_gate_step_and_may_go_pre_epoch()
-	{
+	fn a_wall_clock_first_admitted_is_the_operator_watermark_less_drop_and_the_gate_step_and_may_go_pre_epoch() {
 		// wrapping high instead of going negative would report every window sealed
 		let step_past =
 			|millis| ByDateTime(at_millis(millis).saturating_add(Duration::from_nanoseconds_const(1)));
@@ -333,9 +332,9 @@ mod tests {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Count(10),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert!(ByDateTime::seal_span_of(&with).is_err());
@@ -352,17 +351,17 @@ mod tests {
 				pane: Some(Duration::from_seconds(1).unwrap()),
 				on_empty: OnEmpty::Remove,
 			}),
-			lateness: Some(WithSpan::Duration(Duration::from_seconds(20).unwrap())),
+			drop: Some(WithSpan::Duration(Duration::from_seconds(20).unwrap())),
 			immutable: Some(WithSpan::Duration(Duration::from_seconds(15).unwrap())),
-			retention: None,
+			forget: None,
 		};
 		let tumbling = ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(Duration::from_seconds(60).unwrap()),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		let rolling = ByDateTime::window_settings_of(&rolling).unwrap();
@@ -370,10 +369,10 @@ mod tests {
 
 		assert_eq!(rolling.size, Some(Duration::from_seconds(3600).unwrap()));
 		assert_eq!(rolling.pane, Some(Duration::from_seconds(1).unwrap()));
-		assert_eq!(rolling.lateness, Duration::from_seconds(20).unwrap());
+		assert_eq!(rolling.drop, Duration::from_seconds(20).unwrap());
 		assert_eq!(rolling.immutable, Some(Duration::from_seconds(15).unwrap()));
 		assert_eq!(tumbling.pane, None);
-		assert_eq!(tumbling.lateness, Duration::zero());
+		assert_eq!(tumbling.drop, Duration::zero());
 		assert_eq!(tumbling.immutable, None);
 	}
 
@@ -384,9 +383,9 @@ mod tests {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Count(10),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert!(ByDateTime::window_settings_of(&ApplyWith::default()).is_err());
@@ -401,9 +400,9 @@ mod tests {
 				size: WindowSize::Duration(Duration::from_seconds(600).unwrap()),
 				slide: WindowSize::Duration(Duration::from_seconds(300).unwrap()),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		let settings = ByDateTime::window_settings_of(&sliding).unwrap();
@@ -419,9 +418,9 @@ mod tests {
 			window: Some(WindowKind::Session {
 				gap: Duration::from_seconds(30).unwrap(),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		let settings = ByDateTime::window_settings_of(&session).unwrap();

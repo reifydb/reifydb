@@ -12,7 +12,7 @@ use crate::{framework::workload::WindowRow, operators::window::grid::Fold};
 /// with.
 pub struct Oracle {
 	size_ms: u64,
-	lateness_ms: u64,
+	drop_ms: u64,
 	ledger: u64,
 	model: RollingModel<i32, ByDateTime, i64>,
 	fold: Fold,
@@ -26,21 +26,21 @@ fn span(ms: u64) -> Duration {
 	Duration::from_milliseconds(ms as i64).expect("rolling oracle span")
 }
 
-fn model(size_ms: u64, lateness_ms: u64, retract_ms: u64) -> RollingModel<i32, ByDateTime, i64> {
+fn model(size_ms: u64, drop_ms: u64, retract_ms: u64) -> RollingModel<i32, ByDateTime, i64> {
 	RollingModel::new(RollingRules {
 		size: span(size_ms),
-		lateness: span(lateness_ms),
+		drop: span(drop_ms),
 		retract: span(retract_ms),
 	})
 }
 
 impl Oracle {
-	pub fn new(size_ms: u64, lateness_ms: u64) -> Self {
+	pub fn new(size_ms: u64, drop_ms: u64) -> Self {
 		Self {
 			size_ms,
-			lateness_ms,
+			drop_ms,
 			ledger: 0,
-			model: model(size_ms, lateness_ms, lateness_ms),
+			model: model(size_ms, drop_ms, drop_ms),
 			fold: Fold::Sum,
 		}
 	}
@@ -51,9 +51,9 @@ impl Oracle {
 		self
 	}
 
-	/// A retraction is admitted back to immutable, an insert only back to lateness.
+	/// A retraction is admitted back to immutable, an insert only back to drop.
 	pub fn with_immutable(mut self, immutable_ms: Option<u64>) -> Self {
-		self.model = model(self.size_ms, self.lateness_ms, immutable_ms.unwrap_or(self.lateness_ms));
+		self.model = model(self.size_ms, self.drop_ms, immutable_ms.unwrap_or(self.drop_ms));
 		self
 	}
 

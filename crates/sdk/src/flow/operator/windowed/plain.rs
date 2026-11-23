@@ -295,7 +295,7 @@ where
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {
-		with.reject_retention()?;
+		with.reject_forget()?;
 		let rolls = <A::Kinds as KindSet<A>>::ROLLING
 			&& with.window.as_ref().is_some_and(|kind| kind.name() == "rolling");
 		let slides = with.window.as_ref().is_some_and(|kind| kind.name() == "sliding");
@@ -320,8 +320,8 @@ where
 			let spans = PaneSpans {
 				size: settings.fixed_size(),
 				lag: settings.lag.unwrap_or_default(),
-				lateness: settings.lateness,
-				retract: settings.immutable.unwrap_or(settings.lateness),
+				drop: settings.drop,
+				retract: settings.immutable.unwrap_or(settings.drop),
 			};
 			let carries = matches!(
 				settings.kind,
@@ -626,14 +626,14 @@ mod tests {
 		ExtensionParams::new("probe", Default::default())
 	}
 
-	fn tumbling_time(size: i64, lateness: Option<i64>, immutable: Option<i64>) -> ApplyWith {
+	fn tumbling_time(size: i64, drop_span: Option<i64>, immutable: Option<i64>) -> ApplyWith {
 		ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(secs(size)),
 			}),
-			lateness: lateness.map(|n| WithSpan::Duration(secs(n))),
+			drop: drop_span.map(|n| WithSpan::Duration(secs(n))),
 			immutable: immutable.map(|n| WithSpan::Duration(secs(n))),
-			retention: None,
+			forget: None,
 		}
 	}
 
@@ -677,7 +677,7 @@ mod tests {
 
 		assert_eq!(*declared.aggregator.settings_seen.lock(), vec![Some(secs(15))]);
 		assert_eq!(*omitted.aggregator.settings_seen.lock(), vec![None]);
-		assert_eq!(declared.settings.lateness, secs(20));
+		assert_eq!(declared.settings.drop, secs(20));
 	}
 
 	#[test]
@@ -688,20 +688,35 @@ mod tests {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Count(10),
 			}),
-			lateness: Some(WithSpan::Count(4)),
+			drop: Some(WithSpan::Count(4)),
 			immutable: Some(WithSpan::Count(2)),
-			retention: None,
+			forget: None,
 		};
 
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
 
 		assert_eq!(driver.settings.size, Some(RowSpan::of(10)));
-		assert_eq!(driver.settings.lateness, RowSpan::of(4));
+		assert_eq!(driver.settings.drop, RowSpan::of(4));
 		assert_eq!(driver.settings.immutable, Some(RowSpan::of(2)));
 		assert_eq!(
 			WindowSpan::for_coord(ByU8(23), driver.settings.fixed_size()),
 			WindowSpan::new(ByU8(20), ByU8(30))
 		);
+	}
+
+	#[test]
+	fn a_plain_driver_refuses_a_forget() {
+		// A plain driver frees by its seal alone, so an accepted forget would be a bound nothing honours.
+		let with = ApplyWith {
+			forget: Some(secs(3_600)),
+			..tumbling_time(60, Some(20), None)
+		};
+
+		let Err(err) = PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &with) else {
+			panic!("a plain driver must refuse a forget");
+		};
+
+		assert!(err.to_string().contains("FLOW_080"), "expected FLOW_080, got: {err}");
 	}
 
 	#[test]
@@ -712,9 +727,9 @@ mod tests {
 				size: WindowSize::Count(10),
 				slide: WindowSize::Count(4),
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
@@ -738,9 +753,9 @@ mod tests {
 				pane: None,
 				on_empty: OnEmpty::Remove,
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert!(PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &rolling).is_err());
@@ -835,9 +850,9 @@ mod tests {
 				pane: Some(secs(pane)),
 				on_empty: OnEmpty::Remove,
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		<ByDateTime as SealDomain>::window_settings_of(&with).unwrap()
 	}
@@ -980,9 +995,9 @@ mod tests {
 				pane: Some(secs(10)),
 				on_empty: OnEmpty::Remove,
 			}),
-			lateness: None,
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 		let driver = PlainDriver::<TallyProbe>::create(OperatorId(1), &params(), &with).unwrap();
 

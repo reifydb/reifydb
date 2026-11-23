@@ -505,7 +505,8 @@ mod tests {
 			left: vec![],
 			alias: Some("price".to_string()),
 			with: LookupWith {
-				lateness: Some(Duration::from_seconds(10).unwrap()),
+				drop: None,
+				forget: Some(Duration::from_seconds(10).unwrap()),
 				emit: Emit::Off,
 				exact: false,
 			},
@@ -514,7 +515,7 @@ mod tests {
 
 	#[test]
 	fn lookup_always_requests_ticks() {
-		// Left lateness frees rows on ticks; without them the read-version lease never moves.
+		// Left forget frees rows on ticks; without them the read-version lease never moves.
 		assert!(lookup(LookupObject::Table(TableId(1))).ticks());
 	}
 
@@ -536,7 +537,7 @@ mod tests {
 	}
 
 	#[test]
-	fn lookup_survives_the_persisted_encoding_with_its_right_object_and_lateness() {
+	fn lookup_survives_the_persisted_encoding_with_its_right_object_and_forget() {
 		// The DAG is stored with postcard, so a lost field registers a different lookup after restart.
 		for right in [LookupObject::Table(TableId(3)), LookupObject::View(ViewId(4))] {
 			let node = lookup(right);
@@ -555,7 +556,7 @@ mod tests {
 			assert_eq!(join_type, JoinType::Left);
 			assert_eq!(decoded_right, right);
 			assert_eq!(alias.as_deref(), Some("price"));
-			assert_eq!(with.lateness, Some(Duration::from_seconds(10).unwrap()));
+			assert_eq!(with.forget, Some(Duration::from_seconds(10).unwrap()));
 		}
 	}
 
@@ -573,7 +574,7 @@ mod tests {
 						pane: Some(Duration::from_seconds(1).unwrap()),
 						on_empty,
 					},
-					lateness: Some(Duration::from_seconds(20).unwrap()),
+					drop: Some(Duration::from_seconds(20).unwrap()),
 					immutable: None,
 				},
 			};

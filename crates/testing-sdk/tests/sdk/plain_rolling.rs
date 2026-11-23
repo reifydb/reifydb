@@ -205,7 +205,7 @@ pub(crate) fn input_row(rn: u64, group: &str, ts: u64, value: f64) -> CoreRow {
 		.build()
 }
 
-fn rolling(size: u64, pane: Option<u64>, lateness: u64) -> ApplyWith {
+fn rolling(size: u64, pane: Option<u64>, drop_span: u64) -> ApplyWith {
 	ApplyWith {
 		window: Some(WindowKind::Rolling {
 			size: WindowSize::Duration(millis(size)),
@@ -213,9 +213,9 @@ fn rolling(size: u64, pane: Option<u64>, lateness: u64) -> ApplyWith {
 			pane: pane.map(millis),
 			on_empty: OnEmpty::Remove,
 		}),
-		lateness: Some(WithSpan::Duration(millis(lateness))),
+		drop: Some(WithSpan::Duration(millis(drop_span))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -224,9 +224,9 @@ fn tumbling(size: u64) -> ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(size)),
 		}),
-		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		drop: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -377,7 +377,7 @@ fn a_row_older_than_the_seal_line_is_dropped_and_a_recent_one_is_kept() {
 
 	let dropped = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 50, 4.0)).build()).expect("apply");
 
-	assert!(!render(&kept).is_empty(), "a row inside the lateness window is still admitted");
+	assert!(!render(&kept).is_empty(), "a row inside the drop window is still admitted");
 	assert!(render(&dropped).is_empty(), "a row below the seal line must be dropped");
 }
 

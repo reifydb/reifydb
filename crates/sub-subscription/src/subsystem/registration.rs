@@ -59,7 +59,7 @@ pub(crate) fn register_ephemeral_flow(
 						*operator_id,
 						Box::new(op),
 						&ApplyWith::default(),
-					)),
+					)?),
 				);
 			}
 			_ => {

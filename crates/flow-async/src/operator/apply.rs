@@ -55,7 +55,7 @@ pub struct ApplyOperator {
 	operator: OperatorId,
 	inner: BoxedHostOperator,
 	seal_span: Option<Duration>,
-	retention: Option<Duration>,
+	forget: Option<Duration>,
 	input_seal: Option<Duration>,
 	sealed_inserts: DropCounter,
 	sealed_updates: DropCounter,
@@ -68,18 +68,18 @@ impl ApplyOperator {
 		operator: OperatorId,
 		inner: BoxedHostOperator,
 		with: &ApplyWith,
-	) -> Self {
-		Self {
+	) -> Result<Self, ValueError> {
+		Ok(Self {
 			schema,
 			operator,
 			inner,
-			seal_span: engine_seal_span(with),
-			retention: engine_retention(with),
-			input_seal: input_seal(with),
+			seal_span: engine_seal_span(with)?,
+			forget: engine_forget(with),
+			input_seal: input_seal(with)?,
 			sealed_inserts: DropCounter::new(operator, SEALED_INSERTS),
 			sealed_updates: DropCounter::new(operator, SEALED_UPDATES),
 			sealed_removes: DropCounter::new(operator, SEALED_REMOVES),
-		}
+		})
 	}
 
 	fn drop_sealed(&self, host: &mut dyn HostContext, mut change: Change) -> Result<Option<Change>, ValueError> {
@@ -176,8 +176,8 @@ impl HostOperator for ApplyOperator {
 		self.seal_span
 	}
 
-	fn retention(&self) -> Option<Duration> {
-		self.retention
+	fn forget(&self) -> Option<Duration> {
+		self.forget
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
@@ -262,41 +262,29 @@ pub fn output_schema_of(
 	Ok(Some(Arc::new(Schema::new(fields))))
 }
 
-pub fn engine_seal_span(with: &ApplyWith) -> Option<Duration> {
+pub fn engine_seal_span(with: &ApplyWith) -> Result<Option<Duration>, ValueError> {
 	let span = match &with.window {
 		Some(kind) => {
-			let lateness = match with.lateness {
+			let drop_span = match with.drop {
 				Some(WithSpan::Duration(d)) => d,
 				_ => Duration::zero(),
 			};
-			SealRule::for_window(kind, lateness).map(|rule| rule.seal_span().duration())
+			SealRule::for_window(kind, drop_span).map(|rule| rule.seal_span().duration())
 		}
-		None => match with.lateness {
-			Some(WithSpan::Duration(d)) => Some(d),
-			_ => None,
-		},
+		None => with.effective_drop()?,
 	};
-	span.filter(|span| !span.is_zero())
+	Ok(span.filter(|span| !span.is_zero()))
 }
 
-fn input_seal(with: &ApplyWith) -> Option<Duration> {
+fn input_seal(with: &ApplyWith) -> Result<Option<Duration>, ValueError> {
 	if with.window.is_some() {
-		return None;
+		return Ok(None);
 	}
-	match with.lateness {
-		Some(WithSpan::Duration(lateness)) => Some(lateness),
-		_ => with.retention.filter(|retention| !retention.is_zero()),
-	}
+	with.effective_drop()
 }
 
-pub fn engine_retention(with: &ApplyWith) -> Option<Duration> {
-	match with.retention {
-		Some(retention) => Some(retention),
-		None => match with.lateness {
-			Some(WithSpan::Duration(d)) => Some(d),
-			_ => None,
-		},
-	}
+pub fn engine_forget(with: &ApplyWith) -> Option<Duration> {
+	with.forget
 }
 
 const FORGET_PASS_BATCH: usize = 256;
@@ -350,39 +338,39 @@ mod tests {
 	}
 
 	fn operator(with: ApplyWith) -> ApplyOperator {
-		ApplyOperator::new(None, OperatorId(1), Box::new(Stub), &with)
+		ApplyOperator::new(None, OperatorId(1), Box::new(Stub), &with).unwrap()
 	}
 
 	#[test]
-	fn a_windowed_apply_holds_by_size_plus_lateness() {
+	fn a_windowed_apply_holds_by_size_plus_drop() {
 		// The engine span for a windowed apply must come from SealRule::for_window, not the guest.
 		let with = ApplyWith {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(seconds(60)),
 			}),
-			lateness: Some(WithSpan::Duration(seconds(30))),
+			drop: Some(WithSpan::Duration(seconds(30))),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), Some(seconds(90)));
 	}
 
 	#[test]
-	fn an_apply_without_a_window_holds_by_its_lateness() {
-		// An apply with no window still seals by its own lateness, otherwise a bare apply never holds.
+	fn an_apply_without_a_window_holds_by_its_drop() {
+		// An apply with no window still seals by its own drop, otherwise a bare apply never holds.
 		let with = ApplyWith {
 			window: None,
-			lateness: Some(WithSpan::Duration(seconds(30))),
+			drop: Some(WithSpan::Duration(seconds(30))),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), Some(seconds(30)));
 	}
 
 	#[test]
-	fn an_apply_without_a_window_or_lateness_holds_nothing() {
+	fn an_apply_without_a_window_or_drop_holds_nothing() {
 		// Nothing in `with` gives the engine a span, so the source watermark must pass through untouched.
 		let with = ApplyWith::default();
 
@@ -396,9 +384,9 @@ mod tests {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Count(10),
 			}),
-			lateness: Some(WithSpan::Count(2)),
+			drop: Some(WithSpan::Count(2)),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), None);
@@ -406,7 +394,7 @@ mod tests {
 
 	#[test]
 	fn a_rolling_apply_holds_by_the_rolling_rule() {
-		// Rolling must go through the rolling arm of for_window, which adds lag to size before lateness.
+		// Rolling must go through the rolling arm of for_window, which adds lag to size before drop.
 		let with = ApplyWith {
 			window: Some(WindowKind::Rolling {
 				size: WindowSize::Duration(seconds(120)),
@@ -414,9 +402,9 @@ mod tests {
 				pane: None,
 				on_empty: OnEmpty::Remove,
 			}),
-			lateness: Some(WithSpan::Duration(seconds(5))),
+			drop: Some(WithSpan::Duration(seconds(5))),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), Some(seconds(135)));
@@ -427,55 +415,63 @@ mod tests {
 		// A zero span must read as no hold, matching what the guest mount reports today.
 		let with = ApplyWith {
 			window: None,
-			lateness: Some(WithSpan::Duration(Duration::zero())),
+			drop: Some(WithSpan::Duration(Duration::zero())),
 			immutable: None,
-			retention: None,
+			forget: None,
 		};
 
 		assert_eq!(operator(with).seal_span(), None);
 	}
 
 	#[test]
-	fn retention_feeds_the_forget_pass_and_never_the_hold() {
-		// A retention that also held the output would delay every downstream seal by the state bound.
+	fn forget_feeds_the_forget_pass_and_never_the_hold() {
+		// A forget that also held the output would delay every downstream seal by the state bound.
 		let with = ApplyWith {
 			window: None,
-			lateness: Some(WithSpan::Duration(seconds(30))),
+			drop: Some(WithSpan::Duration(seconds(30))),
 			immutable: None,
-			retention: Some(seconds(120)),
+			forget: Some(seconds(120)),
 		};
 		let operator = operator(with);
 
 		assert_eq!(operator.seal_span(), Some(seconds(30)));
-		assert_eq!(operator.retention(), Some(seconds(120)));
+		assert_eq!(operator.forget(), Some(seconds(120)));
 	}
 
 	#[test]
-	fn retention_falls_back_to_the_lateness() {
-		// A managed view that declares lateness alone must keep the bound it had before retention existed.
-		let with = ApplyWith {
-			window: None,
-			lateness: Some(WithSpan::Duration(seconds(30))),
-			immutable: None,
-			retention: None,
-		};
+	fn the_drop_falls_back_to_the_forget_and_never_the_forget_to_the_drop() {
+		// A drop that armed the forget pass would free state the user never asked to forget.
+		let forget_alone = operator(ApplyWith {
+			forget: Some(seconds(30)),
+			..ApplyWith::default()
+		});
+		let drop_alone = operator(ApplyWith {
+			drop: Some(WithSpan::Duration(seconds(30))),
+			..ApplyWith::default()
+		});
 
-		assert_eq!(operator(with).retention(), Some(seconds(30)));
+		assert_eq!(forget_alone.input_seal, Some(seconds(30)));
+		assert_eq!(forget_alone.seal_span(), Some(seconds(30)));
+		assert_eq!(forget_alone.forget(), Some(seconds(30)));
+		assert_eq!(drop_alone.input_seal, Some(seconds(30)));
+		assert_eq!(drop_alone.seal_span(), Some(seconds(30)));
+		assert_eq!(drop_alone.forget(), None);
 	}
 
 	#[test]
-	fn a_zero_lateness_alone_gives_a_zero_retention_and_no_hold() {
-		// Zero must stay a real bound for the forget pass while the hold reads it as none.
+	fn a_zero_forget_alone_gives_a_zero_drop_and_no_hold() {
+		// Zero must stay a real bound for the forget pass and the input cut while the hold reads it as none.
 		let with = ApplyWith {
 			window: None,
-			lateness: Some(WithSpan::Duration(Duration::zero())),
+			drop: None,
 			immutable: None,
-			retention: None,
+			forget: Some(Duration::zero()),
 		};
 		let operator = operator(with);
 
 		assert_eq!(operator.seal_span(), None);
-		assert_eq!(operator.retention(), Some(Duration::zero()));
+		assert_eq!(operator.input_seal, Some(Duration::zero()));
+		assert_eq!(operator.forget(), Some(Duration::zero()));
 	}
 }
 
@@ -541,16 +537,16 @@ mod forget_pass_tests {
 		}
 	}
 
-	fn managed(lateness_secs: u64) -> (ApplyOperator, Arc<AtomicUsize>) {
+	fn managed(forget_secs: u64) -> (ApplyOperator, Arc<AtomicUsize>) {
 		let timers = Arc::new(AtomicUsize::new(0));
 		let with = ApplyWith {
-			lateness: Some(WithSpan::Duration(secs(lateness_secs))),
+			forget: Some(secs(forget_secs)),
 			..ApplyWith::default()
 		};
 		let probe = Probe {
 			timers: Arc::clone(&timers),
 		};
-		(ApplyOperator::new(None, OP, Box::new(probe), &with), timers)
+		(ApplyOperator::new(None, OP, Box::new(probe), &with).unwrap(), timers)
 	}
 
 	fn txn(engine: &TestEngine) -> DeferredTransaction {
@@ -568,12 +564,11 @@ mod forget_pass_tests {
 	fn write_at(
 		txn: &mut DeferredTransaction,
 		millis: i64,
-		retention: Option<Duration>,
+		forget: Option<Duration>,
 		key: &GroupStateKey,
 	) -> Result<(), ValueError> {
 		txn.set_batch_time(Some(DateTime::from_millis(millis)));
-		TxnHostContext::with_retention(txn, OP, retention)
-			.state_set(vec![(key.clone(), EncodedPodRow::new(&[1]))])
+		TxnHostContext::with_forget(txn, OP, forget).state_set(vec![(key.clone(), EncodedPodRow::new(&[1]))])
 	}
 
 	fn keys(txn: &mut DeferredTransaction, group: GroupId, keyspace: KeyspaceId) -> usize {
@@ -616,7 +611,7 @@ mod forget_pass_tests {
 		kind: TimerKind,
 		millis: i64,
 	) -> Option<TimedOutput> {
-		let mut host = TxnHostContext::with_retention(txn, OP, operator.retention());
+		let mut host = TxnHostContext::with_forget(txn, OP, operator.forget());
 		operator.on_timer(
 			&mut host,
 			Timer {
@@ -629,12 +624,12 @@ mod forget_pass_tests {
 	}
 
 	#[test]
-	fn a_managed_write_arms_at_the_next_whole_second_after_lateness_never_earlier() {
-		// A due rounded down frees a group while a row inside its lateness can still arrive.
+	fn a_managed_write_arms_at_the_next_whole_second_after_forget_never_earlier() {
+		// A due rounded down frees a group while a row inside its forget can still arrive.
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
 		let (mut operator, _) = managed(2);
-		let span = operator.retention();
+		let span = operator.forget();
 
 		write_at(&mut txn, 9_999, span, &managed_key(group(1))).unwrap();
 		write_at(&mut txn, 10_000, span, &managed_key(group(2))).unwrap();
@@ -667,12 +662,12 @@ mod forget_pass_tests {
 	}
 
 	#[test]
-	fn a_rewrite_inside_the_retention_moves_the_groups_due_entry_to_the_last_write() {
+	fn a_rewrite_inside_the_forget_moves_the_groups_due_entry_to_the_last_write() {
 		// A due entry left from the first write frees state the rewrite still needs.
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
 		let (mut operator, _) = managed(2);
-		let span = operator.retention();
+		let span = operator.forget();
 
 		write_at(&mut txn, 10_000, span, &managed_key(group(1))).unwrap();
 		write_at(&mut txn, 12_000, span, &managed_key(group(1))).unwrap();
@@ -705,7 +700,7 @@ mod forget_pass_tests {
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
 		let (mut operator, _) = managed(2);
-		let span = operator.retention();
+		let span = operator.forget();
 
 		write_at(&mut txn, 12_000, span, &managed_key(group(1))).unwrap();
 		write_at(&mut txn, 10_000, span, &managed_key(group(1))).unwrap();
@@ -749,24 +744,24 @@ mod forget_pass_tests {
 	}
 
 	#[test]
-	fn a_managed_write_without_a_retention_fails() {
-		// Without a retention nothing would ever free the group, which is the leak this stage closes.
+	fn a_managed_write_without_a_forget_fails() {
+		// Without a forget nothing would ever free the group, which is the leak this stage closes.
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
 
 		let err = write_at(&mut txn, 10_000, None, &managed_key(group(1)))
-			.expect_err("a managed write needs a retention");
+			.expect_err("a managed write needs a forget");
 
-		assert!(err.to_string().contains("no retention"), "got: {err}");
+		assert!(err.to_string().contains("no forget"), "got: {err}");
 	}
 
 	#[test]
 	fn a_forget_pass_fire_frees_the_groups_due_by_it_and_keeps_the_rest() {
-		// Freeing a later group drops state its lateness still protects.
+		// Freeing a later group drops state its forget still protects.
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
 		let (mut operator, guest_timers) = managed(2);
-		let span = operator.retention();
+		let span = operator.forget();
 
 		write_at(&mut txn, 10_000, span, &managed_key(group(1))).unwrap();
 		write_at(&mut txn, 11_500, span, &managed_key(group(2))).unwrap();
@@ -788,7 +783,7 @@ mod forget_pass_tests {
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
 		let (mut operator, _) = managed(2);
-		let span = operator.retention();
+		let span = operator.forget();
 		for n in 1..=257 {
 			write_at(&mut txn, 10_000, span, &managed_key(group(n))).unwrap();
 		}
@@ -816,7 +811,7 @@ mod forget_pass_tests {
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine);
 		let (mut operator, _) = managed(2);
-		let span = operator.retention();
+		let span = operator.forget();
 
 		write_at(&mut txn, 10_000, span, &managed_key(group(1))).unwrap();
 		write_at(&mut txn, 12_500, span, &managed_key(group(2))).unwrap();
@@ -999,12 +994,12 @@ mod seal_tests {
 		let inner = Recorder {
 			seen: Arc::clone(&seen),
 		};
-		(ApplyOperator::new(None, OP, Box::new(inner), &with), seen)
+		(ApplyOperator::new(None, OP, Box::new(inner), &with).unwrap(), seen)
 	}
 
-	fn lateness(seconds: u64) -> ApplyWith {
+	fn drop_span(seconds: u64) -> ApplyWith {
 		ApplyWith {
-			lateness: Some(WithSpan::Duration(secs(seconds))),
+			drop: Some(WithSpan::Duration(secs(seconds))),
 			..ApplyWith::default()
 		}
 	}
@@ -1026,7 +1021,7 @@ mod seal_tests {
 	}
 
 	fn apply(op: &mut ApplyOperator, txn: &mut DeferredTransaction, diffs: Vec<Diff>) {
-		let mut host = TxnHostContext::with_retention(txn, OP, op.retention());
+		let mut host = TxnHostContext::with_forget(txn, OP, op.forget());
 		let change = Change::from_flow(
 			OperatorId(1_000),
 			ChangeVersion::from(CommitVersion(7)),
@@ -1065,7 +1060,7 @@ mod seal_tests {
 		// the guest cannot tell a new row from one whose state it already forgot, so it must never see it
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine, 30_000);
-		let (mut op, seen) = recorder(lateness(10));
+		let (mut op, seen) = recorder(drop_span(10));
 
 		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1], &[Some(5_000)]))]);
 
@@ -1074,13 +1069,13 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_retention_alone_drops_input_by_the_retention_and_holds_no_output() {
-		// The drop must stop rows whose state is forgotten, and a hold by retention would stall every reader by
-		// the state bound.
+	fn a_forget_alone_drops_input_and_holds_output_by_the_forget() {
+		// A missing drop defaults to the forget, otherwise rows reach forgotten state and readers see open
+		// output.
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine, 30_000);
 		let (mut op, seen) = recorder(ApplyWith {
-			retention: Some(secs(10)),
+			forget: Some(secs(10)),
 			..ApplyWith::default()
 		});
 
@@ -1088,15 +1083,50 @@ mod seal_tests {
 
 		assert_eq!(keys_seen(&seen), vec![2]);
 		assert_eq!(op.sealed_inserts.total(), 1);
-		assert_eq!(op.seal_span(), None);
+		assert_eq!(op.seal_span(), Some(secs(10)));
+		assert_eq!(op.forget(), Some(secs(10)));
 	}
 
 	#[test]
-	fn a_zero_lateness_drops_every_late_row_and_keeps_the_watermark_instant() {
-		// Zero must mean no late rows like a window lateness, otherwise every late row slips past the seal.
+	fn a_drop_below_the_forget_cuts_and_holds_by_the_drop_and_forgets_by_the_forget() {
+		// A cut or hold by the forget would admit rows an hour late and stall every reader by the state bound.
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine, 30_000);
-		let (mut op, seen) = recorder(lateness(0));
+		let (mut op, seen) = recorder(ApplyWith {
+			drop: Some(WithSpan::Duration(secs(10))),
+			forget: Some(secs(3_600)),
+			..ApplyWith::default()
+		});
+
+		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1, 2], &[Some(19_999), Some(20_000)]))]);
+
+		assert_eq!(keys_seen(&seen), vec![2]);
+		assert_eq!(op.sealed_inserts.total(), 1);
+		assert_eq!(op.seal_span(), Some(secs(10)));
+		assert_eq!(op.forget(), Some(secs(3_600)));
+	}
+
+	#[test]
+	fn a_drop_alone_cuts_and_holds_by_the_drop_and_forgets_nothing() {
+		// A drop that fell through to the forget pass would free state the user never asked to forget.
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 30_000);
+		let (mut op, seen) = recorder(drop_span(10));
+
+		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1, 2], &[Some(19_999), Some(20_000)]))]);
+
+		assert_eq!(keys_seen(&seen), vec![2]);
+		assert_eq!(op.sealed_inserts.total(), 1);
+		assert_eq!(op.seal_span(), Some(secs(10)));
+		assert_eq!(op.forget(), None);
+	}
+
+	#[test]
+	fn a_zero_drop_drops_every_late_row_and_keeps_the_watermark_instant() {
+		// Zero must mean no late rows like a window drop, otherwise every late row slips past the seal.
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine, 30_000);
+		let (mut op, seen) = recorder(drop_span(0));
 
 		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1, 2, 3], &[Some(29_999), Some(30_000), None]))]);
 
@@ -1106,10 +1136,10 @@ mod seal_tests {
 
 	#[test]
 	fn a_mixed_batch_keeps_rows_inside_the_seal_and_rows_without_a_time() {
-		// dropping a row with no time, or one inside the lateness, loses live data
+		// dropping a row with no time, or one inside the drop, loses live data
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine, 30_000);
-		let (mut op, seen) = recorder(lateness(10));
+		let (mut op, seen) = recorder(drop_span(10));
 
 		apply(&mut op, &mut txn, vec![Diff::insert(rows(&[1, 2, 3], &[Some(5_000), Some(25_000), None]))]);
 
@@ -1122,7 +1152,7 @@ mod seal_tests {
 		// a remove or update past the seal must be dropped and counted under its own reason
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine, 30_000);
-		let (mut op, seen) = recorder(lateness(10));
+		let (mut op, seen) = recorder(drop_span(10));
 		let old = rows(&[1], &[Some(5_000)]);
 
 		apply(
@@ -1147,7 +1177,7 @@ mod seal_tests {
 
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine, 30_000);
-		let (mut op, _) = recorder(lateness(10));
+		let (mut op, _) = recorder(drop_span(10));
 		let old = rows(&[1], &[Some(5_000)]);
 
 		apply(
@@ -1196,12 +1226,12 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn an_apply_with_a_retention_and_no_lateness_drops_by_its_retention() {
-		// a missing lateness defaults to the retention, otherwise input reaches state already forgotten
+	fn an_apply_with_a_forget_and_no_drop_drops_by_its_forget() {
+		// a missing drop defaults to the forget, otherwise input reaches state already forgotten
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine, 30_000);
 		let with = ApplyWith {
-			retention: Some(secs(10)),
+			forget: Some(secs(10)),
 			..ApplyWith::default()
 		};
 		let (mut op, seen) = recorder(with);
@@ -1212,7 +1242,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_count_window_with_a_retention_drops_nothing() {
+	fn a_count_window_with_a_forget_drops_nothing() {
 		// a count window seals in rows, so a time seal would drop rows of an open window
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine, 30_000);
@@ -1220,7 +1250,7 @@ mod seal_tests {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Count(10),
 			}),
-			retention: Some(secs(10)),
+			forget: Some(secs(10)),
 			..ApplyWith::default()
 		};
 		let (mut op, seen) = recorder(with);
@@ -1239,7 +1269,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn an_apply_without_lateness_or_retention_keeps_an_old_row() {
+	fn an_apply_without_drop_or_forget_keeps_an_old_row() {
 		// with no seal declared nothing is ever sealed, so an old row must still reach the guest
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine, 9_000_000);
@@ -1255,9 +1285,9 @@ mod seal_tests {
 		// without the ledger a row the forget pass already freed passes again once the watermark falls back
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine, 40_000);
-		let (mut op, seen) = recorder(lateness(10));
+		let (mut op, seen) = recorder(drop_span(10));
 		{
-			let mut host = TxnHostContext::with_retention(&mut txn, OP, op.retention());
+			let mut host = TxnHostContext::with_forget(&mut txn, OP, op.forget());
 			op.on_timer(
 				&mut host,
 				Timer {

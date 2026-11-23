@@ -37,7 +37,7 @@ fn sealing_left_join(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW app::j { k: int4, lv: int4, rv: Option(int4) } AS {
 			FROM app::lhs
 				| left join { from app::rhs } as r using (k, r.k)
-					with { retention: { left: 1s, right: 1s } }
+					with { forget: { left: 1s, right: 1s } }
 				| map { k: k, lv: lv, rv: r_rv }
 		}"#);
 }
@@ -81,7 +81,7 @@ fn aggregate_fed_left_join(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW app::j { k: int4, lv: int4, rv: Option(int4) } AS {
 			FROM app::lhs
 				| left join { from app::rhs } as r using (k, r.k)
-					with { retention: { left: 1s, right: 1s } }
+					with { forget: { left: 1s, right: 1s } }
 				| map { k: k, lv: lv, rv: r_rv }
 		}"#);
 }
@@ -216,7 +216,7 @@ fn the_forgotten_pairs_published_row_survives() {
 }
 
 #[test]
-fn a_row_still_inside_its_lateness_keeps_its_state_through_a_forget_pass() {
+fn a_row_still_inside_its_forget_keeps_its_state_through_a_forget_pass() {
 	// A forget pass that ran on arrival order rather than due time would take live rows with it.
 	let db = setup();
 	sealing_left_join(&db);

@@ -207,9 +207,9 @@ fn window_with() -> ApplyWith {
 			pane: Some(millis(1)),
 			on_empty: OnEmpty::Remove,
 		}),
-		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		drop: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -221,9 +221,9 @@ fn sealed_with() -> ApplyWith {
 			pane: Some(millis(1)),
 			on_empty: OnEmpty::Remove,
 		}),
-		lateness: Some(WithSpan::Duration(millis(117))),
+		drop: Some(WithSpan::Duration(millis(117))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 
@@ -315,15 +315,15 @@ fn buffer_fills_then_evicts_oldest_window() {
 }
 
 #[test]
-fn late_window_event_accepted_while_lateness_is_open() {
-	// while the lateness window has not elapsed, a late event must still merge into its older coordinate
+fn late_window_event_accepted_while_drop_is_open() {
+	// while the drop window has not elapsed, a late event must still merge into its older coordinate
 	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 5.0)).build()).expect("apply");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 58, 99.0)).build()).expect("apply");
-	assert!(!out.diffs.is_empty(), "a late event inside the window and the lateness must be accepted");
+	assert!(!out.diffs.is_empty(), "a late event inside the window and the drop must be accepted");
 }
 
 #[test]
@@ -550,9 +550,9 @@ fn carried_with() -> ApplyWith {
 			pane: Some(millis(1)),
 			on_empty: OnEmpty::Carry,
 		}),
-		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		drop: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
-		retention: None,
+		forget: None,
 	}
 }
 

@@ -180,9 +180,9 @@ fn a_read_error_in_extract_aborts_the_apply_instead_of_skipping_the_row() {
 				window: Some(WindowKind::Tumbling {
 					size: WindowSize::Duration(millis(60)),
 				}),
-				lateness: Some(WithSpan::Duration(millis(3_600_000))),
+				drop: Some(WithSpan::Duration(millis(3_600_000))),
 				immutable: None,
-				retention: None,
+				forget: None,
 			})
 			.build()
 			.expect("harness");

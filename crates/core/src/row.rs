@@ -36,7 +36,7 @@ impl RowSettings {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct JoinLateness {
+pub struct JoinSpans {
 	pub left: Option<Duration>,
 
 	pub right: Option<Duration>,

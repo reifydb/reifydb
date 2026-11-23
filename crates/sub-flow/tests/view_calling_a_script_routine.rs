@@ -63,7 +63,7 @@ fn a_deferred_view_calling_a_script_udf_is_refused_in_every_expression_place() {
 		),
 		(
 			"window aggregation",
-			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS { FROM app::e | window tumbling { total: math::sum(twice(v)) } with { duration: 1s, lateness: 0s } by { g } }",
+			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS { FROM app::e | window tumbling { total: math::sum(twice(v)) } with { duration: 1s, drop: 0s } by { g } }",
 		),
 		(
 			"joined side",

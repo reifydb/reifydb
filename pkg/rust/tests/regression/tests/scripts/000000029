@@ -4,7 +4,7 @@
 (admin 'create namespace app')
 (admin 'create table app::requests { service: utf8, latency: duration, queue: duration, ts: datetime } with { time: event(ts) }')
 (admin 'create deferred view app::latency_1m { service: utf8, start: datetime, lat: digest(duration, 0.01) } as { from app::requests | window tumbling { start: window::start(), lat: stats::digest(latency, 0.01) } with { duration: 1m } by { service } }')
-(admin 'create deferred view app::latency_1m_late { service: utf8, start: datetime, lat: digest(duration, 0.01) } as { from app::requests | window tumbling { start: window::start(), lat: stats::digest(latency, 0.01) } with { duration: 1m, lateness: 1h } by { service } }')
+(admin 'create deferred view app::latency_1m_late { service: utf8, start: datetime, lat: digest(duration, 0.01) } as { from app::requests | window tumbling { start: window::start(), lat: stats::digest(latency, 0.01) } with { duration: 1m, drop: 1h } by { service } }')
 (command 'INSERT app::requests [
   { service: "api", latency: 10ms, queue: 1ms, ts: "2026-01-01T00:00:00Z" },
   { service: "api", latency: 11ms, queue: 1ms, ts: "2026-01-01T00:00:01Z" },
@@ -233,7 +233,7 @@ query 'from app::latency_daily | map { service, day, lat, p50: stats::approx_per
 > +-----------+-----------+--------------+------------------+-----------------+-------------------+-------------------+
 >
 
-# lateness 1h keeps the 00:00 and 00:01 windows open, so a delete there must reach the view
+# drop 1h keeps the 00:00 and 00:01 windows open, so a delete there must reach the view
 command 'DELETE app::requests FILTER { (service == "api" and latency == 49ms) or (service == "auth" and latency == 30ms) }'
 await
 query 'from app::latency_1m_late | map { service, start, p999: stats::approx_percentile(lat, 0.999) }'

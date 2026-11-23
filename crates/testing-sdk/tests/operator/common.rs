@@ -367,7 +367,7 @@ impl Emit for MinTumbling {
 	}
 }
 
-/// Open/high/low/close over a bounded-lateness window. The slot drives aging, so events more
+/// Open/high/low/close over a bounded-drop window. The slot drives aging, so events more
 /// than `OHLCV_IMMUTABLE` behind the window high-water mark into the O(1) scalar.
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, HeapSize)]
@@ -449,7 +449,7 @@ pub struct OhlcvImmutableTumbling;
 impl OperatorMetadata for OhlcvImmutableTumbling {
 	const NAME: &'static str = "operator_test_ohlcv_immutable";
 	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "chaos fixture: immutable OHLCV with bounded lateness";
+	const DESCRIPTION: &'static str = "chaos fixture: immutable OHLCV with bounded drop";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;

@@ -26,7 +26,7 @@ use crate::{
 pub struct Params {
 	pub size_secs: u64,
 	pub slide_secs: u64,
-	pub lateness_secs: u64,
+	pub drop_secs: u64,
 	pub groups: i32,
 	pub steps: u32,
 	pub max_batch: u32,
@@ -80,7 +80,7 @@ fn drive_with(seed: u64, params: Params, fold: Fold, immutable_ms: Option<u64>, 
 	);
 	let size_ms = params.size_secs * 1_000;
 	let slide_ms = params.slide_secs * 1_000;
-	let lateness_ms = params.lateness_secs * 1_000;
+	let drop_ms = params.drop_secs * 1_000;
 	assert!(slide_ms < size_ms, "the sweep only covers overlapping sliding windows; slide must be < size");
 
 	let spec = WindowSpec {
@@ -90,7 +90,7 @@ fn drive_with(seed: u64, params: Params, fold: Fold, immutable_ms: Option<u64>, 
 		},
 		group_by: "g",
 		aggregations: fold.rql(),
-		lateness: Some(Duration::from_seconds(params.lateness_secs as i64).unwrap()),
+		drop: Some(Duration::from_seconds(params.drop_secs as i64).unwrap()),
 	};
 
 	let immutable = immutable_ms.map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
@@ -108,7 +108,7 @@ fn drive_with(seed: u64, params: Params, fold: Fold, immutable_ms: Option<u64>, 
 			slide_ms,
 		},
 		size_ms,
-		lateness_ms,
+		drop_ms,
 	)
 	.with_fold(fold);
 
@@ -118,7 +118,7 @@ fn drive_with(seed: u64, params: Params, fold: Fold, immutable_ms: Option<u64>, 
 			params.steps,
 			params.max_batch,
 			params.coord_span_ms,
-			params.coord_span_ms + size_ms + lateness_ms + 10_000,
+			params.coord_span_ms + size_ms + drop_ms + 10_000,
 		)
 		.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
 		&mut harness,
@@ -140,13 +140,13 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 	// Bounded below so a coordinate never lands in more than about eight windows at once; a slide of
 	// one second against a two minute size puts every row in 120 of them.
 	let slide_secs = rng.random_range((size_secs / 8).max(1)..size_secs);
-	let lateness_secs = fuzz::lateness_secs(&mut rng, size_secs);
+	let drop_secs = fuzz::drop_secs(&mut rng, size_secs);
 	let coord_span_ms = fuzz::coord_span_ms(&mut rng, size_secs);
 	let mix = fuzz::mix(&mut rng);
 	let params = Params {
 		size_secs,
 		slide_secs,
-		lateness_secs,
+		drop_secs,
 		groups: mix.groups,
 		steps: mix.steps,
 		max_batch: mix.max_batch,

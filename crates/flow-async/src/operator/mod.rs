@@ -158,7 +158,7 @@ pub trait HostOperator: Send {
 		None
 	}
 
-	fn retention(&self) -> Option<Duration> {
+	fn forget(&self) -> Option<Duration> {
 		None
 	}
 

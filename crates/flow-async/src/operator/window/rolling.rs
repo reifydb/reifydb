@@ -58,12 +58,12 @@ pub(crate) fn rolling_runs_on_running_total(kinds: &[SlotKind]) -> bool {
 }
 
 fn rolling_spans(operator: &WindowOperator) -> PaneSpans<Duration> {
-	let lateness = operator.lateness().unwrap_or_else(Duration::zero);
+	let drop_span = operator.drop_span().unwrap_or_else(Duration::zero);
 	PaneSpans {
 		size: operator.size_duration().unwrap_or_default(),
 		lag: operator.rolling_lag(),
-		lateness,
-		retract: operator.immutable().unwrap_or(lateness),
+		drop: drop_span,
+		retract: operator.immutable().unwrap_or(drop_span),
 	}
 }
 
@@ -569,7 +569,7 @@ mod tests {
 	struct Frame {
 		live: TestBTreeMap<Hash128, TestBTreeMap<TimeKey, Option<f64>>>,
 		newest: TestHashMap<Hash128, u64>,
-		lateness: u64,
+		drop: u64,
 		retract: u64,
 	}
 
@@ -581,7 +581,7 @@ mod tests {
 			let line = if retraction {
 				self.retract
 			} else {
-				self.lateness
+				self.drop
 			};
 			self.newest.get(group).is_none_or(|newest| ms >= newest.saturating_sub(line))
 		}
@@ -601,14 +601,14 @@ mod tests {
 	}
 
 	fn drive_time_frame(kinds: &[SlotKind], immutable_ms: Option<u64>, seed: u64) {
-		let lateness_ms = 3u64;
-		let lateness = Duration::from_milliseconds(lateness_ms as i64).unwrap();
-		let retract_ms = immutable_ms.unwrap_or(lateness_ms);
+		let drop_ms = 3u64;
+		let drop_span = Duration::from_milliseconds(drop_ms as i64).unwrap();
+		let retract_ms = immutable_ms.unwrap_or(drop_ms);
 		let retract = Duration::from_milliseconds(retract_ms as i64).unwrap();
 		let spans = PaneSpans {
 			size: Duration::from_seconds(60).unwrap(),
 			lag: Duration::zero(),
-			lateness,
+			drop: drop_span,
 			retract,
 		};
 		let config = WindowEngineConfig::builder().build();
@@ -623,7 +623,7 @@ mod tests {
 		let mut frame = Frame {
 			live: TestBTreeMap::new(),
 			newest: TestHashMap::new(),
-			lateness: lateness_ms,
+			drop: drop_ms,
 			retract: retract_ms,
 		};
 		let mut evicted: Vec<(Hash128, TimeKey, Option<f64>)> = Vec::new();

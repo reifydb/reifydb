@@ -129,16 +129,16 @@ fn tumbling_of(seconds: u64) -> ApplyWith {
 	}
 }
 
-fn lateness_of(seconds: u64) -> ApplyWith {
+fn drop_of(seconds: u64) -> ApplyWith {
 	ApplyWith {
-		lateness: Some(WithSpan::Duration(secs(seconds))),
+		drop: Some(WithSpan::Duration(secs(seconds))),
 		..ApplyWith::default()
 	}
 }
 
-fn retention_of(seconds: u64) -> ApplyWith {
+fn forget_of(seconds: u64) -> ApplyWith {
 	ApplyWith {
-		retention: Some(secs(seconds)),
+		forget: Some(secs(seconds)),
 		..ApplyWith::default()
 	}
 }
@@ -146,8 +146,7 @@ fn retention_of(seconds: u64) -> ApplyWith {
 #[test]
 fn a_nostate_operator_refuses_any_with() {
 	// A nostate operator that takes a with block lets a view declare a seal nothing honours.
-	let Err(err) =
-		InProcessOperatorHarnessBuilder::<NostateMount<NostateProbe>>::new().with(lateness_of(60)).build()
+	let Err(err) = InProcessOperatorHarnessBuilder::<NostateMount<NostateProbe>>::new().with(drop_of(60)).build()
 	else {
 		panic!("create must refuse a with block");
 	};
@@ -155,23 +154,23 @@ fn a_nostate_operator_refuses_any_with() {
 }
 
 #[test]
-fn a_managed_operator_refuses_a_missing_lateness() {
-	// A managed operator must never start without lateness, or its state has no bound.
+fn a_managed_operator_refuses_a_missing_forget() {
+	// A managed operator must never start without forget, or its state has no bound.
 	let Err(err) =
 		InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new().with(ApplyWith::default()).build()
 	else {
-		panic!("create must refuse a missing lateness");
+		panic!("create must refuse a missing forget");
 	};
 	assert!(err.to_string().contains("FLOW_072"), "expected FLOW_072, got: {err}");
 }
 
 #[test]
-fn a_managed_operator_builds_with_a_zero_lateness() {
-	// Zero lateness is a real bound now: no output hold, and the state is freed at the next gate step.
+fn a_managed_operator_builds_with_a_zero_forget() {
+	// Zero forget is a real bound now: no output hold, and the state is freed at the next gate step.
 	InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new()
-		.with(lateness_of(0))
+		.with(forget_of(0))
 		.build()
-		.expect("a zero lateness bounds the state and must build");
+		.expect("a zero forget bounds the state and must build");
 }
 
 #[test]
@@ -181,7 +180,7 @@ fn a_managed_operator_refuses_a_window() {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(secs(60)),
 		}),
-		..lateness_of(60)
+		..forget_of(60)
 	};
 	let Err(err) = InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new().with(with).build() else {
 		panic!("create must refuse a window");
@@ -190,43 +189,75 @@ fn a_managed_operator_refuses_a_window() {
 }
 
 #[test]
-fn a_managed_operator_builds_with_a_duration_lateness() {
-	// The managed checks must never refuse the with block they exist to require.
-	InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new()
-		.with(lateness_of(60))
-		.build()
-		.expect("a duration lateness is all a managed operator needs");
+fn a_managed_operator_with_only_a_drop_is_refused() {
+	// A drop alone frees no state, so a managed operator must never start on it.
+	let Err(err) = InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new().with(drop_of(60)).build()
+	else {
+		panic!("create must refuse a drop without a forget");
+	};
+	assert!(err.to_string().contains("FLOW_072"), "expected FLOW_072, got: {err}");
 }
 
 #[test]
-fn a_managed_operator_builds_with_a_retention_alone() {
-	// Retention is the bound the forget pass reads, so it must satisfy the managed check without any lateness.
-	InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new()
-		.with(retention_of(60))
-		.build()
-		.expect("a retention alone bounds the state and must build");
-}
-
-#[test]
-fn a_managed_operator_refuses_a_retention_below_its_lateness() {
-	// A retention under the lateness frees a group while a timer inside the hold can still fire for it.
+fn a_managed_operator_builds_with_a_drop_and_a_longer_forget() {
+	// The managed checks must never refuse a forget that outlives the drop declared next to it.
 	let with = ApplyWith {
-		retention: Some(secs(30)),
-		..lateness_of(60)
+		forget: Some(secs(3_600)),
+		..drop_of(10)
+	};
+	InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new()
+		.with(with)
+		.build()
+		.expect("a drop of 10s under a forget of 1h must build");
+}
+
+#[test]
+fn a_managed_operator_builds_with_a_forget_alone() {
+	// Forget is the bound the forget pass reads, so it must satisfy the managed check without any drop.
+	InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new()
+		.with(forget_of(60))
+		.build()
+		.expect("a forget alone bounds the state and must build");
+}
+
+#[test]
+fn a_managed_operator_refuses_a_forget_below_its_drop() {
+	// A forget under the drop frees a group while a timer inside the hold can still fire for it.
+	let with = ApplyWith {
+		forget: Some(secs(30)),
+		..drop_of(60)
 	};
 	let Err(err) = InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new().with(with).build() else {
-		panic!("create must refuse a retention below the lateness");
+		panic!("create must refuse a forget below the drop");
 	};
 	assert!(err.to_string().contains("FLOW_081"), "expected FLOW_081, got: {err}");
 }
 
 #[test]
-fn an_unmanaged_operator_refuses_a_retention() {
-	// Nothing forgets unmanaged state, so an accepted retention is a bound the author believes holds.
+fn an_unmanaged_operator_refuses_a_forget() {
+	// Nothing forgets unmanaged state, so an accepted forget is a bound the author believes holds.
 	let Err(err) =
-		InProcessOperatorHarnessBuilder::<UnmanagedMount<UnmanagedProbe>>::new().with(retention_of(60)).build()
+		InProcessOperatorHarnessBuilder::<UnmanagedMount<UnmanagedProbe>>::new().with(forget_of(60)).build()
 	else {
-		panic!("create must refuse a retention");
+		panic!("create must refuse a forget");
+	};
+	assert!(err.to_string().contains("FLOW_080"), "expected FLOW_080, got: {err}");
+}
+
+#[test]
+fn an_unmanaged_operator_accepts_a_drop_and_refuses_a_forget_next_to_it() {
+	// A drop only refuses late arrivals, so it must build, while a forget next to it must never pass.
+	InProcessOperatorHarnessBuilder::<UnmanagedMount<UnmanagedProbe>>::new()
+		.with(drop_of(60))
+		.build()
+		.expect("an unmanaged operator must accept a drop");
+	let with = ApplyWith {
+		forget: Some(secs(120)),
+		..drop_of(60)
+	};
+	let Err(err) = InProcessOperatorHarnessBuilder::<UnmanagedMount<UnmanagedProbe>>::new().with(with).build()
+	else {
+		panic!("create must refuse a forget next to a drop");
 	};
 	assert!(err.to_string().contains("FLOW_080"), "expected FLOW_080, got: {err}");
 }

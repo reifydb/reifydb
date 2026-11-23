@@ -36,7 +36,7 @@ mod tests {
 	#[test]
 	fn the_duration_factories_carry_their_named_unit() {
 		// A fixture that windows on `millis(60)` and one that ages on `secs(60)` must not be the
-		// same span; conflating them is how a retention test passes while keeping nothing.
+		// same span; conflating them is how a forget test passes while keeping nothing.
 		assert_eq!(millis(1_000).milliseconds().expect("millis"), secs(1).milliseconds().expect("millis"));
 		assert_eq!(millis(60).milliseconds().expect("millis"), 60);
 		assert_eq!(secs(60).milliseconds().expect("millis"), 60_000);

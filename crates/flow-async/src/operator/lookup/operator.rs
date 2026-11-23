@@ -114,7 +114,8 @@ pub struct LookupConfig {
 	pub left_schema: SchemaRef,
 	pub right_schema: SchemaRef,
 	pub alias: Option<String>,
-	pub left_lateness: Option<Duration>,
+	pub left_drop: Option<Duration>,
+	pub left_forget: Option<Duration>,
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
 	pub ctx: Arc<FlowContext>,
@@ -249,7 +250,7 @@ impl LookupOperator {
 			.iter()
 			.map(|expression| LoweredExpr::new(expression.clone(), "lookup_key"))
 			.collect();
-		let forget = LookupForget::new(config.left_lateness);
+		let forget = LookupForget::new(config.left_forget);
 		let columns = JoinedColumnsCache::new(config.alias.clone(), false, SequenceColumn::Forward);
 		let output_sumtypes = schema_sumtypes(
 			&columns.builder(&config.left_schema, &config.right_schema)
@@ -281,10 +282,10 @@ impl LookupOperator {
 		timed: RecordBatch,
 		drops: &DropCounter,
 	) -> Result<Option<(Option<RecordBatch>, RecordBatch)>, ValueError> {
-		let Some(lateness) = self.forget.lateness() else {
+		let Some(drop_span) = self.config.left_drop else {
 			return Ok(Some((paired, timed)));
 		};
-		let kept = kept_unsealed(host, lateness, &timed)?;
+		let kept = kept_unsealed(host, drop_span, &timed)?;
 		if kept.dropped == 0 {
 			return Ok(Some((paired, timed)));
 		}
@@ -972,7 +973,7 @@ impl HostOperator for LookupOperator {
 
 	fn sample(&self) -> Option<OperatorSample> {
 		Some(OperatorSample::default().with_drops(seal_drops(
-			self.forget.lateness().is_some(),
+			self.config.left_drop.is_some(),
 			&self.sealed_inserts,
 			&self.sealed_updates,
 			&self.sealed_removes,
@@ -1072,7 +1073,7 @@ impl HostOperator for LookupOperator {
 	}
 
 	fn seal_span(&self) -> Option<Duration> {
-		self.forget.lateness()
+		self.config.left_drop
 	}
 
 	fn output_schema(&self) -> Option<SchemaRef> {
@@ -1125,7 +1126,7 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::{
-		factory::time::at_millis,
+		factory::time::{at_millis, secs},
 		value::{
 			Value,
 			column_view::ColumnView,
@@ -1202,7 +1203,16 @@ mod tests {
 		batch(vec![utf8("lk", Vec::<String>::new())]).unwrap().schema()
 	}
 
-	fn lookup(table: &Table, join_type: JoinType, lateness: Option<Duration>) -> LookupOperator {
+	fn lookup(table: &Table, join_type: JoinType, forget: Option<Duration>) -> LookupOperator {
+		lookup_with(table, join_type, forget, forget)
+	}
+
+	fn lookup_with(
+		table: &Table,
+		join_type: JoinType,
+		drop_span: Option<Duration>,
+		forget: Option<Duration>,
+	) -> LookupOperator {
 		LookupOperator::new(LookupConfig {
 			operator: OperatorId(OP),
 			left_node: OperatorId(LEFT),
@@ -1221,7 +1231,8 @@ mod tests {
 			left_schema: left_schema(),
 			right_schema: catalog_schema(&table.columns),
 			alias: Some("r".to_string()),
-			left_lateness: lateness,
+			left_drop: drop_span,
+			left_forget: forget,
 			routines: Routines::empty(),
 			runtime_context: RuntimeContext::testing(0, 1),
 			ctx: Arc::new(FlowContext::default()),
@@ -1250,7 +1261,8 @@ mod tests {
 			left_schema: left_schema(),
 			right_schema: catalog_schema(&ringbuffer.columns),
 			alias: Some("r".to_string()),
-			left_lateness: None,
+			left_drop: None,
+			left_forget: None,
 			routines: Routines::empty(),
 			runtime_context: RuntimeContext::testing(0, 1),
 			ctx: Arc::new(FlowContext::default()),
@@ -1940,7 +1952,7 @@ mod tests {
 		let emitted = op.on_timer(&mut TxnHostContext::new(&mut txn, OperatorId(OP)), timer).unwrap();
 
 		assert!(emitted.is_none(), "a forget emits nothing");
-		assert_eq!(stored_read(&mut txn, 7), None, "row 7 is past event time + lateness and is freed");
+		assert_eq!(stored_read(&mut txn, 7), None, "row 7 is past event time + forget and is freed");
 		assert!(stores_a_right_row(&mut txn, 8), "row 8 outlives the fire");
 		let out = run(&mut op, &mut txn, version, Diff::remove(rows(&[Some("a")], &[7], at_millis(5_000))));
 		assert!(out.is_empty(), "a forgotten row has nothing left to retract");
@@ -1948,8 +1960,8 @@ mod tests {
 
 	const RIGHT: u64 = 75;
 
-	fn re_emitting(table: &Table, join_type: JoinType, lateness: Option<Duration>) -> LookupOperator {
-		let mut op = lookup(table, join_type, lateness);
+	fn re_emitting(table: &Table, join_type: JoinType, forget: Option<Duration>) -> LookupOperator {
+		let mut op = lookup(table, join_type, forget);
 		op.config.right_node = Some(OperatorId(RIGHT));
 		op.config.exact = false;
 		op
@@ -2085,7 +2097,7 @@ mod tests {
 
 	#[test]
 	fn a_forgotten_left_row_leaves_the_index_and_is_never_re_emitted() {
-		// a row left in the index would publish past its lateness, against a view row already gone.
+		// a row left in the index would publish past its forget, against a view row already gone.
 		let engine = TestEngine::new();
 		let table = right_table(&engine, false);
 		let first = put_right(&engine, "a", 10);
@@ -2872,7 +2884,38 @@ mod tests {
 	}
 
 	#[test]
-	fn a_lookup_without_a_lateness_keeps_an_old_left_row() {
+	fn a_drop_shorter_than_the_forget_refuses_a_late_left_row_and_keeps_read_versions_until_the_forget() {
+		// One span for both lines either frees a read version early or admits a row long past the drop.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let version = put_right(&engine, "a", 10);
+		let mut op = lookup_with(&table, JoinType::Left, Some(secs(10)), Some(secs(3_600)));
+		let mut txn = txn_at(&engine, version);
+		only_insert(&run(
+			&mut op,
+			&mut txn,
+			version,
+			Diff::insert(rows(&[Some("a")], &[7], at_millis(1_000_000))),
+		));
+		txn.set_flow_watermark(at_millis(1_030_000));
+
+		let late =
+			run(&mut op, &mut txn, version, Diff::insert(rows(&[Some("a")], &[8], at_millis(1_015_000))));
+		forget_through(&mut op, &mut txn, at_millis(1_030_000));
+
+		assert!(late.is_empty(), "a row 15s behind the watermark is past the 10s drop, got {late:?}");
+		assert_eq!(op.sealed_inserts.total(), 1, "the refused row must be counted");
+		assert_eq!(stored_read(&mut txn, 8), None, "and must store no read version");
+		assert_eq!(op.seal_span(), Some(secs(10)), "the hold is the drop, never the forget");
+		assert!(stores_a_right_row(&mut txn, 7), "a read version inside its forget must be kept");
+
+		forget_through(&mut op, &mut txn, at_millis(4_600_001));
+
+		assert_eq!(stored_read(&mut txn, 7), None, "the read version is freed once its forget is due");
+	}
+
+	#[test]
+	fn a_lookup_without_a_drop_or_forget_keeps_an_old_left_row() {
 		// with no seal span there is no seal, so even an ancient row must publish
 		let engine = TestEngine::new();
 		let table = right_table(&engine, false);

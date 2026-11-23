@@ -105,7 +105,7 @@ fn declare(db: &TestDb, latency: Latency) {
 		"CREATE TABLE app::t {{ id: int4, g: int4, ws: datetime, ts: datetime, weight: float8, latency: Option({ty}) }} with {{ time: event(ts) }}"
 	));
 	db.admin(&format!(
-		"CREATE DEFERRED VIEW app::windowed {{ g: int4, s: datetime, d: Option(digest({ty}, 0.01)) }} AS {{ FROM app::t | window tumbling {{ s: window::start(), d: {DIGEST} }} by {{ g }} with {{ duration: 60s, lateness: 3600s }} }}"
+		"CREATE DEFERRED VIEW app::windowed {{ g: int4, s: datetime, d: Option(digest({ty}, 0.01)) }} AS {{ FROM app::t | window tumbling {{ s: window::start(), d: {DIGEST} }} by {{ g }} with {{ duration: 60s, drop: 3600s }} }}"
 	));
 	db.admin(&format!(
 		"CREATE DEFERRED VIEW app::grouped {{ g: int4, d: Option(digest({ty}, 0.01)) }} AS {{ FROM app::t | aggregate {{ d: {DIGEST} }} by {{ g }} }}"

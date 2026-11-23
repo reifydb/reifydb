@@ -31,9 +31,9 @@ fn window_with(immutable: Option<u64>) -> ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(common::WINDOW)),
 		}),
-		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		drop: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: immutable.map(|span| WithSpan::Duration(millis(span))),
-		retention: None,
+		forget: None,
 	}
 }
 

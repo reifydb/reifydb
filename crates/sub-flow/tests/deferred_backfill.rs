@@ -1448,7 +1448,7 @@ fn follows_the_source(db: &TestDb, view: &str, source: &str, cols: Cols, step: &
 
 fn rolling(name: &str, table: &str) -> String {
 	format!(
-		"CREATE DEFERRED VIEW {name} {{ g: int4, total: float8 }} AS {{ FROM {table} | window rolling {{ total: math::sum(v) }} with {{ duration: 1h, pane: 1ms, lateness: 5m }} by {{ g }} }}"
+		"CREATE DEFERRED VIEW {name} {{ g: int4, total: float8 }} AS {{ FROM {table} | window rolling {{ total: math::sum(v) }} with {{ duration: 1h, pane: 1ms, drop: 5m }} by {{ g }} }}"
 	)
 }
 
@@ -2251,7 +2251,7 @@ fn timed(db: &TestDb) {
 
 fn tally(name: &str) -> String {
 	format!(
-		"CREATE DEFERRED VIEW {name} {{ g: int4 }} AS {{ FROM bf::timed APPLY tally{{}} WITH {{ lateness: 2s }} }}"
+		"CREATE DEFERRED VIEW {name} {{ g: int4 }} AS {{ FROM bf::timed APPLY tally{{}} WITH {{ forget: 2s }} }}"
 	)
 }
 
@@ -2310,7 +2310,7 @@ fn backfilled_groups_are_freed_like_live_ones(batch: u16) {
 
 #[test]
 fn a_late_managed_view_frees_its_backfilled_groups_when_an_early_one_frees_them() {
-	// Each backfilled row must arm the forget pass from its own event time, or its group outlives the lateness.
+	// Each backfilled row must arm the forget pass from its own event time, or its group outlives the forget.
 	backfilled_groups_are_freed_like_live_ones(4);
 }
 

@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
-	error::diagnostic::flow::{flow_join_lateness_requires_event_time, flow_rolling_lag_requires_event_time},
+	error::diagnostic::flow::{flow_join_drop_requires_event_time, flow_rolling_lag_requires_event_time},
 	flow::{
 		dag::FlowDag,
 		operator::{FlowNode, OperatorDef},
@@ -16,7 +16,7 @@ use reifydb_core::{
 		id::ViewId,
 	},
 	internal,
-	operator_with::{JoinWith, LookupWith, WindowWith},
+	operator_with::WindowWith,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::ValueError;
@@ -149,13 +149,13 @@ pub fn check_window_time_requirements(
 	Ok(())
 }
 
-pub fn check_join_lateness_requirements(
+pub fn check_join_drop_requirements(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	flow: &FlowDag,
 ) -> Result<(), ValueError> {
 	let flow_name = format!("flow {}", flow.id.0);
-	let mut lateness_inputs = Vec::new();
+	let mut timed_inputs = Vec::new();
 
 	for operator_id in flow.topological_order() {
 		let Some(operator) = flow.get_operator(operator_id) else {
@@ -163,41 +163,35 @@ pub fn check_join_lateness_requirements(
 		};
 		match &operator.ty {
 			OperatorDef::Join {
-				with: JoinWith {
-					lateness: Some(lateness),
-					..
-				},
+				with,
 				..
 			} => {
-				if lateness.left.is_some() {
-					lateness_inputs.push(side_input(operator, 0)?);
+				if with.effective_drop_left().is_some() {
+					timed_inputs.push(side_input(operator, 0)?);
 				}
-				if lateness.right.is_some() {
-					lateness_inputs.push(side_input(operator, 1)?);
+				if with.effective_drop_right().is_some() {
+					timed_inputs.push(side_input(operator, 1)?);
 				}
 			}
 			OperatorDef::Lookup {
-				with: LookupWith {
-					lateness: Some(_),
-					..
-				},
+				with,
 				..
-			} => lateness_inputs.push(side_input(operator, 0)?),
+			} if with.effective_drop().is_some() => timed_inputs.push(side_input(operator, 0)?),
 			_ => {}
 		}
 	}
 
-	if lateness_inputs.is_empty() {
+	if timed_inputs.is_empty() {
 		return Ok(());
 	}
 
 	if source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
-		return Err(ValueError(Box::new(flow_join_lateness_requires_event_time(&flow_name))));
+		return Err(ValueError(Box::new(flow_join_drop_requires_event_time(&flow_name))));
 	}
 
-	for input in lateness_inputs {
+	for input in timed_inputs {
 		if !fed_by_event_time_only(catalog, txn, flow, input)? {
-			return Err(ValueError(Box::new(flow_join_lateness_requires_event_time(&flow_name))));
+			return Err(ValueError(Box::new(flow_join_drop_requires_event_time(&flow_name))));
 		}
 	}
 
@@ -315,8 +309,8 @@ mod tests {
 			flow::{FlowEdge, OperatorId},
 			id::TableId,
 		},
-		operator_with::Emit,
-		row::JoinLateness,
+		operator_with::{Emit, JoinWith, LookupWith},
+		row::JoinSpans,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -601,7 +595,7 @@ mod tests {
 		assert!(result.is_err(), "a view with no flow must not resolve to a domain");
 	}
 
-	fn lookup(id: u64, lateness: Option<Duration>) -> FlowNode {
+	fn lookup(id: u64, forget: Option<Duration>) -> FlowNode {
 		FlowNode::new(
 			OperatorId(id),
 			OperatorDef::Lookup {
@@ -610,7 +604,8 @@ mod tests {
 				left: vec![],
 				alias: None,
 				with: LookupWith {
-					lateness,
+					drop: None,
+					forget,
 					emit: Emit::Off,
 					exact: false,
 				},
@@ -628,7 +623,7 @@ mod tests {
 				alias: None,
 				natural: false,
 				with: JoinWith {
-					lateness: Some(JoinLateness {
+					forget: Some(JoinSpans {
 						left,
 						right,
 					}),
@@ -638,8 +633,8 @@ mod tests {
 		)
 	}
 
-	fn check_lateness(harness: Harness, txn: &mut AdminTransaction) -> Result<(), ValueError> {
-		check_join_lateness_requirements(
+	fn check_event_time(harness: Harness, txn: &mut AdminTransaction) -> Result<(), ValueError> {
+		check_join_drop_requirements(
 			&Catalog::testing(),
 			&mut Transaction::Admin(txn),
 			&harness.builder.build(),
@@ -647,7 +642,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_lookup_lateness_over_a_processing_source_is_rejected_with_flow_049() {
+	fn a_lookup_forget_over_a_processing_source_is_rejected_with_flow_049() {
 		// The lookup frees left rows by event time like the join; an ingest clock frees them at random.
 		let mut txn = create_test_admin_transaction();
 		let harness = Harness::new()
@@ -657,13 +652,13 @@ mod tests {
 			.edge(1, 2)
 			.edge(2, 3);
 
-		let err = check_lateness(harness, &mut txn).expect_err("a lookup lateness needs event time");
+		let err = check_event_time(harness, &mut txn).expect_err("a lookup forget needs event time");
 
 		assert_eq!(err.diagnostic().code, "FLOW_049");
 	}
 
 	#[test]
-	fn a_lookup_lateness_over_an_event_source_is_accepted() {
+	fn a_lookup_forget_over_an_event_source_is_accepted() {
 		// Event time is exactly what forgetting left rows measures against, so this is the shape polaris ships.
 		let mut txn = create_test_admin_transaction();
 		let harness = Harness::new()
@@ -673,12 +668,12 @@ mod tests {
 			.edge(1, 2)
 			.edge(2, 3);
 
-		check_lateness(harness, &mut txn).expect("event time satisfies a lookup lateness");
+		check_event_time(harness, &mut txn).expect("event time satisfies a lookup forget");
 	}
 
 	#[test]
-	fn a_lookup_without_lateness_does_not_demand_event_time() {
-		// Only a declared lateness frees rows by event time; without one the check must stay silent.
+	fn a_lookup_without_forget_does_not_demand_event_time() {
+		// Only a declared forget frees rows by event time; without one the check must stay silent.
 		let mut txn = create_test_admin_transaction();
 		let harness = Harness::new()
 			.node(table(1, TimeDomain::Processing))
@@ -687,11 +682,11 @@ mod tests {
 			.edge(1, 2)
 			.edge(2, 3);
 
-		check_lateness(harness, &mut txn).expect("no lateness means no event-time requirement");
+		check_event_time(harness, &mut txn).expect("no forget means no event-time requirement");
 	}
 
 	#[test]
-	fn a_lookup_lateness_fed_by_a_time_less_source_is_rejected_with_flow_049() {
+	fn a_lookup_forget_fed_by_a_time_less_source_is_rejected_with_flow_049() {
 		// An unmatched time-less left row reaches the lookup with no #time, so it is never armed and never
 		// freed.
 		let mut txn = create_test_admin_transaction();
@@ -706,13 +701,13 @@ mod tests {
 			.edge(3, 4)
 			.edge(4, 5);
 
-		let err = check_lateness(harness, &mut txn).expect_err("a time-less row would outlive the lateness");
+		let err = check_event_time(harness, &mut txn).expect_err("a time-less row would outlive the forget");
 
 		assert_eq!(err.diagnostic().code, "FLOW_049");
 	}
 
 	#[test]
-	fn a_join_lateness_on_a_side_fed_by_a_time_less_source_is_rejected_with_flow_049() {
+	fn a_join_forget_on_a_side_fed_by_a_time_less_source_is_rejected_with_flow_049() {
 		// The event source elsewhere in the flow must not vouch for the side that actually holds time-less
 		// rows.
 		let mut txn = create_test_admin_transaction();
@@ -725,14 +720,50 @@ mod tests {
 			.edge(2, 3)
 			.edge(3, 4);
 
-		let err = check_lateness(harness, &mut txn).expect_err("the left side holds rows with no #time");
+		let err = check_event_time(harness, &mut txn).expect_err("the left side holds rows with no #time");
 
 		assert_eq!(err.diagnostic().code, "FLOW_049");
 	}
 
 	#[test]
-	fn a_join_lateness_on_an_event_side_is_accepted_beside_a_time_less_side() {
-		// Only the lateness side is walked, otherwise a time-less reference table vetoes every right lateness.
+	fn a_drop_alone_on_a_time_less_side_is_rejected_with_flow_049() {
+		// A drop cuts arrivals by event time just as a forget does, so it must never pass without one.
+		let mut txn = create_test_admin_transaction();
+		let span = Some(Duration::from_seconds(10).unwrap());
+		let drop_only_join = FlowNode::new(
+			OperatorId(3),
+			OperatorDef::Join {
+				join_type: JoinType::Left,
+				left: vec![],
+				right: vec![],
+				alias: None,
+				natural: false,
+				with: JoinWith {
+					drop: Some(JoinSpans {
+						left: span,
+						right: None,
+					}),
+					..JoinWith::default()
+				},
+			},
+		);
+		let harness = Harness::new()
+			.node(table(1, TimeDomain::None))
+			.node(table(2, TimeDomain::Event))
+			.node(drop_only_join)
+			.node(sink(4))
+			.edge(1, 3)
+			.edge(2, 3)
+			.edge(3, 4);
+
+		let err = check_event_time(harness, &mut txn).expect_err("the left side holds rows with no #time");
+
+		assert_eq!(err.diagnostic().code, "FLOW_049");
+	}
+
+	#[test]
+	fn a_join_forget_on_an_event_side_is_accepted_beside_a_time_less_side() {
+		// Only the forget side is walked, otherwise a time-less reference table vetoes every right forget.
 		let mut txn = create_test_admin_transaction();
 		let harness = Harness::new()
 			.node(table(1, TimeDomain::None))
@@ -743,11 +774,11 @@ mod tests {
 			.edge(2, 3)
 			.edge(3, 4);
 
-		check_lateness(harness, &mut txn).expect("the lateness right side is fed by event time only");
+		check_event_time(harness, &mut txn).expect("the forget right side is fed by event time only");
 	}
 
 	#[test]
-	fn a_lookup_lateness_over_a_view_of_a_time_less_flow_is_rejected_with_flow_049() {
+	fn a_lookup_forget_over_a_view_of_a_time_less_flow_is_rejected_with_flow_049() {
 		// The view may hold rows with no #time from its time-less source, so it must not pass as event time.
 		let mut txn = create_test_admin_transaction();
 		create_namespace(&mut txn, "test");
@@ -763,7 +794,7 @@ mod tests {
 			.edge(1, 2)
 			.edge(2, 3);
 
-		let err = check_lateness(harness, &mut txn).expect_err("the view carries time-less rows");
+		let err = check_event_time(harness, &mut txn).expect_err("the view carries time-less rows");
 
 		assert_eq!(err.diagnostic().code, "FLOW_049");
 	}

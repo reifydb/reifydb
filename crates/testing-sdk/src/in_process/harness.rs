@@ -131,12 +131,12 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 	) -> Result<BoxedHostOperator, SdkError> {
 		let logic = C::create(operator_id, &ExtensionParams::new("operator", params.clone()), with)?;
 		let mounted = mount(logic, operator_id, <C as OperatorMetadata>::CAPABILITIES);
-		Ok(Box::new(ApplyOperator::new(None, operator_id, mounted, with)))
+		Ok(Box::new(ApplyOperator::new(None, operator_id, mounted, with)?))
 	}
 
 	pub fn apply(&mut self, input: Change) -> Result<Change, SdkError> {
-		let retention = self.operator.retention();
-		let host = TxnHostContext::with_retention(&mut self.txn, self.operator_id, retention);
+		let forget = self.operator.forget();
+		let host = TxnHostContext::with_forget(&mut self.txn, self.operator_id, forget);
 		let output = match self.calls.as_mut() {
 			Some(calls) => self.operator.apply(&mut CountingHost::new(host, calls), input)?,
 			None => self.operator.apply(&mut { host }, input)?,
@@ -152,8 +152,8 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 	}
 
 	pub fn on_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<Option<Change>, SdkError> {
-		let retention = self.operator.retention();
-		let host = TxnHostContext::with_retention(&mut self.txn, self.operator_id, retention);
+		let forget = self.operator.forget();
+		let host = TxnHostContext::with_forget(&mut self.txn, self.operator_id, forget);
 		let timer = Timer {
 			due: at,
 			kind,

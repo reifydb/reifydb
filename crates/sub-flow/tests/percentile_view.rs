@@ -124,7 +124,7 @@ fn windowed_core(engine: &TestEngine, calls: &[(&str, &str)]) -> Aggregation {
 		aggregations: aggregations(calls),
 		runtime_context: engine.executor().runtime_context.clone(),
 		routines: engine.executor().routines.clone(),
-		lateness: None,
+		drop: None,
 		immutable: None,
 		ctx: Arc::new(FlowContext::default()),
 	})
@@ -543,7 +543,7 @@ fn declare_percentile_views(db: &TestDb, latency: Latency) {
 		"CREATE DEFERRED VIEW app::whole {{ {columns} }} AS {{ FROM app::t | aggregate {{ {map} }} }}"
 	));
 	db.admin(&format!(
-		"CREATE DEFERRED VIEW app::windowed {{ g: int4, s: datetime, {columns} }} AS {{ FROM app::t | window tumbling {{ s: window::start(), {map} }} by {{ g }} with {{ duration: 60s, lateness: 3600s }} }}"
+		"CREATE DEFERRED VIEW app::windowed {{ g: int4, s: datetime, {columns} }} AS {{ FROM app::t | window tumbling {{ s: window::start(), {map} }} by {{ g }} with {{ duration: 60s, drop: 3600s }} }}"
 	));
 }
 

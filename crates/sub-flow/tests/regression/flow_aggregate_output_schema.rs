@@ -93,7 +93,7 @@ fn a_flow_window_output_schema_is_its_group_keys_then_its_outputs_including_the_
 		]),
 		runtime_context: engine.executor().runtime_context.clone(),
 		routines: engine.executor().routines.clone(),
-		lateness: None,
+		drop: None,
 		immutable: None,
 		ctx: Arc::new(FlowContext::default()),
 	})
