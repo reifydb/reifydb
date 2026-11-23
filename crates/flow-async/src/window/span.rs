@@ -149,7 +149,7 @@ mod tests {
 	use crate::{
 		factory::coord::event_coord_at_millis,
 		operator::state::seal::rule::{is_sealed, output_watermark},
-		window::coord::RowSpan,
+		window::coord::SlotSpan,
 	};
 
 	#[test]
@@ -284,7 +284,7 @@ mod tests {
 	#[test]
 	fn covering_on_an_ordinal_coord_counts_slots() {
 		// flooring the coord by the size would start the windows off the slide grid
-		let spans = WindowSpan::covering(ByU8(23), RowSpan::of(10), RowSpan::of(4))
+		let spans = WindowSpan::covering(ByU8(23), SlotSpan::of(10), SlotSpan::of(4))
 			.expect("every window around slot 23 ends before the maximum");
 
 		assert_eq!(spans, vec![WindowSpan::new(ByU8(16), ByU8(26)), WindowSpan::new(ByU8(20), ByU8(30)),]);

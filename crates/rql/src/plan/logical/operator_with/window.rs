@@ -17,24 +17,22 @@ use crate::{
 	plan::logical::{
 		Compiler,
 		operator_with::{
-			Declared, declared_count, declared_duration, entries, is_duration, is_number, literal,
+			Declared, declared_duration, declared_slots, entries, is_duration, is_number, literal,
 			literal_boolean, reject_immutable_not_smaller_than_drop, unknown_key,
 		},
 	},
 };
 
-const WINDOW_CONFIG_KEYS: &str = "duration, count, slide, gap, lag, pane, drop, or immutable";
-
 const NATIVE_ON_EMPTY: &[(&str, OnEmpty)] = &[("zero", OnEmpty::Zero), ("remove", OnEmpty::Remove)];
 
-const NATIVE_WINDOW_CONFIG_KEYS: &str = "duration, slide, gap, lag, pane, drop, immutable, or on";
+const WINDOW_CONFIG_KEYS: &str = "duration, slide, gap, lag, pane, drop, immutable, or on";
 
 #[derive(Debug, Default)]
 pub(super) struct ParsedConfig {
 	pub duration: Option<Declared<Duration>>,
-	pub count: Option<Declared<u64>>,
+	pub slots: Option<Declared<u64>>,
 	pub slide_duration: Option<Declared<Duration>>,
-	pub slide_count: Option<Declared<u64>>,
+	pub slide_slots: Option<Declared<u64>>,
 	pub gap: Option<Declared<Duration>>,
 	pub lag: Option<Declared<Duration>>,
 	pub pane: Option<Declared<Duration>>,
@@ -68,12 +66,11 @@ impl<'bump> Compiler<'bump> {
 		};
 		for entry in entries(with) {
 			match entry.key.word() {
-				Some("count") => return Err(unknown_key(entry, NATIVE_WINDOW_CONFIG_KEYS)),
 				Some("on") => parsed.on_empty = Some(Self::parse_on(entry, NATIVE_ON_EMPTY)?),
 				_ => Self::parse_config_item(entry, &mut parsed)?,
 			}
 		}
-		if let Some(slide) = parsed.slide_count.as_ref() {
+		if let Some(slide) = parsed.slide_slots.as_ref() {
 			return Err(AstError::UnexpectedToken {
 				expected: "duration literal".to_string(),
 				fragment: slide.fragment.clone(),
@@ -159,16 +156,13 @@ impl<'bump> Compiler<'bump> {
 					DurationBound::Positive,
 				)?);
 			}
-			"count" => {
-				config.count = Some(declared_count(literal(entry)?)?);
-			}
 			"slide" => {
 				let token = literal(entry)?;
 				if is_duration(token) {
 					config.slide_duration =
 						Some(declared_duration(token, "'slide'", DurationBound::Positive)?);
 				} else if is_number(token) {
-					config.slide_count = Some(declared_count(token)?);
+					config.slide_slots = Some(declared_slots(token)?);
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration literal or number".to_string(),
@@ -238,7 +232,7 @@ impl<'bump> Compiler<'bump> {
 				..
 			} => match size {
 				WindowSize::Duration(duration) => Some(*duration),
-				WindowSize::Count(_) => None,
+				WindowSize::Slots(_) => None,
 			},
 		}
 	}
@@ -308,14 +302,14 @@ impl<'bump> Compiler<'bump> {
 		parsed.slide_duration
 			.as_ref()
 			.map(|declared| declared.fragment.clone())
-			.or_else(|| parsed.slide_count.as_ref().map(|declared| declared.fragment.clone()))
+			.or_else(|| parsed.slide_slots.as_ref().map(|declared| declared.fragment.clone()))
 	}
 
 	fn declared_size(parsed: &ParsedConfig) -> Option<Fragment> {
 		parsed.duration
 			.as_ref()
 			.map(|declared| declared.fragment.clone())
-			.or_else(|| parsed.count.as_ref().map(|declared| declared.fragment.clone()))
+			.or_else(|| parsed.slots.as_ref().map(|declared| declared.fragment.clone()))
 	}
 
 	fn declared_text(fragment: Option<&Fragment>) -> String {
@@ -329,7 +323,7 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<(), ValueError> {
 		let domain = |measure: &WindowSize| match measure {
 			WindowSize::Duration(_) => "duration",
-			WindowSize::Count(_) => "count",
+			WindowSize::Slots(_) => "count",
 		};
 		if domain(size) == domain(slide) {
 			return Ok(());
@@ -346,7 +340,7 @@ impl<'bump> Compiler<'bump> {
 	fn reject_slide_of_zero(parsed: &ParsedConfig, slide: &WindowSize) -> Result<(), ValueError> {
 		let zero = match slide {
 			WindowSize::Duration(slide) => slide.is_zero(),
-			WindowSize::Count(slide) => *slide == 0,
+			WindowSize::Slots(slide) => *slide == 0,
 		};
 		if !zero {
 			return Ok(());
@@ -366,7 +360,7 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<(), ValueError> {
 		let too_large = match (size, slide) {
 			(WindowSize::Duration(size), WindowSize::Duration(slide)) => slide >= size,
-			(WindowSize::Count(size), WindowSize::Count(slide)) => slide >= size,
+			(WindowSize::Slots(size), WindowSize::Slots(slide)) => slide >= size,
 			_ => false,
 		};
 		if !too_large {
@@ -397,7 +391,7 @@ impl<'bump> Compiler<'bump> {
 			.slide_duration
 			.as_ref()
 			.map(|d| &d.fragment)
-			.or_else(|| parsed.slide_count.as_ref().map(|c| &c.fragment))
+			.or_else(|| parsed.slide_slots.as_ref().map(|c| &c.fragment))
 			&& !matches!(kind, AstWindowKind::Sliding)
 		{
 			return Err(AstError::UnexpectedToken {
@@ -448,8 +442,8 @@ impl<'bump> Compiler<'bump> {
 				let size = Self::build_measure(parsed)?;
 				let slide = if let Some(d) = parsed.slide_duration.as_ref() {
 					WindowSize::Duration(d.value)
-				} else if let Some(c) = parsed.slide_count.as_ref() {
-					WindowSize::Count(c.value)
+				} else if let Some(c) = parsed.slide_slots.as_ref() {
+					WindowSize::Slots(c.value)
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "slide parameter is required for sliding windows".to_string(),
@@ -509,21 +503,21 @@ impl<'bump> Compiler<'bump> {
 
 	fn build_measure(parsed: &ParsedConfig) -> Result<WindowSize, ValueError> {
 		if parsed.duration.is_some()
-			&& let Some(count) = parsed.count.as_ref()
+			&& let Some(slots) = parsed.slots.as_ref()
 		{
 			return Err(AstError::UnexpectedToken {
-				expected: "duration and count cannot both be specified".to_string(),
-				fragment: count.fragment.clone(),
+				expected: "duration and slots cannot both be specified".to_string(),
+				fragment: slots.fragment.clone(),
 			}
 			.into());
 		}
 		if let Some(d) = parsed.duration.as_ref() {
 			Ok(WindowSize::Duration(d.value))
-		} else if let Some(c) = parsed.count.as_ref() {
-			Ok(WindowSize::Count(c.value))
+		} else if let Some(c) = parsed.slots.as_ref() {
+			Ok(WindowSize::Slots(c.value))
 		} else {
 			Err(AstError::UnexpectedToken {
-				expected: "duration or count must be specified".to_string(),
+				expected: "duration or slots must be specified".to_string(),
 				fragment: parsed.window.clone(),
 			}
 			.into())

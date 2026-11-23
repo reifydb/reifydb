@@ -295,20 +295,20 @@ mod tests {
 	}
 
 	#[test]
-	fn for_window_gives_no_rule_for_a_count_size() {
+	fn for_window_gives_no_rule_for_a_slots_size() {
 		// A count size seals in a row coordinate the engine has no duration for, so it gets no rule.
 		let drop_span = ms(50);
 
 		let kinds = [
 			WindowKind::Tumbling {
-				size: WindowSize::Count(10),
+				size: WindowSize::Slots(10),
 			},
 			WindowKind::Sliding {
-				size: WindowSize::Count(10),
-				slide: WindowSize::Count(5),
+				size: WindowSize::Slots(10),
+				slide: WindowSize::Slots(5),
 			},
 			WindowKind::Rolling {
-				size: WindowSize::Count(10),
+				size: WindowSize::Slots(10),
 				lag: None,
 				pane: None,
 				on_empty: OnEmpty::Remove,

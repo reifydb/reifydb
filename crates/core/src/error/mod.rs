@@ -33,8 +33,8 @@ pub enum CoreError {
 		column: String,
 	},
 
-	#[error("operator setting '{key}' is a count ({count}), but this operator is measured in time")]
-	OperatorWithCountSpan {
+	#[error("operator setting '{key}' is a slot count ({count}), but this operator is measured in time")]
+	OperatorWithSlotsSpan {
 		key: &'static str,
 		count: u64,
 	},
@@ -72,8 +72,8 @@ pub enum CoreError {
 		kind: &'static str,
 	},
 
-	#[error("the window size is a count ({count}), but this operator windows by time")]
-	OperatorWithWindowSizeCount {
+	#[error("the window size is a slot count ({count}), but this operator windows by time")]
+	OperatorWithWindowSizeSlots {
 		count: u64,
 	},
 
@@ -82,8 +82,8 @@ pub enum CoreError {
 		size: Duration,
 	},
 
-	#[error("the window slide is a count ({count}), but this operator windows by time")]
-	OperatorWithWindowSlideCount {
+	#[error("the window slide is a slot count ({count}), but this operator windows by time")]
+	OperatorWithWindowSlideSlots {
 		count: u64,
 	},
 
@@ -100,7 +100,7 @@ pub enum CoreError {
 		immutable: Duration,
 	},
 
-	#[error("operator setting '{key}' is a duration ({duration}), but this operator is measured in rows")]
+	#[error("operator setting '{key}' is a duration ({duration}), but this operator is measured in slots")]
 	OperatorWithDurationSpan {
 		key: &'static str,
 		duration: Duration,

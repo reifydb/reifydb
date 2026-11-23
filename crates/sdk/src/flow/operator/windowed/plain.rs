@@ -505,7 +505,7 @@ mod tests {
 	};
 	use reifydb_flow_async::window::{
 		accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator},
-		coord::{ByDateTime, ByU8, RowSpan},
+		coord::{ByDateTime, ByU8, SlotSpan},
 		driver::rolling::rolling_cutoff,
 		engine::pane::PaneFold,
 		span::WindowSpan,
@@ -613,10 +613,10 @@ mod tests {
 	}
 
 	probe!(ByDateTime, u32, Duration, |s: &WindowSettings<ByDateTime>| s.immutable);
-	probe!(ByU8, u64, RowSpan, |s: &WindowSettings<ByU8>| s.immutable);
+	probe!(ByU8, u64, SlotSpan, |s: &WindowSettings<ByU8>| s.immutable);
 
 	type TimeProbe = Probe<Duration, u32>;
-	type SlotProbe = Probe<RowSpan, u64>;
+	type SlotProbe = Probe<SlotSpan, u64>;
 
 	fn secs(n: i64) -> Duration {
 		Duration::from_seconds(n).unwrap()
@@ -681,23 +681,23 @@ mod tests {
 	}
 
 	#[test]
-	fn a_count_sized_slot_driver_takes_its_span_and_immutable_from_the_counts() {
+	fn a_slot_sized_driver_takes_its_span_and_immutable_from_the_slots() {
 		// Slot-domain views declare counts; the settings must read them as row spans, or the window is sized
 		// in the wrong unit.
 		let with = ApplyWith {
 			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(10),
+				size: WindowSize::Slots(10),
 			}),
-			drop: Some(WithSpan::Count(4)),
-			immutable: Some(WithSpan::Count(2)),
+			drop: Some(WithSpan::Slots(4)),
+			immutable: Some(WithSpan::Slots(2)),
 			forget: None,
 		};
 
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
 
-		assert_eq!(driver.settings.size, Some(RowSpan::of(10)));
-		assert_eq!(driver.settings.drop, RowSpan::of(4));
-		assert_eq!(driver.settings.immutable, Some(RowSpan::of(2)));
+		assert_eq!(driver.settings.size, Some(SlotSpan::of(10)));
+		assert_eq!(driver.settings.drop, SlotSpan::of(4));
+		assert_eq!(driver.settings.immutable, Some(SlotSpan::of(2)));
 		assert_eq!(
 			WindowSpan::for_coord(ByU8(23), driver.settings.fixed_size()),
 			WindowSpan::new(ByU8(20), ByU8(30))
@@ -720,12 +720,12 @@ mod tests {
 	}
 
 	#[test]
-	fn a_count_sliding_window_slides_by_slots() {
+	fn a_slot_sized_sliding_window_slides_by_slots() {
 		// a slide swapped for the size or read in the wrong unit would put each slot in the wrong windows
 		let with = ApplyWith {
 			window: Some(WindowKind::Sliding {
-				size: WindowSize::Count(10),
-				slide: WindowSize::Count(4),
+				size: WindowSize::Slots(10),
+				slide: WindowSize::Slots(4),
 			}),
 			drop: None,
 			immutable: None,
@@ -735,7 +735,7 @@ mod tests {
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
 		let slide = driver.settings.slide.expect("a sliding view keeps its slide");
 
-		assert_eq!(driver.settings.slide, Some(RowSpan::of(4)));
+		assert_eq!(driver.settings.slide, Some(SlotSpan::of(4)));
 		assert_eq!(
 			WindowSpan::covering(ByU8(23), driver.settings.fixed_size(), slide)
 				.expect("every window around slot 23 ends before the maximum"),

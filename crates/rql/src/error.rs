@@ -269,13 +269,13 @@ impl IntoDiagnostic for RqlError {
 				fragment,
 				label: Some("mismatched types".to_string()),
 				help: Some(
-					"Use duration-based slide for time windows, or count-based slide for count windows".to_string(),
+					"Use a duration slide for a window sized by duration, or a slot count slide for a window sized by slots".to_string(),
 				),
 				notes: vec![
-					"Time-based windows (duration) require duration-based slide parameters (e.g., 1m, 30s)".to_string(),
-					"Count-based windows (count) require numeric slide parameters (e.g., 10, 50)".to_string(),
-					"Example time window: WINDOW WITH { duration: 5m, slide: 1m }".to_string(),
-					"Example count window: WINDOW WITH { count: 100, slide: 20 }".to_string(),
+					"A window sized by duration takes a duration slide (e.g., 1m, 30s)".to_string(),
+					"A window sized by slots takes a numeric slide (e.g., 10, 50)".to_string(),
+					"Example sized by duration: with { window: sliding, duration: 5m, slide: 1m }".to_string(),
+					"Example sized by slots: with { window: sliding, slots: 100, slide: 20 }".to_string(),
 				],
 				cause: None,
 				operator_chain: None,

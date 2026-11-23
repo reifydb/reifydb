@@ -11,14 +11,15 @@ use crate::error::{
 	diagnostic::flow::{
 		flow_operator_forget_required, flow_operator_rolling_carry_unsupported,
 		flow_operator_rolling_unbounded, flow_operator_timer_kind_not_batched,
-		flow_operator_timer_kind_reserved, flow_operator_with_count_span, flow_operator_with_duration_span,
+		flow_operator_timer_kind_reserved, flow_operator_with_duration_span,
 		flow_operator_with_forget_below_drop, flow_operator_with_forget_not_supported,
 		flow_operator_with_immutable_not_below_drop, flow_operator_with_not_accepted,
 		flow_operator_with_pane_missing, flow_operator_with_session_immutable,
-		flow_operator_with_session_zero_gap, flow_operator_with_window_kind_unsupported,
-		flow_operator_with_window_missing, flow_operator_with_window_not_supported,
-		flow_operator_with_window_size_count, flow_operator_with_window_size_duration,
-		flow_operator_with_window_slide_count, flow_operator_with_window_slide_duration,
+		flow_operator_with_session_zero_gap, flow_operator_with_slots_span,
+		flow_operator_with_window_kind_unsupported, flow_operator_with_window_missing,
+		flow_operator_with_window_not_supported, flow_operator_with_window_size_duration,
+		flow_operator_with_window_size_slots, flow_operator_with_window_slide_duration,
+		flow_operator_with_window_slide_slots,
 	},
 };
 
@@ -97,10 +98,10 @@ impl IntoDiagnostic for CoreError {
 
 
 
-			CoreError::OperatorWithCountSpan {
+			CoreError::OperatorWithSlotsSpan {
 				key,
 				count,
-			} => flow_operator_with_count_span(key, count),
+			} => flow_operator_with_slots_span(key, count),
 
 			CoreError::OperatorWithImmutableNotBelowDrop {
 				immutable,
@@ -128,17 +129,17 @@ impl IntoDiagnostic for CoreError {
 				kind,
 			} => flow_operator_with_window_not_supported(kind),
 
-			CoreError::OperatorWithWindowSizeCount {
+			CoreError::OperatorWithWindowSizeSlots {
 				count,
-			} => flow_operator_with_window_size_count(count),
+			} => flow_operator_with_window_size_slots(count),
 
 			CoreError::OperatorWithWindowSizeDuration {
 				size,
 			} => flow_operator_with_window_size_duration(size),
 
-			CoreError::OperatorWithWindowSlideCount {
+			CoreError::OperatorWithWindowSlideSlots {
 				count,
-			} => flow_operator_with_window_slide_count(count),
+			} => flow_operator_with_window_slide_slots(count),
 
 			CoreError::OperatorWithWindowSlideDuration {
 				slide,

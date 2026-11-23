@@ -411,9 +411,9 @@ fn a_slot_carry_refuses_a_forget_it_cannot_measure() {
 	// A forget is a duration and a slot window has no clock, so accepting it would bound nothing.
 	let with = ApplyWith {
 		window: Some(WindowKind::Tumbling {
-			size: WindowSize::Count(10),
+			size: WindowSize::Slots(10),
 		}),
-		drop: Some(WithSpan::Count(2)),
+		drop: Some(WithSpan::Slots(2)),
 		immutable: None,
 		forget: Some(millis(60_000)),
 	};

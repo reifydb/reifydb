@@ -96,8 +96,8 @@ impl SealDomain for ByDateTime {
 		let Some(kind) = &with.window else {
 			return Err(CoreError::OperatorWithWindowMissing.into());
 		};
-		if let Some(WindowSize::Count(count)) = kind.size() {
-			return Err(CoreError::OperatorWithWindowSizeCount {
+		if let Some(WindowSize::Slots(count)) = kind.size() {
+			return Err(CoreError::OperatorWithWindowSizeSlots {
 				count: *count,
 			}
 			.into());
@@ -326,11 +326,11 @@ mod tests {
 	}
 
 	#[test]
-	fn the_wall_clock_domain_rejects_a_count_size() {
+	fn the_wall_clock_domain_rejects_a_slots_size() {
 		// a count-sized window has no wall-clock span, so the wheel domain must refuse rather than guess one
 		let with = ApplyWith {
 			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(10),
+				size: WindowSize::Slots(10),
 			}),
 			drop: None,
 			immutable: None,
@@ -377,11 +377,11 @@ mod tests {
 	}
 
 	#[test]
-	fn the_wall_clock_settings_refuse_a_missing_window_and_a_count_size() {
+	fn the_wall_clock_settings_refuse_a_missing_window_and_a_slots_size() {
 		// without a window there is nothing to size, and a count has no wall-clock span; both must fail loud
 		let count = ApplyWith {
 			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(10),
+				size: WindowSize::Slots(10),
 			}),
 			drop: None,
 			immutable: None,

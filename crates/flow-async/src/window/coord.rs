@@ -47,30 +47,30 @@ impl HeapSize for ByDateTime {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct RowSpan {
-	rows: u64,
+pub struct SlotSpan {
+	slots: u64,
 }
 
-impl RowSpan {
+impl SlotSpan {
 	pub const ZERO: Self = Self {
-		rows: 0,
+		slots: 0,
 	};
 
-	pub fn of(rows: u64) -> Self {
+	pub fn of(slots: u64) -> Self {
 		Self {
-			rows,
+			slots,
 		}
 	}
 
-	pub fn rows(self) -> u64 {
-		self.rows
+	pub fn slots(self) -> u64 {
+		self.slots
 	}
 }
 
-impl IsZero for RowSpan {
+impl IsZero for SlotSpan {
 	#[inline]
 	fn is_zero(&self) -> bool {
-		self.rows == 0
+		self.slots == 0
 	}
 }
 
@@ -85,33 +85,33 @@ impl HeapSize for ByU8 {
 }
 
 impl Coord for ByU8 {
-	type Span = RowSpan;
+	type Span = SlotSpan;
 
 	const MAX: Self = Self(u64::MAX);
 
-	fn saturating_sub_span(self, span: RowSpan) -> Self {
-		Self(self.0.saturating_sub(span.rows))
+	fn saturating_sub_span(self, span: SlotSpan) -> Self {
+		Self(self.0.saturating_sub(span.slots))
 	}
 
-	fn checked_sub_span(self, span: RowSpan) -> Option<Self> {
-		self.0.checked_sub(span.rows).map(Self)
+	fn checked_sub_span(self, span: SlotSpan) -> Option<Self> {
+		self.0.checked_sub(span.slots).map(Self)
 	}
 
-	fn add_span(self, span: RowSpan) -> Self {
-		Self(self.0 + span.rows)
+	fn add_span(self, span: SlotSpan) -> Self {
+		Self(self.0 + span.slots)
 	}
 
-	fn checked_add_span(self, span: RowSpan) -> Option<Self> {
-		self.0.checked_add(span.rows).map(Self)
+	fn checked_add_span(self, span: SlotSpan) -> Option<Self> {
+		self.0.checked_add(span.slots).map(Self)
 	}
 
-	fn floor_to(self, span: RowSpan) -> Self {
-		Self(self.0 - (self.0 % span.rows))
+	fn floor_to(self, span: SlotSpan) -> Self {
+		Self(self.0 - (self.0 % span.slots))
 	}
 
-	fn span_since(self, earlier: Self) -> RowSpan {
-		RowSpan {
-			rows: self.0 - earlier.0,
+	fn span_since(self, earlier: Self) -> SlotSpan {
+		SlotSpan {
+			slots: self.0 - earlier.0,
 		}
 	}
 
@@ -129,7 +129,7 @@ impl Coord for ByU8 {
 }
 
 impl SealDomain for ByU8 {
-	type SealSpan = RowSpan;
+	type SealSpan = SlotSpan;
 
 	const SIZE_DOMAIN: WindowSizeDomain = WindowSizeDomain::Slots;
 
@@ -137,12 +137,12 @@ impl SealDomain for ByU8 {
 		false
 	}
 
-	fn seal_span_of(with: &ApplyWith) -> Result<Option<RowSpan>, ValueError> {
+	fn seal_span_of(with: &ApplyWith) -> Result<Option<SlotSpan>, ValueError> {
 		let count = with.window_slots()?;
-		let Some(drop_span) = with.drop_count()? else {
+		let Some(drop_span) = with.drop_slots()? else {
 			return Ok(None);
 		};
-		Ok(Some(RowSpan::of(count.saturating_add(drop_span))))
+		Ok(Some(SlotSpan::of(count.saturating_add(drop_span))))
 	}
 
 	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>, ValueError> {
@@ -151,17 +151,17 @@ impl SealDomain for ByU8 {
 		};
 		Ok(WindowSettings {
 			kind: kind.clone(),
-			size: Some(RowSpan::of(with.window_slots()?)),
+			size: Some(SlotSpan::of(with.window_slots()?)),
 			pane: None,
 			lag: None,
-			slide: with.window_slide_slots()?.map(RowSpan::of),
+			slide: with.window_slide_slots()?.map(SlotSpan::of),
 			gap: None,
-			drop: RowSpan::of(with.drop_count()?.unwrap_or(0)),
-			immutable: with.immutable_count()?.map(RowSpan::of),
+			drop: SlotSpan::of(with.drop_slots()?.unwrap_or(0)),
+			immutable: with.immutable_slots()?.map(SlotSpan::of),
 		})
 	}
 
-	fn observe(store: &mut dyn WindowStore, newest: Self, _seal_span: RowSpan) -> Result<(), ValueError> {
+	fn observe(store: &mut dyn WindowStore, newest: Self, _seal_span: SlotSpan) -> Result<(), ValueError> {
 		SealLedger::observe(store, newest.to_order())?;
 		Ok(())
 	}
@@ -170,14 +170,14 @@ impl SealDomain for ByU8 {
 		Ok(Self::from_order(SealLedger::read_order(store)?.unwrap_or(0)))
 	}
 
-	fn first_admitted(operator_watermark: Self, seal_span: RowSpan) -> Self {
+	fn first_admitted(operator_watermark: Self, seal_span: SlotSpan) -> Self {
 		operator_watermark.saturating_sub_span(seal_span)
 	}
 
 	fn rearm_decay(
 		_store: &mut dyn WindowStore,
-		_size: RowSpan,
-		_lag: Option<RowSpan>,
+		_size: SlotSpan,
+		_lag: Option<SlotSpan>,
 		_before: Option<u64>,
 		_after: Option<u64>,
 	) -> Result<(), ValueError> {
@@ -186,7 +186,7 @@ impl SealDomain for ByU8 {
 
 	fn rearm_seal(
 		_store: &mut dyn WindowStore,
-		_seal_span: RowSpan,
+		_seal_span: SlotSpan,
 		_before: Option<u64>,
 		_after: Option<u64>,
 	) -> Result<(), ValueError> {
@@ -194,7 +194,7 @@ impl SealDomain for ByU8 {
 	}
 
 	fn seal_move(
-		_seal_span: RowSpan,
+		_seal_span: SlotSpan,
 		_key: EncodedKey,
 		_before: Option<u64>,
 		_after: Option<u64>,
@@ -206,7 +206,7 @@ impl SealDomain for ByU8 {
 		_store: &mut dyn WindowStore,
 		_ledger: SealLedgerState,
 		_fired: DateTime,
-		_seal_span: RowSpan,
+		_seal_span: SlotSpan,
 	) -> Result<(), ValueError> {
 		Ok(())
 	}
@@ -275,7 +275,7 @@ mod tests {
 	}
 
 	#[test]
-	fn an_ordinal_encodes_to_the_same_bytes_as_the_bare_count_it_replaced() {
+	fn a_slot_encodes_to_the_same_bytes_as_the_bare_number_it_replaced() {
 		// A changed persisted layout is silent: stored buffer keys get reinterpreted, not rejected.
 		let value = 0x0123_4567_89AB_CDEFu64;
 
@@ -286,51 +286,51 @@ mod tests {
 	}
 
 	#[test]
-	fn ordinal_arithmetic_counts_rows() {
+	fn slot_arithmetic_counts_slots() {
 		let coord = ByU8(100);
 
-		assert_eq!(coord.saturating_sub_span(RowSpan::of(64)), ByU8(36));
-		assert_eq!(coord.add_span(RowSpan::of(5)), ByU8(105));
-		assert_eq!(coord.span_since(ByU8(60)), RowSpan::of(40));
+		assert_eq!(coord.saturating_sub_span(SlotSpan::of(64)), ByU8(36));
+		assert_eq!(coord.add_span(SlotSpan::of(5)), ByU8(105));
+		assert_eq!(coord.span_since(ByU8(60)), SlotSpan::of(40));
 	}
 
 	#[test]
-	fn an_ordinal_below_its_own_span_has_no_earlier_coordinate_rather_than_wrapping() {
+	fn a_slot_below_its_own_span_has_no_earlier_coordinate_rather_than_wrapping() {
 		// Wrapping below zero lands near u64::MAX and evicts the whole buffer on the first pass.
 		let coord = ByU8(10);
 
-		assert_eq!(coord.checked_sub_span(RowSpan::of(11)), None);
-		assert_eq!(coord.checked_sub_span(RowSpan::of(10)), Some(ByU8(0)));
-		assert_eq!(coord.saturating_sub_span(RowSpan::of(11)), ByU8(0));
+		assert_eq!(coord.checked_sub_span(SlotSpan::of(11)), None);
+		assert_eq!(coord.checked_sub_span(SlotSpan::of(10)), Some(ByU8(0)));
+		assert_eq!(coord.saturating_sub_span(SlotSpan::of(11)), ByU8(0));
 	}
 
 	#[test]
-	fn a_row_ordinal_seals_without_the_wheel() {
+	fn a_slot_seals_without_the_wheel() {
 		// a row count fed to the timer wheel lands just past the epoch, fires at once and rearms forever
 		assert!(!<ByU8 as SealDomain>::arms_timer());
 	}
 
 	#[test]
-	fn a_row_window_seals_after_its_count_plus_drop() {
+	fn a_slot_window_seals_after_its_size_plus_drop() {
 		// the seal span must hold both the slots the window keeps and the rows it still admits late
 		let with = ApplyWith {
 			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(64),
+				size: WindowSize::Slots(64),
 			}),
-			drop: Some(WithSpan::Count(6)),
+			drop: Some(WithSpan::Slots(6)),
 			immutable: None,
 			forget: None,
 		};
 
-		assert_eq!(ByU8::seal_span_of(&with).unwrap(), Some(RowSpan::of(70)));
+		assert_eq!(ByU8::seal_span_of(&with).unwrap(), Some(SlotSpan::of(70)));
 	}
 
 	#[test]
-	fn a_row_window_without_drop_never_seals() {
+	fn a_slot_window_without_drop_never_seals() {
 		// with no drop bound, a row window has nothing to seal against and must never hold state
 		let with = ApplyWith {
 			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(64),
+				size: WindowSize::Slots(64),
 			}),
 			drop: None,
 			immutable: None,
@@ -341,11 +341,11 @@ mod tests {
 	}
 
 	#[test]
-	fn a_row_window_rejects_a_duration_drop() {
+	fn a_slot_window_rejects_a_duration_drop() {
 		// a row window counts rows, so a duration drop has no count to add to its span
 		let with = ApplyWith {
 			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(64),
+				size: WindowSize::Slots(64),
 			}),
 			drop: Some(WithSpan::Duration(secs(30))),
 			immutable: None,
@@ -356,35 +356,35 @@ mod tests {
 	}
 
 	#[test]
-	fn an_ordinal_operator_watermark_moves_inline_from_the_batch_and_only_forward() {
+	fn a_slot_operator_watermark_moves_inline_from_the_batch_and_only_forward() {
 		// nothing arms a timer here, so the batch must advance the ledger or the first admitted point never
 		// moves
 		let mut store = MockStore::default();
 
 		assert_eq!(ByU8::operator_watermark(&mut store).unwrap(), ByU8(0));
 
-		ByU8::observe(&mut store, ByU8(90), RowSpan::ZERO).unwrap();
-		ByU8::observe(&mut store, ByU8(30), RowSpan::ZERO).unwrap();
+		ByU8::observe(&mut store, ByU8(90), SlotSpan::ZERO).unwrap();
+		ByU8::observe(&mut store, ByU8(30), SlotSpan::ZERO).unwrap();
 
 		assert_eq!(ByU8::operator_watermark(&mut store).unwrap(), ByU8(90));
-		assert_eq!(ByU8::first_admitted(ByU8(90), RowSpan::of(64)), ByU8(26));
+		assert_eq!(ByU8::first_admitted(ByU8(90), SlotSpan::of(64)), ByU8(26));
 	}
 
 	#[test]
-	fn the_ordinal_settings_read_counts_and_default_drop_to_zero_rows() {
+	fn the_slot_settings_read_slots_and_default_drop_to_zero() {
 		// a slot-domain window is sized in rows; an omitted drop must be zero rows and an omitted
 		// immutable none, or a plain window would silently start refusing retractions
 		let declared = ApplyWith {
 			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(10),
+				size: WindowSize::Slots(10),
 			}),
-			drop: Some(WithSpan::Count(4)),
-			immutable: Some(WithSpan::Count(2)),
+			drop: Some(WithSpan::Slots(4)),
+			immutable: Some(WithSpan::Slots(2)),
 			forget: None,
 		};
 		let omitted = ApplyWith {
 			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(10),
+				size: WindowSize::Slots(10),
 			}),
 			drop: None,
 			immutable: None,
@@ -394,16 +394,16 @@ mod tests {
 		let declared = ByU8::window_settings_of(&declared).unwrap();
 		let omitted = ByU8::window_settings_of(&omitted).unwrap();
 
-		assert_eq!(declared.size, Some(RowSpan::of(10)));
-		assert_eq!(declared.drop, RowSpan::of(4));
-		assert_eq!(declared.immutable, Some(RowSpan::of(2)));
+		assert_eq!(declared.size, Some(SlotSpan::of(10)));
+		assert_eq!(declared.drop, SlotSpan::of(4));
+		assert_eq!(declared.immutable, Some(SlotSpan::of(2)));
 		assert_eq!(declared.pane, None);
-		assert_eq!(omitted.drop, RowSpan::ZERO);
+		assert_eq!(omitted.drop, SlotSpan::ZERO);
 		assert_eq!(omitted.immutable, None);
 	}
 
 	#[test]
-	fn the_ordinal_settings_refuse_a_missing_window_and_a_duration_size() {
+	fn the_slot_settings_refuse_a_missing_window_and_a_duration_size() {
 		// a duration has no row count, so the ordinal domain must fail loud rather than guess a size
 		let duration = ApplyWith {
 			window: Some(WindowKind::Tumbling {
@@ -419,12 +419,12 @@ mod tests {
 	}
 
 	#[test]
-	fn the_ordinal_settings_carry_the_slide_of_a_sliding_window() {
+	fn the_slot_settings_carry_the_slide_of_a_sliding_window() {
 		// a slide that came back as none would make create panic on every slot sliding view
 		let sliding = ApplyWith {
 			window: Some(WindowKind::Sliding {
-				size: WindowSize::Count(10),
-				slide: WindowSize::Count(4),
+				size: WindowSize::Slots(10),
+				slide: WindowSize::Slots(4),
 			}),
 			drop: None,
 			immutable: None,
@@ -433,8 +433,8 @@ mod tests {
 
 		let settings = ByU8::window_settings_of(&sliding).unwrap();
 
-		assert_eq!(settings.size, Some(RowSpan::of(10)));
-		assert_eq!(settings.slide, Some(RowSpan::of(4)));
+		assert_eq!(settings.size, Some(SlotSpan::of(10)));
+		assert_eq!(settings.slide, Some(SlotSpan::of(4)));
 	}
 
 	#[test]
@@ -477,11 +477,11 @@ mod tests {
 	#[test]
 	fn floor_to_aligns_onto_span_boundaries() {
 		// An unaligned start would give rows of one window different spans and split its totals.
-		assert_eq!(ByU8(0).floor_to(RowSpan::of(4)), ByU8(0));
-		assert_eq!(ByU8(3).floor_to(RowSpan::of(4)), ByU8(0));
-		assert_eq!(ByU8(4).floor_to(RowSpan::of(4)), ByU8(4));
-		assert_eq!(ByU8(7).floor_to(RowSpan::of(4)), ByU8(4));
-		assert_eq!(ByU8(9).floor_to(RowSpan::of(1)), ByU8(9));
+		assert_eq!(ByU8(0).floor_to(SlotSpan::of(4)), ByU8(0));
+		assert_eq!(ByU8(3).floor_to(SlotSpan::of(4)), ByU8(0));
+		assert_eq!(ByU8(4).floor_to(SlotSpan::of(4)), ByU8(4));
+		assert_eq!(ByU8(7).floor_to(SlotSpan::of(4)), ByU8(4));
+		assert_eq!(ByU8(9).floor_to(SlotSpan::of(1)), ByU8(9));
 	}
 
 	#[test]
@@ -512,14 +512,14 @@ mod tests {
 	fn the_first_admitted_trails_the_operator_watermark_by_the_lag() {
 		// A first admitted point too close to the operator watermark seals windows that may still take late
 		// rows.
-		assert_eq!(<ByU8 as SealDomain>::first_admitted(ByU8(100), RowSpan::of(32)), ByU8(68));
-		assert_eq!(<ByU8 as SealDomain>::first_admitted(ByU8(100), RowSpan::ZERO), ByU8(100));
+		assert_eq!(<ByU8 as SealDomain>::first_admitted(ByU8(100), SlotSpan::of(32)), ByU8(68));
+		assert_eq!(<ByU8 as SealDomain>::first_admitted(ByU8(100), SlotSpan::ZERO), ByU8(100));
 	}
 
 	#[test]
 	fn the_first_admitted_clamps_at_genesis() {
 		// Wrapping below zero would land near u64::MAX and declare every window sealed.
-		assert_eq!(<ByU8 as SealDomain>::first_admitted(ByU8(5), RowSpan::of(32)), ByU8(0));
+		assert_eq!(<ByU8 as SealDomain>::first_admitted(ByU8(5), SlotSpan::of(32)), ByU8(0));
 	}
 
 	#[test]
@@ -535,7 +535,7 @@ mod tests {
 		// A slot read as an instant lands just past the epoch, fires at once and rearms forever.
 		let mut store = MockStore::recording_timers();
 
-		<ByU8 as SealDomain>::observe(&mut store, ByU8(900), RowSpan::of(32)).unwrap();
+		<ByU8 as SealDomain>::observe(&mut store, ByU8(900), SlotSpan::of(32)).unwrap();
 
 		assert!(store.timers().is_empty());
 	}
@@ -559,7 +559,7 @@ mod tests {
 			window: Some(WindowKind::Tumbling {
 				size: WindowSize::Duration(secs(60)),
 			}),
-			drop: Some(WithSpan::Count(6)),
+			drop: Some(WithSpan::Slots(6)),
 			immutable: None,
 			forget: None,
 		};

@@ -596,11 +596,14 @@ pub fn flow_step_panicked(reason: String) -> Diagnostic {
 	)
 }
 
-pub fn flow_operator_with_count_span(key: &str, count: u64) -> Diagnostic {
+pub fn flow_operator_with_slots_span(key: &str, count: u64) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_063",
-		format!("operator setting '{}' is a count ({}), but this operator is measured in time", key, count),
-		"Declare the setting as a duration, for example 30s, or use an operator measured in rows.",
+		format!(
+			"operator setting '{}' is a slot count ({}), but this operator is measured in time",
+			key, count
+		),
+		"Declare the setting as a duration, for example 30s, or use an operator measured in slots.",
 	)
 }
 
@@ -652,10 +655,10 @@ pub fn flow_operator_with_window_not_supported(kind: &str) -> Diagnostic {
 	)
 }
 
-pub fn flow_operator_with_window_size_count(count: u64) -> Diagnostic {
+pub fn flow_operator_with_window_size_slots(count: u64) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_068",
-		format!("the window size is a count ({}), but this operator windows by time", count),
+		format!("the window size is a slot count ({}), but this operator windows by time", count),
 		"Declare the size as a duration, for example duration: 1m.",
 	)
 }
@@ -668,10 +671,10 @@ pub fn flow_operator_with_window_size_duration(size: Duration) -> Diagnostic {
 	)
 }
 
-pub fn flow_operator_with_window_slide_count(count: u64) -> Diagnostic {
+pub fn flow_operator_with_window_slide_slots(count: u64) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_076",
-		format!("the window slide is a count ({}), but this operator windows by time", count),
+		format!("the window slide is a slot count ({}), but this operator windows by time", count),
 		"Declare the slide as a duration, for example slide: 30s.",
 	)
 }
@@ -723,7 +726,7 @@ pub fn flow_operator_with_duration_span(key: &str, duration: Duration) -> Diagno
 	flow_diagnostic(
 		"FLOW_070",
 		format!(
-			"operator setting '{}' is a duration ({}), but this operator is measured in rows",
+			"operator setting '{}' is a duration ({}), but this operator is measured in slots",
 			key, duration
 		),
 		"Declare the setting as a count, for example drop: 150.",

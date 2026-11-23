@@ -77,9 +77,7 @@ fn rolling_sum_accumulates_correctly_across_separate_commits() {
 
 #[test]
 fn a_processing_domain_rolling_window_rolls_up_over_the_rows_own_times() {
-	// A time-based rolling window takes the instant-keyed engine in either domain; the row-numbered
-	// one is reserved for count-based windows. This is the operator's only processing-domain
-	// coverage, so a carry-over or double-merge fault there would otherwise surface in production.
+	// Without this the processing domain has no rolling coverage, so a carry-over or double-merge fault ships.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { g: int4, v: float8 } with { time: processing }");

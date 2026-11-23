@@ -144,7 +144,7 @@ pub(crate) fn declared_duration(
 	})
 }
 
-pub(crate) fn declared_count(token: &Token<'_>) -> Result<Declared<u64>, ValueError> {
+pub(crate) fn declared_slots(token: &Token<'_>) -> Result<Declared<u64>, ValueError> {
 	let count = if is_number(token) {
 		parse_primitive_uint::<u64>(token.fragment.to_owned()).ok()
 	} else {

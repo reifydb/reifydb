@@ -84,7 +84,7 @@ impl WindowOperator {
 			AggregateContext::Windowed,
 			config.ctx,
 		)?;
-		if config.kind.size().is_some_and(WindowSize::is_count) {
+		if config.kind.size().is_some_and(WindowSize::is_slots) {
 			return internal_err!("a native window must be sized by duration");
 		}
 		if let WindowKind::Sliding {

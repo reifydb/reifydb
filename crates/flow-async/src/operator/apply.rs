@@ -378,9 +378,9 @@ mod tests {
 		// A count-sized window seals in a row coordinate the engine has no duration for.
 		let with = ApplyWith {
 			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(10),
+				size: WindowSize::Slots(10),
 			}),
-			drop: Some(WithSpan::Count(2)),
+			drop: Some(WithSpan::Slots(2)),
 			immutable: None,
 			forget: None,
 		};
@@ -1261,13 +1261,13 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_count_window_with_a_forget_drops_nothing() {
-		// a count window seals in rows, so a time seal would drop rows of an open window
+	fn a_slot_window_with_a_forget_drops_nothing() {
+		// a slot window seals in slots, so a time seal would drop rows of an open window
 		let engine = TestEngine::new();
 		let mut txn = txn(&engine, 30_000);
 		let with = ApplyWith {
 			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(10),
+				size: WindowSize::Slots(10),
 			}),
 			forget: Some(secs(10)),
 			..ApplyWith::default()

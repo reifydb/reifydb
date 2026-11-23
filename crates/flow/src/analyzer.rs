@@ -1295,7 +1295,7 @@ pub mod tests {
 					aggregations: vec![],
 					with: WindowWith {
 						kind: WindowKind::Tumbling {
-							size: WindowSize::Count(2),
+							size: WindowSize::Slots(2),
 						},
 						drop: None,
 						immutable: None,

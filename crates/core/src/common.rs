@@ -147,24 +147,17 @@ pub enum IndexType {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WindowSize {
 	Duration(Duration),
-	Count(u64),
+	Slots(u64),
 }
 
 impl WindowSize {
-	pub fn is_count(&self) -> bool {
-		matches!(self, WindowSize::Count(_))
+	pub fn is_slots(&self) -> bool {
+		matches!(self, WindowSize::Slots(_))
 	}
 
 	pub fn as_duration(&self) -> Option<Duration> {
 		match self {
 			WindowSize::Duration(d) => Some(*d),
-			_ => None,
-		}
-	}
-
-	pub fn as_count(&self) -> Option<u64> {
-		match self {
-			WindowSize::Count(c) => Some(*c),
 			_ => None,
 		}
 	}
@@ -314,8 +307,8 @@ impl WindowRequirements {
 			}
 			.into());
 		}
-		if let (WindowSizeDomain::Time, Some(WindowSize::Count(count))) = (self.domain, kind.size()) {
-			return Err(CoreError::OperatorWithWindowSizeCount {
+		if let (WindowSizeDomain::Time, Some(WindowSize::Slots(count))) = (self.domain, kind.size()) {
+			return Err(CoreError::OperatorWithWindowSizeSlots {
 				count: *count,
 			}
 			.into());

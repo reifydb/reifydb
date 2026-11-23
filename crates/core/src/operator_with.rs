@@ -21,7 +21,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WithSpan {
 	Duration(Duration),
-	Count(u64),
+	Slots(u64),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -200,7 +200,7 @@ impl ApplyWith {
 			}
 			.into()),
 			Some(WindowSize::Duration(d)) => Ok(*d),
-			Some(WindowSize::Count(count)) => Err(CoreError::OperatorWithWindowSizeCount {
+			Some(WindowSize::Slots(count)) => Err(CoreError::OperatorWithWindowSizeSlots {
 				count: *count,
 			}
 			.into()),
@@ -217,7 +217,7 @@ impl ApplyWith {
 				supported: "tumbling, sliding or rolling".to_string(),
 			}
 			.into()),
-			Some(WindowSize::Count(n)) => Ok(*n),
+			Some(WindowSize::Slots(n)) => Ok(*n),
 			Some(WindowSize::Duration(d)) => Err(CoreError::OperatorWithWindowSizeDuration {
 				size: *d,
 			}
@@ -232,7 +232,7 @@ impl ApplyWith {
 				..
 			}) => match slide {
 				WindowSize::Duration(d) => Ok(Some(*d)),
-				WindowSize::Count(count) => Err(CoreError::OperatorWithWindowSlideCount {
+				WindowSize::Slots(count) => Err(CoreError::OperatorWithWindowSlideSlots {
 					count: *count,
 				}
 				.into()),
@@ -247,7 +247,7 @@ impl ApplyWith {
 				slide,
 				..
 			}) => match slide {
-				WindowSize::Count(n) => Ok(Some(*n)),
+				WindowSize::Slots(n) => Ok(Some(*n)),
 				WindowSize::Duration(d) => Err(CoreError::OperatorWithWindowSlideDuration {
 					slide: *d,
 				}
@@ -328,7 +328,7 @@ impl ApplyWith {
 		match self.drop {
 			None => Ok(None),
 			Some(WithSpan::Duration(d)) => Ok(Some(d)),
-			Some(WithSpan::Count(count)) => Err(CoreError::OperatorWithCountSpan {
+			Some(WithSpan::Slots(count)) => Err(CoreError::OperatorWithSlotsSpan {
 				key: "drop",
 				count,
 			}
@@ -336,10 +336,10 @@ impl ApplyWith {
 		}
 	}
 
-	pub fn drop_count(&self) -> Result<Option<u64>, ValueError> {
+	pub fn drop_slots(&self) -> Result<Option<u64>, ValueError> {
 		match self.drop {
 			None => Ok(None),
-			Some(WithSpan::Count(n)) => Ok(Some(n)),
+			Some(WithSpan::Slots(n)) => Ok(Some(n)),
 			Some(WithSpan::Duration(duration)) => Err(CoreError::OperatorWithDurationSpan {
 				key: "drop",
 				duration,
@@ -348,10 +348,10 @@ impl ApplyWith {
 		}
 	}
 
-	pub fn immutable_count(&self) -> Result<Option<u64>, ValueError> {
+	pub fn immutable_slots(&self) -> Result<Option<u64>, ValueError> {
 		match self.immutable {
 			None => Ok(None),
-			Some(WithSpan::Count(n)) => Ok(Some(n)),
+			Some(WithSpan::Slots(n)) => Ok(Some(n)),
 			Some(WithSpan::Duration(duration)) => Err(CoreError::OperatorWithDurationSpan {
 				key: "immutable",
 				duration,
@@ -442,7 +442,7 @@ pub fn decode_apply_with(bytes: &[u8]) -> Result<ApplyWith, ValueError> {
 			("duration", Value::Duration(d)) => duration = Some(*d),
 			("slots", Value::Uint8(n)) => slots = Some(*n),
 			("slide", Value::Duration(d)) => slide = Some(WindowSize::Duration(*d)),
-			("slide", Value::Uint8(n)) => slide = Some(WindowSize::Count(*n)),
+			("slide", Value::Uint8(n)) => slide = Some(WindowSize::Slots(*n)),
 			("gap", Value::Duration(d)) => gap = Some(*d),
 			("lag", Value::Duration(d)) => lag = Some(*d),
 			("pane", Value::Duration(d)) => pane = Some(*d),
@@ -536,7 +536,7 @@ fn decode_window_kind(
 fn decode_window_size(duration: Option<Duration>, slots: Option<u64>) -> Result<WindowSize, ValueError> {
 	match (duration, slots) {
 		(Some(d), None) => Ok(WindowSize::Duration(d)),
-		(None, Some(n)) => Ok(WindowSize::Count(n)),
+		(None, Some(n)) => Ok(WindowSize::Slots(n)),
 		(None, None) => Err(internal_error!("apply with is missing 'duration' or 'slots' for its window")),
 		(Some(_), Some(_)) => Err(internal_error!("apply with has both 'duration' and 'slots'")),
 	}
@@ -547,7 +547,7 @@ fn insert_window_size(values: &mut HashMap<String, Value>, size: &WindowSize) {
 		WindowSize::Duration(d) => {
 			values.insert("duration".to_string(), Value::Duration(*d));
 		}
-		WindowSize::Count(n) => {
+		WindowSize::Slots(n) => {
 			values.insert("slots".to_string(), Value::Uint8(*n));
 		}
 	}
@@ -556,21 +556,21 @@ fn insert_window_size(values: &mut HashMap<String, Value>, size: &WindowSize) {
 fn window_size_value(size: &WindowSize) -> Value {
 	match size {
 		WindowSize::Duration(d) => Value::Duration(*d),
-		WindowSize::Count(n) => Value::Uint8(*n),
+		WindowSize::Slots(n) => Value::Uint8(*n),
 	}
 }
 
 fn span_value(span: WithSpan) -> Value {
 	match span {
 		WithSpan::Duration(duration) => Value::Duration(duration),
-		WithSpan::Count(count) => Value::Uint8(count),
+		WithSpan::Slots(count) => Value::Uint8(count),
 	}
 }
 
 fn value_span(key: &str, value: &Value) -> Result<WithSpan, ValueError> {
 	match value {
 		Value::Duration(duration) => Ok(WithSpan::Duration(*duration)),
-		Value::Uint8(count) => Ok(WithSpan::Count(*count)),
+		Value::Uint8(count) => Ok(WithSpan::Slots(*count)),
 		_ => Err(internal_error!("unexpected apply with entry {}: {:?}", key, value)),
 	}
 }
@@ -579,7 +579,7 @@ fn duration_span(key: &'static str, span: Option<WithSpan>) -> Result<Option<Dur
 	match span {
 		None => Ok(None),
 		Some(WithSpan::Duration(duration)) => Ok(Some(duration)),
-		Some(WithSpan::Count(count)) => Err(CoreError::OperatorWithCountSpan {
+		Some(WithSpan::Slots(count)) => Err(CoreError::OperatorWithSlotsSpan {
 			key,
 			count,
 		}
@@ -726,11 +726,11 @@ mod tests {
 	}
 
 	#[test]
-	fn a_count_span_is_rejected_for_a_time_sealed_operator() {
+	fn a_slots_span_is_rejected_for_a_time_sealed_operator() {
 		// A count read as a duration would seal after that many nanoseconds instead of that many rows.
 		let with = ApplyWith {
 			window: None,
-			drop: Some(WithSpan::Count(150)),
+			drop: Some(WithSpan::Slots(150)),
 			immutable: None,
 			forget: None,
 		};
@@ -746,8 +746,8 @@ mod tests {
 			with(Some(30), Some(10)),
 			ApplyWith {
 				window: None,
-				drop: Some(WithSpan::Count(150)),
-				immutable: Some(WithSpan::Count(0)),
+				drop: Some(WithSpan::Slots(150)),
+				immutable: Some(WithSpan::Slots(0)),
 				forget: None,
 			},
 		] {
@@ -785,15 +785,15 @@ mod tests {
 				size: WindowSize::Duration(secs(60)),
 			},
 			WindowKind::Tumbling {
-				size: WindowSize::Count(10),
+				size: WindowSize::Slots(10),
 			},
 			WindowKind::Sliding {
 				size: WindowSize::Duration(secs(60)),
 				slide: WindowSize::Duration(secs(30)),
 			},
 			WindowKind::Sliding {
-				size: WindowSize::Count(10),
-				slide: WindowSize::Count(5),
+				size: WindowSize::Slots(10),
+				slide: WindowSize::Slots(5),
 			},
 			WindowKind::Rolling {
 				size: WindowSize::Duration(secs(60)),
@@ -831,12 +831,12 @@ mod tests {
 	}
 
 	#[test]
-	fn window_duration_rejects_a_missing_window_a_count_size_and_a_session() {
+	fn window_duration_rejects_a_missing_window_a_slots_size_and_a_session() {
 		assert!(ApplyWith::default().window_duration().is_err());
 
 		let count = ApplyWith {
 			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(10),
+				size: WindowSize::Slots(10),
 			}),
 			drop: None,
 			immutable: None,
@@ -885,8 +885,8 @@ mod tests {
 		};
 		let by_slots = ApplyWith {
 			window: Some(WindowKind::Sliding {
-				size: WindowSize::Count(10),
-				slide: WindowSize::Count(4),
+				size: WindowSize::Slots(10),
+				slide: WindowSize::Slots(4),
 			}),
 			drop: None,
 			immutable: None,
@@ -977,7 +977,7 @@ mod tests {
 	}
 
 	#[test]
-	fn check_session_window_refuses_a_zero_gap_and_a_count_drop_only_on_a_session() {
+	fn check_session_window_refuses_a_zero_gap_and_a_slots_drop_only_on_a_session() {
 		// A zero gap spans no row and a count drop is the wrong unit; refusing a duration drop would
 		// split the sdk from native.
 		let session = |gap: Duration, drop_span: Option<WithSpan>| ApplyWith {
@@ -1000,7 +1000,7 @@ mod tests {
 			"the gap is checked first"
 		);
 		assert_eq!(
-			code(session(secs(30), Some(WithSpan::Count(5)))),
+			code(session(secs(30), Some(WithSpan::Slots(5)))),
 			"FLOW_063",
 			"a session seals by time, so a count drop is the wrong unit"
 		);
@@ -1055,7 +1055,7 @@ mod tests {
 	fn drop_readers_refuse_the_other_unit() {
 		let none = ApplyWith::default();
 		assert_eq!(none.drop_duration().unwrap(), None);
-		assert_eq!(none.drop_count().unwrap(), None);
+		assert_eq!(none.drop_slots().unwrap(), None);
 
 		let duration = ApplyWith {
 			window: None,
@@ -1064,15 +1064,15 @@ mod tests {
 			forget: None,
 		};
 		assert_eq!(duration.drop_duration().unwrap(), Some(secs(30)));
-		assert!(duration.drop_count().is_err());
+		assert!(duration.drop_slots().is_err());
 
 		let count = ApplyWith {
 			window: None,
-			drop: Some(WithSpan::Count(5)),
+			drop: Some(WithSpan::Slots(5)),
 			immutable: None,
 			forget: None,
 		};
-		assert_eq!(count.drop_count().unwrap(), Some(5));
+		assert_eq!(count.drop_slots().unwrap(), Some(5));
 		assert!(count.drop_duration().is_err());
 	}
 
@@ -1146,18 +1146,18 @@ mod tests {
 	}
 
 	#[test]
-	fn immutable_count_refuses_a_duration_and_reads_a_count() {
+	fn immutable_slots_refuses_a_duration_and_reads_slots() {
 		// A duration read as a count would seal after that many nanoseconds' worth of rows.
 		let none = ApplyWith::default();
-		assert_eq!(none.immutable_count().unwrap(), None);
+		assert_eq!(none.immutable_slots().unwrap(), None);
 
 		let count = ApplyWith {
 			window: None,
 			drop: None,
-			immutable: Some(WithSpan::Count(4)),
+			immutable: Some(WithSpan::Slots(4)),
 			forget: None,
 		};
-		assert_eq!(count.immutable_count().unwrap(), Some(4));
+		assert_eq!(count.immutable_slots().unwrap(), Some(4));
 
 		let duration = ApplyWith {
 			window: None,
@@ -1165,7 +1165,7 @@ mod tests {
 			immutable: Some(WithSpan::Duration(secs(4))),
 			forget: None,
 		};
-		assert!(duration.immutable_count().is_err());
+		assert!(duration.immutable_slots().is_err());
 	}
 
 	#[test]

@@ -18,7 +18,7 @@ use crate::{
 	plan::logical::{
 		Compiler,
 		operator_with::{
-			Declared, declared_count, declared_duration, entries, is_duration, is_number, literal,
+			Declared, declared_duration, declared_slots, entries, is_duration, is_number, literal,
 			literal_boolean, reject_immutable_not_smaller_than_drop, unknown_key, window::ParsedConfig,
 		},
 	},
@@ -96,7 +96,7 @@ impl<'bump> Compiler<'bump> {
 					parsed.window = fragment;
 				}
 				Some("slots") => {
-					parsed.count = Some(declared_count(literal(entry)?)?);
+					parsed.slots = Some(declared_slots(literal(entry)?)?);
 					size_keys_seen.push(("slots", entry.key.fragment()));
 				}
 				Some("duration") => {
@@ -146,13 +146,13 @@ impl<'bump> Compiler<'bump> {
 		let immutable = immutable.map(|immutable| match immutable {
 			Immutable::Span(span) => span,
 			Immutable::Zero(zero) => Declared {
-				value: if parsed.count.is_some() {
-					WithSpan::Count(0)
+				value: if parsed.slots.is_some() {
+					WithSpan::Slots(0)
 				} else if parsed.duration.is_some() {
 					WithSpan::Duration(Duration::zero())
 				} else {
 					match drop_span.as_ref().map(|drop_span| drop_span.value) {
-						Some(WithSpan::Count(_)) => WithSpan::Count(0),
+						Some(WithSpan::Slots(_)) => WithSpan::Slots(0),
 						_ => WithSpan::Duration(Duration::zero()),
 					}
 				},
@@ -203,9 +203,9 @@ impl<'bump> Compiler<'bump> {
 
 				let kind = Self::build_window_kind(ast_kind, &parsed)?;
 
-				let size_is_count = matches!(kind.size(), Some(WindowSize::Count(_)));
+				let size_is_slots = matches!(kind.size(), Some(WindowSize::Slots(_)));
 				if let Some(drop_span) = &drop_span
-					&& matches!(drop_span.value, WithSpan::Count(_)) != size_is_count
+					&& matches!(drop_span.value, WithSpan::Slots(_)) != size_is_slots
 				{
 					return Err(AstError::UnexpectedToken {
 						expected: "drop in the unit of the window size".to_string(),
@@ -214,7 +214,7 @@ impl<'bump> Compiler<'bump> {
 					.into());
 				}
 				if let Some(immutable) = &immutable
-					&& matches!(immutable.value, WithSpan::Count(_)) != size_is_count
+					&& matches!(immutable.value, WithSpan::Slots(_)) != size_is_slots
 				{
 					return Err(AstError::UnexpectedToken {
 						expected: "drop in the unit of the window size".to_string(),
@@ -224,15 +224,15 @@ impl<'bump> Compiler<'bump> {
 				}
 
 				match kind.size() {
-					Some(WindowSize::Count(slots)) => {
+					Some(WindowSize::Slots(slots)) => {
 						if let Some(immutable) = &immutable
-							&& let WithSpan::Count(imm_count) = immutable.value
-							&& imm_count >= *slots
+							&& let WithSpan::Slots(immutable_slots) = immutable.value
+							&& immutable_slots >= *slots
 						{
 							return Err(RqlError::WindowImmutableNotSmallerThanWindow {
 								immutable_value: immutable.fragment.text().to_string(),
 								window_value: parsed
-									.count
+									.slots
 									.as_ref()
 									.map(|declared| {
 										declared.fragment.text().to_string()
@@ -287,9 +287,9 @@ fn declared_span(token: &Token<'_>, key: &str) -> Result<Declared<WithSpan>, Val
 		});
 	}
 	if is_number(token) {
-		let declared = declared_count(token)?;
+		let declared = declared_slots(token)?;
 		return Ok(Declared {
-			value: WithSpan::Count(declared.value),
+			value: WithSpan::Slots(declared.value),
 			fragment: declared.fragment,
 		});
 	}
@@ -343,7 +343,7 @@ fn reject_immutable_not_smaller_than_drop_in_its_unit(
 				Some(&retag(drop_span, drop_value)),
 			)
 		}
-		(WithSpan::Count(immutable_value), WithSpan::Count(drop_value)) => {
+		(WithSpan::Slots(immutable_value), WithSpan::Slots(drop_value)) => {
 			reject_immutable_not_smaller_than_drop(
 				Some(&retag(immutable, immutable_value)),
 				Some(&retag(drop_span, drop_value)),
@@ -405,9 +405,9 @@ mod tests {
 	}
 
 	#[test]
-	fn an_integer_drop_parses_as_a_row_count() {
+	fn an_integer_drop_parses_as_a_slot_count() {
 		// A count read as a duration would seal after 150 nanoseconds instead of 150 rows.
-		assert_eq!(apply_with("apply op { } with { drop: 150 }").unwrap().drop, Some(WithSpan::Count(150)));
+		assert_eq!(apply_with("apply op { } with { drop: 150 }").unwrap().drop, Some(WithSpan::Slots(150)));
 	}
 
 	#[test]
@@ -439,7 +439,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_count_forget_is_rejected() {
+	fn a_slots_forget_is_rejected() {
 		// A bare number has no unit the forget pass can add to a write time.
 		assert!(apply_with("apply op { } with { forget: 150 }").is_err());
 	}
@@ -494,7 +494,7 @@ mod tests {
 		);
 		assert_eq!(
 			apply_with("apply op { } with { drop: 150, immutable: true }").unwrap().immutable,
-			Some(WithSpan::Count(0))
+			Some(WithSpan::Slots(0))
 		);
 		assert_eq!(apply_with("apply op { } with { immutable: true }").unwrap().immutable, seconds(0));
 	}
@@ -577,7 +577,7 @@ mod tests {
 			apply_with("apply op { } with { window: tumbling, slots: 4, immutable: true }")
 				.unwrap()
 				.immutable,
-			Some(WithSpan::Count(0))
+			Some(WithSpan::Slots(0))
 		);
 	}
 
