@@ -9,11 +9,13 @@ import { SnippetResults } from './snippet-results';
 import { SplitPane } from './layout/split-pane';
 import type { Executor, ExecutionResult } from '../types';
 import { themeClass, type RdbTheme } from './console';
+import { ExpectsError } from '@reifydb/ui';
 
 export interface SnippetProps {
   executor: Executor;
   initialCode: string;
   title?: string;
+  expectsError?: string;
   description?: string;
   className?: string;
   theme?: RdbTheme;
@@ -31,6 +33,7 @@ export function Snippet({
   executor,
   initialCode,
   title = 'reifydb playground',
+  expectsError,
   description,
   className,
   theme = 'light',
@@ -175,6 +178,7 @@ export function Snippet({
       <div className="rdb-snippet__header">
         <div className="rdb-snippet__title">
           {title}
+          {expectsError && <ExpectsError code={expectsError} className="ml-2" />}
         </div>
         <div className="rdb-snippet__actions">
           {!readonly && (

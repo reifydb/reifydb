@@ -21,6 +21,8 @@ export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 export type { DialogProps, DialogContentProps } from "./components/dialog/index.js";
 export { EmptyState } from "./components/empty-state/index.js";
 export type { EmptyStateProps } from "./components/empty-state/index.js";
+export { ExpectsError } from "./components/expects-error/index.js";
+export type { ExpectsErrorProps } from "./components/expects-error/index.js";
 export { FaqItem } from "./components/faq-item/index.js";
 export type { FaqItemProps } from "./components/faq-item/index.js";
 export { Input } from "./components/input/index.js";

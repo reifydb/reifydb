@@ -427,7 +427,8 @@ impl WasmDB {
 		let identity = self.session.current_identity();
 		let params = Params::None;
 
-		let result = self.inner.query_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
+		let result =
+			self.inner.query_as(identity, rql, params).check().map_err(|e| JsError::from_diagnostic(&e))?;
 
 		utils::frames_to_js(&result)
 	}
@@ -437,7 +438,8 @@ impl WasmDB {
 		let identity = self.session.current_identity();
 		let params = Params::None;
 
-		let result = self.inner.admin_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
+		let result =
+			self.inner.admin_as(identity, rql, params).check().map_err(|e| JsError::from_diagnostic(&e))?;
 
 		utils::frames_to_js(&result)
 	}
@@ -447,8 +449,11 @@ impl WasmDB {
 		let identity = self.session.current_identity();
 		let params = Params::None;
 
-		let result =
-			self.inner.command_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
+		let result = self
+			.inner
+			.command_as(identity, rql, params)
+			.check()
+			.map_err(|e| JsError::from_diagnostic(&e))?;
 
 		utils::frames_to_js(&result)
 	}
@@ -459,7 +464,8 @@ impl WasmDB {
 
 		let params = utils::parse_params(params_js)?;
 
-		let result = self.inner.query_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
+		let result =
+			self.inner.query_as(identity, rql, params).check().map_err(|e| JsError::from_diagnostic(&e))?;
 
 		utils::frames_to_js(&result)
 	}
@@ -470,7 +476,8 @@ impl WasmDB {
 
 		let params = utils::parse_params(params_js)?;
 
-		let result = self.inner.admin_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
+		let result =
+			self.inner.admin_as(identity, rql, params).check().map_err(|e| JsError::from_diagnostic(&e))?;
 
 		utils::frames_to_js(&result)
 	}
@@ -481,8 +488,11 @@ impl WasmDB {
 
 		let params = utils::parse_params(params_js)?;
 
-		let result =
-			self.inner.command_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
+		let result = self
+			.inner
+			.command_as(identity, rql, params)
+			.check()
+			.map_err(|e| JsError::from_diagnostic(&e))?;
 
 		utils::frames_to_js(&result)
 	}
@@ -493,7 +503,7 @@ impl WasmDB {
 			.inner
 			.command_as(self.session.current_identity(), rql, Params::None)
 			.check()
-			.map_err(|e| JsError::from_error(&e))?;
+			.map_err(|e| JsError::from_diagnostic(&e))?;
 		let mut output = String::new();
 		for frame in result.iter() {
 			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
@@ -507,7 +517,7 @@ impl WasmDB {
 			.inner
 			.admin_as(self.session.current_identity(), rql, Params::None)
 			.check()
-			.map_err(|e| JsError::from_error(&e))?;
+			.map_err(|e| JsError::from_diagnostic(&e))?;
 		let mut output = String::new();
 		for frame in result.iter() {
 			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
@@ -536,7 +546,7 @@ impl WasmDB {
 			.inner
 			.query_as(self.session.current_identity(), rql, Params::None)
 			.check()
-			.map_err(|e| JsError::from_error(&e))?;
+			.map_err(|e| JsError::from_diagnostic(&e))?;
 		let mut output = String::new();
 		for frame in result.iter() {
 			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
