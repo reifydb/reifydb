@@ -9,7 +9,6 @@ use std::thread;
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
-	common::{WindowRequirements, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::unmanaged_key,
 	operator_with::ApplyWith,
@@ -60,13 +59,6 @@ impl OperatorMetadata for SlowCounter {
 
 impl UnmanagedOperator for SlowCounter {
 	const UNMANAGED_BECAUSE: &'static str = "test operator";
-	const WINDOW: WindowRequirements = WindowRequirements {
-		takes_window: false,
-		kinds: &[],
-		domain: WindowSizeDomain::Time,
-		needs_pane: false,
-	};
-
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(SlowCounter)
 	}

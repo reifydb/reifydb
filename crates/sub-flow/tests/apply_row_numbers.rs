@@ -4,7 +4,6 @@
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	common::{WindowRequirements, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::GroupId,
 	operator_with::ApplyWith,
@@ -68,13 +67,6 @@ impl OperatorMetadata for RownumProbe {
 
 impl UnmanagedOperator for RownumProbe {
 	const UNMANAGED_BECAUSE: &'static str = "test operator";
-	const WINDOW: WindowRequirements = WindowRequirements {
-		takes_window: false,
-		kinds: &[],
-		domain: WindowSizeDomain::Time,
-		needs_pane: false,
-	};
-
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(RownumProbe)
 	}

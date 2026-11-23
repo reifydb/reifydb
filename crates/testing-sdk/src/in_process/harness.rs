@@ -491,7 +491,6 @@ mod tests {
 		row::{operator::state::decode, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
-		common::{WindowRequirements, WindowSizeDomain},
 		interface::flow::OperatorCapability,
 		key::operator::state::{UnmanagedKey, unmanaged_key},
 	};
@@ -518,12 +517,6 @@ mod tests {
 
 	impl UnmanagedOperator for StatefulTestOperator {
 		const UNMANAGED_BECAUSE: &'static str = "test operator";
-		const WINDOW: WindowRequirements = WindowRequirements {
-			takes_window: false,
-			kinds: &[],
-			domain: WindowSizeDomain::Time,
-			needs_pane: false,
-		};
 
 		fn create(
 			_operator_id: OperatorId,

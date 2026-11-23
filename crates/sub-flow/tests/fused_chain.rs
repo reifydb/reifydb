@@ -7,7 +7,7 @@ use reifydb::{
 };
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	common::{CommitVersion, WindowRequirements, WindowSizeDomain},
+	common::CommitVersion,
 	interface::{
 		catalog::{
 			flow::{FlowId, OperatorId},
@@ -269,13 +269,6 @@ impl OperatorMetadata for SymIds {
 
 impl UnmanagedOperator for SymIds {
 	const UNMANAGED_BECAUSE: &'static str = "test operator";
-	const WINDOW: WindowRequirements = WindowRequirements {
-		takes_window: false,
-		kinds: &[],
-		domain: WindowSizeDomain::Time,
-		needs_pane: false,
-	};
-
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(SymIds)
 	}

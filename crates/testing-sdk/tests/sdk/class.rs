@@ -5,10 +5,7 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use reifydb_core::{
-	common::{
-		ChangeVersion, CommitVersion, OperatorClass, WindowKind, WindowRequirements, WindowSize,
-		WindowSizeDomain,
-	},
+	common::{ChangeVersion, CommitVersion, OperatorClass, WindowKind, WindowSize},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
@@ -93,44 +90,8 @@ impl OperatorMetadata for UnmanagedProbe {
 
 impl UnmanagedOperator for UnmanagedProbe {
 	const UNMANAGED_BECAUSE: &'static str = "frees its own rows";
-	const WINDOW: WindowRequirements = WindowRequirements {
-		takes_window: false,
-		kinds: &[],
-		domain: WindowSizeDomain::Time,
-		needs_pane: false,
-	};
-
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(UnmanagedProbe)
-	}
-
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<(), SdkError> {
-		Ok(())
-	}
-}
-
-struct UnmanagedWindowProbe;
-
-impl OperatorMetadata for UnmanagedWindowProbe {
-	const NAME: &'static str = "unmanaged_window_probe";
-	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "Holds unmanaged state and takes a tumbling window";
-	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
-}
-
-impl UnmanagedOperator for UnmanagedWindowProbe {
-	const UNMANAGED_BECAUSE: &'static str = "frees its own rows";
-	const WINDOW: WindowRequirements = WindowRequirements {
-		takes_window: true,
-		kinds: &["tumbling"],
-		domain: WindowSizeDomain::Time,
-		needs_pane: false,
-	};
-
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
-		Ok(UnmanagedWindowProbe)
 	}
 
 	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<(), SdkError> {
@@ -305,21 +266,12 @@ fn an_apply_of_many_diffs_reads_the_operator_watermark_once() {
 }
 
 #[test]
-fn an_unmanaged_operator_builds_with_the_window_it_declares() {
-	// The harness skips the create-time checks, so the mount is the last guard before a flow dies at start.
-	InProcessOperatorHarnessBuilder::<UnmanagedMount<UnmanagedWindowProbe>>::new()
-		.with(tumbling_of(60))
-		.build()
-		.expect("an unmanaged operator declaring a tumbling window must build with one");
-}
-
-#[test]
-fn an_unmanaged_operator_refuses_a_window_it_does_not_declare() {
+fn an_unmanaged_operator_refuses_any_window() {
 	// A mount that took any window would let an operator with no window logic silently receive one.
 	let Err(err) =
 		InProcessOperatorHarnessBuilder::<UnmanagedMount<UnmanagedProbe>>::new().with(tumbling_of(60)).build()
 	else {
-		panic!("create must refuse a window the operator does not declare");
+		panic!("create must refuse any window on an unmanaged operator");
 	};
 	assert!(err.to_string().contains("FLOW_067"), "expected FLOW_067, got: {err}");
 }

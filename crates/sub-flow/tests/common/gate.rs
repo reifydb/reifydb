@@ -4,7 +4,6 @@
 use std::{collections::HashMap, sync::LazyLock, thread};
 
 use reifydb_core::{
-	common::{WindowRequirements, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	operator_with::ApplyWith,
 };
@@ -95,13 +94,6 @@ fn key_values(columns: &impl ColumnsView) -> Result<(Vec<KeyValue>, Vec<RowNumbe
 
 impl UnmanagedOperator for GatedPassThrough {
 	const UNMANAGED_BECAUSE: &'static str = "test operator";
-	const WINDOW: WindowRequirements = WindowRequirements {
-		takes_window: false,
-		kinds: &[],
-		domain: WindowSizeDomain::Time,
-		needs_pane: false,
-	};
-
 	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(GatedPassThrough {
 			gate: params.require_str("gate"),
@@ -201,13 +193,6 @@ fn key_value_times(columns: &impl ColumnsView) -> Result<(Vec<KeyValueTime>, Vec
 
 impl UnmanagedOperator for GatedPassThroughTimed {
 	const UNMANAGED_BECAUSE: &'static str = "test operator";
-	const WINDOW: WindowRequirements = WindowRequirements {
-		takes_window: false,
-		kinds: &[],
-		domain: WindowSizeDomain::Time,
-		needs_pane: false,
-	};
-
 	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(GatedPassThroughTimed {
 			gate: params.require_str("gate"),

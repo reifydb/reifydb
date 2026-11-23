@@ -9,7 +9,6 @@ use reifydb::{
 };
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	common::{WindowRequirements, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::{GroupId, managed_key_in, unmanaged_key_in},
 	operator_with::ApplyWith,
@@ -96,13 +95,6 @@ impl OperatorMetadata for Keeper {
 
 impl UnmanagedOperator for Keeper {
 	const UNMANAGED_BECAUSE: &'static str = KEEPER_REASON;
-	const WINDOW: WindowRequirements = WindowRequirements {
-		takes_window: false,
-		kinds: &[],
-		domain: WindowSizeDomain::Time,
-		needs_pane: false,
-	};
-
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Keeper)
 	}

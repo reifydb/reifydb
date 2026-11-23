@@ -4,7 +4,7 @@
 use std::{cell::Cell, ptr};
 
 use reifydb_core::{
-	common::{OperatorClass, WindowRequirements, WindowSizeDomain},
+	common::OperatorClass,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::unmanaged_key,
 	operator_with::ApplyWith,
@@ -44,13 +44,6 @@ impl OperatorMetadata for WriteProbe {
 
 impl UnmanagedOperator for WriteProbe {
 	const UNMANAGED_BECAUSE: &'static str = "test operator";
-	const WINDOW: WindowRequirements = WindowRequirements {
-		takes_window: false,
-		kinds: &[],
-		domain: WindowSizeDomain::Time,
-		needs_pane: false,
-	};
-
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(WriteProbe)
 	}
