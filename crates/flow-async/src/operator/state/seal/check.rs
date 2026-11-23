@@ -28,12 +28,15 @@ pub fn first_admitted(store: &mut dyn WindowStore, seal_span: Duration) -> Resul
 	Ok(ByDateTime::first_admitted(watermark, seal_span).0)
 }
 
-pub fn kept_unsealed(
+pub fn first_admitted_once(
+	cached: &mut Option<DateTime>,
 	store: &mut dyn WindowStore,
 	seal_span: Duration,
-	batch: &RecordBatch,
-) -> Result<Kept, ValueError> {
-	kept_from(first_admitted(store, seal_span)?, batch)
+) -> Result<DateTime, ValueError> {
+	if let Some(first_admitted) = *cached {
+		return Ok(first_admitted);
+	}
+	Ok(*cached.insert(first_admitted(store, seal_span)?))
 }
 
 pub fn kept_from(first_admitted: DateTime, batch: &RecordBatch) -> Result<Kept, ValueError> {

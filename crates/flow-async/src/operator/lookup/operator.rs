@@ -71,7 +71,7 @@ use crate::{
 		},
 		row_times,
 		state::seal::{
-			check::{SEALED_INSERTS, SEALED_REMOVES, SEALED_UPDATES, kept_unsealed},
+			check::{SEALED_INSERTS, SEALED_REMOVES, SEALED_UPDATES, first_admitted_once, kept_from},
 			ledger::{FiredAt, SealLedger},
 		},
 	},
@@ -278,6 +278,7 @@ impl LookupOperator {
 	fn drop_sealed(
 		&self,
 		host: &mut dyn HostContext,
+		admitted: &mut Option<DateTime>,
 		paired: Option<RecordBatch>,
 		timed: RecordBatch,
 		drops: &DropCounter,
@@ -285,7 +286,7 @@ impl LookupOperator {
 		let Some(drop_span) = self.config.left_drop else {
 			return Ok(Some((paired, timed)));
 		};
-		let kept = kept_unsealed(host, drop_span, &timed)?;
+		let kept = kept_from(first_admitted_once(admitted, host, drop_span)?, &timed)?;
 		if kept.dropped == 0 {
 			return Ok(Some((paired, timed)));
 		}
@@ -998,6 +999,7 @@ impl HostOperator for LookupOperator {
 		let parent_origin = change.origin.clone();
 		let mut result = Vec::with_capacity(change.diffs.len());
 		let mut reads = ChangeReads::default();
+		let mut admitted = None;
 		for diff in change.diffs {
 			let origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
 			if self.is_right(&origin) {
@@ -1016,7 +1018,7 @@ impl HostOperator for LookupOperator {
 					..
 				} => {
 					if let Some((_, post)) =
-						self.drop_sealed(host, None, post, &self.sealed_inserts)?
+						self.drop_sealed(host, &mut admitted, None, post, &self.sealed_inserts)?
 					{
 						self.apply_insert(host, &post, source, &mut reads, &mut result)?
 					}
@@ -1026,7 +1028,7 @@ impl HostOperator for LookupOperator {
 					..
 				} => {
 					if let Some((_, pre)) =
-						self.drop_sealed(host, None, pre, &self.sealed_removes)?
+						self.drop_sealed(host, &mut admitted, None, pre, &self.sealed_removes)?
 					{
 						self.apply_remove(host, &pre, &mut result)?
 					}
@@ -1036,9 +1038,13 @@ impl HostOperator for LookupOperator {
 					post,
 					..
 				} => {
-					if let Some((Some(pre), post)) =
-						self.drop_sealed(host, Some(pre), post, &self.sealed_updates)?
-					{
+					if let Some((Some(pre), post)) = self.drop_sealed(
+						host,
+						&mut admitted,
+						Some(pre),
+						post,
+						&self.sealed_updates,
+					)? {
 						self.apply_update(host, &pre, &post, source, &mut reads, &mut result)?
 					}
 				}

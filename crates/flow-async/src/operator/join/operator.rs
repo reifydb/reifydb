@@ -78,7 +78,9 @@ use crate::{
 		state::{
 			forget_pass::{StoreForgetter, drain, drain_group, enqueue, queue_key, queued},
 			seal::{
-				check::{SEALED_INSERTS, SEALED_REMOVES, SEALED_UPDATES, kept_unsealed},
+				check::{
+					SEALED_INSERTS, SEALED_REMOVES, SEALED_UPDATES, first_admitted_once, kept_from,
+				},
 				ledger::{FiredAt, SealLedger},
 				rule::SealRule,
 			},
@@ -451,6 +453,7 @@ impl JoinOperator {
 	fn drop_sealed(
 		&self,
 		host: &mut dyn HostContext,
+		admitted: &mut (Option<DateTime>, Option<DateTime>),
 		side: JoinSide,
 		pre: Option<RecordBatch>,
 		post: RecordBatch,
@@ -459,7 +462,11 @@ impl JoinOperator {
 		let Some(drop_span) = self.drop_of(side) else {
 			return Ok((pre, post));
 		};
-		let kept = kept_unsealed(host, drop_span, &post)?;
+		let admitted = match side {
+			JoinSide::Left => &mut admitted.0,
+			JoinSide::Right => &mut admitted.1,
+		};
+		let kept = kept_from(first_admitted_once(admitted, host, drop_span)?, &post)?;
 		if kept.dropped == 0 {
 			return Ok((pre, post));
 		}
@@ -1062,6 +1069,7 @@ impl HostOperator for JoinOperator {
 		let parent_origin = change.origin.clone();
 		let coalesces = self.strategy.coalesces_right_replace(self.ignores_right_changes());
 		let mut diffs = change.diffs.into_iter().peekable();
+		let mut admitted = (None, None);
 		while let Some(diff) = diffs.next() {
 			let diff_origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
 			let side = self.determine_side_from_origin(&diff_origin).ok_or_else(|| {
@@ -1096,7 +1104,8 @@ impl HostOperator for JoinOperator {
 				};
 				let pre = self.entry(host, side, pre)?;
 				let post = self.entry(host, side, post)?;
-				let (_, post) = self.drop_sealed(host, side, None, post, &self.sealed_inserts)?;
+				let (_, post) =
+					self.drop_sealed(host, &mut admitted, side, None, post, &self.sealed_inserts)?;
 				self.apply_join_replace(host, &pre, &post, &mut state, &mut result)?;
 				continue;
 			}
@@ -1106,8 +1115,14 @@ impl HostOperator for JoinOperator {
 					..
 				} => {
 					let post = self.entry(host, side, post)?;
-					let (_, post) =
-						self.drop_sealed(host, side, None, post, &self.sealed_inserts)?;
+					let (_, post) = self.drop_sealed(
+						host,
+						&mut admitted,
+						side,
+						None,
+						post,
+						&self.sealed_inserts,
+					)?;
 					if post.num_rows() > 0 {
 						self.apply_join_insert(host, &post, side, &mut state, &mut result)?
 					}
@@ -1117,7 +1132,14 @@ impl HostOperator for JoinOperator {
 					..
 				} => {
 					let pre = self.entry(host, side, pre)?;
-					let (_, pre) = self.drop_sealed(host, side, None, pre, &self.sealed_removes)?;
+					let (_, pre) = self.drop_sealed(
+						host,
+						&mut admitted,
+						side,
+						None,
+						pre,
+						&self.sealed_removes,
+					)?;
 					if pre.num_rows() > 0 {
 						self.apply_join_remove(host, &pre, side, &mut state, &mut result)?
 					}
@@ -1128,8 +1150,14 @@ impl HostOperator for JoinOperator {
 					..
 				} => {
 					let (pre, post) = (self.entry(host, side, pre)?, self.entry(host, side, post)?);
-					let (pre, post) =
-						self.drop_sealed(host, side, Some(pre), post, &self.sealed_updates)?;
+					let (pre, post) = self.drop_sealed(
+						host,
+						&mut admitted,
+						side,
+						Some(pre),
+						post,
+						&self.sealed_updates,
+					)?;
 					if let Some(pre) = pre
 						&& post.num_rows() > 0
 					{
