@@ -484,7 +484,7 @@ mod forget_pass_tests {
 
 	use reifydb_codec::row::pod::EncodedPodRow;
 	use reifydb_core::{
-		common::CommitVersion,
+		common::{CommitVersion, WindowKind, WindowSize},
 		key::{
 			any::TaggedKey,
 			operator::{
@@ -752,6 +752,29 @@ mod forget_pass_tests {
 		let err = write_at(&mut txn, 10_000, None, &managed_key(group(1)))
 			.expect_err("a managed write needs a forget");
 
+		assert!(err.to_string().contains("no forget"), "got: {err}");
+	}
+
+	#[test]
+	fn a_windowed_apply_with_only_a_drop_has_no_forget_and_its_managed_write_fails() {
+		// A drop standing in for the forget would free managed state at the late-arrival line nobody chose for
+		// it.
+		let engine = TestEngine::new();
+		let mut txn = txn(&engine);
+		let with = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(secs(60)),
+			}),
+			drop: Some(WithSpan::Duration(secs(10))),
+			immutable: None,
+			forget: None,
+		};
+
+		let forget = engine_forget(&with);
+		assert_eq!(forget, None, "a drop alone must never become a forget line");
+
+		let err = write_at(&mut txn, 10_000, forget, &managed_key(group(1)))
+			.expect_err("a managed write under a drop alone needs a forget");
 		assert!(err.to_string().contains("no forget"), "got: {err}");
 	}
 
