@@ -267,6 +267,59 @@ fn an_unmanaged_apply_with_a_window_fails_the_create() {
 	assert_eq!(diagnostic.code, "FLOW_067", "{diagnostic:?}");
 }
 
+fn seal_order_source(db: &TestDb) {
+	// The lookup needs a partitioned event time table, otherwise the view is refused before the seal order check.
+	event_time_source(db);
+	db.admin(
+		"CREATE TABLE app::d { g: int4, a: int4, ts: datetime } with { partition: { by: { g } }, time: event(ts) }",
+	);
+}
+
+#[test]
+fn an_unmanaged_apply_sealing_sooner_than_a_lookup_above_it_fails_the_create() {
+	// A custom apply the check cannot see would drop rows the lookup above it still keeps.
+	let db = memory();
+	seal_order_source(&db);
+
+	let Err(err) = db.try_admin(
+		"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t INNER LOOKUP { FROM app::d } AS x USING (g, x.g) WITH { emit: false, forget: { left: 20s } } APPLY unmanaged_probe{} WITH { drop: 10s } }",
+	) else {
+		panic!("an unmanaged apply sealing after 10s below a lookup sealing after 20s must be refused");
+	};
+
+	let diagnostic = err.diagnostic();
+	assert_eq!(diagnostic.code, "FLOW_099", "{diagnostic:?}");
+}
+
+#[test]
+fn a_lookup_sealing_sooner_than_an_unmanaged_apply_above_it_fails_the_create() {
+	// The span of a custom apply must count as the upper seal too, otherwise a lookup below it drops its late rows.
+	let db = memory();
+	seal_order_source(&db);
+
+	let Err(err) = db.try_admin(
+		"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY unmanaged_probe{} WITH { drop: 20s } INNER LOOKUP { FROM app::d } AS x USING (g, x.g) WITH { emit: false, forget: { left: 10s } } }",
+	) else {
+		panic!("a lookup sealing after 10s below an unmanaged apply sealing after 20s must be refused");
+	};
+
+	let diagnostic = err.diagnostic();
+	assert_eq!(diagnostic.code, "FLOW_099", "{diagnostic:?}");
+}
+
+#[test]
+fn an_unmanaged_apply_sealing_as_late_as_a_lookup_above_it_creates() {
+	// An equal seal drops nothing the lookup keeps, so refusing it would forbid the only legal way to chain them.
+	let db = memory();
+	seal_order_source(&db);
+
+	let created = db.try_admin(
+		"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t INNER LOOKUP { FROM app::d } AS x USING (g, x.g) WITH { emit: false, forget: { left: 10s } } APPLY unmanaged_probe{} WITH { drop: 10s } }",
+	);
+
+	assert!(created.is_ok(), "an unmanaged apply with the same seal as the lookup above must create: {created:?}");
+}
+
 #[test]
 fn nostate_managed_and_unmanaged_probes_each_publish_takes_window_false() {
 	// a mount that claimed a window would let a view give it one at create, which the mount then refuses
