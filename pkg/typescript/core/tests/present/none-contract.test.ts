@@ -3,6 +3,7 @@
 import {describe, expect, it} from 'vitest';
 import {NONE_PRESENTATION, formatValue} from '../../src/present';
 import {NoneValue} from '../../src/value';
+import {NONE_VALUE} from '../../src/constant';
 import {getValueStyle} from '../../../editor/src/format/value';
 import {reifydbDarkTableTheme} from '../../../shell/src/output/table';
 
@@ -31,6 +32,12 @@ describe('missing value contract', () => {
 
         expect(consoleStyle.color !== undefined).toBe(NONE_PRESENTATION.muted);
         expect(shellStyle?.color !== undefined).toBe(NONE_PRESENTATION.muted);
+    });
+
+    it('renders the decoded none sentinel as the shared token, not its arrows', () => {
+        // without this the wasm rows carrying the sentinel text print as a styled string with arrows
+        expect(formatValue(NONE_VALUE)).toBe(NONE_PRESENTATION.text);
+        expect(getValueStyle(NONE_VALUE).italic).toBe(NONE_PRESENTATION.italic);
     });
 
     it('does not treat a literal string as a missing value', () => {
