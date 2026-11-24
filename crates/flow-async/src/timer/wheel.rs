@@ -85,6 +85,15 @@ impl TimerWheel {
 		Ok(())
 	}
 
+	pub fn armed(
+		operator: OperatorId,
+		txn: &mut impl FlowTransaction,
+		kind: TimerKind,
+		key: &EncodedKey,
+	) -> Result<Option<DateTime>, ValueError> {
+		armed_at(operator, txn, &index_key(kind, key))
+	}
+
 	pub fn disarm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<(), ValueError> {
 		if timer.kind.is_unique() {
 			let index = index_key(timer.kind, &timer.key);

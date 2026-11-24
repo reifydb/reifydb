@@ -54,12 +54,12 @@ use reifydb_value::{
 use crate::{
 	error::FlowAsyncError,
 	operator::state::{
-		due::{due_drop, due_earliest, due_get, due_set, managed_due_key, managed_latest_key},
+		due::{due_drop, due_get, due_next_above, due_set, managed_due_key, managed_latest_key},
 		forget_pass::IdentityForgetPass,
 		forget_pass_outcome::ForgetPassOutcome,
 		seal::rule::SEAL_GATE_STEP,
 	},
-	timer::{Timer, extension::TimerExtension},
+	timer::{Timer, extension::TimerExtension, wheel::TimerWheel},
 	transaction::{
 		FlowTransaction, LookupAt,
 		dictionary::DictionaryExtension,
@@ -209,7 +209,7 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 		}
 	}
 
-	fn arm_forget_pass(&mut self, group: GroupId) -> Result<(), ValueError> {
+	fn arm_forget_pass(&mut self, group: GroupId) -> Result<(Option<DateTime>, DateTime), ValueError> {
 		let Some(forget) = self.forget else {
 			return internal_err!("operator {} wrote managed state but has no forget", self.operator);
 		};
@@ -217,23 +217,42 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 		let previous = due_get::<DateTime>(self, &latest)?;
 		let due = forget_pass_due(self.batch_time, forget);
 		let due = previous.map_or(due, |previous| previous.max(due));
-		if let Some(previous) = previous.filter(|previous| *previous != due) {
+		let left = previous.filter(|previous| *previous != due);
+		if let Some(previous) = left {
 			due_drop(self, &managed_due_key(previous, group))?;
 		}
 		due_set(self, managed_due_key(due, group), Vec::<u8>::new())?;
-		due_set(self, latest, due)
+		due_set(self, latest, due)?;
+		Ok((left, due))
 	}
 
-	fn arm_earliest_forget_pass(&mut self) -> Result<(), ValueError> {
-		let Some(order) = due_earliest::<CustomManagedDue>(self)? else {
+	fn arm_forget_passes(&mut self, groups: &BTreeSet<GroupId>) -> Result<(), ValueError> {
+		let mut left = BTreeSet::new();
+		let mut lowest: Option<DateTime> = None;
+		for group in groups {
+			let (moved, due) = self.arm_forget_pass(*group)?;
+			left.extend(moved);
+			lowest = Some(lowest.map_or(due, |seen| seen.min(due)));
+		}
+		let Some(lowest) = lowest else {
 			return Ok(());
+		};
+		let key = EncodedKey::new(Vec::new());
+		let due = match TimerWheel::armed(self.operator, self.txn, TimerKind::ForgetPass, &key)? {
+			Some(armed) if left.contains(&armed) => {
+				let standing =
+					due_next_above::<CustomManagedDue>(self, armed.to_order().saturating_sub(1))?;
+				standing.map_or(lowest, |order| DateTime::from_order(order).min(lowest))
+			}
+			Some(armed) => armed.min(lowest),
+			None => lowest,
 		};
 		self.txn.arm_timer(
 			self.operator,
 			&Timer {
-				due: DateTime::from_order(order),
+				due,
 				kind: TimerKind::ForgetPass,
-				key: EncodedKey::new(Vec::new()),
+				key,
 			},
 		)
 	}
@@ -311,13 +330,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), ValueError> {
 		let groups: BTreeSet<GroupId> = rows.iter().filter_map(|(key, _)| managed_group(key)).collect();
 		self.txn.state_set(self.operator, rows)?;
-		for group in &groups {
-			self.arm_forget_pass(*group)?;
-		}
-		if !groups.is_empty() {
-			self.arm_earliest_forget_pass()?;
-		}
-		Ok(())
+		self.arm_forget_passes(&groups)
 	}
 
 	fn state_write_batch(&mut self, batch: StateBatch) -> Result<(), ValueError> {
@@ -326,13 +339,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 			.filter_map(|slot| managed_group(batch.key(slot)))
 			.collect();
 		self.txn.state_write_batch(self.operator, batch)?;
-		for group in &groups {
-			self.arm_forget_pass(*group)?;
-		}
-		if !groups.is_empty() {
-			self.arm_earliest_forget_pass()?;
-		}
-		Ok(())
+		self.arm_forget_passes(&groups)
 	}
 
 	fn state_page_inner(

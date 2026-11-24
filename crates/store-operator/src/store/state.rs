@@ -617,6 +617,7 @@ impl StandardOperatorStore {
 		let (operator, range) =
 			inner_range(&range).expect("an operator store range must address operator state");
 		Span::current().record("operator", operator.0);
+		record_page_request();
 		let first = self.resident.state_last_page_shadowed(
 			operator,
 			range.start.as_ref(),
@@ -978,6 +979,7 @@ impl Iterator for StateLastIter<'_> {
 		}
 		loop {
 			if self.buffer_index == self.buffer.len() && !self.buffer_done {
+				record_page_request();
 				let page = self.store.resident.state_last_page_shadowed(
 					self.operator,
 					self.start.as_ref(),
@@ -992,6 +994,7 @@ impl Iterator for StateLastIter<'_> {
 				}
 			}
 			if self.stored_index == self.stored.len() && !self.stored_done {
+				record_page_request();
 				let batch = match self.store.persistent.last_batch(
 					self.operator,
 					EncodedKeyRange::new(self.start.clone(), self.stored_end.clone()),
