@@ -6,6 +6,7 @@ import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import { registerRqlLanguage } from '../monaco/register';
 import { SnippetResults } from './snippet-results';
+import { SnippetError } from './snippet-error';
 import { SplitPane } from './layout/split-pane';
 import type { Executor, ExecutionResult } from '../types';
 import { themeClass, type RdbTheme } from './console';
@@ -332,9 +333,7 @@ export function Snippet({
               {result && (
                 <div className={`rdb-snippet__results rdb-snippet__results--fullscreen${showBusy ? ' rdb-snippet__results--stale' : ''}`} aria-busy={showBusy}>
                   {result.error && (
-                    <div className="rdb-snippet__error">
-                      <pre className="rdb-snippet__error-text">ERR: {result.error}</pre>
-                    </div>
+                    <SnippetError message={result.error} />
                   )}
 
                   {result.data && result.data.length > 0 && !result.error && (
@@ -391,9 +390,7 @@ export function Snippet({
             <div className={`rdb-snippet__results-panel${showBusy ? ' rdb-snippet__results--stale' : ''}`} aria-busy={showBusy}>
               <div className="rdb-snippet__results-body">
                 {result.error && (
-                  <div className="rdb-snippet__error">
-                    <pre className="rdb-snippet__error-text">ERR: {result.error}</pre>
-                  </div>
+                  <SnippetError message={result.error} />
                 )}
 
                 {result.data && result.data.length > 0 && !result.error && (

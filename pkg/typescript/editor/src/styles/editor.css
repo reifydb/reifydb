@@ -208,16 +208,19 @@
   color: var(--rdb-color-muted);
 }
 
-.rdb-snippet__error {
+.rdb-snippet-error {
+  margin: 0;
   padding: var(--rdb-space-4);
+  font-family: var(--rdb-font-mono);
+  font-size: var(--rdb-font-size-xs);
+  color: var(--rdb-color-text);
+  white-space: pre;
+  overflow-x: auto;
 }
 
-.rdb-snippet__error-text {
-  font-size: var(--rdb-font-size-xs);
+.rdb-snippet-error__title {
   color: var(--rdb-color-error);
-  white-space: pre-wrap;
-  margin: 0;
-  font-family: var(--rdb-font-mono);
+  font-weight: 700;
 }
 
 .rdb-snippet__rows {

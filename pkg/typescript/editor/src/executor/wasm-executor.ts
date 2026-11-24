@@ -34,8 +34,10 @@ export class WasmExecutor implements Executor {
     } catch (error) {
       const executionTime = Math.round(performance.now() - startTime);
       let diagnostic: Diagnostic | undefined;
-      if (error && typeof error === 'object' && 'code' in error) {
-        const e = error as Record<string, unknown>;
+      const nested = error && typeof error === 'object' ? (error as { diagnostic?: unknown }).diagnostic : undefined;
+      const source = nested && typeof nested === 'object' ? nested : error;
+      if (source && typeof source === 'object' && 'code' in source) {
+        const e = source as Record<string, unknown>;
         diagnostic = {
           code: String(e.code),
           message: String(e.message ?? ''),
