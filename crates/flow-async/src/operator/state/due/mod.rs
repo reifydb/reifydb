@@ -343,7 +343,10 @@ where
 	}
 
 	pub(crate) fn earliest(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>, ValueError> {
-		let earliest = due_earliest::<K>(store)?;
+		let earliest = match self.earliest {
+			Some(known) if known > 0 => due_next_above::<K>(store, known - 1)?,
+			_ => due_earliest::<K>(store)?,
+		};
 		self.earliest = Some(earliest.unwrap_or(u64::MAX));
 		Ok(earliest)
 	}
@@ -750,8 +753,33 @@ mod tests {
 
 	#[test]
 	fn reading_the_earliest_due_tightens_the_cached_earliest_to_what_the_index_holds() {
-		// The rolling face reads the exact earliest to arm its timer; recording it keeps the gate
-		// tight, and an empty index must gate every threshold rather than leave the bound unset.
+		// The rolling face arms its timer from this read, so it must be exact for entries armed through it.
+		let mut store = MockStore::default();
+		let mut index = DueIndex::<RollingAgeOut>::default();
+		assert_eq!(index.earliest(&mut store).unwrap(), None);
+
+		index.set(
+			&mut store,
+			vec![(
+				key(50, 1),
+				Entry {
+					row: 1,
+				},
+			)],
+		)
+		.unwrap();
+
+		assert_eq!(index.earliest(&mut store).unwrap(), Some(50));
+		assert_eq!(
+			index.due::<Entry>(&mut store, 100, 16).unwrap().len(),
+			1,
+			"an entry armed through the index after an empty read must be found by the exact read"
+		);
+	}
+
+	#[test]
+	fn an_index_read_as_empty_gates_every_threshold_until_something_is_armed_through_it() {
+		// An empty read must leave the bound set, otherwise every later due scan reaches the store for nothing.
 		let mut store = MockStore::default();
 		let mut index = DueIndex::<RollingAgeOut>::default();
 		assert_eq!(index.earliest(&mut store).unwrap(), None);
@@ -768,13 +796,6 @@ mod tests {
 		assert!(
 			index.due::<Entry>(&mut store, 100, 16).unwrap().is_empty(),
 			"an index read as empty must gate until something is armed through it"
-		);
-
-		assert_eq!(index.earliest(&mut store).unwrap(), Some(50));
-		assert_eq!(
-			index.due::<Entry>(&mut store, 100, 16).unwrap().len(),
-			1,
-			"the exact read must lower the bound back onto the entry the store holds"
 		);
 	}
 }
