@@ -286,6 +286,7 @@ impl<K: Keyspace> PageSource for TierPager<'_, K> {
 					self.segment_index += consumed;
 					self.cursor.reset();
 					self.claim_start = None;
+					self.exhausted = self.segment_index >= self.scan.segments().len();
 				} else {
 					self.pending = Some((interval, materializable, consumed));
 				}
@@ -313,6 +314,8 @@ impl<K: Keyspace> PageSource for TierPager<'_, K> {
 							if done {
 								self.segment_index += 1;
 								self.cursor.reset();
+								self.exhausted = self.segment_index
+									>= self.scan.segments().len();
 							}
 							if rows.is_empty() {
 								continue;

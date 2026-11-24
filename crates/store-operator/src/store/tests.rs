@@ -539,6 +539,41 @@ fn an_emptiness_probe_crosses_a_tombstone_wall_in_pages_not_in_handfuls() {
 	assert!(pages_at_max < 32, "a full page must cross the wall in a handful of requests, not {pages_at_max}");
 }
 
+#[test]
+fn a_range_read_that_drains_the_stored_layer_never_asks_it_again() {
+	let (store, _guard) = store_fixture();
+	store.apply_batch_with_checkpoints(&[insert(1, "a")], &[], &[], Some(next_lsn())).unwrap();
+	flush(&store);
+
+	let before = PageRequests::sample();
+	let batch = store.range_batch(all(), 8).unwrap();
+
+	assert_eq!(batch.items.len(), 1, "the one stored row must be read");
+	assert_eq!(before.since(), 2, "one resident page and one stored page must answer a range holding one row");
+}
+
+#[test]
+fn a_range_read_keeps_asking_the_stored_layer_while_it_holds_more() {
+	let (store, _guard) = store_fixture_with(ResidentConfig {
+		storage: Resident::with_limits(ResidentLimits {
+			budget: ByteSize::from_bytes(1),
+			..ResidentLimits::default()
+		}),
+		..ResidentConfig::default()
+	});
+	let stored: Vec<OperatorWrite> = (1..=6).map(|suffix| insert(suffix, "stored")).collect();
+	store.apply_batch_with_checkpoints(&stored, &[], &[], Some(next_lsn())).unwrap();
+	flush(&store);
+	while store.resident.evict_to_capacity().0 > 0 {}
+	let hidden: Vec<OperatorWrite> = (1..=3).map(|suffix| remove(&store, suffix)).collect();
+	store.apply_batch_with_checkpoints(&hidden, &[], &[], Some(next_lsn())).unwrap();
+
+	let batch = store.range_batch(all(), 2).unwrap();
+
+	let first = batch.items.first().expect("the rows behind the hidden page must be read");
+	assert_eq!(first.0.as_encoded(), &key(4), "the first live row must follow the three hidden ones");
+}
+
 struct EnumerateFault {
 	from_call: u64,
 	calls: AtomicU64,
