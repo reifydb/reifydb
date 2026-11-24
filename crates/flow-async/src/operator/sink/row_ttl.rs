@@ -164,7 +164,9 @@ impl RowTtl {
 			return Ok(None);
 		}
 		let partition = self.timer_partition(&timer.key)?;
-		let due = self.due_entries(txn, partition, Some(timer.due), Some(timer.due), CUT_PAGE)?;
+		let armed = self.armed_due(txn, partition)?;
+		let from = armed.map_or(timer.due, |at| at.min(timer.due));
+		let due = self.due_entries(txn, partition, Some(from), Some(timer.due), CUT_PAGE)?;
 		let cut = !due.is_empty();
 		if cut {
 			let mut removes = Vec::with_capacity(due.len() * 2);
@@ -184,9 +186,12 @@ impl RowTtl {
 				}
 			}
 		}
-		let armed = self.armed_due(txn, partition)?;
-		let earliest = self.earliest_from(txn, partition, timer.due)?;
-		self.arm(txn, partition, armed, earliest)?;
+		let earliest = self.earliest_from(txn, partition, from)?;
+		if armed == earliest && earliest == Some(timer.due) {
+			txn.arm_timer(self.operator, timer)?;
+		} else {
+			self.arm(txn, partition, armed, earliest)?;
+		}
 		Ok(cut.then(|| TimedOutput::new(Diffs::new(), timer.due)))
 	}
 
@@ -308,7 +313,10 @@ impl RowTtl {
 			start,
 			end: Bound::Unbounded,
 		};
-		let batch = txn.state_range(self.operator, StateRange::forward(range, "row_ttl::due").limit(limit))?;
+		let batch = txn.state_range(
+			self.operator,
+			StateRange::forward(range, "row_ttl::due").limit(limit).full_page(),
+		)?;
 		let mut due = Vec::with_capacity(batch.items.len());
 		for item in batch.items {
 			let Some((at, owner, row)) = self.decode_entry(&item.key) else {
@@ -451,7 +459,7 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
-	use crate::transaction::mock::FlowTxn;
+	use crate::{timer::wheel::TimerWheel, transaction::mock::FlowTxn};
 
 	const T0: i64 = 1_000_000_000_000;
 	const HOUR: i64 = 3_600 * 1_000_000_000;
@@ -869,5 +877,46 @@ mod tests {
 		assert_eq!(armed_in(&ttl, &mut txn, P2), Some(T0 + HOUR), "the neighbour must keep its timer");
 		assert_armed_is_earliest_in(&ttl, &mut txn, P1);
 		assert_armed_is_earliest_in(&ttl, &mut txn, P2);
+	}
+	#[test]
+	fn a_timer_later_than_the_armed_due_still_cuts_every_row_due_by_then() {
+		// A cut that starts at the timer due instead of the armed due would skip the rows due before it.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = row_ttl(EvictionVisibility::Visible);
+		ttl.track(&mut txn, written(1, T0)).unwrap();
+		ttl.track(&mut txn, written(2, T0 + HALF)).unwrap();
+		ttl.track(&mut txn, written(3, T0 + 2 * HOUR)).unwrap();
+
+		assert!(fire(&ttl, &mut txn, T0 + 2 * HOUR).is_some(), "the late timer must cut the rows due by then");
+		assert_eq!(row_removes(&txn).len(), 2, "both rows due before the late timer must be cut");
+		assert_eq!(armed(&ttl, &mut txn), Some(T0 + 3 * HOUR), "the timer must move to the row that is left");
+		assert_armed_is_earliest(&ttl, &mut txn);
+	}
+
+	#[test]
+	fn a_cut_that_fills_its_page_keeps_a_timer_for_the_rows_left() {
+		// The wheel drops a timer when it fires, so without a new one the rows past the cut page are never cut.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = row_ttl(EvictionVisibility::Visible);
+		let rows = CUT_PAGE as u64 + 1;
+		let mut writes = RowWrites::default();
+		for row in 1..=rows {
+			writes.written.extend(written(row, T0).written);
+		}
+		ttl.track(&mut txn, writes).unwrap();
+
+		let due = DateTime::from_nanos(T0 + HOUR);
+		let fired = TimerWheel::take_due(ttl.operator, &mut txn, due, 16, None).unwrap().timers;
+		assert_eq!(fired.len(), 1, "the sink must hold one timer at the shared due");
+		assert!(ttl.on_timer(&mut txn, &fired[0]).unwrap().is_some(), "the fire must cut a page of rows");
+		assert_eq!(row_removes(&txn).len(), CUT_PAGE, "one fire must cut exactly one page");
+
+		let again = TimerWheel::take_due(ttl.operator, &mut txn, due, 16, None).unwrap().timers;
+		assert_eq!(again.len(), 1, "the row past the cut page must still have a timer on the wheel");
+		ttl.on_timer(&mut txn, &again[0]).unwrap();
+		assert_eq!(row_removes(&txn).len(), rows as usize, "the second fire must cut the row that was left");
+		assert_armed_is_earliest(&ttl, &mut txn);
 	}
 }
