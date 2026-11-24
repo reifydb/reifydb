@@ -145,6 +145,7 @@ struct Partition<K, R> {
 	materializes: u64,
 	last_write: u64,
 	covered: bool,
+	unswept: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

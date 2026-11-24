@@ -633,6 +633,7 @@ mod tests {
 					materializes: 0,
 					last_write: 0,
 					covered: true,
+					unswept: 0,
 				}
 			});
 			slot.tick = tick;

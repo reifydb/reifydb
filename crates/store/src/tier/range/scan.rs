@@ -550,6 +550,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				materializes: 0,
 				last_write: 0,
 				covered: false,
+				unswept: 0,
 			});
 
 			let mut added = 0;
@@ -828,6 +829,7 @@ mod tests {
 		tier::range::{
 			DEFAULT_COVERAGE_INTERVALS, Materialize, RangeConfig, RangeScan, RangeTier,
 			domain::{TestDomain as D, TestPartition},
+			write::MARKER_SWEEP_LIMIT,
 		},
 	};
 
@@ -916,6 +918,64 @@ mod tests {
 
 	fn intervals(tier: &RangeTier<D>) -> Vec<Interval<OpaqueKey>> {
 		tier.coverage().read().set(OP).map(|set| set.iter().collect()).unwrap_or_default()
+	}
+
+	#[test]
+	fn a_materialize_that_read_a_row_before_its_removal_never_brings_the_row_back() {
+		// A late read must never re-seat a removed row, otherwise the cache serves a dead row.
+		let tier = roomy();
+		let range = keyspace_inner_range(group(), CACHED);
+		let at = |suffix: &[u8]| key(CACHED, suffix);
+		let span = spanning(&at(b"a"), &at(b"e"));
+		assert!(claim(&tier, &range, &span, &[(at(b"a"), row("a1")), (at(b"b"), row("b1"))])
+			== Materialize::Materialized);
+		let late =
+			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
+
+		tier.retract_run(partition(CACHED), &[at(b"b")]);
+		tier.materialize(&late, &span, &[(at(b"a"), row("a1")), (at(b"b"), row("b1"))]);
+
+		let scan =
+			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
+		assert_eq!(
+			drain(&tier, &scan, &span, 64),
+			["a1"],
+			"the removed row must stay gone after the late materialize"
+		);
+		assert_eq!(
+			tier.lookup(OP, &at(b"b")),
+			Some(None),
+			"a point read must still prove the removed key absent"
+		);
+	}
+
+	#[test]
+	fn a_materialize_that_read_a_row_before_a_sweep_dropped_its_marker_is_refused() {
+		// A swept marker guards nothing, so the late read must be refused or the dead row returns.
+		let tier = roomy();
+		let range = keyspace_inner_range(group(), CACHED);
+		let at = |suffix: &[u8]| key(CACHED, suffix);
+		let span = spanning(&at(b"a"), &at(b"e"));
+		assert!(claim(&tier, &range, &span, &[(at(b"a"), row("a1")), (at(b"b"), row("b1"))])
+			== Materialize::Materialized);
+		let late =
+			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
+
+		let mut gone = vec![at(b"b")];
+		gone.extend((1..MARKER_SWEEP_LIMIT as u32)
+			.map(|index| at(&[b"c".as_slice(), &index.to_be_bytes()].concat())));
+		tier.retract_run(partition(CACHED), &gone);
+		let outcome = tier.materialize(&late, &span, &[(at(b"a"), row("a1")), (at(b"b"), row("b1"))]);
+
+		assert!(outcome == Materialize::Refused, "a read planned before the sweep must never land");
+		let scan =
+			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
+		assert!(!drain(&tier, &scan, &span, 64).contains(&"b1".to_string()), "the removed row must stay gone");
+		assert_eq!(
+			tier.lookup(OP, &at(b"b")),
+			None,
+			"the rolled back key must fall through, never answer a row"
+		);
 	}
 
 	#[test]

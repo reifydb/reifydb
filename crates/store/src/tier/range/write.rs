@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::{collections::BTreeMap, slice};
 
-use reifydb_core::key::typed::Edge;
+use reifydb_core::{key::typed::Edge, util::budget::MemoryBudget};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
@@ -15,6 +15,8 @@ use crate::{
 		partition_overhead,
 	},
 };
+
+pub(super) const MARKER_SWEEP_LIMIT: usize = 1024;
 
 #[cfg(test)]
 thread_local! {
@@ -212,6 +214,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				materializes: 0,
 				last_write: 0,
 				covered: true,
+				unswept: 0,
 			});
 			if fresh {
 				budget.charge(ByteSize::from_bytes(partition_overhead::<D>() as u64));
@@ -225,12 +228,16 @@ impl<D: RangeDomain> RangeTier<D> {
 				let new = entry_footprint(key, &marker);
 				match target.entries.get_mut(key) {
 					Some(previous) => {
+						if !matches!(previous, Entry::Absent) {
+							target.unswept += 1;
+						}
 						let old = entry_footprint(key, previous);
 						target.pinned.replace(previous, &marker);
 						account(&mut target.bytes, budget, old, new);
 						*previous = marker;
 					}
 					None => {
+						target.unswept += 1;
 						target.pinned.insert(&marker);
 						account(&mut target.bytes, budget, 0, new);
 						markers.push((key.clone(), marker));
@@ -240,10 +247,40 @@ impl<D: RangeDomain> RangeTier<D> {
 			target.entries.extend(markers);
 			target.tick = next + placed - 1;
 			target.last_write = writes + placed;
+			if target.unswept >= MARKER_SWEEP_LIMIT && self.sweep_markers(partition, target, budget) {
+				self.record_retraction();
+			}
 		}
 		shard.next_tick = next + placed;
 		shard.writes = writes + placed;
 		true
+	}
+
+	fn sweep_markers(
+		&self,
+		partition: &D::Partition,
+		target: &mut Partition<D::Key, D::Row>,
+		budget: &MemoryBudget,
+	) -> bool {
+		target.unswept = 0;
+		let dimension = D::dimension(partition);
+		let coverage = self.coverage().read();
+		let Partition {
+			entries,
+			pinned,
+			bytes,
+			..
+		} = target;
+		let before = entries.len();
+		entries.retain(|key, entry| {
+			if !matches!(entry, Entry::Absent) || !coverage.contains(dimension, key) {
+				return true;
+			}
+			pinned.remove(entry);
+			account(bytes, budget, entry_footprint(key, entry), 0);
+			false
+		});
+		entries.len() < before
 	}
 
 	pub fn invalidate(&self, dimension: D::Dimension, key: &D::Key) {
@@ -365,6 +402,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				materializes: 0,
 				last_write: 0,
 				covered: true,
+				unswept: 0,
 			});
 			if fresh {
 				budget.charge(ByteSize::from_bytes(partition_overhead::<D>() as u64));
@@ -493,6 +531,7 @@ mod tests {
 			Partition, RangeConfig, RangeTier,
 			domain::{TestDomain as D, TestPartition},
 			entry_footprint, partition_overhead,
+			write::MARKER_SWEEP_LIMIT,
 		},
 	};
 
@@ -551,6 +590,7 @@ mod tests {
 				materializes: 0,
 				last_write: 0,
 				covered: true,
+				unswept: 0,
 			},
 		);
 	}
@@ -799,6 +839,68 @@ mod tests {
 		assert_eq!(tier.lookup(OP_A, &at), Some(None));
 	}
 
+	fn numbered(index: usize) -> EncodedKey {
+		key(CACHED, &[b"m".as_slice(), &(index as u32).to_be_bytes()].concat())
+	}
+
+	#[test]
+	fn flushed_removals_inside_a_claim_are_swept_once_they_reach_the_limit() {
+		// Markers must never pile up without bound, otherwise every range read walks all of them.
+		let tier = tier();
+		let id = partition(OP_A, CACHED);
+		participate(&tier, id);
+		claim(&tier, OP_A, &key(CACHED, b"a"), &key(CACHED, b"z"));
+		let keys: Vec<EncodedKey> = (0..MARKER_SWEEP_LIMIT).map(numbered).collect();
+		let before = tier.retractions();
+
+		tier.retract_run(id, &keys[..keys.len() - 1]);
+		assert_eq!(resident_entries(&tier), keys.len() - 1, "below the limit every marker must stay");
+		assert_eq!(tier.retractions(), before, "below the limit nothing is withdrawn");
+
+		tier.retract_run(id, &keys[keys.len() - 1..]);
+		assert_eq!(resident_entries(&tier), 0, "at the limit every marker inside the claim must go");
+		assert_eq!(tier.retractions(), before + 1, "a sweep must refuse every read planned before it");
+		assert_eq!(bytes(&tier, &id), PARTITION_OVERHEAD, "a swept marker must be released from the budget");
+		assert_eq!(pinned(&tier, &id).total(), 0);
+		assert_eq!(tier.lookup(OP_A, &keys[0]), Some(None), "the claim must still prove a swept key absent");
+	}
+
+	#[test]
+	fn a_sweep_keeps_every_marker_that_still_carries_meaning() {
+		// Outside a claim the marker is the only proof, and an unflushed removal must stay until its flush.
+		let tier = tier();
+		let id = partition(OP_A, CACHED);
+		participate(&tier, id);
+		claim(&tier, OP_A, &key(CACHED, b"m"), &key(CACHED, b"z"));
+		let outside = key(CACHED, b"b");
+		let pending = key(CACHED, b"n");
+		tier.retract_run(id, &[outside.clone()]);
+		tier.overwrite_run(id, vec![(pending.clone(), row("v"))]);
+		tier.mark_deleted_run(id, &[pending.clone()]);
+		let keys: Vec<EncodedKey> = (0..MARKER_SWEEP_LIMIT).map(numbered).collect();
+
+		tier.retract_run(id, &keys);
+
+		assert_eq!(residency(&tier, &id, &outside), Some(Entry::Absent), "a marker outside a claim must stay");
+		assert_eq!(residency(&tier, &id, &pending), Some(Entry::Deleted), "an unflushed removal must stay");
+		assert_eq!(resident_entries(&tier), 2, "every marker inside the claim must go");
+	}
+
+	#[test]
+	fn removals_flushed_in_many_runs_never_leave_more_markers_than_the_limit() {
+		// The bound must hold across runs, otherwise a steady trickle of removals still piles up.
+		let tier = tier();
+		let id = partition(OP_A, CACHED);
+		participate(&tier, id);
+		claim(&tier, OP_A, &key(CACHED, b"a"), &key(CACHED, b"z"));
+
+		for run in 0..100 {
+			let keys: Vec<EncodedKey> = (run * 100..(run + 1) * 100).map(numbered).collect();
+			tier.retract_run(id, &keys);
+			assert!(resident_entries(&tier) < MARKER_SWEEP_LIMIT, "markers must stay under the limit");
+		}
+	}
+
 	#[test]
 	fn retract_in_a_partition_taking_part_in_no_claim_stores_nothing() {
 		// Nothing here is answerable, so a proven absence would only cost budget.
@@ -882,6 +984,7 @@ mod tests {
 				materializes: 0,
 				last_write: 0,
 				covered: false,
+				unswept: 0,
 			},
 		);
 	}
