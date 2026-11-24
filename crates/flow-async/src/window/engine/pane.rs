@@ -295,6 +295,7 @@ pub trait PanePublisher<G, C, A> {
 struct Panes<'s, A> {
 	store: &'s mut dyn StateStore,
 	group: GroupId,
+	stored: Option<(u64, u64)>,
 	overlay: BTreeMap<u64, Option<RollingPane<A>>>,
 	loaded: BTreeSet<u64>,
 }
@@ -316,6 +317,20 @@ fn pane_of(key: &GroupStateKey) -> Result<u64, ValueError> {
 	}
 }
 
+fn misses(start: Bound<u64>, end: Bound<u64>, oldest: u64, newest: u64) -> bool {
+	let before = match end {
+		Included(end) => end < oldest,
+		Excluded(end) => end <= oldest,
+		Unbounded => false,
+	};
+	let after = match start {
+		Included(start) => start > newest,
+		Excluded(start) => start >= newest,
+		Unbounded => false,
+	};
+	before || after
+}
+
 fn is_ordered(start: Bound<u64>, end: Bound<u64>) -> bool {
 	match (start, end) {
 		(Included(s), Included(e)) => s <= e,
@@ -330,10 +345,11 @@ where
 	A: WindowAccumulator,
 	RollingPane<A>: OperatorState,
 {
-	fn new(store: &'s mut dyn StateStore, group: GroupId) -> Self {
+	fn new(store: &'s mut dyn StateStore, group: GroupId, stored: Option<(u64, u64)>) -> Self {
 		Self {
 			store,
 			group,
+			stored,
 			overlay: BTreeMap::new(),
 			loaded: BTreeSet::new(),
 		}
@@ -360,7 +376,11 @@ where
 		if !is_ordered(start, end) {
 			return Ok(out);
 		}
-		for (key, row) in self.store.state_page(pane_range(self.group, start, end), None)? {
+		let stored = match self.stored {
+			Some((oldest, newest)) if misses(start, end, oldest, newest) => Vec::new(),
+			_ => self.store.state_page(pane_range(self.group, start, end), None)?,
+		};
+		for (key, row) in stored {
 			let pane = pane_of(&key)?;
 			if self.overlay.contains_key(&pane) {
 				continue;
@@ -396,10 +416,16 @@ where
 		})
 	}
 
+	#[cfg(reifydb_assertions)]
+	fn staged(&self) -> impl Iterator<Item = u64> + '_ {
+		self.overlay.iter().filter(|(_, row)| row.is_some()).map(|(pane, _)| *pane)
+	}
+
 	fn flush(self) -> Result<&'s mut dyn StateStore, ValueError> {
 		let Self {
 			store,
 			group,
+			stored: _,
 			overlay,
 			loaded,
 		} = self;
@@ -683,7 +709,7 @@ where
 			.remove(0) else {
 				return internal_err!("a rolling age out row names a group with no group row");
 			};
-			let view = Panes::new(store, entry.group_id);
+			let view = Panes::new(store, entry.group_id, Some((row.oldest, row.newest)));
 			self.settle(
 				view,
 				&entry.group,
@@ -955,6 +981,7 @@ where
 			return Ok(());
 		}
 		let prior_oldest = stored.as_ref().map(|row| row.oldest);
+		let bounds = stored.as_ref().map(|row| (row.oldest, row.newest));
 		let mut row = stored.unwrap_or_else(|| RollingGroup {
 			newest: 0,
 			oldest: 0,
@@ -965,7 +992,7 @@ where
 			held: BTreeMap::new(),
 		});
 		row.held = held;
-		let mut view = Panes::new(store, group_id);
+		let mut view = Panes::new(store, group_id, bounds);
 		let mut touched = false;
 		for (pane, events) in panes {
 			let before = view.get(pane)?;
@@ -1101,6 +1128,15 @@ where
 				}
 			},
 		};
+		reifydb_assertions! {
+			let newest = row.newest;
+			let outside = view.staged().find(|pane| oldest.is_none_or(|oldest| *pane < oldest) || *pane > newest);
+			assert!(
+				outside.is_none(),
+				"rolling pane {outside:?} is written outside its group row bounds {oldest:?}..={newest}; a \
+				 later scan skips the store on those bounds and would never fold or age that pane"
+			);
+		}
 		let store = view.flush()?;
 		let hash = group_hash(group)?;
 		row.published = publisher.publish(
@@ -1155,7 +1191,7 @@ where
 mod tests {
 	use std::{
 		collections::{BTreeMap, HashMap},
-		ops::Bound::Unbounded,
+		ops::Bound::{Excluded, Included, Unbounded},
 	};
 
 	use reifydb_codec::row::operator::state::decode;
@@ -1170,8 +1206,8 @@ mod tests {
 	};
 
 	use super::{
-		EmitKind, PaneEngine, PaneEvents, PaneGroups, PaneOp, PaneSpans, RollingEmit, RollingPane, pane_of,
-		pane_range,
+		EmitKind, PaneEngine, PaneEvents, PaneGroups, PaneOp, PaneSpans, Panes, RollingEmit, RollingPane,
+		pane_of, pane_range,
 	};
 	use crate::{
 		operator::state::mock::MockStore,
@@ -1886,5 +1922,61 @@ mod tests {
 				"{ops:?}: the apply must fail with {expected:?}, got {message}"
 			);
 		}
+	}
+
+	fn store_with_a_pane_at(group: GroupId, pane: u64) -> MockStore {
+		let mut store = MockStore::default();
+		let mut view: Panes<'_, Bag> = Panes::new(&mut store, group, None);
+		view.put(
+			pane,
+			Some(RollingPane {
+				pane: Bag::default(),
+				partial: None,
+			}),
+		);
+		view.flush().unwrap();
+		store
+	}
+
+	#[test]
+	fn a_pane_scan_outside_the_group_row_bounds_never_reaches_the_store() {
+		// The group row bounds every stored pane, so a scan that misses them must cost no range read.
+		let group = GroupId::hashed(Hash128(1));
+		let mut store = store_with_a_pane_at(group, 15);
+		let mut view: Panes<'_, Bag> = Panes::new(&mut store, group, Some((10, 20)));
+
+		assert!(view.scan(Unbounded, Included(9)).unwrap().is_empty());
+		assert!(view.scan(Excluded(20), Unbounded).unwrap().is_empty());
+
+		assert_eq!(store.range_reads(), 0, "a scan that misses the group row bounds must never read the store");
+	}
+
+	#[test]
+	fn a_pane_scan_inside_the_group_row_bounds_reads_the_store() {
+		// A scan that touches the bounds must reach the store, otherwise stored panes are never folded or aged.
+		let group = GroupId::hashed(Hash128(1));
+		let mut store = store_with_a_pane_at(group, 15);
+		let mut view: Panes<'_, Bag> = Panes::new(&mut store, group, Some((10, 20)));
+
+		let found: Vec<u64> = view.scan(Included(10), Included(20)).unwrap().into_keys().collect();
+
+		assert_eq!(found, vec![15], "a scan inside the group row bounds must find the stored pane");
+		assert_eq!(
+			store.range_reads(),
+			1,
+			"a scan inside the group row bounds must read the store exactly once"
+		);
+	}
+
+	#[test]
+	fn a_pane_scan_of_a_group_with_no_group_row_still_reads_the_store() {
+		// A lost group row must never hide its stored panes, otherwise the group restarts from nothing.
+		let group = GroupId::hashed(Hash128(1));
+		let mut store = store_with_a_pane_at(group, 15);
+		let mut view: Panes<'_, Bag> = Panes::new(&mut store, group, None);
+
+		let found: Vec<u64> = view.scan(Unbounded, Unbounded).unwrap().into_keys().collect();
+
+		assert_eq!(found, vec![15], "a group with no group row must still find its stored pane");
 	}
 }

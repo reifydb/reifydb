@@ -59,6 +59,7 @@ pub(crate) struct MockStore {
 	flow_watermark: Option<DateTime>,
 	batch_time: Option<DateTime>,
 	rows_visited: usize,
+	range_reads: usize,
 }
 
 impl MockStore {
@@ -107,6 +108,10 @@ impl MockStore {
 
 	pub(crate) fn rows_visited(&self) -> usize {
 		self.rows_visited
+	}
+
+	pub(crate) fn range_reads(&self) -> usize {
+		self.range_reads
 	}
 }
 
@@ -192,6 +197,7 @@ impl StateStore for MockStore {
 		Ok(keys.iter().map(|key| self.data.get(key.as_slice()).cloned()).collect())
 	}
 	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>, ValueError> {
+		self.range_reads += 1;
 		let range = inner_bytes(range);
 		let last = self
 			.data
@@ -225,6 +231,7 @@ impl StateStore for MockStore {
 		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
+		self.range_reads += 1;
 		let range = inner_bytes(range);
 		let after_start = |k: &[u8]| match &range.start {
 			Bound::Included(s) => k >= s.as_bytes(),
