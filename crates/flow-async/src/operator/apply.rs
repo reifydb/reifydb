@@ -38,7 +38,7 @@ use crate::{
 		join::kept::dictionary_columns,
 		stamp_output_created,
 		state::{
-			due::{due_drop, due_earliest, due_entries, managed_due_group, managed_latest_key},
+			due::{due_drop, due_entries, due_next_above, managed_due_group, managed_latest_key},
 			forget_pass::{StoreForgetter, drain, drain_group, enqueue},
 			seal::{
 				check::{SEALED_INSERTS, SEALED_REMOVES, SEALED_UPDATES, first_admitted, kept_from},
@@ -301,7 +301,8 @@ fn fire_forget_pass(host: &mut dyn HostContext, fired: DateTime) -> Result<(), V
 	let retry_at = fired.saturating_add(SEAL_GATE_STEP);
 	let next = match retry {
 		true => Some(retry_at),
-		false => due_earliest::<CustomManagedDue>(host)?.map(|order| DateTime::from_order(order).max(retry_at)),
+		false => due_next_above::<CustomManagedDue>(host, fired.to_order())?
+			.map(|order| DateTime::from_order(order).max(retry_at)),
 	};
 	if let Some(at) = next {
 		host.arm_timer(at, TimerKind::ForgetPass, &EncodedKey::new(Vec::new()))?;

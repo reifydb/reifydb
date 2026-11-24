@@ -623,8 +623,7 @@ mod tests {
 
 	#[test]
 	fn a_write_that_leaves_the_armed_row_alone_reads_no_range() {
-		// A range read per sink write walks every dead entry in front of the earliest due, so it must never
-		// happen here.
+		// A range read per sink write walks every dead entry, so this write must never issue one.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().clock_millis(0).deferred();
 		let ttl = row_ttl(EvictionVisibility::Visible);
@@ -728,8 +727,7 @@ mod tests {
 
 	#[test]
 	fn rewriting_the_armed_row_with_the_same_time_keeps_the_timer() {
-		// A rewrite with an unchanged time removes and re-adds one entry key, which must never read as a
-		// removal.
+		// A rewrite with an unchanged time re-adds its entry key, which must never count as a removal.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().clock_millis(0).deferred();
 		let ttl = row_ttl(EvictionVisibility::Visible);
@@ -802,8 +800,7 @@ mod tests {
 
 	#[test]
 	fn updating_a_partitions_armed_row_arms_its_own_next_earliest() {
-		// The scan from the armed due must stay inside the partition and start at that due, never at the
-		// partition start.
+		// The scan must start at the armed due and stay inside the partition, never at the partition start.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().clock_millis(0).deferred();
 		let ttl = partitioned_row_ttl();
