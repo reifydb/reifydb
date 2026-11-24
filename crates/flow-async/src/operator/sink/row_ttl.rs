@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeSet, HashMap},
+	collections::{BTreeMap, HashMap},
 	ops::Bound,
 	slice,
 };
@@ -89,9 +89,14 @@ impl RowTtl {
 		ids.extend(writes.written.iter().map(|write| (write.partition, write.row)));
 		let mut current = self.stored_dues(txn, &ids)?;
 		let mut ops: HashMap<GroupStateKey, Option<EncodedPodRow>> = HashMap::new();
+		let mut changes: BTreeMap<Option<Partition>, BTreeMap<DateTime, i64>> = BTreeMap::new();
+		for id in &ids {
+			changes.entry(id.0).or_default();
+		}
 
 		for id in writes.cleared {
 			if let Some(due) = current.insert(id, None).flatten() {
+				*changes.entry(id.0).or_default().entry(due).or_default() -= 1;
 				ops.insert(self.entry_key(id.0, due, id.1), None);
 				ops.insert(self.forward_key(id.0, id.1), None);
 			}
@@ -105,9 +110,12 @@ impl RowTtl {
 				}));
 			};
 			let due = time.saturating_add(self.ttl);
+			let net = changes.entry(id.0).or_default();
 			if let Some(old) = current.insert(id, Some(due)).flatten() {
+				*net.entry(old).or_default() -= 1;
 				ops.insert(self.entry_key(id.0, old, id.1), None);
 			}
+			*net.entry(due).or_default() += 1;
 			ops.insert(
 				self.entry_key(id.0, due, id.1),
 				Some(encode_state(&write.key.to_vec(), "RowTtlEntry")?),
@@ -130,8 +138,21 @@ impl RowTtl {
 			txn.state_set(self.operator, sets)?;
 		}
 
-		let partitions: BTreeSet<Option<Partition>> = ids.iter().map(|id| id.0).collect();
-		self.sync_timers(txn, partitions)
+		for (partition, net) in changes {
+			let armed = self.armed_due(txn, partition)?;
+			let added = net.iter().find(|(_, count)| **count > 0).map(|(due, _)| *due);
+			let lower = match (armed, added) {
+				(Some(armed), Some(added)) => Some(armed.min(added)),
+				(armed, added) => armed.or(added),
+			};
+			let armed_removed = armed.is_some_and(|at| net.get(&at).is_some_and(|count| *count < 0));
+			let earliest = match lower {
+				Some(from) if armed_removed => self.earliest_from(txn, partition, from)?,
+				lower => lower,
+			};
+			self.arm(txn, partition, armed, earliest)?;
+		}
+		Ok(())
 	}
 
 	pub fn on_timer(
@@ -143,7 +164,7 @@ impl RowTtl {
 			return Ok(None);
 		}
 		let partition = self.timer_partition(&timer.key)?;
-		let due = self.due_entries(txn, partition, Some(timer.due), CUT_PAGE)?;
+		let due = self.due_entries(txn, partition, Some(timer.due), Some(timer.due), CUT_PAGE)?;
 		let cut = !due.is_empty();
 		if cut {
 			let mut removes = Vec::with_capacity(due.len() * 2);
@@ -163,7 +184,9 @@ impl RowTtl {
 				}
 			}
 		}
-		self.sync_timers(txn, BTreeSet::from([partition]))?;
+		let armed = self.armed_due(txn, partition)?;
+		let earliest = self.earliest_from(txn, partition, timer.due)?;
+		self.arm(txn, partition, armed, earliest)?;
 		Ok(cut.then(|| TimedOutput::new(Diffs::new(), timer.due)))
 	}
 
@@ -184,49 +207,65 @@ impl RowTtl {
 		Ok(dues)
 	}
 
-	fn sync_timers(
+	fn armed_due(
 		&self,
 		txn: &mut DeferredTransaction,
-		partitions: BTreeSet<Option<Partition>>,
+		partition: Option<Partition>,
+	) -> Result<Option<DateTime>, ValueError> {
+		let arm_key = self.arm_key(partition);
+		match txn.state_get(self.operator, slice::from_ref(&arm_key))?.pop().flatten() {
+			Some(row) => Ok(Some(DateTime::from_nanos(decode_state::<i64>(&row, "RowTtlArm")?))),
+			None => Ok(None),
+		}
+	}
+
+	fn earliest_from(
+		&self,
+		txn: &mut DeferredTransaction,
+		partition: Option<Partition>,
+		from: DateTime,
+	) -> Result<Option<DateTime>, ValueError> {
+		Ok(self.due_entries(txn, partition, Some(from), None, 1)?.first().map(|entry| entry.due))
+	}
+
+	fn arm(
+		&self,
+		txn: &mut DeferredTransaction,
+		partition: Option<Partition>,
+		armed: Option<DateTime>,
+		earliest: Option<DateTime>,
 	) -> Result<(), ValueError> {
-		for partition in partitions {
-			let arm_key = self.arm_key(partition);
-			let armed = match txn.state_get(self.operator, slice::from_ref(&arm_key))?.pop().flatten() {
-				Some(row) => Some(DateTime::from_nanos(decode_state::<i64>(&row, "RowTtlArm")?)),
-				None => None,
-			};
-			let earliest = self.due_entries(txn, partition, None, 1)?.first().map(|entry| entry.due);
-			if armed == earliest {
-				continue;
-			}
-			let key = self.timer_key(partition);
-			if let Some(at) = armed {
-				txn.disarm_timer(
+		if armed == earliest {
+			return Ok(());
+		}
+		let arm_key = self.arm_key(partition);
+		let key = self.timer_key(partition);
+		if let Some(at) = armed {
+			txn.disarm_timer(
+				self.operator,
+				&Timer {
+					due: at,
+					kind: TimerKind::RowTtl,
+					key: key.clone(),
+				},
+			)?;
+		}
+		match earliest {
+			Some(at) => {
+				txn.arm_timer(
 					self.operator,
 					&Timer {
 						due: at,
 						kind: TimerKind::RowTtl,
-						key: key.clone(),
+						key,
 					},
 				)?;
+				txn.state_set(
+					self.operator,
+					vec![(arm_key, encode_state(&at.to_nanos(), "RowTtlArm")?)],
+				)?;
 			}
-			match earliest {
-				Some(at) => {
-					txn.arm_timer(
-						self.operator,
-						&Timer {
-							due: at,
-							kind: TimerKind::RowTtl,
-							key,
-						},
-					)?;
-					txn.state_set(
-						self.operator,
-						vec![(arm_key, encode_state(&at.to_nanos(), "RowTtlArm")?)],
-					)?;
-				}
-				None => txn.state_remove(self.operator, &[arm_key])?,
-			}
+			None => txn.state_remove(self.operator, &[arm_key])?,
 		}
 		Ok(())
 	}
@@ -235,22 +274,33 @@ impl RowTtl {
 		&self,
 		txn: &mut DeferredTransaction,
 		partition: Option<Partition>,
+		from: Option<DateTime>,
 		until: Option<DateTime>,
 		limit: usize,
 	) -> Result<Vec<DueEntry>, ValueError> {
-		let (keyspace, start) = match partition {
-			Some(partition) => (
+		let (keyspace, start) = match (partition, from) {
+			(Some(partition), from) => (
 				KeyspaceId::PARTITIONED_ROW_TTL_ENTRY,
 				Bound::Included(
 					PartitionedRowTtlEntryKey {
 						partition: Asc(partition),
-						due: BoundedKey::low(),
+						due: from.map_or_else(BoundedKey::low, Asc),
 						row: BoundedKey::low(),
 					}
 					.to_suffix_bytes(),
 				),
 			),
-			None => (KeyspaceId::ROW_TTL_ENTRY, Bound::Unbounded),
+			(None, Some(from)) => (
+				KeyspaceId::ROW_TTL_ENTRY,
+				Bound::Included(
+					RowTtlEntryKey {
+						due: Asc(from),
+						row: BoundedKey::low(),
+					}
+					.to_suffix_bytes(),
+				),
+			),
+			(None, None) => (KeyspaceId::ROW_TTL_ENTRY, Bound::Unbounded),
 		};
 		let range = GroupStateRange::Keyspace {
 			group: GroupId::ROOT,
@@ -395,6 +445,7 @@ mod tests {
 		delta::RemoveVisibility,
 		interface::catalog::{id::ViewId, storage::StorageId},
 		key::row::RowKey,
+		metrics::scan::PageRequests,
 	};
 	use reifydb_flow::operator::sink::RowWrite;
 	use reifydb_test_harness::engine::TestEngine;
@@ -537,5 +588,286 @@ mod tests {
 		let mut writes = written(1, T0);
 		writes.written[0].time = None;
 		assert!(ttl.track(&mut txn, writes).is_err(), "a ttl row without #time must be an error");
+	}
+
+	fn cleared(row: u64) -> RowWrites {
+		RowWrites {
+			cleared: vec![(None, RowNumber(row))],
+			written: Vec::new(),
+		}
+	}
+
+	fn armed(ttl: &RowTtl, txn: &mut DeferredTransaction) -> Option<i64> {
+		let key = ttl.arm_key(None);
+		txn.state_get(ttl.operator, slice::from_ref(&key))
+			.unwrap()
+			.pop()
+			.flatten()
+			.map(|row| decode_state::<i64>(&row, "RowTtlArm").unwrap())
+	}
+
+	fn assert_armed_is_earliest(ttl: &RowTtl, txn: &mut DeferredTransaction) {
+		// The armed due must equal the earliest live entry due, otherwise a due row outlives its ttl.
+		let earliest =
+			ttl.due_entries(txn, None, None, None, 1).unwrap().first().map(|entry| entry.due.to_nanos());
+		assert_eq!(armed(ttl, txn), earliest, "the armed due must be the earliest live entry due");
+	}
+
+	#[test]
+	fn a_write_that_leaves_the_armed_row_alone_reads_no_range() {
+		// A range read per sink write walks every dead entry in front of the earliest due, so it must never
+		// happen here.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = row_ttl(EvictionVisibility::Visible);
+		ttl.track(&mut txn, written(1, T0)).unwrap();
+		ttl.track(&mut txn, written(2, T0 + HALF)).unwrap();
+		ttl.track(&mut txn, written(3, T0 + HOUR)).unwrap();
+
+		let before = PageRequests::sample();
+		ttl.track(&mut txn, written(3, T0 + HOUR + HALF)).unwrap();
+		assert_eq!(before.since(), 0, "a write away from the armed row must request no range page");
+
+		assert_eq!(armed(&ttl, &mut txn), Some(T0 + HOUR), "the timer must stay on the untouched earliest row");
+		assert_armed_is_earliest(&ttl, &mut txn);
+	}
+
+	#[test]
+	fn updating_the_armed_row_to_a_later_time_arms_the_next_earliest() {
+		// A timer left on the moved due would fire on nothing and never cut the row that is now earliest.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = row_ttl(EvictionVisibility::Visible);
+		ttl.track(&mut txn, written(1, T0)).unwrap();
+		ttl.track(&mut txn, written(2, T0 + HALF)).unwrap();
+		assert_armed_is_earliest(&ttl, &mut txn);
+
+		ttl.track(&mut txn, written(1, T0 + HOUR)).unwrap();
+		assert_eq!(armed(&ttl, &mut txn), Some(T0 + HALF + HOUR), "the timer must move to the second row");
+		assert_armed_is_earliest(&ttl, &mut txn);
+	}
+
+	#[test]
+	fn clearing_the_armed_row_arms_the_next_earliest() {
+		// A timer kept on a cleared row must not hide the due of the rows that are left.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = row_ttl(EvictionVisibility::Visible);
+		ttl.track(&mut txn, written(1, T0)).unwrap();
+		ttl.track(&mut txn, written(2, T0 + HALF)).unwrap();
+
+		ttl.track(&mut txn, cleared(1)).unwrap();
+		assert_eq!(
+			armed(&ttl, &mut txn),
+			Some(T0 + HALF + HOUR),
+			"the timer must move to the row that is left"
+		);
+		assert_armed_is_earliest(&ttl, &mut txn);
+	}
+
+	#[test]
+	fn clearing_the_last_row_disarms() {
+		// An arm value that survives the last row would make the next first write skip arming its timer.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = row_ttl(EvictionVisibility::Visible);
+		ttl.track(&mut txn, written(1, T0)).unwrap();
+
+		ttl.track(&mut txn, cleared(1)).unwrap();
+		assert_eq!(armed(&ttl, &mut txn), None, "no row left must mean no armed due");
+		assert_armed_is_earliest(&ttl, &mut txn);
+
+		ttl.track(&mut txn, written(2, T0 + HALF)).unwrap();
+		assert_eq!(armed(&ttl, &mut txn), Some(T0 + HALF + HOUR), "the next first row must arm its due");
+		assert_armed_is_earliest(&ttl, &mut txn);
+	}
+
+	#[test]
+	fn a_row_due_before_the_armed_one_rearms_earlier() {
+		// A timer kept on the later due would cut the new row late by the gap between the two dues.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = row_ttl(EvictionVisibility::Visible);
+		ttl.track(&mut txn, written(1, T0 + HALF)).unwrap();
+
+		ttl.track(&mut txn, written(2, T0)).unwrap();
+		assert_eq!(armed(&ttl, &mut txn), Some(T0 + HOUR), "the timer must move to the earlier due");
+		assert_armed_is_earliest(&ttl, &mut txn);
+	}
+
+	#[test]
+	fn clearing_one_of_two_rows_with_the_same_due_keeps_the_timer() {
+		// Two rows may share a due, so one leaving must never move the timer off the other.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = row_ttl(EvictionVisibility::Visible);
+		ttl.track(&mut txn, written(1, T0)).unwrap();
+		ttl.track(&mut txn, written(2, T0)).unwrap();
+		ttl.track(&mut txn, written(3, T0 + HALF)).unwrap();
+
+		ttl.track(&mut txn, cleared(1)).unwrap();
+		assert_eq!(armed(&ttl, &mut txn), Some(T0 + HOUR), "the row that shares the due must keep the timer");
+		assert_armed_is_earliest(&ttl, &mut txn);
+
+		assert!(
+			fire(&ttl, &mut txn, T0 + HOUR).is_some(),
+			"the shared due must still cut the row that is left"
+		);
+		let removes = row_removes(&txn);
+		assert_eq!(removes.len(), 1, "only the row that stayed must be cut: {removes:?}");
+		assert_eq!(removes[0].0, RowKey::encoded(VIEW, RowNumber(2)), "the cut must hit the row that stayed");
+	}
+
+	#[test]
+	fn rewriting_the_armed_row_with_the_same_time_keeps_the_timer() {
+		// A rewrite with an unchanged time removes and re-adds one entry key, which must never read as a
+		// removal.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = row_ttl(EvictionVisibility::Visible);
+		ttl.track(&mut txn, written(1, T0)).unwrap();
+		ttl.track(&mut txn, written(2, T0 + HALF)).unwrap();
+
+		ttl.track(&mut txn, written(1, T0)).unwrap();
+		assert_eq!(armed(&ttl, &mut txn), Some(T0 + HOUR), "an unchanged due must keep the timer");
+		assert_armed_is_earliest(&ttl, &mut txn);
+	}
+	const P1: Partition = Partition(1);
+	const P2: Partition = Partition(2);
+
+	fn partitioned_row_ttl() -> RowTtl {
+		RowTtl::new(OperatorId(1), Duration::from_hours(1).unwrap(), EvictionVisibility::Visible, true)
+	}
+
+	fn written_in(partition: Partition, row: u64, time: i64) -> RowWrites {
+		let mut writes = written(row, time);
+		writes.written[0].partition = Some(partition);
+		writes
+	}
+
+	fn armed_in(ttl: &RowTtl, txn: &mut DeferredTransaction, partition: Partition) -> Option<i64> {
+		let key = ttl.arm_key(Some(partition));
+		txn.state_get(ttl.operator, slice::from_ref(&key))
+			.unwrap()
+			.pop()
+			.flatten()
+			.map(|row| decode_state::<i64>(&row, "RowTtlArm").unwrap())
+	}
+
+	fn assert_armed_is_earliest_in(ttl: &RowTtl, txn: &mut DeferredTransaction, partition: Partition) {
+		// Each partition arms its own earliest due, otherwise a neighbour's rows decide when this one is cut.
+		let earliest = ttl
+			.due_entries(txn, Some(partition), None, None, 1)
+			.unwrap()
+			.first()
+			.map(|entry| entry.due.to_nanos());
+		assert_eq!(
+			armed_in(ttl, txn, partition),
+			earliest,
+			"the armed due must be the partition's earliest due"
+		);
+	}
+
+	#[test]
+	fn a_partitioned_write_away_from_the_armed_row_reads_no_range() {
+		// A partitioned view writes far more often than it expires, so its write path must never range read.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = partitioned_row_ttl();
+		ttl.track(&mut txn, written_in(P1, 1, T0)).unwrap();
+		ttl.track(&mut txn, written_in(P2, 2, T0 + HALF)).unwrap();
+		ttl.track(&mut txn, written_in(P2, 3, T0 + HOUR)).unwrap();
+
+		let before = PageRequests::sample();
+		ttl.track(&mut txn, written_in(P2, 3, T0 + HOUR + HALF)).unwrap();
+		assert_eq!(before.since(), 0, "a write away from the armed row must request no range page");
+
+		assert_eq!(armed_in(&ttl, &mut txn, P1), Some(T0 + HOUR), "the other partition must keep its timer");
+		assert_eq!(
+			armed_in(&ttl, &mut txn, P2),
+			Some(T0 + HALF + HOUR),
+			"the written partition must keep its timer"
+		);
+		assert_armed_is_earliest_in(&ttl, &mut txn, P1);
+		assert_armed_is_earliest_in(&ttl, &mut txn, P2);
+	}
+
+	#[test]
+	fn updating_a_partitions_armed_row_arms_its_own_next_earliest() {
+		// The scan from the armed due must stay inside the partition and start at that due, never at the
+		// partition start.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = partitioned_row_ttl();
+		ttl.track(&mut txn, written_in(P1, 1, T0)).unwrap();
+		ttl.track(&mut txn, written_in(P1, 2, T0 + HOUR)).unwrap();
+		ttl.track(&mut txn, written_in(P2, 3, T0 + HALF)).unwrap();
+
+		ttl.track(&mut txn, written_in(P1, 1, T0 + 2 * HOUR)).unwrap();
+		assert_eq!(
+			armed_in(&ttl, &mut txn, P1),
+			Some(T0 + 2 * HOUR),
+			"the timer must move to the partition's second row"
+		);
+		assert_eq!(armed_in(&ttl, &mut txn, P2), Some(T0 + HALF + HOUR), "the neighbour must keep its timer");
+		assert_armed_is_earliest_in(&ttl, &mut txn, P1);
+		assert_armed_is_earliest_in(&ttl, &mut txn, P2);
+	}
+
+	#[test]
+	fn clearing_a_partitions_last_row_never_arms_on_a_neighbour() {
+		// A scan that runs past the partition end would arm this partition on the next partition's due.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = partitioned_row_ttl();
+		ttl.track(&mut txn, written_in(P1, 1, T0)).unwrap();
+		ttl.track(&mut txn, written_in(P2, 2, T0 + HALF)).unwrap();
+
+		ttl.track(
+			&mut txn,
+			RowWrites {
+				cleared: vec![(Some(P1), RowNumber(1))],
+				written: Vec::new(),
+			},
+		)
+		.unwrap();
+		assert_eq!(armed_in(&ttl, &mut txn, P1), None, "an empty partition must have no armed due");
+		assert_eq!(armed_in(&ttl, &mut txn, P2), Some(T0 + HALF + HOUR), "the neighbour must keep its timer");
+		assert_armed_is_earliest_in(&ttl, &mut txn, P1);
+		assert_armed_is_earliest_in(&ttl, &mut txn, P2);
+	}
+
+	#[test]
+	fn a_partitions_timer_cuts_only_its_own_rows() {
+		// A cut that starts at the timer due must never reach a neighbour that shares the same due.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let ttl = partitioned_row_ttl();
+		ttl.track(&mut txn, written_in(P1, 1, T0)).unwrap();
+		ttl.track(&mut txn, written_in(P1, 2, T0 + HALF)).unwrap();
+		ttl.track(&mut txn, written_in(P2, 3, T0)).unwrap();
+
+		let timer = Timer {
+			due: DateTime::from_nanos(T0 + HOUR),
+			kind: TimerKind::RowTtl,
+			key: ttl.timer_key(Some(P1)),
+		};
+		assert!(ttl.on_timer(&mut txn, &timer).unwrap().is_some(), "the partition's due row must be cut");
+
+		let removes = row_removes(&txn);
+		assert_eq!(removes.len(), 1, "only the fired partition's due row must be cut: {removes:?}");
+		assert_eq!(
+			removes[0].0,
+			RowKey::encoded(VIEW, RowNumber(1)),
+			"the cut must hit the fired partition's row"
+		);
+		assert_eq!(
+			armed_in(&ttl, &mut txn, P1),
+			Some(T0 + HALF + HOUR),
+			"the timer must move to the row that is left"
+		);
+		assert_eq!(armed_in(&ttl, &mut txn, P2), Some(T0 + HOUR), "the neighbour must keep its timer");
+		assert_armed_is_earliest_in(&ttl, &mut txn, P1);
+		assert_armed_is_earliest_in(&ttl, &mut txn, P2);
 	}
 }
