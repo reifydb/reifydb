@@ -49,6 +49,8 @@ impl<D: RangeDomain> RangeScan<D> {
 	}
 }
 
+const EMPTY_RUN_LIMIT: usize = 16;
+
 impl<D: RangeDomain> RangeTier<D> {
 	pub fn plan_scan(&self, dimension: D::Dimension, range: &KeyRange<D::Key>) -> Option<RangeScan<D>> {
 		self.plan_scan_within(dimension, None, range)
@@ -336,6 +338,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		let mut materialized = false;
 		let mut claim: Option<Interval<D::Key>> = None;
 		let mut claimed: Vec<(usize, usize)> = Vec::new();
+		let mut run = 0usize;
 		if !span.is_empty() {
 			loop {
 				let Some(at) = start.anchor() else {
@@ -344,7 +347,33 @@ impl<D: RangeDomain> RangeTier<D> {
 				let partition = scan.confined.unwrap_or_else(|| D::partition(scan.dimension, &at));
 				let (_, bound) = D::span(&partition);
 				let end = bound.min(span.end.clone());
-				let piece = Interval::new(start, end.clone());
+				let piece = Interval::new(start.clone(), end.clone());
+				if rows.iter().any(|(key, _)| piece.contains(key)) {
+					run = 0;
+				} else {
+					if run == 0 {
+						let Some(length) = Self::empty_run(scan, &start, &span.end, rows)
+						else {
+							if !self.flush_claims(scan, &mut claim, &mut claimed) {
+								return Materialize::Refused;
+							}
+							let rest = Interval::new(start.clone(), span.end.clone());
+							let Some((next, _)) =
+								rows.iter().find(|(key, _)| rest.contains(key))
+							else {
+								break;
+							};
+							let (resume, _) = D::span(&D::partition(scan.dimension, next));
+							if resume <= start {
+								break;
+							}
+							start = resume;
+							continue;
+						};
+						run = length;
+					}
+					run -= 1;
+				}
 				if !D::caches_ranges(&partition) || piece.is_empty() {
 					if !self.flush_claims(scan, &mut claim, &mut claimed) {
 						return Materialize::Refused;
@@ -384,6 +413,34 @@ impl<D: RangeDomain> RangeTier<D> {
 		} else {
 			Materialize::NothingCacheable
 		}
+	}
+
+	fn empty_run(
+		scan: &RangeScan<D>,
+		start: &Edge<D::Key>,
+		span_end: &Edge<D::Key>,
+		rows: &[(D::Key, D::Row)],
+	) -> Option<usize> {
+		let mut edge = start.clone();
+		for length in 0..=EMPTY_RUN_LIMIT {
+			let Some(at) = edge.anchor() else {
+				return Some(length);
+			};
+			let partition = scan.confined.unwrap_or_else(|| D::partition(scan.dimension, &at));
+			let end = D::span(&partition).1.min(span_end.clone());
+			let piece = Interval::new(edge, end.clone());
+			if rows.iter().any(|(key, _)| piece.contains(key)) {
+				return Some(length);
+			}
+			if length == EMPTY_RUN_LIMIT {
+				return None;
+			}
+			if end == *span_end {
+				return Some(length + 1);
+			}
+			edge = end;
+		}
+		None
 	}
 
 	fn classify(

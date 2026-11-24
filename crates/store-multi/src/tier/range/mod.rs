@@ -1271,6 +1271,61 @@ mod tests {
 		);
 	}
 
+	const FAR: u64 = 1 << 63;
+
+	#[test]
+	fn a_chunk_whose_rows_lie_far_apart_is_claimed_without_walking_the_space_between() {
+		// The walk must cost by rows, otherwise two row numbers 2^63 apart step through 2^47 empty buckets.
+		let tier = tier();
+
+		materialize_from_prefix(&tier, &[FAR + 1, 3, 2, 1], 1);
+
+		let mut far = RangeCursor::new();
+		assert_eq!(rows_of(&serve(&tier, &mut far, FAR, FAR + 2, 8)), vec![FAR + 1], "the far row must serve");
+		let mut near = RangeCursor::new();
+		assert_eq!(rows_of(&serve(&tier, &mut near, 0, 3, 8)), vec![3, 2, 1], "the near rows must serve");
+		assert_eq!(
+			tier.tier.intervals(),
+			2,
+			"each end must hold its own claim, with the space between unclaimed"
+		);
+	}
+
+	#[test]
+	fn a_short_empty_run_between_two_rows_is_still_claimed() {
+		// A few empty buckets between rows must stay claimed, otherwise the claim list splits at every one.
+		let tier = tier();
+
+		materialize_from_prefix(&tier, &[4 * BUCKET + 1, 1], 1);
+
+		assert_eq!(tier.tier.intervals(), 1, "three empty buckets between two rows must stay inside one claim");
+	}
+
+	#[test]
+	fn a_long_empty_run_claims_nothing_however_often_it_is_read() {
+		// A run no row closes must claim nothing, otherwise every read of the same gap grows the claim list.
+		let tier = tier();
+		let read_the_gap = || {
+			tier.materialize_scanned_chunk(
+				source(),
+				&row(FAR),
+				&row(4 * BUCKET),
+				&[],
+				tier.head_token(),
+				tier.retractions(),
+			);
+		};
+
+		read_the_gap();
+		read_the_gap();
+
+		assert_eq!(
+			tier.tier.intervals(),
+			0,
+			"a run that is too long must leave no claim behind, not even a short one"
+		);
+	}
+
 	#[test]
 	fn a_range_ending_on_the_head_is_never_answered_empty() {
 		// The head names a key a row may sit on, so only the storage end sentinel, which no row can occupy,
