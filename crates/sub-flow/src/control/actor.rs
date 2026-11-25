@@ -195,6 +195,7 @@ struct WaitSpans {
 	upstream: Option<Span>,
 	bound: Option<Span>,
 	load: Option<Span>,
+	completion: Option<Span>,
 	commit: Option<(CommitWait, Span)>,
 }
 
@@ -221,6 +222,14 @@ impl WaitSpans {
 
 	fn end_load(&mut self) {
 		self.load = None;
+	}
+
+	fn begin_completion(&mut self) {
+		self.completion.get_or_insert_with(|| trace_span!(parent: None, "flow::actor::wait::completion"));
+	}
+
+	fn end_completion(&mut self) {
+		self.completion = None;
 	}
 
 	fn begin_commit(&mut self, kind: CommitWait) {
@@ -793,6 +802,15 @@ impl FlowActor {
 			upstream_reads.reads.insert(*producer, upstream);
 		}
 		state.held_reads.clear();
+		if upstream_reads.reads.iter().any(|(producer, upstream)| {
+			self.flow_tracker.last_commit(*producer).is_some_and(|commit| {
+				upstream.position.is_none_or(|position| position < commit.min(safe))
+			})
+		}) {
+			state.waits.begin_completion();
+		} else {
+			state.waits.end_completion();
+		}
 		let source_objects = Arc::clone(&state.source_objects);
 		let scope = StepScope {
 			source_objects: &source_objects,
@@ -5303,6 +5321,29 @@ mod tick_failures {
 			assert_eq!(
 				spans.waits(),
 				vec![wait("flow::actor::wait::upstream", None), wait("flow::actor::wait::bound", None)]
+			);
+		});
+	}
+
+	#[test]
+	fn a_completion_wait_is_one_span_until_the_upstream_is_readable() {
+		// Re-opening on each drain would hide a long stall behind many short spans.
+		recording(|spans| {
+			let mut waits = WaitSpans::default();
+			waits.begin_completion();
+			waits.begin_completion();
+			assert!(spans.waits().is_empty(), "an open wait must not be reported before it ends");
+
+			waits.end_completion();
+			waits.end_completion();
+			assert_eq!(spans.waits(), vec![wait("flow::actor::wait::completion", None)]);
+
+			waits.begin_completion();
+			waits.clear();
+			assert_eq!(
+				spans.waits().len(),
+				2,
+				"a cleared holder must close the wait or it is never reported"
 			);
 		});
 	}
