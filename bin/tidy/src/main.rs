@@ -20,6 +20,8 @@ use std::{
 
 type Checked = (usize, Result<Vec<String>, String>);
 
+struct Root(PathBuf);
+
 struct Totals {
 	violations: usize,
 	files: usize,
@@ -33,8 +35,8 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<ExitCode, Box<dyn Error>> {
-	let root = env::current_dir()?;
-	let Some(paths) = run_paths(&root)? else {
+	let root = Root(env::current_dir()?);
+	let Some(paths) = run_paths(&root.0)? else {
 		eprintln!("usage: reifydb-tidy [changed]");
 		return Ok(ExitCode::from(2));
 	};
@@ -50,7 +52,7 @@ fn run_paths(root: &Path) -> Result<Option<Vec<PathBuf>>, Box<dyn Error>> {
 	}
 }
 
-fn run_check(root: &Path, paths: &[PathBuf]) -> Result<Totals, Box<dyn Error>> {
+fn run_check(root: &Root, paths: &[PathBuf]) -> Result<Totals, Box<dyn Error>> {
 	let workers = thread::available_parallelism()?.get();
 	let next = AtomicUsize::new(0);
 	let (sender, receiver) = mpsc::channel();
@@ -65,7 +67,7 @@ fn run_check(root: &Path, paths: &[PathBuf]) -> Result<Totals, Box<dyn Error>> {
 	})
 }
 
-fn run_check_worker(root: &Path, paths: &[PathBuf], next: &AtomicUsize, sender: Sender<Checked>) {
+fn run_check_worker(root: &Root, paths: &[PathBuf], next: &AtomicUsize, sender: Sender<Checked>) {
 	loop {
 		let index = next.fetch_add(1, Ordering::Relaxed);
 		let Some(path) = paths.get(index) else {
@@ -77,14 +79,14 @@ fn run_check_worker(root: &Path, paths: &[PathBuf], next: &AtomicUsize, sender: 
 	}
 }
 
-fn run_check_worker_file(root: &Path, path: &Path) -> Result<Vec<String>, String> {
-	let shown = run_shown(root, path);
+fn run_check_worker_file(root: &Root, path: &Path) -> Result<Vec<String>, String> {
+	let shown = root.relative(path);
 	let text = fs::read_to_string(path).map_err(|error| format!("{shown}: {error}"))?;
 	let breaches = rule::check(&text).map_err(|error| format!("{shown}: {error}"))?;
 	Ok(breaches.iter().map(|breach| format!("  {} :{} {}", breach.rule, breach.line, breach.function)).collect())
 }
 
-fn run_check_print(root: &Path, paths: &[PathBuf], receiver: Receiver<Checked>) -> Result<Totals, Box<dyn Error>> {
+fn run_check_print(root: &Root, paths: &[PathBuf], receiver: Receiver<Checked>) -> Result<Totals, Box<dyn Error>> {
 	let mut totals = Totals {
 		violations: 0,
 		files: 0,
@@ -94,7 +96,7 @@ fn run_check_print(root: &Path, paths: &[PathBuf], receiver: Receiver<Checked>) 
 	for (index, lines) in receiver {
 		waiting.insert(index, lines?);
 		while let Some(lines) = waiting.remove(&due) {
-			run_check_print_file(&run_shown(root, &paths[due]), &lines, &mut totals);
+			run_check_print_file(&root.relative(&paths[due]), &lines, &mut totals);
 			due += 1;
 		}
 	}
@@ -113,8 +115,10 @@ fn run_check_print_file(shown: &str, lines: &[String], totals: &mut Totals) {
 	totals.files += 1;
 }
 
-fn run_shown(root: &Path, path: &Path) -> String {
-	path.strip_prefix(root).unwrap_or(path).display().to_string()
+impl Root {
+	fn relative(&self, path: &Path) -> String {
+		path.strip_prefix(&self.0).unwrap_or(path).display().to_string()
+	}
 }
 
 fn run_summary(totals: &Totals) -> ExitCode {
