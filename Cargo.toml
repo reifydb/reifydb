@@ -78,6 +78,7 @@ members = [
     "bin/testcontainer",
     "bin/load-test",
     "bin/dev",
+    "bin/tidy",
     # Package/library projects
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",

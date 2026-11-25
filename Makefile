@@ -141,6 +141,8 @@ help:
 	@echo "  📊 Code Quality"
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "check-code-quality" "Validate code quality standards"
+	@printf "  %-25s %s\n" "tidy" "List every style guide violation tidy finds"
+	@printf "  %-25s %s\n" "tidy-changed" "Same, only for files changed since the last push"
 	@printf "  %-25s %s\n" "check-value-no-features" "Check reifydb-value tests compile with no features"
 	@printf "  %-25s %s\n" "check-flow-async-no-features" "Check reifydb-flow-async compiles with no features"
 	@printf "  %-25s %s\n" "check" "Cargo check all features, all targets, plus siblings"
@@ -198,6 +200,14 @@ all-siblings:
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) all
 	cd $(TEST_FUZZ_DIR) && $(MAKE) all
 
+.PHONY: tidy
+tidy:
+	@cargo run -q --release -p tidy || true
+
+.PHONY: tidy-changed
+tidy-changed:
+	@cargo run -q --release -p tidy -- changed || true
+
 .PHONY: check-code-quality
 check-code-quality:
 	@echo "🔍 Checking code quality standards..."
@@ -209,6 +219,7 @@ check-code-quality:
 	@./scripts/check-em-dashes.sh
 	@./scripts/check-result-aliases.sh
 	@./scripts/check-plan-refs.sh
+	@cargo run -q --release -p tidy | tail -n 1
 	@cargo hakari generate --diff
 	@cargo hakari manage-deps --dry-run
 	@$(MAKE) --no-print-directory check-value-no-features

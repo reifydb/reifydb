@@ -6,3 +6,9 @@ platforms = [
     "wasm32-unknown-unknown",
     "wasm32-wasip1",
 ]
+
+[final-excludes]
+workspace-members = ["tidy"]
+
+[traversal-excludes]
+workspace-members = ["tidy"]

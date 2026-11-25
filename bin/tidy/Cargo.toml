@@ -1,0 +1,16 @@
+[package]
+name = "tidy"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "reifydb-tidy"
+path = "src/main.rs"
+
+[dependencies]
+proc-macro2 = { workspace = true, features = ["span-locations"] }
+syn = { workspace = true, features = ["visit"] }
