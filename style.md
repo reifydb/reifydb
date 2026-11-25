@@ -307,7 +307,10 @@ fn scan(&self, rows: &[Row], entries: &[Entry]) {
 
 fn key(key: Key) { .. }
 
-fn run<T: Row>(row: T) { .. }
+fn run<T>(row: T)
+where
+	T: Row,
+{ .. }
 ```
 
 **Enforced by.** `tidy`.
@@ -821,7 +824,7 @@ not normal hides a defect.
 
 **Bad.**
 ```rust
-fn load(&self, key: &Key) -> Option<Row> {
+fn read_row(&self, key: &Key) -> Option<Row> {
 	self.store.read(key).ok()
 }
 ```
@@ -830,7 +833,7 @@ fn load(&self, key: &Key) -> Option<Row> {
 ```rust
 use crate::error::StoreError::NotFound;
 
-fn load(&self, key: &Key) -> Result<Option<Row>, StoreError> {
+fn read_row(&self, key: &Key) -> Result<Option<Row>, StoreError> {
 	match self.store.read(key) {
 		Err(NotFound) => Ok(None),
 		other => other.map(Some),
@@ -852,12 +855,12 @@ in every module.
 ```rust
 type Result<T> = std::result::Result<T, StoreError>;
 
-fn load(&self, key: &Key) -> Result<Row> { .. }
+fn read_row(&self, key: &Key) -> Result<Row> { .. }
 ```
 
 **Good.**
 ```rust
-fn load(&self, key: &Key) -> Result<Row, StoreError> { .. }
+fn read_row(&self, key: &Key) -> Result<Row, StoreError> { .. }
 ```
 
 **Enforced by.** `scripts/check-result-aliases.sh`.
@@ -880,7 +883,7 @@ fn last_page(&self) -> &Page {
 	self.pages.last().unwrap()
 }
 
-fn load(&self, key: &Key) -> Row {
+fn read_row(&self, key: &Key) -> Row {
 	self.store.read(key).expect("read failed")
 }
 ```
@@ -891,7 +894,7 @@ fn last_page(&self) -> &Page {
 	self.pages.last().expect("a store always has one page")
 }
 
-fn load(&self, key: &Key) -> Result<Row, StoreError> {
+fn read_row(&self, key: &Key) -> Result<Row, StoreError> {
 	self.store.read(key)
 }
 ```
@@ -902,7 +905,8 @@ fn load(&self, key: &Key) -> Result<Row, StoreError> {
 
 **Rule.** A test asserts the outcome that matters, strictly. A test that still passes
 after the logic it covers is changed is wrong. Failure paths and contract edges are
-tested alongside the happy path.
+tested alongside the happy path. A new test is proven once: break the code it covers,
+see the test fail, undo the break.
 
 **Why.** A test that cannot fail protects nothing and reads as protection.
 
@@ -947,7 +951,9 @@ fn scan_returns_rows_in_key_order() { .. }
 fn scan_returns_rows_in_key_order() { .. }
 ```
 
-**Enforced by.** Review.
+**Exception.** A test that the normal run must skip states why: `#[ignore = "reason"]`.
+
+**Enforced by.** `tidy` for a bare `#[ignore]`, review for the rest.
 
 ## T3 - a test explains itself from the inside
 
@@ -974,15 +980,31 @@ fn scan_returns_rows_in_key_order() {
 }
 ```
 
-**Enforced by.** Review.
+**Enforced by.** `tidy` for a comment above a test, review for helpers and fixtures.
 
 ## T4 - a regression test is a snapshot file
 
-**Rule.** A regression test is a testscript snapshot file under a `regression/`
-directory, not an inline Rust test.
+**Rule.** A regression test for a defect that RQL can reach is a testscript snapshot
+file under a `regression/` directory, not an inline Rust test. A defect below that
+reach is a Rust test.
 
 **Why.** The script shows the exact input that broke and the exact output expected, in
 the language the user wrote it in.
+
+**Bad.**
+```rust
+#[test]
+fn regression_view_rows_keep_key_order() {
+	let rows = run("from app::orders");
+	assert_eq!(keys(&rows), [1, 2, 3]);
+}
+```
+
+**Good.**
+```
+crates/sub-flow/tests/regression/
+    view_rows_keep_key_order
+```
 
 **Enforced by.** Review.
 
@@ -1007,7 +1029,7 @@ fn drop_expired_rows(&mut self) { .. }
 
 **Exception.** `// SAFETY:` on `unsafe`, see C2. License headers and tool directives.
 
-**Enforced by.** Review.
+**Enforced by.** `tidy`.
 
 ## C2 - every unsafe states its safety contract
 
@@ -1034,7 +1056,7 @@ fn first(bytes: &[u8]) -> u8 {
 }
 ```
 
-**Enforced by.** Review.
+**Enforced by.** clippy: `undocumented_unsafe_blocks` and `missing_safety_doc`.
 
 ## C3 - a test comment is one line and names a failure or an invariant
 
@@ -1064,7 +1086,7 @@ fn scan_returns_rows_in_key_order() {
 }
 ```
 
-**Enforced by.** Review.
+**Enforced by.** `tidy` for the one-line limit, review for the content.
 
 ## C4 - no section divider comments
 
@@ -1123,6 +1145,9 @@ pub use crate::tier::range::KeyRange;
 use crate::tier::range::KeyRange;
 ```
 
+**Exception.** `pkg/rust`, the crate users depend on, and a `prelude.rs` may re-export.
+Inside the workspace an item has one path.
+
 **Enforced by.** `scripts/check-internal-reexports.sh`.
 
 ## I2 - imports sit at the top of the module
@@ -1150,31 +1175,51 @@ fn scan(&self) {
 
 **Enforced by.** `scripts/check-toplevel-imports.sh`.
 
-## I3 - a path is never written inline
+## I3 - a type is written bare, a function through its module
 
-**Rule.** Code uses the short name of an item. The full path appears once, in a `use`
-at the top.
+**Rule.** A type or a trait is imported by its name and written bare. A free function
+is called through its parent module, and that module is imported. A constant is
+written through its module in the same way. A macro is imported by its name and called
+bare. A path that starts at
+a crate (`std::`, `crate::`, `super::`, another crate's name) is never written in code.
 
-**Why.** A long path in the middle of a line hides what the line does.
+A type of ours is named so that it cannot share its name with a common outside type:
+`StoreError`, not `Error`. When two outside types share a name, each is written through
+its module: `io::Error`, `fmt::Result`.
+
+**Why.** A long path in the middle of a line hides what the line does. A type's name
+says what it is. A bare function name such as `swap` does not say where it comes from,
+and its module does.
 
 **Bad.**
 ```rust
+use std::mem::swap;
+
 fn index(&self) -> std::collections::HashMap<Key, Row> { .. }
+
+fn rotate(&mut self) {
+	swap(&mut self.front, &mut self.back);
+}
 ```
 
 **Good.**
 ```rust
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
 
 fn index(&self) -> HashMap<Key, Row> { .. }
+
+fn rotate(&mut self) {
+	mem::swap(&mut self.front, &mut self.back);
+}
 ```
 
-**Enforced by.** `scripts/check-inline-qualifications.sh`.
+**Enforced by.** `scripts/check-inline-qualifications.sh` for crate paths, `tidy` for
+the rest.
 
 ## I4 - enum variants are imported, not qualified, in a match
 
 **Rule.** A module that matches on an enum imports its variants and uses the bare names
-in the arms.
+in the arms. Everywhere else a variant carries its type: `Kind::Timer`.
 
 **Why.** The arms then read as the cases themselves, without the type name repeated on
 every line.
@@ -1198,6 +1243,325 @@ fn expire_row(&mut self, row: &Row) {
 		Timer => self.index.remove(&row.key),
 		Plain => {}
 	}
+}
+```
+
+**Enforced by.** `tidy`.
+
+## V1 - a number in source has a name
+
+**Rule.** A number in non-test source is a named `const`. Only 0, 1 and 2 are written
+bare. Tests are free.
+
+**Why.** A bare number hides what it means. When the same number appears in two files,
+a reader cannot tell whether it is one limit or two that happen to be equal, and a
+change to one misses the other.
+
+**Bad.**
+```rust
+fn flush_due(batch: &Batch) -> bool {
+	batch.len() > 1000
+}
+```
+
+**Good.**
+```rust
+const BATCH_ROWS_MAX: usize = 1000;
+
+fn flush_due(batch: &Batch) -> bool {
+	batch.len() > BATCH_ROWS_MAX
+}
+```
+
+**Enforced by.** `tidy`.
+
+## V2 - a name puts the thing first and the qualifier last
+
+**Rule.** A name starts with the thing it describes. A qualifier such as `max`, `min`
+or `default` comes last. This holds for every name we write: constants, variables,
+fields, arguments and functions. A unit follows N7.
+
+**Why.** The names of one thing then sort and read together, and a limit keeps one name
+from its constant to its field to its setter. With the qualifier first, the limits of
+one thing are spread between the limits of every other thing.
+
+**Bad.**
+```rust
+const MAX_BATCH_ROWS: usize = 1000;
+const DEFAULT_BATCH_ROWS: usize = 100;
+const MAX_RETRY_COUNT: u32 = 5;
+const MIN_BATCH_ROWS: usize = 1;
+
+struct FlushConfig {
+	max_batch_rows: usize,
+}
+```
+
+**Good.**
+```rust
+const BATCH_ROWS_DEFAULT: usize = 100;
+const BATCH_ROWS_MAX: usize = 1000;
+const BATCH_ROWS_MIN: usize = 1;
+const RETRY_COUNT_MAX: u32 = 5;
+
+struct FlushConfig {
+	batch_rows_max: usize,
+}
+```
+
+**Exception.** A name owned by another crate, such as `max_by_key`.
+
+**Enforced by.** `tidy`.
+
+## V3 - a constant sits at the top of the file that uses it
+
+**Rule.** A constant is declared at the top of the file that uses it, below the
+imports, never inside a function. A constant used by two files moves to the `mod.rs`
+of the nearest module that holds both. A constant that belongs to a type stays in that
+type's `impl`.
+
+**Why.** The value is then in one known place on the same screen as the code that uses
+it. A constant inside a function is invisible to the next function that needs it, which
+declares its own copy.
+
+**Bad.**
+```rust
+fn flush_due(batch: &Batch) -> bool {
+	const BATCH_ROWS_MAX: usize = 1000;
+	batch.len() > BATCH_ROWS_MAX
+}
+```
+
+**Good.**
+```rust
+const BATCH_ROWS_MAX: usize = 1000;
+
+fn flush_due(batch: &Batch) -> bool {
+	batch.len() > BATCH_ROWS_MAX
+}
+```
+
+**Enforced by.** `tidy`.
+
+## G1 - a generic has a name and its bounds sit in `where`
+
+**Rule.** Every generic type has a name, and its bounds are written in a `where`
+clause. This holds for functions, structs, enums, traits and `impl` blocks. Bounds are
+not written inline in `<..>`, and an argument is not written as `impl Trait`.
+
+**Why.** Rust offers three spellings for one thing. With one spelling the argument list
+always starts right after the name, and the bounds are always found in the same place.
+
+**Bad.**
+```rust
+fn flush<S: RowStore>(store: &mut S, clock: &impl Clock, batch: &Batch) -> Result<(), StoreError> {
+	store.write(batch, clock.now())
+}
+```
+
+**Good.**
+```rust
+fn flush<S, C>(store: &mut S, clock: &C, batch: &Batch) -> Result<(), StoreError>
+where
+	S: RowStore,
+	C: Clock,
+{
+	store.write(batch, clock.now())
+}
+```
+
+**Exception.** Lifetimes stay inline.
+
+**Enforced by.** `tidy`.
+
+## G2 - a component set once at start is a generic, not a `dyn`
+
+**Rule.** A component that is chosen at start and never changes is held as a generic
+type. `dyn Trait` is only for a part that can change while the database runs.
+
+**Why.** A call through `dyn` is an indirect call on every use and cannot be inlined.
+A part that never changes after start should not pay that on every call.
+
+**Bad.**
+```rust
+struct Engine {
+	store: Arc<dyn RowStore>,
+}
+```
+
+**Good.**
+```rust
+struct Engine<S>
+where
+	S: RowStore,
+{
+	store: S,
+}
+
+struct Registry {
+	functions: Vec<Arc<dyn Function>>,
+}
+```
+
+**Enforced by.** Review.
+
+## G3 - several set-once components are grouped in one trait
+
+**Rule.** A holder with more than one set-once component takes one type parameter. That
+parameter is a trait whose associated types name the components. The grouping trait
+belongs to one subsystem and names only the parts that subsystem uses. A higher
+subsystem's group holds the lower one as an associated type.
+
+**Why.** With one parameter per component, every signature that mentions the holder
+repeats the whole list, and a new component edits all of them. With one grouping trait
+the list of what can be replaced is in one place.
+
+**Bad.**
+```rust
+struct Engine<S, C, T>
+where
+	S: RowStore,
+	C: Clock,
+	T: Transport,
+{
+	store: S,
+	clock: C,
+	transport: T,
+}
+```
+
+**Good.**
+```rust
+trait Components {
+	type Store: RowStore;
+	type Clock: Clock;
+	type Transport: Transport;
+}
+
+struct Engine<C>
+where
+	C: Components,
+{
+	store: C::Store,
+	clock: C::Clock,
+	transport: C::Transport,
+}
+```
+
+**Enforced by.** Review.
+
+## G4 - a return type has a name
+
+**Rule.** A return type is always a named type, never `impl Trait`. An iterator gets its
+own struct. A function does not return a closure: the captured values become a struct,
+and the behaviour a method on it.
+
+**Why.** A named type can be looked up, kept in a field and written in another
+signature. `impl Trait` hides from the caller what it holds.
+
+**Bad.**
+```rust
+fn live_rows(&self) -> impl Iterator<Item = &Row> {
+	self.rows.iter().filter(|row| row.is_live())
+}
+
+fn key_filter(range: KeyRange) -> impl Fn(&Row) -> bool {
+	move |row| range.contains(&row.key)
+}
+```
+
+**Good.**
+```rust
+struct LiveRows<'rows> {
+	rows: Iter<'rows, Row>,
+}
+
+impl<'rows> Iterator for LiveRows<'rows> {
+	type Item = &'rows Row;
+
+	fn next(&mut self) -> Option<&'rows Row> {
+		self.rows.find(|row| row.is_live())
+	}
+}
+
+struct KeyFilter {
+	range: KeyRange,
+}
+
+impl KeyFilter {
+	fn matches(&self, row: &Row) -> bool {
+		self.range.contains(&row.key)
+	}
+}
+```
+
+**Enforced by.** `tidy`.
+
+## P1 - the query language is RQL, never SQL
+
+**Rule.** ReifyDB's query language is called RQL in every name, message and string we
+write.
+
+**Why.** RQL is not a SQL dialect. A name or message that says SQL tells the reader and
+the user to expect syntax that does not exist.
+
+**Bad.**
+```rust
+fn parse_sql(text: &str) -> Result<Statement, ParseError> { .. }
+```
+
+**Good.**
+```rust
+fn parse_rql(text: &str) -> Result<Statement, ParseError> { .. }
+```
+
+**Exception.** "SQL" is allowed where it names another product, such as `sqlite`, or
+text that really is SQL sent to one.
+
+**Enforced by.** `tidy`.
+
+## P2 - a missing value is none, never null
+
+**Rule.** A missing value is called "none" in every name, message and string we write.
+"null" and "nil" are not used.
+
+**Why.** RQL has no null. Two words for one idea make the reader ask whether they
+differ, and a message that says null shows the user a word the language does not have.
+
+**Bad.**
+```rust
+fn sub_null(left: Value, right: Value) -> Value { .. }
+```
+
+**Good.**
+```rust
+fn sub_none(left: Value, right: Value) -> Value { .. }
+```
+
+**Exception.** Raw pointers (`is_null`, `null_mut`), and a name that belongs to another
+crate or to a foreign format. Our own names around them still say "none".
+
+**Enforced by.** `tidy`.
+
+## P3 - a migration is never edited, a new one is added
+
+**Rule.** A migration that exists is not changed. A change to the schema is a new
+migration at the end of the list, with the next sequence number.
+
+**Why.** A database that already ran the old migration never runs it again. An edit in
+place leaves that database on the old schema while the code expects the new one.
+
+**Bad.**
+```rust
+fn migrations() -> Vec<Migration> {
+	vec![Migration::new("001_create_user", CREATE_USER_WITH_EMAIL)]
+}
+```
+
+**Good.**
+```rust
+fn migrations() -> Vec<Migration> {
+	vec![Migration::new("001_create_user", CREATE_USER), Migration::new("002_add_user_email", ADD_USER_EMAIL)]
 }
 ```
 
