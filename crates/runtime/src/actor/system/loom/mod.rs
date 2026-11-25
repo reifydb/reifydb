@@ -83,7 +83,7 @@ impl ActorSystem {
 	}
 
 	fn park<A: Actor>(&self, actor: A) -> ActorHandle<A::Message> {
-		let (actor_ref, mailbox) = create_mailbox(actor.config().mailbox_capacity);
+		let (actor_ref, mailbox) = create_mailbox(actor.config().mailbox_capacity, self.inner.clock.clone());
 		self.inner.parked.lock().push(Box::new((actor, mailbox)));
 		ActorHandle {
 			actor_ref,

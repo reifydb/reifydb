@@ -109,6 +109,20 @@ static SPECS: &[SpanSpec] = &[
 		render: Some(render_committer_slices),
 	},
 	SpanSpec {
+		name: "actor::mailbox::wait",
+		duration_override: Some("waited_us"),
+		dims: &[DimSource::Text("actor")],
+		extras: &[],
+		render: None,
+	},
+	SpanSpec {
+		name: "flow::actor::handle",
+		duration_override: None,
+		dims: &[DimSource::Text("kind")],
+		extras: &[],
+		render: None,
+	},
+	SpanSpec {
 		name: "flow::actor::wait::commit",
 		duration_override: None,
 		dims: &[DimSource::Text("kind")],
@@ -224,7 +238,7 @@ mod tests {
 			SPECS.iter().filter(|s| s.duration_override.is_some()).map(|s| s.name).collect();
 		assert_eq!(
 			overriding,
-			vec!["flow::engine::apply"],
+			vec!["flow::engine::apply", "actor::mailbox::wait"],
 			"a new duration override needs an explicit decision, not a default"
 		);
 	}

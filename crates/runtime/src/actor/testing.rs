@@ -158,7 +158,7 @@ impl<M: Send + 'static> TestContext<M> {
 		#[cfg(not(reifydb_single_threaded))]
 		let actor_ref = {
 			let (tx, _rx) = unbounded();
-			ActorRef::new(tx)
+			ActorRef::new(tx, Clock::Real)
 		};
 
 		#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]

@@ -123,9 +123,9 @@ impl<M> ActorRef<M> {
 #[cfg(not(reifydb_single_threaded))]
 impl<M: Send> ActorRef<M> {
 	#[inline]
-	pub(crate) fn new(tx: Sender<M>) -> Self {
+	pub(crate) fn new(tx: Sender<(Instant, M)>, clock: Clock) -> Self {
 		Self {
-			inner: host::ActorRefInner::new(tx),
+			inner: host::ActorRefInner::new(tx, clock),
 		}
 	}
 
@@ -258,3 +258,6 @@ pub(crate) use dst::create_mailbox as create_dst_mailbox;
 pub(crate) use host::create_mailbox;
 #[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 pub(crate) use wasm::create_actor_ref;
+
+#[cfg(not(reifydb_single_threaded))]
+use crate::context::clock::{Clock, Instant};

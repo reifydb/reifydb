@@ -12,7 +12,7 @@ use std::{
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError as CcTryRecvError, bounded};
 use reifydb_value::reifydb_assertions;
-use tracing::debug;
+use tracing::{debug, trace_span};
 
 use super::{ActorSystem, JoinError};
 use crate::{
@@ -21,6 +21,7 @@ use crate::{
 		mailbox::{ActorRef, create_mailbox},
 		traits::{Actor, Directive},
 	},
+	context::clock::{Clock, Instant},
 	pool::actor_pool::{Runnable, Schedule},
 	sync::mutex::{Mutex, MutexGuard},
 };
@@ -30,8 +31,8 @@ const SCHEDULED: u8 = 1;
 const NOTIFIED: u8 = 2;
 
 enum CellState<S, M> {
-	Uninit(Receiver<M>),
-	Running(S, Receiver<M>),
+	Uninit(Receiver<(Instant, M)>),
+	Running(S, Receiver<(Instant, M)>),
 	Stopped,
 }
 
@@ -39,7 +40,8 @@ struct ActorCell<A: Actor> {
 	actor: A,
 	name: String,
 	state: Mutex<CellState<A::State, A::Message>>,
-	tx: Sender<A::Message>,
+	tx: Sender<(Instant, A::Message)>,
+	clock: Clock,
 	ctx: Context<A::Message>,
 	cancel: CancellationToken,
 	schedule_state: AtomicU8,
@@ -137,11 +139,16 @@ where
 	}
 }
 
+fn report_mailbox_wait(actor: &str, clock: &Clock, sent_at: &Instant) {
+	let waited_us = u64::try_from(clock.instant().duration_since(sent_at).as_micros()).unwrap_or(u64::MAX);
+	drop(trace_span!("actor::mailbox::wait", actor, waited_us));
+}
+
 #[inline]
 fn process_message_batch<A: Actor>(
 	cell: &Arc<ActorCell<A>>,
 	state: &mut A::State,
-	rx: &Receiver<A::Message>,
+	rx: &Receiver<(Instant, A::Message)>,
 ) -> Directive
 where
 	A::State: Send,
@@ -156,7 +163,8 @@ where
 		}
 
 		match rx.try_recv() {
-			Ok(msg) => {
+			Ok((sent_at, msg)) => {
+				report_mailbox_wait(&cell.name, &cell.clock, &sent_at);
 				processed += 1;
 				flow = cell.actor.handle(state, msg, &cell.ctx);
 				match flow {
@@ -265,7 +273,7 @@ where
 {
 	let config = actor.config();
 	let batch_size = config.batch_size.unwrap_or(batch_size);
-	let (actor_ref, mailbox) = create_mailbox(config.mailbox_capacity);
+	let (actor_ref, mailbox) = create_mailbox(config.mailbox_capacity, system.clock().clone());
 	let ctx = Context::new(actor_ref.clone(), system.clone(), system.cancellation_token());
 	let cancel = system.cancellation_token();
 
@@ -278,6 +286,7 @@ where
 		name: name.to_string(),
 		state: Mutex::new(CellState::Uninit(mailbox.rx)),
 		tx: mailbox.tx,
+		clock: system.clock().clone(),
 		ctx,
 		cancel,
 		schedule_state: AtomicU8::new(SCHEDULED),
@@ -311,4 +320,89 @@ where
 	system.register_waker(notify_fn);
 
 	system.register_keepalive(Box::new(Arc::clone(cell)));
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{
+		fmt::Debug,
+		sync::{Arc, Mutex},
+	};
+
+	use tracing::{
+		Event, Metadata, Subscriber,
+		field::{Field, Visit},
+		span::{Attributes, Id, Record},
+		subscriber::with_default,
+	};
+
+	use super::*;
+	use crate::context::clock::MockClock;
+
+	#[derive(Default)]
+	struct Wait {
+		actor: Option<String>,
+		waited_us: Option<u64>,
+	}
+
+	impl Visit for Wait {
+		fn record_str(&mut self, field: &Field, value: &str) {
+			if field.name() == "actor" {
+				self.actor = Some(value.to_string());
+			}
+		}
+
+		fn record_u64(&mut self, field: &Field, value: u64) {
+			if field.name() == "waited_us" {
+				self.waited_us = Some(value);
+			}
+		}
+
+		fn record_debug(&mut self, _field: &Field, _value: &dyn Debug) {}
+	}
+
+	#[derive(Clone, Default)]
+	struct Opened {
+		spans: Arc<Mutex<Vec<(&'static str, Option<String>, Option<u64>)>>>,
+	}
+
+	impl Subscriber for Opened {
+		fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+			true
+		}
+
+		fn new_span(&self, attrs: &Attributes<'_>) -> Id {
+			let mut wait = Wait::default();
+			attrs.record(&mut wait);
+			self.spans.lock().unwrap().push((attrs.metadata().name(), wait.actor, wait.waited_us));
+			Id::from_u64(1)
+		}
+
+		fn record(&self, _span: &Id, _values: &Record<'_>) {}
+
+		fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+
+		fn event(&self, _event: &Event<'_>) {}
+
+		fn enter(&self, _span: &Id) {}
+
+		fn exit(&self, _span: &Id) {}
+	}
+
+	#[test]
+	fn a_received_message_reports_the_time_since_its_send_under_the_actor_name() {
+		// The wait must run from the send stamp to the receive, otherwise a stalled actor reports no wait.
+		let mock = MockClock::new(1_000);
+		let clock = Clock::Mock(mock.clone());
+		let sent_at = clock.instant();
+		mock.advance_micros(1_200_000);
+
+		let opened = Opened::default();
+		with_default(opened.clone(), || report_mailbox_wait("flow-7", &clock, &sent_at));
+
+		assert_eq!(
+			*opened.spans.lock().unwrap(),
+			vec![("actor::mailbox::wait", Some("flow-7".to_string()), Some(1_200_000))]
+		);
+	}
 }

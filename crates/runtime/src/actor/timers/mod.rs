@@ -99,7 +99,7 @@ pub fn drain_due_timers() {}
 #[cfg(all(test, reifydb_target = "host", not(reifydb_dst)))]
 mod tests {
 	use super::*;
-	use crate::actor::mailbox::create_mailbox;
+	use crate::{actor::mailbox::create_mailbox, context::clock::Clock};
 
 	#[test]
 	fn a_full_mailbox_drops_the_tick_but_keeps_the_timer_armed() {
@@ -107,7 +107,7 @@ mod tests {
 		// transient full mailbox cancelled the timer for the life of the process with no log line.
 		// Six of the nine lifecycle maintenance tasks were dead this way, tombstone gc
 		// among them, which is how operator state came to be 80% uncollected tombstones.
-		let (actor, _mailbox) = create_mailbox::<u8>(Some(1));
+		let (actor, _mailbox) = create_mailbox::<u8>(Some(1), Clock::Real);
 		assert_eq!(Repeat::after_send(actor.send(1)), Repeat::Keep, "precondition: the first send fits");
 
 		let full = actor.send(2);
@@ -122,7 +122,7 @@ mod tests {
 	fn a_closed_mailbox_cancels_the_timer() {
 		// The one case that must still cancel. Without it a timer fires forever into a dead
 		// channel, and nothing else ever removes it from the heap.
-		let (actor, mailbox) = create_mailbox::<u8>(Some(1));
+		let (actor, mailbox) = create_mailbox::<u8>(Some(1), Clock::Real);
 		drop(mailbox);
 
 		let closed = actor.send(1);

@@ -199,6 +199,53 @@ struct WaitSpans {
 	commit: Option<(CommitWait, Span)>,
 }
 
+fn message_kind(message: &FlowActorMessage) -> &'static str {
+	match message {
+		FlowActorMessage::Drain {
+			..
+		} => "drain",
+		FlowActorMessage::Wake {
+			..
+		} => "wake",
+		FlowActorMessage::TrailingWake {
+			..
+		} => "trailing_wake",
+		FlowActorMessage::Loaded {
+			..
+		} => "loaded",
+		FlowActorMessage::Tick {
+			..
+		} => "tick",
+		FlowActorMessage::Sample {
+			..
+		} => "sample",
+		FlowActorMessage::PublishRestoredOutputWatermarks {
+			..
+		} => "publish_restored_output_watermarks",
+		FlowActorMessage::UpdateSources {
+			..
+		} => "update_sources",
+		FlowActorMessage::SliceCommitted {
+			..
+		} => "slice_committed",
+		FlowActorMessage::TickCommitted {
+			..
+		} => "tick_committed",
+		FlowActorMessage::RemoveExpired {
+			..
+		} => "remove_expired",
+		FlowActorMessage::ExpireCommitted {
+			..
+		} => "expire_committed",
+		FlowActorMessage::CheckpointNow {
+			..
+		} => "checkpoint_now",
+		FlowActorMessage::Stop {
+			..
+		} => "stop",
+	}
+}
+
 impl WaitSpans {
 	fn begin_upstream(&mut self) {
 		self.upstream.get_or_insert_with(|| trace_span!(parent: None, "flow::actor::wait::upstream"));
@@ -1382,6 +1429,7 @@ impl FlowActor {
 		}
 	}
 
+	#[instrument(name = "flow::actor::on_remove_expired", level = "trace", skip_all)]
 	fn on_remove_expired(
 		&self,
 		state: &mut FlowActorState,
@@ -1636,6 +1684,7 @@ impl Actor for FlowActor {
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
+		let _handling = trace_span!("flow::actor::handle", kind = message_kind(&msg)).entered();
 		match msg {
 			FlowActorMessage::Drain => {
 				self.on_drain(state, ctx);
@@ -3343,8 +3392,9 @@ mod pull_protocol {
 mod tick_failures {
 	use std::{
 		collections::HashMap,
+		fmt::Debug,
 		marker::PhantomData,
-		sync::{Arc, atomic::AtomicUsize, mpsc},
+		sync::{Arc, Mutex as StdMutex, atomic::AtomicUsize, mpsc},
 	};
 
 	use arrow_array::{ArrayRef, UInt64Array};
@@ -3397,6 +3447,17 @@ mod tick_failures {
 			row_number::RowNumber,
 			system_columns::{SystemColumn, with_system_column},
 		},
+	};
+	use tracing::{
+		Subscriber,
+		field::{Field, Visit},
+		span::{Attributes, Id},
+		subscriber::with_default,
+	};
+	use tracing_subscriber::{
+		Layer, Registry,
+		layer::{Context as LayerContext, SubscriberExt},
+		registry::LookupSpan,
 	};
 
 	use super::*;
@@ -5099,7 +5160,7 @@ mod tick_failures {
 
 	#[derive(Clone, Default)]
 	struct ClosedSpans {
-		closed: Arc<std::sync::Mutex<Vec<(&'static str, Option<String>)>>>,
+		closed: Arc<StdMutex<Vec<(&'static str, Option<String>)>>>,
 	}
 
 	impl ClosedSpans {
@@ -5117,32 +5178,27 @@ mod tick_failures {
 
 	struct KindField(Option<String>);
 
-	impl tracing::field::Visit for KindField {
-		fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+	impl Visit for KindField {
+		fn record_str(&mut self, field: &Field, value: &str) {
 			if field.name() == "kind" {
 				self.0 = Some(value.to_string());
 			}
 		}
 
-		fn record_debug(&mut self, _field: &tracing::field::Field, _value: &dyn std::fmt::Debug) {}
+		fn record_debug(&mut self, _field: &Field, _value: &dyn Debug) {}
 	}
 
-	impl<S> tracing_subscriber::Layer<S> for ClosedSpans
+	impl<S> Layer<S> for ClosedSpans
 	where
-		S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+		S: Subscriber + for<'a> LookupSpan<'a>,
 	{
-		fn on_new_span(
-			&self,
-			attrs: &tracing::span::Attributes<'_>,
-			id: &tracing::span::Id,
-			ctx: tracing_subscriber::layer::Context<'_, S>,
-		) {
+		fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: LayerContext<'_, S>) {
 			let mut kind = KindField(None);
 			attrs.record(&mut kind);
 			ctx.span(id).expect("a new span must be in the registry").extensions_mut().insert(kind);
 		}
 
-		fn on_close(&self, id: tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
+		fn on_close(&self, id: Id, ctx: LayerContext<'_, S>) {
 			let span = ctx.span(&id).expect("a closing span must be in the registry");
 			let kind = span.extensions().get::<KindField>().and_then(|kind| kind.0.clone());
 			self.closed.lock().unwrap().push((span.name(), kind));
@@ -5150,12 +5206,9 @@ mod tick_failures {
 	}
 
 	fn recording<R>(run: impl FnOnce(&ClosedSpans) -> R) -> R {
-		use tracing_subscriber::layer::SubscriberExt;
 		// The recorder must be installed before the actor opens a span, otherwise the close is never seen.
 		let spans = ClosedSpans::default();
-		tracing::subscriber::with_default(tracing_subscriber::Registry::default().with(spans.clone()), || {
-			run(&spans)
-		})
+		with_default(Registry::default().with(spans.clone()), || run(&spans))
 	}
 
 	fn wait(name: &'static str, kind: Option<&str>) -> (&'static str, Option<String>) {
@@ -5321,6 +5374,26 @@ mod tick_failures {
 			assert_eq!(
 				spans.waits(),
 				vec![wait("flow::actor::wait::upstream", None), wait("flow::actor::wait::bound", None)]
+			);
+		});
+	}
+
+	#[test]
+	fn a_handled_message_is_one_handle_span_named_after_its_kind() {
+		// Without a span around every message a slow handler with no span of its own stays invisible.
+		recording(|spans| {
+			let (_te, actor, sink, _ticks) = expire_actor();
+			let mut harness = TestHarness::new(actor);
+
+			hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
+
+			let closed = spans.closed.lock().unwrap().clone();
+			let handled: Vec<_> =
+				closed.iter().filter(|(name, _)| *name == "flow::actor::handle").collect();
+			assert_eq!(handled, vec![&("flow::actor::handle", Some("remove_expired".to_string()))]);
+			assert!(
+				closed.iter().any(|(name, _)| *name == "flow::actor::on_remove_expired"),
+				"the hand-off must report its own span or its cost hides inside the handle span"
 			);
 		});
 	}
