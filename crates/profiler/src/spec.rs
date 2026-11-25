@@ -116,6 +116,23 @@ static SPECS: &[SpanSpec] = &[
 		render: None,
 	},
 	SpanSpec {
+		name: "transaction::commit::queue::parked",
+		duration_override: Some("parked_us"),
+		dims: &[],
+		extras: &[],
+		render: None,
+	},
+	SpanSpec {
+		name: "flow::slice::input_age",
+		duration_override: Some("age_us"),
+		dims: &[DimSource::Number {
+			field: "flow_id",
+			prefix: "flow",
+		}],
+		extras: &[],
+		render: None,
+	},
+	SpanSpec {
 		name: "flow::actor::handle",
 		duration_override: None,
 		dims: &[DimSource::Text("kind")],
@@ -238,7 +255,12 @@ mod tests {
 			SPECS.iter().filter(|s| s.duration_override.is_some()).map(|s| s.name).collect();
 		assert_eq!(
 			overriding,
-			vec!["flow::engine::apply", "actor::mailbox::wait"],
+			vec![
+				"flow::engine::apply",
+				"actor::mailbox::wait",
+				"transaction::commit::queue::parked",
+				"flow::slice::input_age"
+			],
 			"a new duration override needs an explicit decision, not a default"
 		);
 	}

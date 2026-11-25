@@ -405,6 +405,7 @@ impl TestEngineBuilder {
 				wal_enabled,
 				queue_seed.0,
 				engine.multi().config().get_config_uint8(ConfigKey::FlowLookupTrackerEntries) as usize,
+				clock.clone(),
 			);
 			ioc_for_queue.register_service(FlowQueuePosition(commit_queue.position("flow")));
 			ioc_for_queue.register_service(commit_queue.clone());

@@ -2732,6 +2732,7 @@ mod pull_protocol {
 			true,
 			CommitVersion(h.engine.done_until().0 + 15),
 			LOOKUP_TRACKER_ENTRIES_TESTING as usize,
+			h.engine.clock().clone(),
 		);
 		let actor = h.spawn_flow_actor_on(
 			ahead.clone(),
@@ -3924,6 +3925,7 @@ mod tick_failures {
 				false,
 				CommitVersion(0),
 				LOOKUP_TRACKER_ENTRIES_TESTING as usize,
+				engine.clock().clone(),
 			),
 			loader: idle(&engine, "unit-tick-loader"),
 			control: PullLimit::new(),
@@ -4034,6 +4036,7 @@ mod tick_failures {
 				false,
 				CommitVersion(0),
 				LOOKUP_TRACKER_ENTRIES_TESTING as usize,
+				engine.clock().clone(),
 			),
 			loader: idle(&engine, "expire-loader"),
 			control: PullLimit::new(),
@@ -4204,6 +4207,7 @@ mod tick_failures {
 				false,
 				CommitVersion(0),
 				LOOKUP_TRACKER_ENTRIES_TESTING as usize,
+				engine.clock().clone(),
 			),
 			loader: idle(&engine, "tick-failures-loader"),
 			control: PullLimit::new(),

@@ -60,6 +60,10 @@ impl InputMarkers {
 		self.by_id.values().flat_map(|marker| marker.t0s.iter())
 	}
 
+	pub(crate) fn age(&self, now: &Instant) -> StdDuration {
+		now.duration_since(&self.latest_parent)
+	}
+
 	fn hop(&self, written: &WrittenView, committed_at: &Instant) -> StdDuration {
 		if written.fused_member {
 			return StdDuration::ZERO;

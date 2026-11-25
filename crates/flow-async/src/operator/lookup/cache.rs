@@ -112,6 +112,7 @@ mod tests {
 		},
 		key::row::PartitionedRowKey,
 	};
+	use reifydb_runtime::context::clock::Clock;
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::datetime::DateTime};
 	use reifydb_wal::lsn::Lsn;
 
@@ -141,7 +142,7 @@ mod tests {
 	}
 
 	fn queue() -> CommitQueue {
-		CommitQueue::new(ByteSize::from_mib(1), false, v(10), 16)
+		CommitQueue::new(ByteSize::from_mib(1), false, v(10), 16, Clock::Real)
 	}
 
 	fn commit(queue: &CommitQueue, version: u64, partitions: &[u128]) {

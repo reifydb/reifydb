@@ -49,7 +49,7 @@ use reifydb_value::{
 	},
 };
 use reifydb_wal::lsn::Lsn;
-use tracing::instrument;
+use tracing::{instrument, trace_span};
 
 use crate::{
 	commit::committer::{FlowSlice, produced_output},
@@ -248,6 +248,11 @@ impl SliceComputer {
 		*hold_cache = None;
 
 		let input_markers = self.markers.as_ref().and_then(|markers| markers.input_markers(&changes));
+		if let Some(input) = &input_markers {
+			let age_us = u64::try_from(input.age(&self.engine.clock().instant()).as_micros())
+				.unwrap_or(u64::MAX);
+			drop(trace_span!("flow::slice::input_age", flow_id = cursor.flow_id.0, age_us));
+		}
 		let mut groups: BTreeMap<SourceVersion, Vec<Change>> = BTreeMap::new();
 		for change in changes {
 			groups.entry(change.version.source).or_default().push(change);
@@ -859,9 +864,10 @@ mod tests {
 mod integration {
 	use std::{
 		collections::HashSet,
+		fmt::Debug,
 		slice::from_ref,
-		sync::{Arc, mpsc},
-		thread::sleep,
+		sync::{Arc, Mutex, OnceLock, mpsc},
+		thread::{ThreadId, current, sleep},
 	};
 
 	use reifydb_core::{
@@ -885,6 +891,7 @@ mod integration {
 			commit::FlowWal,
 		},
 		key::tag::KeyTag,
+		marker::{Marker, MarkerEntry, MarkerSink},
 	};
 	use reifydb_flow::txn::FlowGet;
 	use reifydb_flow_async::{
@@ -896,7 +903,9 @@ mod integration {
 			substrate::FlowSubstrate,
 		},
 	};
-	use reifydb_runtime::context::{RuntimeContext, spawner::Spawner, transaction::TransactionContext};
+	use reifydb_runtime::context::{
+		RuntimeContext, clock::Instant, spawner::Spawner, transaction::TransactionContext,
+	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
@@ -905,6 +914,12 @@ mod integration {
 		value::{duration::Duration, identity::IdentityId},
 	};
 	use reifydb_wal::sync::WalMode;
+	use tracing::{
+		Event, Metadata, Subscriber,
+		field::{Field, Visit},
+		span::{Attributes, Id, Record},
+		subscriber::set_global_default,
+	};
 
 	use super::*;
 	use crate::{
@@ -2201,5 +2216,165 @@ mod integration {
 				"an empty pull with unchanged output watermarks and no checkpoint due must not commit"
 			),
 		}
+	}
+
+	#[derive(Default)]
+	struct InputAge {
+		flow_id: Option<u64>,
+		age_us: Option<u64>,
+	}
+
+	impl Visit for InputAge {
+		fn record_u64(&mut self, field: &Field, value: u64) {
+			match field.name() {
+				"flow_id" => self.flow_id = Some(value),
+				"age_us" => self.age_us = Some(value),
+				_ => {}
+			}
+		}
+
+		fn record_debug(&mut self, _field: &Field, _value: &dyn Debug) {}
+	}
+
+	type AgesByThread = Vec<(ThreadId, Option<u64>, Option<u64>)>;
+
+	#[derive(Clone, Default)]
+	struct InputAges {
+		seen: Arc<Mutex<AgesByThread>>,
+	}
+
+	impl InputAges {
+		fn seen(&self) -> Vec<(Option<u64>, Option<u64>)> {
+			// Every test shares the recorder, so a test must read only the spans its own thread opened.
+			let thread = current().id();
+			self.seen
+				.lock()
+				.unwrap()
+				.iter()
+				.filter(|(by, ..)| *by == thread)
+				.map(|(_, flow, age)| (*flow, *age))
+				.collect()
+		}
+	}
+
+	impl Subscriber for InputAges {
+		fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+			true
+		}
+
+		fn new_span(&self, attrs: &Attributes<'_>) -> Id {
+			// Every other span on the slice path opens here too, so only the input age may be kept.
+			if attrs.metadata().name() == "flow::slice::input_age" {
+				let mut age = InputAge::default();
+				attrs.record(&mut age);
+				self.seen.lock().unwrap().push((current().id(), age.flow_id, age.age_us));
+			}
+			Id::from_u64(1)
+		}
+
+		fn record(&self, _span: &Id, _values: &Record<'_>) {}
+
+		fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+
+		fn event(&self, _event: &Event<'_>) {}
+
+		fn enter(&self, _span: &Id) {}
+
+		fn exit(&self, _span: &Id) {}
+	}
+
+	fn input_ages() -> &'static InputAges {
+		// A recorder scoped to one thread can be switched off by a test on another, so it must be global.
+		static RECORDER: OnceLock<InputAges> = OnceLock::new();
+		RECORDER.get_or_init(|| {
+			let ages = InputAges::default();
+			set_global_default(ages.clone()).expect("no other recorder may be installed in this binary");
+			ages
+		})
+	}
+
+	fn marked_at(markers: &MarkerMap, version: CommitVersion, committed_at: Instant) {
+		markers.insert(
+			version,
+			MarkerEntry {
+				committed_at: committed_at.clone(),
+				writer: Some(Marker {
+					id: version,
+					t0s: Arc::from([committed_at]),
+				}),
+				by_view: BTreeMap::new(),
+			},
+		);
+	}
+
+	fn step_with_markers(te: &TestEngine, markers: MarkerMap) -> FlowId {
+		let engine = te.inner().clone();
+		let (flow_id, mut flow_engine, source_objects) = one_view_flow(te);
+		let computer = SliceComputer::new(engine.clone()).with_markers(Some(markers));
+		pull_step(
+			&engine,
+			&computer,
+			&mut flow_engine,
+			SliceCursor {
+				flow_id,
+				source_objects: &source_objects,
+				completeness_objects: None,
+				cursor: CommitVersion(0),
+				lsn: Lsn::new(0),
+				released: (CommitVersion(0), Lsn::new(0)),
+				durable_cursor: CommitVersion(0),
+				fold_shape: FoldShape::PerSource,
+			},
+			&SliceConfig {
+				checkpoint_lag: 10_000,
+			},
+		)
+		.expect("the inserts are visible, so the flow must step");
+		flow_id
+	}
+
+	#[test]
+	fn a_change_read_after_its_parent_commit_reports_its_age_under_the_reading_flow() {
+		// The age must run from the parent commit stamp to the read, otherwise a late read stays invisible.
+		let ages = input_ages();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build();
+		let inserted = three_separate_inserts(&te);
+		let markers = MarkerMap::new();
+		marked_at(&markers, inserted, te.inner().clock().instant());
+		te.mock_clock().advance_millis(250);
+
+		let flow_id = step_with_markers(&te, markers);
+
+		assert_eq!(ages.seen(), vec![(Some(flow_id.0), Some(250_000))]);
+	}
+
+	#[test]
+	fn the_input_age_counts_from_the_newest_parent_commit_in_the_slice() {
+		// The hop starts at the newest parent, so an age from the oldest one could never be compared to it.
+		let ages = input_ages();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build();
+		let inserted = three_separate_inserts(&te);
+		let markers = MarkerMap::new();
+		marked_at(&markers, CommitVersion(inserted.0 - 1), te.inner().clock().instant());
+		te.mock_clock().advance_millis(100);
+		marked_at(&markers, inserted, te.inner().clock().instant());
+		te.mock_clock().advance_millis(150);
+
+		let flow_id = step_with_markers(&te, markers);
+
+		assert_eq!(ages.seen(), vec![(Some(flow_id.0), Some(150_000))]);
+	}
+
+	#[test]
+	fn a_slice_that_reads_no_marked_change_reports_no_input_age() {
+		// An age for an unmarked slice has no parent stamp to count from and would only add noise.
+		let ages = input_ages();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build();
+		three_separate_inserts(&te);
+		te.mock_clock().advance_millis(250);
+
+		step_with_markers(&te, MarkerMap::new());
+
+		assert!(ages.seen().is_empty(), "a slice without input markers must not report an age");
 	}
 }

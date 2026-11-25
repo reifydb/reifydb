@@ -334,6 +334,7 @@ impl WasmDB {
 			true,
 			multi.current_version().map_err(|e| JsError::from_error(&e))?,
 			multi.config().get_config_uint8(ConfigKey::FlowLookupTrackerEntries) as usize,
+			clock.clone(),
 		);
 		ioc = ioc.register(FlowQueuePosition(commit_queue.position("flow")));
 		ioc = ioc.register(commit_queue.clone());

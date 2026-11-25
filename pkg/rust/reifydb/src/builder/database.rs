@@ -411,6 +411,7 @@ impl DatabaseBuilder {
 			multi.wal().mode() != WalMode::Off,
 			resumed_at,
 			multi.config().get_config_uint8(ConfigKey::FlowLookupTrackerEntries) as usize,
+			clock.clone(),
 		);
 		self.ioc = self.ioc.register(commit_queue.clone());
 		#[cfg(feature = "sub_flow")]

@@ -13,9 +13,13 @@ use std::{
 	},
 };
 
-use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::{
+	context::clock::{Clock, Instant},
+	sync::rwlock::RwLock,
+};
 use reifydb_value::byte_size::ByteSize;
 use reifydb_wal::lsn::Lsn;
+use tracing::trace_span;
 
 use crate::{
 	commit::tracker::WriteTracker,
@@ -40,7 +44,7 @@ const FREE_INLINE_ENTRIES: usize = 1024;
 struct FreedEntries(BTreeMap<CommitVersion, (u64, Arc<CommitEntry>)>);
 
 struct QueueInner {
-	parked: BTreeMap<CommitVersion, (Lsn, Option<Arc<CommitEntry>>)>,
+	parked: BTreeMap<CommitVersion, (Lsn, Option<Arc<CommitEntry>>, Instant)>,
 	entries: BTreeMap<CommitVersion, (u64, Arc<CommitEntry>)>,
 	bytes: u64,
 	cover_from: CommitVersion,
@@ -71,6 +75,7 @@ pub(crate) struct QueueShared {
 	evicted_ceiling: AtomicU64,
 	over_soft_cap: AtomicU64,
 	tracker: WriteTracker,
+	clock: Clock,
 }
 
 #[derive(Clone)]
@@ -79,7 +84,13 @@ pub struct CommitQueue {
 }
 
 impl CommitQueue {
-	pub fn new(limit: ByteSize, wal_enabled: bool, seed: CommitVersion, tracker_entries: usize) -> Self {
+	pub fn new(
+		limit: ByteSize,
+		wal_enabled: bool,
+		seed: CommitVersion,
+		tracker_entries: usize,
+		clock: Clock,
+	) -> Self {
 		Self {
 			shared: Arc::new(QueueShared {
 				inner: RwLock::new(QueueInner {
@@ -104,6 +115,7 @@ impl CommitQueue {
 				evicted_ceiling: AtomicU64::new(0),
 				over_soft_cap: AtomicU64::new(0),
 				tracker: WriteTracker::new(tracker_entries, seed),
+				clock,
 			}),
 		}
 	}
@@ -235,13 +247,17 @@ impl CommitQueue {
 				version.0, inner.released.0
 			);
 		}
-		inner.parked.insert(version, (*event.lsn(), entry));
+		inner.parked.insert(version, (*event.lsn(), entry, self.shared.clock.instant()));
 		let mut released = false;
 		loop {
 			let next = next_version(inner.released);
-			let Some((lsn, entry)) = inner.parked.remove(&next) else {
+			let Some((lsn, entry, arrived_at)) = inner.parked.remove(&next) else {
 				break;
 			};
+			let parked_us =
+				u64::try_from(self.shared.clock.instant().duration_since(&arrived_at).as_micros())
+					.unwrap_or(u64::MAX);
+			drop(trace_span!("transaction::commit::queue::parked", parked_us));
 			if let Some(entry) = entry {
 				let bytes = entry.bytes();
 				inner.bytes += bytes;
