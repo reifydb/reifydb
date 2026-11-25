@@ -62,7 +62,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 use reifydb_wal::lsn::Lsn;
-use tracing::{debug, error, warn};
+use tracing::{Span, debug, error, instrument, trace_span, warn};
 
 use crate::{
 	builder::CustomOperators,
@@ -173,6 +173,70 @@ impl DrainBound {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CommitWait {
+	Slice,
+	Tick,
+	Expire,
+}
+
+impl CommitWait {
+	fn as_str(self) -> &'static str {
+		match self {
+			CommitWait::Slice => "slice",
+			CommitWait::Tick => "tick",
+			CommitWait::Expire => "expire",
+		}
+	}
+}
+
+#[derive(Default)]
+struct WaitSpans {
+	upstream: Option<Span>,
+	bound: Option<Span>,
+	load: Option<Span>,
+	commit: Option<(CommitWait, Span)>,
+}
+
+impl WaitSpans {
+	fn begin_upstream(&mut self) {
+		self.upstream.get_or_insert_with(|| trace_span!(parent: None, "flow::actor::wait::upstream"));
+	}
+
+	fn end_upstream(&mut self) {
+		self.upstream = None;
+	}
+
+	fn begin_bound(&mut self) {
+		self.bound.get_or_insert_with(|| trace_span!(parent: None, "flow::actor::wait::bound"));
+	}
+
+	fn end_bound(&mut self) {
+		self.bound = None;
+	}
+
+	fn begin_load(&mut self) {
+		self.load.get_or_insert_with(|| trace_span!(parent: None, "flow::actor::wait::load"));
+	}
+
+	fn end_load(&mut self) {
+		self.load = None;
+	}
+
+	fn begin_commit(&mut self, kind: CommitWait) {
+		self.commit =
+			Some((kind, trace_span!(parent: None, "flow::actor::wait::commit", kind = kind.as_str())));
+	}
+
+	fn end_commit(&mut self) {
+		self.commit = None;
+	}
+
+	fn clear(&mut self) {
+		*self = Self::default();
+	}
+}
+
 pub struct FlowActorState {
 	flow_engine: FlowEngineInner,
 	pending_stop: Option<(bool, Box<dyn FnOnce() + Send>)>,
@@ -204,6 +268,7 @@ pub struct FlowActorState {
 	backlog: bool,
 	split: Option<Split>,
 	expired: Option<Pending>,
+	waits: WaitSpans,
 }
 
 impl FlowActor {
@@ -299,6 +364,7 @@ impl FlowActor {
 		self.report_poisoned(ctx, reason);
 		state.poisoned = true;
 		state.expired = None;
+		state.waits.clear();
 		*self.create_snapshot.lock() = None;
 	}
 
@@ -517,6 +583,7 @@ impl FlowActor {
 		);
 	}
 
+	#[instrument(name = "flow::actor::on_drain", level = "trace", skip_all)]
 	fn on_drain(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		let woken = self.wake_pending.swap(false, Ordering::SeqCst);
 		state.released = self.queue.released();
@@ -542,10 +609,16 @@ impl FlowActor {
 		};
 		state.read_cache.retain_after(state.cursor);
 		if bound.up_to() <= state.cursor {
+			if state.released.0 > state.cursor {
+				state.waits.begin_bound();
+			} else {
+				state.waits.end_bound();
+			}
 			state.backlog = false;
 			self.checkpoint_if_stale(state, ctx);
 			return;
 		}
+		state.waits.end_bound();
 		let upstreams = self.flow_tracker.upstreams(self.flow_id);
 		if !upstreams.is_empty() {
 			self.drain_merged(state, ctx, bound, &upstreams);
@@ -653,6 +726,7 @@ impl FlowActor {
 		upstreams.keys().all(|producer| snapshot.cuts.get(producer).is_some_and(|cut| cut.at.is_some()))
 	}
 
+	#[instrument(name = "flow::actor::drain_merged", level = "trace", skip_all)]
 	fn drain_merged(
 		&self,
 		state: &mut FlowActorState,
@@ -726,6 +800,15 @@ impl FlowActor {
 		let mut merged = merge(cursor, &tables, &upstream_reads.reads, &scope);
 		merged.more |= bound.is_capped();
 		if merged.target <= cursor {
+			if upstream_reads
+				.reads
+				.values()
+				.any(|upstream| upstream.position.is_none_or(|position| position < safe))
+			{
+				state.waits.begin_upstream();
+			} else {
+				state.waits.end_upstream();
+			}
 			let lagging: Vec<FlowId> = upstream_reads
 				.reads
 				.iter()
@@ -752,11 +835,13 @@ impl FlowActor {
 			}
 			return;
 		}
+		state.waits.end_upstream();
 		state.backlog = merged.more;
 		let step = self.compute_step(state, &merged.items, merged.target, merged.more);
 		self.apply_step(state, ctx, step, Some(&upstream_reads));
 	}
 
+	#[instrument(name = "flow::actor::read_range", level = "trace", skip_all)]
 	fn read_range(
 		&self,
 		state: &mut FlowActorState,
@@ -787,6 +872,7 @@ impl FlowActor {
 		}
 	}
 
+	#[instrument(name = "flow::actor::read_stream", level = "trace", skip_all)]
 	fn read_stream(
 		&self,
 		state: &mut FlowActorState,
@@ -923,6 +1009,7 @@ impl FlowActor {
 		up_to: CommitVersion,
 	) {
 		state.awaiting_load = true;
+		state.waits.begin_load();
 		state.loading_from = from;
 		let self_ref = ctx.self_ref().clone();
 		let reply: CommitLoaderReply = Box::new(move |outcome| {
@@ -940,6 +1027,7 @@ impl FlowActor {
 			.is_err()
 		{
 			state.awaiting_load = false;
+			state.waits.end_load();
 			if !ctx.is_cancelled() {
 				panic!("flow {} loader stopped outside shutdown", self.flow_id.0);
 			}
@@ -953,6 +1041,7 @@ impl FlowActor {
 		outcome: Result<Loaded, ValueError>,
 	) {
 		state.awaiting_load = false;
+		state.waits.end_load();
 		if state.poisoned {
 			return;
 		}
@@ -1003,6 +1092,7 @@ impl FlowActor {
 		}
 		state.hold_cache = None;
 		state.committing = true;
+		state.waits.begin_commit(CommitWait::Slice);
 		state.pending_lsn = lsn;
 		state.pending_holds = holds;
 		let self_ref = ctx.self_ref().clone();
@@ -1027,12 +1117,14 @@ impl FlowActor {
 			.is_err()
 		{
 			state.committing = false;
+			state.waits.end_commit();
 			if !ctx.is_cancelled() {
 				panic!("flow {} committer stopped outside shutdown", self.flow_id.0);
 			}
 		}
 	}
 
+	#[instrument(name = "flow::actor::on_slice_committed", level = "trace", skip_all)]
 	fn on_slice_committed(
 		&self,
 		state: &mut FlowActorState,
@@ -1043,6 +1135,7 @@ impl FlowActor {
 		committed: Option<CommitVersion>,
 	) {
 		state.committing = false;
+		state.waits.end_commit();
 		let holds = take(&mut state.pending_holds);
 		if result.is_ok()
 			&& let Some(version) = committed
@@ -1144,6 +1237,7 @@ impl FlowActor {
 		result: Result<(), ValueError>,
 	) {
 		state.committing = false;
+		state.waits.end_commit();
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
@@ -1189,6 +1283,7 @@ impl FlowActor {
 		}
 	}
 
+	#[instrument(name = "flow::actor::on_tick", level = "trace", skip_all)]
 	fn on_tick(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		let mut retrying = false;
 		if self.ticks_enabled && !state.poisoned && !state.committing && !state.backfilling {
@@ -1242,6 +1337,7 @@ impl FlowActor {
 		}
 		state.hold_cache = None;
 		state.committing = true;
+		state.waits.begin_commit(CommitWait::Tick);
 		state.drain_after_commit = true;
 		let self_ref = ctx.self_ref().clone();
 		let reply: TickCommitReply = Box::new(move |result| {
@@ -1261,6 +1357,7 @@ impl FlowActor {
 			.is_err()
 		{
 			state.committing = false;
+			state.waits.end_commit();
 			if !ctx.is_cancelled() {
 				panic!("flow {} committer stopped outside shutdown", self.flow_id.0);
 			}
@@ -1297,6 +1394,7 @@ impl FlowActor {
 		self.start_expire(state, ctx);
 	}
 
+	#[instrument(name = "flow::actor::start_expire", level = "trace", skip_all)]
 	fn start_expire(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		if state.expired.is_none() {
 			return;
@@ -1325,6 +1423,7 @@ impl FlowActor {
 		}
 		state.hold_cache = None;
 		state.committing = true;
+		state.waits.begin_commit(CommitWait::Expire);
 		state.drain_after_commit = true;
 		let self_ref = ctx.self_ref().clone();
 		let reply: TickCommitReply = Box::new(move |result| {
@@ -1344,6 +1443,7 @@ impl FlowActor {
 			.is_err()
 		{
 			state.committing = false;
+			state.waits.end_commit();
 			if !ctx.is_cancelled() {
 				panic!("flow {} committer stopped outside shutdown", self.flow_id.0);
 			}
@@ -1357,6 +1457,7 @@ impl FlowActor {
 		result: Result<(), ValueError>,
 	) {
 		state.committing = false;
+		state.waits.end_commit();
 		match result {
 			Ok(()) => {
 				if take(&mut state.drain_after_commit) {
@@ -1406,6 +1507,7 @@ impl FlowActor {
 			return Directive::Continue;
 		};
 		state.flow_engine.unregister_operator_samples();
+		state.waits.clear();
 		self.on_stop(delete_checkpoint);
 		self.health.clear(self.flow_id);
 		(reply)();
@@ -1505,6 +1607,7 @@ impl Actor for FlowActor {
 			backlog: false,
 			split: None,
 			expired: None,
+			waits: WaitSpans::default(),
 		};
 
 		if !state.poisoned {
@@ -4974,6 +5077,255 @@ mod tick_failures {
 		let mut harness = TestHarness::new(actor);
 
 		hand_off(&mut harness, vec![RowKey::encoded(source_view(te.inner()), RowNumber(1))]);
+	}
+
+	#[derive(Clone, Default)]
+	struct ClosedSpans {
+		closed: Arc<std::sync::Mutex<Vec<(&'static str, Option<String>)>>>,
+	}
+
+	impl ClosedSpans {
+		fn waits(&self) -> Vec<(&'static str, Option<String>)> {
+			// Handler spans close on every message, so only wait spans may count or every assertion drowns.
+			self.closed
+				.lock()
+				.unwrap()
+				.iter()
+				.filter(|(name, _)| name.starts_with("flow::actor::wait::"))
+				.cloned()
+				.collect()
+		}
+	}
+
+	struct KindField(Option<String>);
+
+	impl tracing::field::Visit for KindField {
+		fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+			if field.name() == "kind" {
+				self.0 = Some(value.to_string());
+			}
+		}
+
+		fn record_debug(&mut self, _field: &tracing::field::Field, _value: &dyn std::fmt::Debug) {}
+	}
+
+	impl<S> tracing_subscriber::Layer<S> for ClosedSpans
+	where
+		S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+	{
+		fn on_new_span(
+			&self,
+			attrs: &tracing::span::Attributes<'_>,
+			id: &tracing::span::Id,
+			ctx: tracing_subscriber::layer::Context<'_, S>,
+		) {
+			let mut kind = KindField(None);
+			attrs.record(&mut kind);
+			ctx.span(id).expect("a new span must be in the registry").extensions_mut().insert(kind);
+		}
+
+		fn on_close(&self, id: tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
+			let span = ctx.span(&id).expect("a closing span must be in the registry");
+			let kind = span.extensions().get::<KindField>().and_then(|kind| kind.0.clone());
+			self.closed.lock().unwrap().push((span.name(), kind));
+		}
+	}
+
+	fn recording<R>(run: impl FnOnce(&ClosedSpans) -> R) -> R {
+		use tracing_subscriber::layer::SubscriberExt;
+		// The recorder must be installed before the actor opens a span, otherwise the close is never seen.
+		let spans = ClosedSpans::default();
+		tracing::subscriber::with_default(tracing_subscriber::Registry::default().with(spans.clone()), || {
+			run(&spans)
+		})
+	}
+
+	fn wait(name: &'static str, kind: Option<&str>) -> (&'static str, Option<String>) {
+		(name, kind.map(str::to_string))
+	}
+
+	#[test]
+	fn an_expire_commit_in_flight_is_one_commit_wait_that_closes_when_it_lands() {
+		// The wait must span hand-off to reply exactly once, otherwise a stalled committer stays invisible.
+		recording(|spans| {
+			let (_te, actor, sink, ticks) = expire_actor();
+			let mut harness = TestHarness::new(actor);
+
+			hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
+			next_expire_commit(&ticks);
+			assert!(spans.waits().is_empty(), "a commit still in flight must not be reported as finished");
+			assert_eq!(
+				harness.state().waits.commit.as_ref().map(|(kind, _)| *kind),
+				Some(CommitWait::Expire),
+				"the open wait must name the expire commit it is waiting on"
+			);
+
+			harness.send(FlowActorMessage::ExpireCommitted {
+				result: Ok(()),
+			});
+			harness.process_one();
+
+			assert_eq!(spans.waits(), vec![wait("flow::actor::wait::commit", Some("expire"))]);
+			assert!(harness.state().waits.commit.is_none(), "a landed commit must leave no wait open");
+		});
+	}
+
+	#[test]
+	fn a_tick_commit_in_flight_is_a_commit_wait_of_kind_tick() {
+		// The kind must follow the commit that is in flight, otherwise a slow tick is blamed on a slice.
+		recording(|spans| {
+			let (_te, actor) = unit_actor(Arc::new(AtomicUsize::new(0)));
+			let mut harness = TestHarness::new(actor);
+
+			tick(&mut harness);
+			assert!(harness.state().committing, "precondition: the fired timer must send a tick commit");
+			assert_eq!(
+				harness.state().waits.commit.as_ref().map(|(kind, _)| *kind),
+				Some(CommitWait::Tick)
+			);
+			assert!(
+				spans.waits().is_empty(),
+				"a tick commit still in flight must not be reported as finished"
+			);
+
+			harness.send(FlowActorMessage::TickCommitted {
+				result: Ok(()),
+			});
+			harness.process_one();
+
+			assert_eq!(spans.waits(), vec![wait("flow::actor::wait::commit", Some("tick"))]);
+		});
+	}
+
+	#[test]
+	fn a_failed_commit_closes_its_wait() {
+		// A refused commit must end the wait too, otherwise the retry is reported as one endless commit.
+		recording(|spans| {
+			let (_te, actor, sink, ticks) = expire_actor();
+			let mut harness = TestHarness::new(actor);
+			hand_off(&mut harness, vec![RowKey::encoded(sink, RowNumber(1))]);
+			next_expire_commit(&ticks);
+
+			harness.send(FlowActorMessage::ExpireCommitted {
+				result: Err(internal_error!("commit rejected")),
+			});
+			harness.process_one();
+
+			assert_eq!(spans.waits(), vec![wait("flow::actor::wait::commit", Some("expire"))]);
+			assert!(harness.state().waits.commit.is_none());
+		});
+	}
+
+	#[test]
+	fn a_load_that_returns_closes_the_load_wait() {
+		// The load wait must end with the reply, otherwise every later drain is counted as still loading.
+		recording(|spans| {
+			let (_te, _health, actor) = quiet_actor();
+			let mut harness = TestHarness::new(actor);
+			harness.state_mut().committing = true;
+			harness.state_mut().awaiting_load = true;
+			harness.state_mut().waits.begin_load();
+
+			harness.send(FlowActorMessage::Loaded {
+				outcome: Err(internal_error!("load failed")),
+			});
+			harness.process_one();
+
+			assert_eq!(spans.waits(), vec![wait("flow::actor::wait::load", None)]);
+			assert!(harness.state().waits.load.is_none());
+		});
+	}
+
+	#[test]
+	fn a_poisoned_flow_leaves_no_wait_open() {
+		// A poisoned flow never drains again, so a wait left open would never close and never be reported.
+		recording(|spans| {
+			let (_te, _health, actor) = ticking_actor();
+			let mut harness = TestHarness::new(actor);
+			harness.state_mut().waits.begin_upstream();
+			harness.state_mut().waits.begin_bound();
+			harness.state_mut().waits.begin_load();
+
+			for _ in 0..=RETRY_LIMIT {
+				tick(&mut harness);
+			}
+			assert!(harness.state().poisoned, "precondition: the flow must poison past the retry limit");
+
+			let waits = &harness.state().waits;
+			assert!(waits.upstream.is_none() && waits.bound.is_none() && waits.load.is_none());
+			let mut closed = spans.waits();
+			closed.sort();
+			assert_eq!(
+				closed,
+				vec![
+					wait("flow::actor::wait::bound", None),
+					wait("flow::actor::wait::load", None),
+					wait("flow::actor::wait::upstream", None),
+				]
+			);
+		});
+	}
+
+	#[test]
+	fn a_stopped_flow_leaves_no_wait_open() {
+		// A stopped actor handles no further message, so its waits must close at the stop or leak forever.
+		recording(|spans| {
+			let (_te, _health, actor) = quiet_actor();
+			let mut harness = TestHarness::new(actor);
+			harness.state_mut().waits.begin_upstream();
+
+			harness.send(FlowActorMessage::Stop {
+				delete_checkpoint: false,
+				reply: Box::new(|| {}),
+			});
+			assert_eq!(harness.process_one(), Some(Directive::Stop), "precondition: the stop must land");
+
+			assert!(harness.state().waits.upstream.is_none());
+			assert_eq!(spans.waits(), vec![wait("flow::actor::wait::upstream", None)]);
+		});
+	}
+
+	#[test]
+	fn a_wait_seen_on_several_drains_is_one_span_from_the_first_sighting() {
+		// A wait re-opened on every drain would restart its clock and report many short waits for one stall.
+		recording(|spans| {
+			let mut waits = WaitSpans::default();
+			waits.begin_upstream();
+			waits.begin_upstream();
+			waits.begin_bound();
+			waits.begin_bound();
+			assert!(spans.waits().is_empty(), "an open wait must not be reported before it ends");
+
+			waits.end_upstream();
+			waits.end_upstream();
+			waits.end_bound();
+
+			assert_eq!(
+				spans.waits(),
+				vec![wait("flow::actor::wait::upstream", None), wait("flow::actor::wait::bound", None)]
+			);
+		});
+	}
+
+	#[test]
+	fn each_commit_kind_labels_its_own_wait() {
+		// Each commit kind must map to its own label, otherwise the profile merges slice, tick and expire.
+		recording(|spans| {
+			let mut waits = WaitSpans::default();
+			for kind in [CommitWait::Slice, CommitWait::Tick, CommitWait::Expire] {
+				waits.begin_commit(kind);
+				waits.end_commit();
+			}
+
+			assert_eq!(
+				spans.waits(),
+				vec![
+					wait("flow::actor::wait::commit", Some("slice")),
+					wait("flow::actor::wait::commit", Some("tick")),
+					wait("flow::actor::wait::commit", Some("expire")),
+				]
+			);
+		});
 	}
 
 	#[test]

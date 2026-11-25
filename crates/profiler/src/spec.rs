@@ -109,6 +109,13 @@ static SPECS: &[SpanSpec] = &[
 		render: Some(render_committer_slices),
 	},
 	SpanSpec {
+		name: "flow::actor::wait::commit",
+		duration_override: None,
+		dims: &[DimSource::Text("kind")],
+		extras: &[],
+		render: None,
+	},
+	SpanSpec {
 		name: "flow::committer::retry_slice",
 		duration_override: None,
 		dims: &[DimSource::Text("committer")],
