@@ -18,6 +18,8 @@ use std::{
 	thread,
 };
 
+use crate::rule::Breach;
+
 type Checked = (usize, Result<Vec<String>, String>);
 
 struct Root(PathBuf);
@@ -82,8 +84,15 @@ fn run_check_worker(root: &Root, paths: &[PathBuf], next: &AtomicUsize, sender: 
 fn run_check_worker_file(root: &Root, path: &Path) -> Result<Vec<String>, String> {
 	let shown = root.relative(path);
 	let text = fs::read_to_string(path).map_err(|error| format!("{shown}: {error}"))?;
-	let breaches = rule::check(&text).map_err(|error| format!("{shown}: {error}"))?;
-	Ok(breaches.iter().map(|breach| format!("  {} :{} {}", breach.rule, breach.line, breach.function)).collect())
+	let breaches = rule::check(Path::new(&shown), &text).map_err(|error| format!("{shown}: {error}"))?;
+	Ok(breaches.iter().map(run_check_worker_file_line).collect())
+}
+
+fn run_check_worker_file_line(breach: &Breach) -> String {
+	match &breach.function {
+		Some(function) => format!("  {} :{} {function}", breach.rule, breach.line),
+		None => format!("  {} :{}", breach.rule, breach.line),
+	}
 }
 
 fn run_check_print(root: &Root, paths: &[PathBuf], receiver: Receiver<Checked>) -> Result<Totals, Box<dyn Error>> {

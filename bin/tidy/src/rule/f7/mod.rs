@@ -61,3 +61,6 @@ impl<'ast> Visit<'ast> for Names {
 		visit::visit_pat_ident(self, node);
 	}
 }
+
+#[cfg(test)]
+mod tests;

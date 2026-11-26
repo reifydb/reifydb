@@ -14,3 +14,6 @@ pub(crate) fn breaks(function: &Function) -> bool {
 	let closed = span.close().start().line;
 	closed.saturating_sub(opened).saturating_sub(1) > LIMIT
 }
+
+#[cfg(test)]
+mod tests;

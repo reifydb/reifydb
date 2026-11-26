@@ -24,3 +24,6 @@ fn breaks_is_exempt(function: &Function) -> bool {
 		None => true,
 	}
 }
+
+#[cfg(test)]
+mod tests;

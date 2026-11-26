@@ -24,3 +24,6 @@ fn breaks_is_bool(argument: &FnArg) -> bool {
 	};
 	path.qself.is_none() && path.path.is_ident("bool")
 }
+
+#[cfg(test)]
+mod tests;

@@ -98,3 +98,6 @@ impl Depth {
 		self.current -= 1;
 	}
 }
+
+#[cfg(test)]
+mod tests;

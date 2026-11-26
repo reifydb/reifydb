@@ -6,9 +6,15 @@ mod f3;
 mod f4;
 mod f5;
 mod f7;
+mod m1;
+mod m2;
+mod m3;
+mod m4;
+
+use std::path::Path;
 
 use syn::{
-	Abi, Block, Error, ForeignItemFn, ImplItemFn, ItemFn, ItemForeignMod, ItemImpl, Signature, TraitItemFn,
+	Abi, Block, Error, File, ForeignItemFn, ImplItemFn, ItemFn, ItemForeignMod, ItemImpl, Signature, TraitItemFn,
 	parse_file,
 	visit::{self, Visit},
 };
@@ -20,26 +26,62 @@ pub(crate) struct Function<'ast> {
 	signature_owner: SignatureOwner,
 }
 
+pub(crate) struct SourceFile<'file> {
+	path: &'file Path,
+	text: &'file str,
+	tree: &'file File,
+}
+
 pub(crate) struct Breach {
 	pub(crate) rule: &'static str,
 	pub(crate) line: usize,
-	pub(crate) function: String,
+	pub(crate) function: Option<String>,
 }
 
 type Rule = fn(&Function) -> bool;
 
+type FileRule = fn(&SourceFile) -> Vec<usize>;
+
 const RULES: [(&str, Rule); 5] =
 	[("F2", f2::breaks), ("F3", f3::breaks), ("F4", f4::breaks), ("F5", f5::breaks), ("F7", f7::breaks)];
 
-pub(crate) fn check(text: &str) -> Result<Vec<Breach>, Error> {
-	let file = parse_file(text)?;
+const FILE_RULES: [(&str, FileRule); 4] =
+	[("M1", m1::breaches), ("M2", m2::breaches), ("M3", m3::breaches), ("M4", m4::breaches)];
+
+pub(crate) fn check(path: &Path, text: &str) -> Result<Vec<Breach>, Error> {
+	let tree = parse_file(text)?;
 	let mut checker = Checker {
 		breaches: Vec::new(),
 		signature_owner: SignatureOwner::Function,
 		foreign_abi: None,
 	};
-	checker.visit_file(&file);
-	Ok(checker.breaches)
+	checker.visit_file(&tree);
+	let mut breaches = checker.breaches;
+	let file = SourceFile {
+		path,
+		text,
+		tree: &tree,
+	};
+	for (rule, breaches_of) in FILE_RULES {
+		breaches.extend(breaches_of(&file).into_iter().map(|line| Breach {
+			rule,
+			line,
+			function: None,
+		}));
+	}
+	Ok(breaches)
+}
+
+impl SourceFile<'_> {
+	fn is_test_file(&self) -> bool {
+		if self.path.file_name().is_some_and(|name| name == "tests.rs") {
+			return true;
+		}
+		self.path.components().any(|component| {
+			let name = component.as_os_str();
+			name == "tests" || name == "benches"
+		})
+	}
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -122,7 +164,7 @@ impl<'ast> Checker<'ast> {
 			self.breaches.push(Breach {
 				rule,
 				line: function.signature.ident.span().start().line,
-				function: function.signature.ident.to_string(),
+				function: Some(function.signature.ident.to_string()),
 			});
 		}
 	}
