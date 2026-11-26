@@ -116,20 +116,22 @@ pub mod tests {
 
 	#[test]
 	fn test_take_negative() {
-		assert_eq!(parse_error_code("TAKE -1"), "TAKE_001");
+		assert_eq!(parse_error("TAKE -1").code, "TAKE_001");
 	}
 
-	fn parse_error_code(source: &str) -> String {
+	fn parse_error(source: &str) -> ValueError {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
-		parser.parse().unwrap_err().code.as_str().to_string()
+		parser.parse().unwrap_err()
 	}
 
 	#[test]
 	fn test_take_without_an_integer_operand() {
 		for source in ["TAKE 1.5", "TAKE 9223372036854775808", "TAKE true", "TAKE {1 + 1}"] {
-			assert_eq!(parse_error_code(source), "TAKE_002", "{source}");
+			let error = parse_error(source);
+			assert_eq!(error.code, "TAKE_002", "{source}");
+			assert_eq!(error.message, "TAKE operator requires an integer value", "{source}");
 		}
 	}
 }
