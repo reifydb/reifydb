@@ -29,27 +29,32 @@ impl<'bump> Parser<'bump> {
 		}
 
 		match take {
-			Ast::Literal(literal) => match literal {
-				AstLiteral::Number(number) => {
-					let take_value: i64 = number.value().parse().unwrap();
-					if take_value < 0 {
-						return Err(AstError::TakeNegativeValue {
-							fragment: number.0.fragment.to_owned(),
-						}
-						.into());
+			Ast::Literal(AstLiteral::Number(number)) => {
+				let Ok(take_value) = number.value().parse::<i64>() else {
+					return Err(AstError::TakeInvalidValue {
+						fragment: number.0.fragment.to_owned(),
 					}
-					Ok(AstTake {
-						token,
-						take: AstTakeValue::Literal(take_value as usize),
-					})
+					.into());
+				};
+				if take_value < 0 {
+					return Err(AstError::TakeNegativeValue {
+						fragment: number.0.fragment.to_owned(),
+					}
+					.into());
 				}
-				_ => unimplemented!(),
-			},
+				Ok(AstTake {
+					token,
+					take: AstTakeValue::Literal(take_value as usize),
+				})
+			}
 			Ast::Variable(var) => Ok(AstTake {
 				token,
 				take: AstTakeValue::Variable(var.token),
 			}),
-			_ => unimplemented!(),
+			other => Err(AstError::TakeInvalidValue {
+				fragment: other.token().fragment.to_owned(),
+			}
+			.into()),
 		}
 	}
 }
@@ -111,13 +116,20 @@ pub mod tests {
 
 	#[test]
 	fn test_take_negative() {
+		assert_eq!(parse_error_code("TAKE -1"), "TAKE_001");
+	}
+
+	fn parse_error_code(source: &str) -> String {
 		let bump = Bump::new();
-		let source = "TAKE -1";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
-		let result = parser.parse();
+		parser.parse().unwrap_err().code.as_str().to_string()
+	}
 
-		let error = result.unwrap_err();
-		assert_eq!(error.code.as_str(), "TAKE_001");
+	#[test]
+	fn test_take_without_an_integer_operand() {
+		for source in ["TAKE 1.5", "TAKE 9223372036854775808", "TAKE true", "TAKE {1 + 1}"] {
+			assert_eq!(parse_error_code(source), "TAKE_002", "{source}");
+		}
 	}
 }

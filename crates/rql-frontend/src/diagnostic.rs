@@ -157,6 +157,11 @@ pub enum AstError {
 		fragment: Fragment,
 	},
 
+	#[error("TAKE operator requires an integer value")]
+	TakeInvalidValue {
+		fragment: Fragment,
+	},
+
 	#[error("{kind} requires curly braces")]
 	OperatorMissingBraces {
 		kind: OperationKind,
@@ -570,7 +575,26 @@ impl IntoDiagnostic for AstError {
 				}
 			}
 
-
+			AstError::TakeInvalidValue { fragment } => {
+				let value = fragment.text().to_string();
+				Diagnostic {
+					code: "TAKE_002".to_string(),
+					rql: None,
+					message: format!("TAKE operator requires an integer value, got {}", value),
+					column: None,
+					fragment,
+					label: Some("not an integer row count".to_string()),
+					help: Some(
+						"Use an integer literal that fits a 64-bit signed integer".to_string(),
+					),
+					notes: vec![
+						"TAKE operator limits the number of rows returned from a query".to_string(),
+						"Valid examples: TAKE 10, TAKE 0, TAKE 100".to_string(),
+					],
+					cause: None,
+					operator_chain: None,
+				}
+			}
 
 			AstError::OperatorMissingBraces { kind, fragment } => {
 				let (code, message, help, notes) = match kind {
